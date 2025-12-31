@@ -24,6 +24,11 @@ app.use((req, res, next) => {
   next();
 });
 
+// Keep-alive endpoint for Railway
+app.get('/keepalive', (req, res) => {
+  res.json({ status: 'alive', timestamp: new Date().toISOString() });
+});
+
 // MongoDB connection
 let db;
 const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://localhost:27017/kids-money-manager';
