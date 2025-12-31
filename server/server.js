@@ -297,10 +297,42 @@ app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', db: db ? 'connected' : 'memory' });
 });
 
-// Start server
-connectDB().then(() => {
-  app.listen(PORT, () => {
-    console.log(`Server running on http://localhost:${PORT}`);
+// Root endpoint
+app.get('/', (req, res) => {
+  res.json({ 
+    message: 'Kids Money Manager API',
+    status: 'running',
+    version: '1.0.0'
   });
+});
+
+// Start server
+let server;
+
+connectDB().then(() => {
+  server = app.listen(PORT, '0.0.0.0', () => {
+    console.log(`Server running on http://0.0.0.0:${PORT}`);
+    console.log(`Health check available at http://0.0.0.0:${PORT}/api/health`);
+  });
+  
+  // Handle graceful shutdown
+  process.on('SIGTERM', () => {
+    console.log('SIGTERM received, shutting down gracefully...');
+    server.close(() => {
+      console.log('Server closed');
+      process.exit(0);
+    });
+  });
+  
+  process.on('SIGINT', () => {
+    console.log('SIGINT received, shutting down gracefully...');
+    server.close(() => {
+      console.log('Server closed');
+      process.exit(0);
+    });
+  });
+}).catch((error) => {
+  console.error('Failed to start server:', error);
+  process.exit(1);
 });
 
