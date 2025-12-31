@@ -8,9 +8,20 @@ dotenv.config();
 const app = express();
 const PORT = process.env.PORT || 3001;
 
-// Middleware
-app.use(cors());
+// Middleware - CORS configuration
+app.use(cors({
+  origin: '*', // Allow all origins in production (you can restrict this later)
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization'],
+  credentials: true
+}));
 app.use(express.json());
+
+// Logging middleware for debugging
+app.use((req, res, next) => {
+  console.log(`${new Date().toISOString()} - ${req.method} ${req.path}`);
+  next();
+});
 
 // MongoDB connection
 let db;
@@ -97,10 +108,12 @@ async function getChild(childId) {
 
 async function updateChild(childId, update) {
   if (db) {
-    return await db.collection('children').updateOne(
+    const result = await db.collection('children').updateOne(
       { _id: childId },
       { $set: update }
     );
+    console.log(`Updated child ${childId}:`, result);
+    return result;
   } else {
     if (memoryStorage.children[childId]) {
       Object.assign(memoryStorage.children[childId], update);
@@ -191,29 +204,46 @@ app.get('/api/children/:childId/transactions', async (req, res) => {
 // Add transaction
 app.post('/api/transactions', async (req, res) => {
   try {
+    console.log('Received transaction request:', req.body);
     const { childId, type, amount, description } = req.body;
     
     if (!childId || !type || !amount) {
+      console.error('Missing required fields:', { childId, type, amount });
       return res.status(400).json({ error: 'Missing required fields' });
     }
     
     if (type !== 'deposit' && type !== 'expense') {
+      console.error('Invalid transaction type:', type);
       return res.status(400).json({ error: 'Invalid transaction type' });
     }
     
     const child = await getChild(childId);
     if (!child) {
+      console.error('Child not found:', childId);
       return res.status(404).json({ error: 'Child not found' });
     }
     
+    console.log('Found child:', child);
+    
+    // Generate UUID - use crypto.randomUUID() if available, otherwise fallback
+    let transactionId;
+    try {
+      transactionId = crypto.randomUUID();
+    } catch (e) {
+      // Fallback for older Node.js versions
+      transactionId = 'txn_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+    }
+    
     const transaction = {
-      id: crypto.randomUUID(),
+      id: transactionId,
       date: new Date().toISOString(),
       type: type,
       amount: parseFloat(amount),
       description: description || '',
       childId: childId
     };
+    
+    console.log('Created transaction:', transaction);
     
     const transactions = [...(child.transactions || []), transaction];
     
@@ -226,15 +256,28 @@ app.post('/api/transactions', async (req, res) => {
       }
     }, 0);
     
-    await updateChild(childId, {
+    console.log('New balance:', balance);
+    console.log('Updating child with:', { balance, transactionsCount: transactions.length });
+    
+    const updateResult = await updateChild(childId, {
       balance: balance,
       transactions: transactions
     });
     
-    res.json({ transaction, balance });
+    console.log('Update result:', updateResult);
+    
+    // Verify the update
+    const updatedChild = await getChild(childId);
+    console.log('Updated child:', updatedChild);
+    
+    res.json({ transaction, balance, updated: true });
   } catch (error) {
     console.error('Error adding transaction:', error);
-    res.status(500).json({ error: 'Failed to add transaction' });
+    console.error('Error stack:', error.stack);
+    res.status(500).json({ 
+      error: 'Failed to add transaction',
+      details: error.message 
+    });
   }
 });
 
