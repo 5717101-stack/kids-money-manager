@@ -305,6 +305,65 @@ app.post('/api/transactions', async (req, res) => {
   }
 });
 
+// Get expense statistics by category
+app.get('/api/children/:childId/expenses-by-category', async (req, res) => {
+  try {
+    const { childId } = req.params;
+    const days = parseInt(req.query.days) || 30;
+    
+    const child = await getChild(childId);
+    if (!child) {
+      return res.status(404).json({ error: 'Child not found' });
+    }
+    
+    // Calculate cutoff date - include today by using start of today
+    const cutoffDate = new Date();
+    cutoffDate.setHours(0, 0, 0, 0); // Start of today
+    cutoffDate.setDate(cutoffDate.getDate() - days + 1); // Include today, so -days+1
+    
+    console.log(`Fetching expenses for ${childId}, days: ${days}, cutoff: ${cutoffDate.toISOString()}`);
+    
+    const expenses = (child.transactions || [])
+      .filter(t => {
+        if (t.type !== 'expense') return false;
+        const transactionDate = new Date(t.date);
+        transactionDate.setHours(0, 0, 0, 0);
+        return transactionDate >= cutoffDate;
+      });
+    
+    console.log(`Found ${expenses.length} expenses`);
+    
+    const categoryTotals = {
+      'משחקים': 0,
+      'ממתקים': 0,
+      'בגדים': 0,
+      'בילויים': 0,
+      'אחר': 0
+    };
+    
+    expenses.forEach(expense => {
+      const category = expense.category || 'אחר';
+      if (categoryTotals.hasOwnProperty(category)) {
+        categoryTotals[category] += expense.amount;
+      } else {
+        categoryTotals['אחר'] += expense.amount;
+      }
+    });
+    
+    // Filter out categories with 0 expenses
+    const result = Object.entries(categoryTotals)
+      .filter(([_, amount]) => amount > 0)
+      .map(([category, amount]) => ({ category, amount }));
+    
+    console.log('Expenses by category:', result);
+    
+    res.json({ expensesByCategory: result, totalDays: days });
+  } catch (error) {
+    console.error('Error fetching expenses by category:', error);
+    res.status(500).json({ error: 'Failed to fetch expenses by category' });
+  }
+});
+
 // Reset all data (reset balances and transactions)
 app.post('/api/reset', async (req, res) => {
   try {
