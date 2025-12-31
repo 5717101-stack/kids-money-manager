@@ -15,7 +15,7 @@ const ParentDashboard = () => {
   const [amount, setAmount] = useState('');
   const [description, setDescription] = useState('');
   const [transactionType, setTransactionType] = useState('deposit');
-  const [allData, setAllData] = useState({ children: { child1: { name: 'אדם', balance: 0 }, child2: { name: 'ג\'וּן', balance: 0 } } });
+  const [allData, setAllData] = useState({ children: { child1: { name: 'האדם', balance: 0 }, child2: { name: 'ג\'וּןי', balance: 0 } } });
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
 
