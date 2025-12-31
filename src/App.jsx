@@ -60,6 +60,10 @@ const App = () => {
         {view === 'child1' && <ChildView childId="child1" />}
         {view === 'child2' && <ChildView childId="child2" />}
       </main>
+      
+      <footer className="app-footer">
+        <span className="version">גרסה 1.01</span>
+      </footer>
     </div>
   );
 };

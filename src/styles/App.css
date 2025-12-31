@@ -500,3 +500,18 @@ body {
   transform: translateY(0);
 }
 
+/* App Footer */
+.app-footer {
+  text-align: center;
+  padding: 15px;
+  margin-top: 30px;
+  color: #6b7280;
+  font-size: 0.9rem;
+  border-top: 1px solid #e5e7eb;
+}
+
+.version {
+  font-weight: 500;
+  color: #9ca3af;
+}
+
