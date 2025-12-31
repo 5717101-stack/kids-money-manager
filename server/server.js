@@ -211,7 +211,7 @@ app.get('/api/children/:childId/transactions', async (req, res) => {
 app.post('/api/transactions', async (req, res) => {
   try {
     console.log('Received transaction request:', req.body);
-    const { childId, type, amount, description } = req.body;
+    const { childId, type, amount, description, category } = req.body;
     
     if (!childId || !type || !amount) {
       console.error('Missing required fields:', { childId, type, amount });
@@ -221,6 +221,13 @@ app.post('/api/transactions', async (req, res) => {
     if (type !== 'deposit' && type !== 'expense') {
       console.error('Invalid transaction type:', type);
       return res.status(400).json({ error: 'Invalid transaction type' });
+    }
+    
+    // Validate category for expenses
+    const validCategories = ['משחקים', 'ממתקים', 'בגדים', 'בילויים', 'אחר'];
+    if (type === 'expense' && category && !validCategories.includes(category)) {
+      console.error('Invalid category:', category);
+      return res.status(400).json({ error: 'Invalid category' });
     }
     
     const child = await getChild(childId);
@@ -256,6 +263,7 @@ app.post('/api/transactions', async (req, res) => {
       type: type,
       amount: parseFloat(amount),
       description: description || '',
+      category: type === 'expense' ? (category || 'אחר') : null,
       childId: childId
     };
     

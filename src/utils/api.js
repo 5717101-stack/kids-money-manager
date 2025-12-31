@@ -81,7 +81,7 @@ export const getChild = async (childId) => {
 };
 
 // Add transaction (deposit or expense)
-export const addTransaction = async (childId, type, amount, description) => {
+export const addTransaction = async (childId, type, amount, description, category = null) => {
   try {
     const response = await apiCall('/transactions', {
       method: 'POST',
@@ -89,7 +89,8 @@ export const addTransaction = async (childId, type, amount, description) => {
         childId,
         type,
         amount: parseFloat(amount),
-        description: description || ''
+        description: description || '',
+        category: category || null
       })
     });
     return response.transaction;
@@ -113,5 +114,11 @@ export const resetAllData = async () => {
     method: 'POST'
   });
   return response;
+};
+
+// Get expenses by category for a child
+export const getExpensesByCategory = async (childId, days = 30) => {
+  const response = await apiCall(`/children/${childId}/expenses-by-category?days=${days}`);
+  return response.expensesByCategory || [];
 };
 

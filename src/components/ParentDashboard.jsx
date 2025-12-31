@@ -15,10 +15,13 @@ const ParentDashboard = () => {
   const [amount, setAmount] = useState('');
   const [description, setDescription] = useState('');
   const [transactionType, setTransactionType] = useState('deposit');
+  const [category, setCategory] = useState('אחר');
   const [allData, setAllData] = useState({ children: { child1: { name: 'אדם חיים שלי', balance: 0 }, child2: { name: 'ג\'וּן חיים שלי', balance: 0 } } });
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [resetting, setResetting] = useState(false);
+  
+  const CATEGORIES = ['משחקים', 'ממתקים', 'בגדים', 'בילויים', 'אחר'];
 
   useEffect(() => {
     loadAllData();
@@ -69,9 +72,11 @@ const ParentDashboard = () => {
 
     try {
       setSubmitting(true);
-      await addTransaction(selectedChild, transactionType, amount, description);
+      const transactionCategory = transactionType === 'expense' ? category : null;
+      await addTransaction(selectedChild, transactionType, amount, description, transactionCategory);
       setAmount('');
       setDescription('');
+      setCategory('אחר'); // Reset to default
       await loadChildData(); // Reload to get updated balance and transactions
     } catch (error) {
       alert('שגיאה בהוספת הפעולה: ' + error.message);
@@ -226,6 +231,22 @@ const ParentDashboard = () => {
                   placeholder="תיאור הפעולה (אופציונלי)"
                 />
               </div>
+
+              {transactionType === 'expense' && (
+                <div className="form-group">
+                  <label htmlFor="category">קטגוריה:</label>
+                  <select
+                    id="category"
+                    value={category}
+                    onChange={(e) => setCategory(e.target.value)}
+                    className="category-select"
+                  >
+                    {CATEGORIES.map(cat => (
+                      <option key={cat} value={cat}>{cat}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
 
               <button type="submit" className="submit-button" disabled={submitting}>
                 {submitting ? 'שומר...' : (transactionType === 'deposit' ? 'הוסף כסף' : 'דווח על הוצאה')}

@@ -38,9 +38,14 @@ const TransactionList = ({ transactions, showAll = false }) => {
               }}>
                 {transaction.type === 'deposit' ? '+' : '-'}₪{transaction.amount.toFixed(2)}
               </span>
-              {transaction.description && (
-                <span className="transaction-description">{transaction.description}</span>
-              )}
+              <div className="transaction-meta">
+                {transaction.description && (
+                  <span className="transaction-description">{transaction.description}</span>
+                )}
+                {transaction.category && (
+                  <span className="transaction-category">🏷️ {transaction.category}</span>
+                )}
+              </div>
             </div>
           </li>
         ))}

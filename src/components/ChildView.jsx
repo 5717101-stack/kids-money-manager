@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { getChild, getChildTransactions } from '../utils/api';
+import { getChild, getChildTransactions, getExpensesByCategory } from '../utils/api';
 import BalanceDisplay from './BalanceDisplay';
 import TransactionList from './TransactionList';
+import ExpensePieChart from './ExpensePieChart';
 
 const CHILD_COLORS = {
   child1: '#3b82f6', // כחול
@@ -11,6 +12,8 @@ const CHILD_COLORS = {
 const ChildView = ({ childId }) => {
   const [childData, setChildData] = useState(null);
   const [transactions, setTransactions] = useState([]);
+  const [expenses7Days, setExpenses7Days] = useState([]);
+  const [expenses30Days, setExpenses30Days] = useState([]);
 
   useEffect(() => {
     loadChildData();
@@ -27,6 +30,12 @@ const ChildView = ({ childId }) => {
         // Show last 15 transactions
         const trans = await getChildTransactions(childId, 15);
         setTransactions(trans);
+        
+        // Load expense statistics
+        const expenses7 = await getExpensesByCategory(childId, 7);
+        const expenses30 = await getExpensesByCategory(childId, 30);
+        setExpenses7Days(expenses7);
+        setExpenses30Days(expenses30);
       }
     } catch (error) {
       console.error('Error loading child data:', error);
@@ -50,6 +59,20 @@ const ChildView = ({ childId }) => {
         childName={childData.name}
         color={color}
       />
+
+      {/* Expense Charts */}
+      <div className="charts-section">
+        <ExpensePieChart 
+          expensesByCategory={expenses7Days} 
+          title="הוצאות ב-7 הימים האחרונים"
+          days={7}
+        />
+        <ExpensePieChart 
+          expensesByCategory={expenses30Days} 
+          title="הוצאות ב-30 הימים האחרונים"
+          days={30}
+        />
+      </div>
 
       <TransactionList transactions={transactions} showAll={false} />
     </div>
