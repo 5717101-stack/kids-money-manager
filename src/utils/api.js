@@ -107,3 +107,11 @@ export const getChildTransactions = async (childId, limit = null) => {
   return response.transactions || [];
 };
 
+// Reset all data (balances and transactions)
+export const resetAllData = async () => {
+  const response = await apiCall('/reset', {
+    method: 'POST'
+  });
+  return response;
+};
+

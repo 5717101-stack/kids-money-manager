@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { getChild, addTransaction, getChildTransactions, getData } from '../utils/api';
+import { getChild, addTransaction, getChildTransactions, getData, resetAllData } from '../utils/api';
 import BalanceDisplay from './BalanceDisplay';
 import TransactionList from './TransactionList';
 
@@ -15,9 +15,10 @@ const ParentDashboard = () => {
   const [amount, setAmount] = useState('');
   const [description, setDescription] = useState('');
   const [transactionType, setTransactionType] = useState('deposit');
-  const [allData, setAllData] = useState({ children: { child1: { name: 'אדם', balance: 0 }, child2: { name: 'ג\'וּן', balance: 0 } } });
+  const [allData, setAllData] = useState({ children: { child1: { name: 'אדם חיים שלי', balance: 0 }, child2: { name: 'ג\'וּן חיים שלי', balance: 0 } } });
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
+  const [resetting, setResetting] = useState(false);
 
   useEffect(() => {
     loadAllData();
@@ -79,6 +80,24 @@ const ParentDashboard = () => {
     }
   };
 
+  const handleReset = async () => {
+    if (!window.confirm('האם אתה בטוח שברצונך לאפס את כל היתרות והפעולות? פעולה זו לא ניתנת לביטול!')) {
+      return;
+    }
+
+    try {
+      setResetting(true);
+      await resetAllData();
+      await loadAllData();
+      await loadChildData();
+      alert('כל הנתונים אופסו בהצלחה!');
+    } catch (error) {
+      alert('שגיאה באיפוס הנתונים: ' + error.message);
+    } finally {
+      setResetting(false);
+    }
+  };
+
   const child1Balance = allData.children.child1?.balance || 0;
   const child2Balance = allData.children.child2?.balance || 0;
 
@@ -92,7 +111,17 @@ const ParentDashboard = () => {
 
   return (
     <div className="parent-dashboard">
-      <h1>ממשק הורה - ניהול כסף</h1>
+      <div className="dashboard-header">
+        <h1>ממשק הורה - ניהול כסף</h1>
+        <button 
+          className="reset-button" 
+          onClick={handleReset}
+          disabled={resetting}
+          title="איפוס כל היתרות והפעולות"
+        >
+          {resetting ? 'מאפס...' : '🔄 איפוס יתרות'}
+        </button>
+      </div>
       
       {/* Quick balance overview */}
       <div className="balance-overview">

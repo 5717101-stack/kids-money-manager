@@ -297,6 +297,37 @@ app.post('/api/transactions', async (req, res) => {
   }
 });
 
+// Reset all data (reset balances and transactions)
+app.post('/api/reset', async (req, res) => {
+  try {
+    console.log('Resetting all children data...');
+    
+    // Reset child1
+    await updateChild('child1', {
+      balance: 0,
+      transactions: []
+    });
+    
+    // Reset child2
+    await updateChild('child2', {
+      balance: 0,
+      transactions: []
+    });
+    
+    console.log('All data reset successfully');
+    res.json({ 
+      success: true, 
+      message: 'All balances and transactions have been reset' 
+    });
+  } catch (error) {
+    console.error('Error resetting data:', error);
+    res.status(500).json({ 
+      error: 'Failed to reset data',
+      details: error.message 
+    });
+  }
+});
+
 // Health check
 app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', db: db ? 'connected' : 'memory' });
