@@ -2,6 +2,7 @@ import express from 'express';
 import cors from 'cors';
 import { MongoClient } from 'mongodb';
 import dotenv from 'dotenv';
+import crypto from 'crypto';
 
 dotenv.config();
 
@@ -228,9 +229,19 @@ app.post('/api/transactions', async (req, res) => {
     // Generate UUID - use crypto.randomUUID() if available, otherwise fallback
     let transactionId;
     try {
-      transactionId = crypto.randomUUID();
+      // In Node.js, crypto.randomUUID() is available in v14.17.0+
+      if (typeof crypto !== 'undefined' && crypto.randomUUID) {
+        transactionId = crypto.randomUUID();
+      } else {
+        // Fallback: generate UUID manually
+        transactionId = 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+          const r = Math.random() * 16 | 0;
+          const v = c === 'x' ? r : (r & 0x3 | 0x8);
+          return v.toString(16);
+        });
+      }
     } catch (e) {
-      // Fallback for older Node.js versions
+      // Fallback if crypto.randomUUID fails
       transactionId = 'txn_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
     }
     
