@@ -139,3 +139,4 @@ const PARENT_PASSWORD = '2016';
 - הנתונים נשמרים ב-MongoDB וזמינים מכל מכשיר
 - הסיסמה נשמרת ב-sessionStorage (נמחקת בסגירת הדפדפן)
 - ממשקי הילדים מתעדכנים אוטומטית כל 5 שניות
+# kids-money-manager
