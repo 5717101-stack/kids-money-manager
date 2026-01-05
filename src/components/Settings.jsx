@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { getCategories, addCategory, updateCategory, deleteCategory, getData, updateProfileImage, updateWeeklyAllowance, payWeeklyAllowance } from '../utils/api';
 
 const CHILD_COLORS = {
@@ -20,7 +20,7 @@ const Settings = ({ onClose }) => {
   const [loading, setLoading] = useState(true);
   const [allowanceStates, setAllowanceStates] = useState({});
   const [uploadingImages, setUploadingImages] = useState({});
-  const fileInputRefs = React.useRef({});
+  const fileInputRefs = useRef({});
 
   useEffect(() => {
     loadData();
@@ -126,8 +126,13 @@ const Settings = ({ onClose }) => {
     if (!file.type.startsWith('image/')) {
       alert('אנא בחר קובץ תמונה בלבד');
       // Reset input
-      if (fileInputRefs.current[childId]) {
-        fileInputRefs.current[childId].value = '';
+      const input = fileInputRefs.current?.[childId];
+      if (input) {
+        try {
+          input.value = '';
+        } catch (e) {
+          console.warn('Could not reset input:', e);
+        }
       }
       return;
     }
@@ -137,8 +142,13 @@ const Settings = ({ onClose }) => {
     if (file.size > maxSize) {
       alert('גודל הקובץ גדול מדי. אנא בחר תמונה קטנה מ-5MB');
       // Reset input
-      if (fileInputRefs.current[childId]) {
-        fileInputRefs.current[childId].value = '';
+      const input = fileInputRefs.current?.[childId];
+      if (input) {
+        try {
+          input.value = '';
+        } catch (e) {
+          console.warn('Could not reset input:', e);
+        }
       }
       return;
     }
@@ -153,8 +163,13 @@ const Settings = ({ onClose }) => {
       console.error('FileReader error:', error);
       setUploadingImages(prev => ({ ...prev, [childId]: false }));
       // Reset input
-      if (fileInputRefs.current[childId]) {
-        fileInputRefs.current[childId].value = '';
+      const input = fileInputRefs.current?.[childId];
+      if (input) {
+        try {
+          input.value = '';
+        } catch (e) {
+          console.warn('Could not reset input:', e);
+        }
       }
       alert('שגיאה בקריאת הקובץ: ' + (error.message || 'Unknown error'));
     };
@@ -175,8 +190,13 @@ const Settings = ({ onClose }) => {
         console.log('Image upload result:', result);
         
         // Reset input to allow selecting the same file again
-        if (fileInputRefs.current[childId]) {
-          fileInputRefs.current[childId].value = '';
+        const input = fileInputRefs.current?.[childId];
+        if (input) {
+          try {
+            input.value = '';
+          } catch (e) {
+            console.warn('Could not reset input:', e);
+          }
         }
         
         await loadData();
@@ -191,8 +211,13 @@ const Settings = ({ onClose }) => {
         const errorMessage = error.message || 'Unknown error';
         alert('שגיאה בעדכון תמונת הפרופיל: ' + errorMessage);
         // Reset input on error
-        if (fileInputRefs.current[childId]) {
-          fileInputRefs.current[childId].value = '';
+        const input = fileInputRefs.current?.[childId];
+        if (input) {
+          try {
+            input.value = '';
+          } catch (e) {
+            console.warn('Could not reset input:', e);
+          }
         }
       } finally {
         setUploadingImages(prev => ({ ...prev, [childId]: false }));
