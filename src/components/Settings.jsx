@@ -146,10 +146,10 @@ const Settings = ({ onClose }) => {
       return;
     }
 
-    // Validate file size (max 5MB)
-    const maxSize = 5 * 1024 * 1024; // 5MB
+    // Validate file size (max 2MB for better performance)
+    const maxSize = 2 * 1024 * 1024; // 2MB
     if (file.size > maxSize) {
-      alert('גודל הקובץ גדול מדי. אנא בחר תמונה קטנה מ-5MB');
+      alert('גודל הקובץ גדול מדי. אנא בחר תמונה קטנה מ-2MB');
       // Reset input
       const input = fileInputRefs.current?.[childId];
       if (input) {
@@ -194,8 +194,20 @@ const Settings = ({ onClose }) => {
           throw new Error('Failed to convert image to base64');
         }
         
+        // Check if base64 image is too large (after encoding, base64 is ~33% larger)
+        if (base64Image.length > 3 * 1024 * 1024) { // ~2.25MB original
+          throw new Error('התמונה גדולה מדי לאחר עיבוד. אנא בחר תמונה קטנה יותר.');
+        }
+        
         console.log('Uploading image, size:', base64Image.length, 'bytes');
-        const result = await updateProfileImage(childId, base64Image);
+        
+        // Add timeout to prevent hanging
+        const uploadPromise = updateProfileImage(childId, base64Image);
+        const timeoutPromise = new Promise((_, reject) => 
+          setTimeout(() => reject(new Error('העלאה ארכה יותר מדי זמן. נסה שוב.')), 30000)
+        );
+        
+        const result = await Promise.race([uploadPromise, timeoutPromise]);
         console.log('Image upload result:', result);
         
         // Reset input to allow selecting the same file again
@@ -208,7 +220,24 @@ const Settings = ({ onClose }) => {
           }
         }
         
-        await loadData();
+        // Reload data without showing loading state to avoid UI freeze
+        try {
+          const [categoriesData, childrenData] = await Promise.all([
+            fetchCategories().catch(() => categories), // Keep current categories on error
+            getData().catch(() => allData) // Keep current data on error
+          ]);
+          
+          if (Array.isArray(categoriesData)) {
+            setCategories(categoriesData);
+          }
+          if (childrenData && childrenData.children) {
+            setAllData(childrenData);
+          }
+        } catch (reloadError) {
+          console.error('Error reloading data after upload:', reloadError);
+          // Don't show error to user, just log it
+        }
+        
         alert('תמונת הפרופיל עודכנה בהצלחה!');
       } catch (error) {
         console.error('Error updating profile image:', error);
