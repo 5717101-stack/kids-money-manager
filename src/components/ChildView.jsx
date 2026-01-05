@@ -61,6 +61,13 @@ const ChildView = ({ childId }) => {
   return (
     <div className="child-view" style={{ borderColor: color }}>
       <div className="child-header">
+        {childData.profileImage && (
+          <img 
+            src={childData.profileImage} 
+            alt={childData.name}
+            className="profile-image-large"
+          />
+        )}
         <h1>שלום {childData.name}! 👋</h1>
       </div>
       

@@ -60,6 +60,8 @@ async function initializeData() {
           name: 'אדם',
           balance: 0,
           cashBoxBalance: 0,
+          profileImage: null,
+          weeklyAllowance: 0,
           transactions: []
         },
         {
@@ -67,9 +69,28 @@ async function initializeData() {
           name: 'ג\'וּן',
           balance: 0,
           cashBoxBalance: 0,
+          profileImage: null,
+          weeklyAllowance: 0,
           transactions: []
         }
       ]);
+      
+      // Initialize default categories
+      const defaultCategories = [
+        { name: 'משחקים', activeFor: ['child1', 'child2'] },
+        { name: 'ממתקים', activeFor: ['child1', 'child2'] },
+        { name: 'בגדים', activeFor: ['child1', 'child2'] },
+        { name: 'בילויים', activeFor: ['child1', 'child2'] },
+        { name: 'אחר', activeFor: ['child1', 'child2'] }
+      ];
+      
+      await db.collection('categories').insertMany(
+        defaultCategories.map((cat, index) => ({
+          _id: `cat_${index + 1}`,
+          name: cat.name,
+          activeFor: cat.activeFor
+        }))
+      );
       console.log('Initialized default children data');
     } else {
       // Update names if they still have old default values
@@ -95,6 +116,8 @@ let memoryStorage = {
       name: 'אדם',
       balance: 0,
       cashBoxBalance: 0,
+      profileImage: null,
+      weeklyAllowance: 0,
       transactions: []
     },
     child2: {
@@ -102,9 +125,18 @@ let memoryStorage = {
       name: 'ג\'וּן',
       balance: 0,
       cashBoxBalance: 0,
+      profileImage: null,
+      weeklyAllowance: 0,
       transactions: []
     }
-  }
+  },
+  categories: [
+    { _id: 'cat_1', name: 'משחקים', activeFor: ['child1', 'child2'] },
+    { _id: 'cat_2', name: 'ממתקים', activeFor: ['child1', 'child2'] },
+    { _id: 'cat_3', name: 'בגדים', activeFor: ['child1', 'child2'] },
+    { _id: 'cat_4', name: 'בילויים', activeFor: ['child1', 'child2'] },
+    { _id: 'cat_5', name: 'אחר', activeFor: ['child1', 'child2'] }
+  ]
 };
 
 // Helper function to get collection or memory storage
@@ -132,6 +164,58 @@ async function updateChild(childId, update) {
   }
 }
 
+// Helper function to check and process weekly allowances
+async function processWeeklyAllowances() {
+  try {
+    const now = new Date();
+    const dayOfWeek = now.getDay(); // 0 = Sunday, 1 = Monday, etc.
+    const hour = now.getHours();
+    
+    // Check if it's Sunday and 8 AM
+    if (dayOfWeek === 0 && hour === 8) {
+      const children = db 
+        ? await db.collection('children').find({}).toArray()
+        : Object.values(memoryStorage.children);
+      
+      for (const child of children) {
+        if (child.weeklyAllowance && child.weeklyAllowance > 0) {
+          // Add allowance as a deposit transaction
+          const transaction = {
+            id: `allowance_${Date.now()}_${child._id}`,
+            date: new Date().toISOString(),
+            type: 'deposit',
+            amount: child.weeklyAllowance,
+            description: 'דמי כיס שבועיים',
+            category: null,
+            childId: child._id
+          };
+          
+          const transactions = [...(child.transactions || []), transaction];
+          const balance = transactions.reduce((total, t) => {
+            if (t.type === 'deposit') {
+              return total + t.amount;
+            } else {
+              return total - t.amount;
+            }
+          }, 0);
+          
+          await updateChild(child._id, {
+            balance: balance,
+            transactions: transactions
+          });
+          
+          console.log(`Added weekly allowance of ${child.weeklyAllowance} to ${child.name}`);
+        }
+      }
+    }
+  } catch (error) {
+    console.error('Error processing weekly allowances:', error);
+  }
+}
+
+// Check weekly allowances every hour
+setInterval(processWeeklyAllowances, 60 * 60 * 1000); // Check every hour
+
 // API Routes
 
 // Get all children
@@ -144,6 +228,8 @@ app.get('/api/children', async (req, res) => {
           name: child.name,
           balance: child.balance || 0,
           cashBoxBalance: child.cashBoxBalance || 0,
+          profileImage: child.profileImage || null,
+          weeklyAllowance: child.weeklyAllowance || 0,
           transactions: child.transactions || []
         };
         return acc;
@@ -154,6 +240,8 @@ app.get('/api/children', async (req, res) => {
         name: child.name,
         balance: child.balance || 0,
         cashBoxBalance: child.cashBoxBalance || 0,
+        profileImage: child.profileImage || null,
+        weeklyAllowance: child.weeklyAllowance || 0,
         transactions: child.transactions || []
       }));
       res.json({ children: children.reduce((acc, child) => {
@@ -161,6 +249,8 @@ app.get('/api/children', async (req, res) => {
           name: child.name,
           balance: child.balance || 0,
           cashBoxBalance: child.cashBoxBalance || 0,
+          profileImage: child.profileImage || null,
+          weeklyAllowance: child.weeklyAllowance || 0,
           transactions: child.transactions || []
         };
         return acc;
@@ -183,6 +273,8 @@ app.get('/api/children/:childId', async (req, res) => {
       name: child.name,
       balance: child.balance || 0,
       cashBoxBalance: child.cashBoxBalance || 0,
+      profileImage: child.profileImage || null,
+      weeklyAllowance: child.weeklyAllowance || 0,
       transactions: child.transactions || []
     });
   } catch (error) {
@@ -231,17 +323,24 @@ app.post('/api/transactions', async (req, res) => {
       return res.status(400).json({ error: 'Invalid transaction type' });
     }
     
-    // Validate category for expenses
-    const validCategories = ['משחקים', 'ממתקים', 'בגדים', 'בילויים', 'אחר'];
-    if (type === 'expense' && category && !validCategories.includes(category)) {
-      console.error('Invalid category:', category);
-      return res.status(400).json({ error: 'Invalid category' });
-    }
-    
-    const child = await getChild(childId);
-    if (!child) {
-      console.error('Child not found:', childId);
-      return res.status(404).json({ error: 'Child not found' });
+    // Validate category for expenses - check against database
+    if (type === 'expense' && category) {
+      let validCategories = [];
+      if (db) {
+        const categories = await db.collection('categories').find({}).toArray();
+        validCategories = categories
+          .filter(cat => (cat.activeFor || []).includes(childId))
+          .map(cat => cat.name);
+      } else {
+        validCategories = (memoryStorage.categories || [])
+          .filter(cat => (cat.activeFor || []).includes(childId))
+          .map(cat => cat.name);
+      }
+      
+      if (!validCategories.includes(category)) {
+        console.error('Invalid category:', category, 'Valid categories:', validCategories);
+        return res.status(400).json({ error: 'Invalid category' });
+      }
     }
     
     console.log('Found child:', child);
@@ -441,6 +540,153 @@ app.put('/api/children/:childId/cashbox', async (req, res) => {
       error: 'Failed to update cash box balance',
       details: error.message
     });
+  }
+});
+
+// Categories API
+// Get all categories
+app.get('/api/categories', async (req, res) => {
+  try {
+    if (db) {
+      const categories = await db.collection('categories').find({}).toArray();
+      res.json({ categories });
+    } else {
+      res.json({ categories: memoryStorage.categories || [] });
+    }
+  } catch (error) {
+    console.error('Error fetching categories:', error);
+    res.status(500).json({ error: 'Failed to fetch categories' });
+  }
+});
+
+// Add new category
+app.post('/api/categories', async (req, res) => {
+  try {
+    const { name, activeFor } = req.body;
+    
+    if (!name) {
+      return res.status(400).json({ error: 'Category name is required' });
+    }
+    
+    const category = {
+      _id: `cat_${Date.now()}`,
+      name: name.trim(),
+      activeFor: activeFor || []
+    };
+    
+    if (db) {
+      await db.collection('categories').insertOne(category);
+    } else {
+      memoryStorage.categories.push(category);
+    }
+    
+    res.json({ category });
+  } catch (error) {
+    console.error('Error adding category:', error);
+    res.status(500).json({ error: 'Failed to add category' });
+  }
+});
+
+// Update category
+app.put('/api/categories/:categoryId', async (req, res) => {
+  try {
+    const { categoryId } = req.params;
+    const { name, activeFor } = req.body;
+    
+    const update = {};
+    if (name !== undefined) update.name = name.trim();
+    if (activeFor !== undefined) update.activeFor = activeFor;
+    
+    if (db) {
+      const result = await db.collection('categories').updateOne(
+        { _id: categoryId },
+        { $set: update }
+      );
+      if (result.matchedCount === 0) {
+        return res.status(404).json({ error: 'Category not found' });
+      }
+    } else {
+      const category = memoryStorage.categories.find(c => c._id === categoryId);
+      if (!category) {
+        return res.status(404).json({ error: 'Category not found' });
+      }
+      Object.assign(category, update);
+    }
+    
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Error updating category:', error);
+    res.status(500).json({ error: 'Failed to update category' });
+  }
+});
+
+// Delete category
+app.delete('/api/categories/:categoryId', async (req, res) => {
+  try {
+    const { categoryId } = req.params;
+    
+    if (db) {
+      const result = await db.collection('categories').deleteOne({ _id: categoryId });
+      if (result.deletedCount === 0) {
+        return res.status(404).json({ error: 'Category not found' });
+      }
+    } else {
+      const index = memoryStorage.categories.findIndex(c => c._id === categoryId);
+      if (index === -1) {
+        return res.status(404).json({ error: 'Category not found' });
+      }
+      memoryStorage.categories.splice(index, 1);
+    }
+    
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Error deleting category:', error);
+    res.status(500).json({ error: 'Failed to delete category' });
+  }
+});
+
+// Update child profile image
+app.put('/api/children/:childId/profile-image', async (req, res) => {
+  try {
+    const { childId } = req.params;
+    const { profileImage } = req.body;
+    
+    const child = await getChild(childId);
+    if (!child) {
+      return res.status(404).json({ error: 'Child not found' });
+    }
+    
+    await updateChild(childId, { profileImage: profileImage || null });
+    
+    res.json({ success: true, profileImage: profileImage || null });
+  } catch (error) {
+    console.error('Error updating profile image:', error);
+    res.status(500).json({ error: 'Failed to update profile image' });
+  }
+});
+
+// Update child weekly allowance
+app.put('/api/children/:childId/weekly-allowance', async (req, res) => {
+  try {
+    const { childId } = req.params;
+    const { weeklyAllowance } = req.body;
+    
+    const amount = parseFloat(weeklyAllowance);
+    if (isNaN(amount) || amount < 0) {
+      return res.status(400).json({ error: 'Weekly allowance must be a valid non-negative number' });
+    }
+    
+    const child = await getChild(childId);
+    if (!child) {
+      return res.status(404).json({ error: 'Child not found' });
+    }
+    
+    await updateChild(childId, { weeklyAllowance: amount });
+    
+    res.json({ success: true, weeklyAllowance: amount });
+  } catch (error) {
+    console.error('Error updating weekly allowance:', error);
+    res.status(500).json({ error: 'Failed to update weekly allowance' });
   }
 });
 

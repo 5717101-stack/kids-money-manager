@@ -77,6 +77,8 @@ export const getChild = async (childId) => {
     name: response.name,
     balance: response.balance || 0,
     cashBoxBalance: response.cashBoxBalance || 0,
+    profileImage: response.profileImage || null,
+    weeklyAllowance: response.weeklyAllowance || 0,
     transactions: response.transactions || []
   };
 };
@@ -137,5 +139,52 @@ export const updateCashBoxBalance = async (childId, cashBoxBalance) => {
     console.error('updateCashBoxBalance error:', error);
     throw new Error(error.message || 'Failed to update cash box balance');
   }
+};
+
+// Categories API
+export const getCategories = async () => {
+  const response = await apiCall('/categories');
+  return response.categories || [];
+};
+
+export const addCategory = async (name, activeFor = []) => {
+  const response = await apiCall('/categories', {
+    method: 'POST',
+    body: JSON.stringify({ name, activeFor })
+  });
+  return response.category;
+};
+
+export const updateCategory = async (categoryId, name, activeFor) => {
+  const response = await apiCall(`/categories/${categoryId}`, {
+    method: 'PUT',
+    body: JSON.stringify({ name, activeFor })
+  });
+  return response;
+};
+
+export const deleteCategory = async (categoryId) => {
+  const response = await apiCall(`/categories/${categoryId}`, {
+    method: 'DELETE'
+  });
+  return response;
+};
+
+// Profile image API
+export const updateProfileImage = async (childId, profileImage) => {
+  const response = await apiCall(`/children/${childId}/profile-image`, {
+    method: 'PUT',
+    body: JSON.stringify({ profileImage })
+  });
+  return response;
+};
+
+// Weekly allowance API
+export const updateWeeklyAllowance = async (childId, weeklyAllowance) => {
+  const response = await apiCall(`/children/${childId}/weekly-allowance`, {
+    method: 'PUT',
+    body: JSON.stringify({ weeklyAllowance: parseFloat(weeklyAllowance) })
+  });
+  return response;
 };
 

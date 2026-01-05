@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { getChild, addTransaction, getChildTransactions, getData, resetAllData } from '../utils/api';
+import { getChild, addTransaction, getChildTransactions, getData, resetAllData, getCategories } from '../utils/api';
 import BalanceDisplay from './BalanceDisplay';
 import TransactionList from './TransactionList';
+import Settings from './Settings';
 
 const CHILD_COLORS = {
   child1: '#3b82f6', // כחול
@@ -20,16 +21,33 @@ const ParentDashboard = () => {
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [resetting, setResetting] = useState(false);
-  
-  const CATEGORIES = ['משחקים', 'ממתקים', 'בגדים', 'בילויים', 'אחר'];
+  const [showSettings, setShowSettings] = useState(false);
+  const [categories, setCategories] = useState(['משחקים', 'ממתקים', 'בגדים', 'בילויים', 'אחר']);
 
   useEffect(() => {
     loadAllData();
+    loadCategories();
   }, []);
+
+  const loadCategories = async () => {
+    try {
+      const cats = await getCategories();
+      // Filter categories that are active for the selected child
+      const activeCategories = cats
+        .filter(cat => (cat.activeFor || []).includes(selectedChild))
+        .map(cat => cat.name);
+      if (activeCategories.length > 0) {
+        setCategories(activeCategories);
+      }
+    } catch (error) {
+      console.error('Error loading categories:', error);
+    }
+  };
 
   useEffect(() => {
     if (selectedChild) {
       loadChildData();
+      loadCategories();
     }
   }, [selectedChild]);
 
@@ -124,19 +142,43 @@ const ParentDashboard = () => {
     <div className="parent-dashboard">
       <div className="dashboard-header">
         <h1>ממשק הורה - ניהול כסף</h1>
-        <button 
-          className="reset-button" 
-          onClick={handleReset}
-          disabled={resetting}
-          title="איפוס כל היתרות והפעולות"
-        >
-          {resetting ? 'מאפס...' : '🔄 איפוס יתרות'}
-        </button>
+        <div className="header-buttons">
+          <button 
+            className="settings-button" 
+            onClick={() => setShowSettings(true)}
+            title="הגדרות"
+          >
+            ⚙️ הגדרות
+          </button>
+          <button 
+            className="reset-button" 
+            onClick={handleReset}
+            disabled={resetting}
+            title="איפוס כל היתרות והפעולות"
+          >
+            {resetting ? 'מאפס...' : '🔄 איפוס יתרות'}
+          </button>
+        </div>
       </div>
+      
+      {showSettings && (
+        <Settings onClose={() => {
+          setShowSettings(false);
+          loadCategories();
+          loadAllData();
+        }} />
+      )}
       
       {/* Quick balance overview */}
       <div className="balance-overview">
         <div className="balance-card" style={{ borderColor: CHILD_COLORS.child1 }}>
+          {allData.children.child1?.profileImage && (
+            <img 
+              src={allData.children.child1.profileImage} 
+              alt={allData.children.child1.name}
+              className="profile-image-small"
+            />
+          )}
           <h3>{allData.children.child1.name}</h3>
           <div className="balance-value" style={{ color: CHILD_COLORS.child1 }}>
             ₪{child1Total.toFixed(2)}
@@ -144,6 +186,13 @@ const ParentDashboard = () => {
           <div className="balance-subtitle">יתרה כוללת</div>
         </div>
         <div className="balance-card" style={{ borderColor: CHILD_COLORS.child2 }}>
+          {allData.children.child2?.profileImage && (
+            <img 
+              src={allData.children.child2.profileImage} 
+              alt={allData.children.child2.name}
+              className="profile-image-small"
+            />
+          )}
           <h3>{allData.children.child2.name}</h3>
           <div className="balance-value" style={{ color: CHILD_COLORS.child2 }}>
             ₪{child2Total.toFixed(2)}
