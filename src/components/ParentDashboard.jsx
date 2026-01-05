@@ -25,8 +25,54 @@ const ParentDashboard = () => {
   const [categories, setCategories] = useState(['משחקים', 'ממתקים', 'בגדים', 'בילויים', 'אחר']);
 
   useEffect(() => {
-    loadAllData();
-    loadCategories();
+    let mounted = true;
+    
+    const initialize = async () => {
+      try {
+        // Load data in parallel
+        const [dataResult, categoriesResult] = await Promise.allSettled([
+          getData().catch(err => {
+            console.error('Error loading data:', err);
+            return null;
+          }),
+          getCategories().catch(err => {
+            console.error('Error loading categories:', err);
+            return [];
+          })
+        ]);
+        
+        if (!mounted) return;
+        
+        if (dataResult.status === 'fulfilled' && dataResult.value) {
+          setAllData(dataResult.value);
+        }
+        
+        if (categoriesResult.status === 'fulfilled') {
+          const cats = categoriesResult.value || [];
+          const activeCategories = cats
+            .filter(cat => (cat.activeFor || []).includes(selectedChild))
+            .map(cat => cat.name);
+          if (activeCategories.length > 0) {
+            setCategories(activeCategories);
+            if (!activeCategories.includes(category)) {
+              setCategory(activeCategories[0]);
+            }
+          }
+        }
+      } catch (error) {
+        console.error('Error initializing:', error);
+      } finally {
+        if (mounted) {
+          setLoading(false);
+        }
+      }
+    };
+    
+    initialize();
+    
+    return () => {
+      mounted = false;
+    };
   }, []);
 
   const loadCategories = async () => {
@@ -71,11 +117,28 @@ const ParentDashboard = () => {
   const loadAllData = async () => {
     try {
       setLoading(true);
-      const data = await getData();
-      setAllData(data);
+      
+      // Add timeout to prevent infinite loading
+      const timeoutPromise = new Promise((_, reject) => 
+        setTimeout(() => reject(new Error('טעינת הנתונים ארכה יותר מדי זמן. נסה לרענן את הדף.')), 10000)
+      );
+      
+      const dataPromise = getData();
+      const data = await Promise.race([dataPromise, timeoutPromise]);
+      
+      if (data && data.children) {
+        setAllData(data);
+      } else {
+        console.warn('Invalid data received:', data);
+        // Keep existing data if new data is invalid
+      }
     } catch (error) {
       console.error('Error loading data:', error);
-      alert('שגיאה בטעינת הנתונים: ' + error.message);
+      // Don't show alert for timeout or network errors - just log
+      if (!error.message?.includes('זמן') && !error.message?.includes('Failed to fetch')) {
+        alert('שגיאה בטעינת הנתונים: ' + (error.message || 'Unknown error'));
+      }
+      // Keep existing data on error
     } finally {
       setLoading(false);
     }
@@ -89,11 +152,23 @@ const ParentDashboard = () => {
         const trans = await getChildTransactions(selectedChild);
         setTransactions(trans);
       }
-      // Refresh all data to update balances
-      await loadAllData();
+      // Refresh all data to update balances (but don't set loading state)
+      // Only update if we have valid data
+      try {
+        const data = await getData();
+        if (data && data.children) {
+          setAllData(data);
+        }
+      } catch (refreshError) {
+        console.error('Error refreshing all data:', refreshError);
+        // Don't show error - just log it
+      }
     } catch (error) {
       console.error('Error loading child data:', error);
-      alert('שגיאה בטעינת נתוני הילד: ' + error.message);
+      // Don't show alert for network errors
+      if (!error.message?.includes('Failed to fetch')) {
+        alert('שגיאה בטעינת נתוני הילד: ' + (error.message || 'Unknown error'));
+      }
     }
   };
 
