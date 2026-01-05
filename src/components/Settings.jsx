@@ -391,7 +391,11 @@ const Settings = ({ onClose }) => {
                     <h3>{child.name}</h3>
                     <label className="file-upload-button" style={{ opacity: uploadingImages[childId] ? 0.6 : 1, pointerEvents: uploadingImages[childId] ? 'none' : 'auto' }}>
                       <input
-                        ref={el => fileInputRefs.current[childId] = el}
+                        ref={el => {
+                          if (el) {
+                            fileInputRefs.current[childId] = el;
+                          }
+                        }}
                         type="file"
                         accept="image/*"
                         onChange={(e) => {
