@@ -184,24 +184,49 @@ async function updateChild(childId, update) {
 // Helper function to check and process weekly allowances
 async function processWeeklyAllowances() {
   try {
-    // Get current time in Israel timezone (UTC+2 in winter, UTC+3 in summer)
-    // We'll use UTC+2 as base (winter time)
+    // Get current time in Israel timezone using Intl API
     const now = new Date();
-    const israelOffset = 2; // UTC+2 for Israel Standard Time (winter)
-    // Calculate Israel time: UTC + offset
-    const israelTime = new Date(now.getTime() + (israelOffset * 60 * 60 * 1000));
-    const dayOfWeek = israelTime.getDay(); // 0 = Sunday, 1 = Monday, etc.
-    const hour = israelTime.getHours();
-    const minute = israelTime.getMinutes();
+    const israelTime = new Intl.DateTimeFormat('en-US', {
+      timeZone: 'Asia/Jerusalem',
+      weekday: 'long',
+      hour: 'numeric',
+      minute: 'numeric',
+      hour12: false
+    }).formatToParts(now);
     
-    // Check if it's Monday (day 1) at 14:15 Israel time
-    if (dayOfWeek === 1 && hour === 14 && minute === 15) {
+    const dayOfWeek = now.toLocaleString('en-US', { timeZone: 'Asia/Jerusalem', weekday: 'long' });
+    const hour = parseInt(israelTime.find(part => part.type === 'hour').value);
+    const minute = parseInt(israelTime.find(part => part.type === 'minute').value);
+    
+    console.log(`Checking weekly allowances - Israel time: ${dayOfWeek} ${hour}:${minute.toString().padStart(2, '0')}`);
+    
+    // Check if it's Monday at 14:15 Israel time (or within 14:15-14:16 to catch it)
+    const isMonday = dayOfWeek === 'Monday';
+    const isTime = hour === 14 && minute >= 15 && minute < 16;
+    
+    if (isMonday && isTime) {
+      console.log('Processing weekly allowances...');
       const children = db 
         ? await db.collection('children').find({}).toArray()
         : Object.values(memoryStorage.children);
       
       for (const child of children) {
         if (child.weeklyAllowance && child.weeklyAllowance > 0) {
+          // Check if allowance was already added this week
+          const oneWeekAgo = new Date();
+          oneWeekAgo.setDate(oneWeekAgo.getDate() - 7);
+          
+          const recentAllowance = (child.transactions || []).find(t => 
+            t.type === 'deposit' && 
+            t.description === 'דמי כיס שבועיים' &&
+            new Date(t.date) > oneWeekAgo
+          );
+          
+          if (recentAllowance) {
+            console.log(`Allowance already added for ${child.name} this week`);
+            continue;
+          }
+          
           // Add allowance as a deposit transaction
           const transaction = {
             id: `allowance_${Date.now()}_${child._id}`,
@@ -227,7 +252,7 @@ async function processWeeklyAllowances() {
             transactions: transactions
           });
           
-          console.log(`Added weekly allowance of ${child.weeklyAllowance} to ${child.name}`);
+          console.log(`✅ Added weekly allowance of ${child.weeklyAllowance} to ${child.name}`);
         }
       }
     }
@@ -236,8 +261,8 @@ async function processWeeklyAllowances() {
   }
 }
 
-// Check weekly allowances every hour
-setInterval(processWeeklyAllowances, 60 * 60 * 1000); // Check every hour
+// Check weekly allowances every minute to catch the exact time (14:15)
+setInterval(processWeeklyAllowances, 60 * 1000); // Check every minute
 
 // API Routes
 
