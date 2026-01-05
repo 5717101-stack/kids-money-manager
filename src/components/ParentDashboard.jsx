@@ -221,8 +221,8 @@ const ParentDashboard = () => {
                 <input
                   type="number"
                   id="amount"
-                  step="0.01"
-                  min="0.01"
+                  step="1"
+                  min="1"
                   value={amount}
                   onChange={(e) => setAmount(e.target.value)}
                   required
