@@ -30,16 +30,22 @@ const Settings = ({ onClose }) => {
     try {
       setLoading(true);
       const [categoriesData, childrenData] = await Promise.all([
-        getCategories(),
-        getData()
+        getCategories().catch(err => {
+          console.error('Error loading categories:', err);
+          return [];
+        }),
+        getData().catch(err => {
+          console.error('Error loading children data:', err);
+          return { children: {} };
+        })
       ]);
-      setCategories(categoriesData);
-      setAllData(childrenData);
+      setCategories(Array.isArray(categoriesData) ? categoriesData : []);
+      setAllData(childrenData && childrenData.children ? childrenData : { children: {} });
       
       // Initialize allowance states
       const states = {};
       ['child1', 'child2'].forEach(childId => {
-        const child = childrenData.children[childId];
+        const child = childrenData?.children?.[childId];
         if (child) {
           states[childId] = {
             amount: child.weeklyAllowance || 0,
@@ -52,7 +58,10 @@ const Settings = ({ onClose }) => {
       setAllowanceStates(states);
     } catch (error) {
       console.error('Error loading settings data:', error);
-      alert('שגיאה בטעינת הנתונים: ' + error.message);
+      // Don't show alert if it's just a network error - let user retry
+      if (!error.message?.includes('Failed to fetch')) {
+        alert('שגיאה בטעינת הנתונים: ' + (error.message || 'Unknown error'));
+      }
     } finally {
       setLoading(false);
     }
@@ -373,22 +382,32 @@ const Settings = ({ onClose }) => {
             <h2>תמונות פרופיל</h2>
             
             {['child1', 'child2'].map(childId => {
-              const child = allData.children[childId];
+              const child = allData?.children?.[childId];
               if (!child) return null;
+
+              const childName = child?.name || CHILD_NAMES[childId] || 'ילד';
+              const profileImage = child?.profileImage;
 
               return (
                 <div key={childId} className="profile-image-item">
                   <div className="profile-image-preview">
-                    {child.profileImage ? (
-                      <img src={child.profileImage} alt={child.name} />
+                    {profileImage ? (
+                      <img 
+                        src={profileImage} 
+                        alt={childName}
+                        onError={(e) => {
+                          console.error('Error loading profile image:', e);
+                          e.target.style.display = 'none';
+                        }}
+                      />
                     ) : (
                       <div className="profile-placeholder">
-                        {child.name.charAt(0)}
+                        {childName.charAt(0)}
                       </div>
                     )}
                   </div>
                   <div className="profile-image-info">
-                    <h3>{child.name}</h3>
+                    <h3>{childName}</h3>
                     <label className="file-upload-button" style={{ opacity: uploadingImages[childId] ? 0.6 : 1, pointerEvents: uploadingImages[childId] ? 'none' : 'auto' }}>
                       <input
                         ref={el => {
@@ -409,7 +428,7 @@ const Settings = ({ onClose }) => {
                       />
                       {uploadingImages[childId] ? 'מעלה...' : 'העלה תמונה'}
                     </label>
-                    {child.profileImage && (
+                    {profileImage && (
                       <button
                         className="remove-image-button"
                         onClick={() => handleImageUpload(childId, null)}
@@ -433,14 +452,14 @@ const Settings = ({ onClose }) => {
             </p>
             
             {['child1', 'child2'].map(childId => {
-              const child = allData.children[childId];
+              const child = allData?.children?.[childId];
               if (!child) return null;
 
               const state = allowanceStates[childId] || {
-                amount: child.weeklyAllowance || 0,
-                type: child.allowanceType || 'weekly',
-                day: child.allowanceDay !== undefined ? child.allowanceDay : 1,
-                time: child.allowanceTime || '08:00'
+                amount: child?.weeklyAllowance || 0,
+                type: child?.allowanceType || 'weekly',
+                day: child?.allowanceDay !== undefined ? child.allowanceDay : 1,
+                time: child?.allowanceTime || '08:00'
               };
 
               const updateState = (updates) => {
@@ -452,17 +471,17 @@ const Settings = ({ onClose }) => {
 
               const saveChanges = () => {
                 const currentState = allowanceStates[childId] || state;
-                if (currentState.amount !== (child.weeklyAllowance || 0) || 
-                    currentState.type !== (child.allowanceType || 'weekly') ||
-                    currentState.day !== (child.allowanceDay !== undefined ? child.allowanceDay : 1) ||
-                    currentState.time !== (child.allowanceTime || '08:00')) {
+                if (currentState.amount !== (child?.weeklyAllowance || 0) || 
+                    currentState.type !== (child?.allowanceType || 'weekly') ||
+                    currentState.day !== (child?.allowanceDay !== undefined ? child.allowanceDay : 1) ||
+                    currentState.time !== (child?.allowanceTime || '08:00')) {
                   handleAllowanceUpdate(childId, currentState.amount, currentState.type, currentState.day, currentState.time);
                 }
               };
 
               return (
                 <div key={childId} className="allowance-item">
-                  <h3>{child.name}</h3>
+                  <h3>{child?.name || CHILD_NAMES[childId] || 'ילד'}</h3>
                   
                   <div className="allowance-config-group">
                     <label className="allowance-label">סכום:</label>
@@ -551,16 +570,16 @@ const Settings = ({ onClose }) => {
                     />
                   </div>
 
-                  {child.weeklyAllowance > 0 && (
+                  {(child?.weeklyAllowance || 0) > 0 && (
                     <button
                       className="pay-allowance-button"
                       onClick={async () => {
                         try {
                           await payWeeklyAllowance(childId);
                           await loadData();
-                          alert(`דמי כיס שולמו ל${child.name}!`);
+                          alert(`דמי כיס שולמו ל${child?.name || CHILD_NAMES[childId] || 'ילד'}!`);
                         } catch (error) {
-                          alert('שגיאה בתשלום דמי הכיס: ' + error.message);
+                          alert('שגיאה בתשלום דמי הכיס: ' + (error.message || 'Unknown error'));
                         }
                       }}
                     >
