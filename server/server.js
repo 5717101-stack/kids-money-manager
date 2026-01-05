@@ -738,6 +738,66 @@ app.put('/api/children/:childId/weekly-allowance', async (req, res) => {
   }
 });
 
+// Manually trigger weekly allowance payment
+app.post('/api/children/:childId/pay-allowance', async (req, res) => {
+  try {
+    const { childId } = req.params;
+    const child = await getChild(childId);
+    
+    if (!child) {
+      return res.status(404).json({ error: 'Child not found' });
+    }
+    
+    if (!child.weeklyAllowance || child.weeklyAllowance <= 0) {
+      return res.status(400).json({ error: 'Weekly allowance is not set for this child' });
+    }
+    
+    // Check if allowance was already added this week
+    const oneWeekAgo = new Date();
+    oneWeekAgo.setDate(oneWeekAgo.getDate() - 7);
+    
+    const recentAllowance = (child.transactions || []).find(t => 
+      t.type === 'deposit' && 
+      t.description === 'דמי כיס שבועיים' &&
+      new Date(t.date) > oneWeekAgo
+    );
+    
+    if (recentAllowance) {
+      return res.status(400).json({ error: 'Allowance already added this week' });
+    }
+    
+    // Add allowance as a deposit transaction
+    const transaction = {
+      id: `allowance_${Date.now()}_${child._id}`,
+      date: new Date().toISOString(),
+      type: 'deposit',
+      amount: child.weeklyAllowance,
+      description: 'דמי כיס שבועיים',
+      category: null,
+      childId: child._id
+    };
+    
+    const transactions = [...(child.transactions || []), transaction];
+    const balance = transactions.reduce((total, t) => {
+      if (t.type === 'deposit') {
+        return total + t.amount;
+      } else {
+        return total - t.amount;
+      }
+    }, 0);
+    
+    await updateChild(child._id, {
+      balance: balance,
+      transactions: transactions
+    });
+    
+    res.json({ success: true, transaction, balance });
+  } catch (error) {
+    console.error('Error paying allowance:', error);
+    res.status(500).json({ error: 'Failed to pay allowance' });
+  }
+});
+
 // Health check
 app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', db: db ? 'connected' : 'memory' });

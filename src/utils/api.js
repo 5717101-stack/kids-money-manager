@@ -188,3 +188,11 @@ export const updateWeeklyAllowance = async (childId, weeklyAllowance) => {
   return response;
 };
 
+// Manually pay weekly allowance
+export const payWeeklyAllowance = async (childId) => {
+  const response = await apiCall(`/children/${childId}/pay-allowance`, {
+    method: 'POST'
+  });
+  return response;
+};
+
