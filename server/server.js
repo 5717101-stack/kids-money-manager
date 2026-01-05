@@ -444,6 +444,15 @@ app.post('/api/transactions', async (req, res) => {
       return res.status(400).json({ error: 'Invalid transaction type' });
     }
     
+    // Get the child first
+    const child = await getChild(childId);
+    if (!child) {
+      console.error('Child not found:', childId);
+      return res.status(404).json({ error: 'Child not found' });
+    }
+    
+    console.log('Found child:', child);
+    
     // Validate category for expenses - check against database
     if (type === 'expense' && category) {
       let validCategories = [];
@@ -463,8 +472,6 @@ app.post('/api/transactions', async (req, res) => {
         return res.status(400).json({ error: 'Invalid category' });
       }
     }
-    
-    console.log('Found child:', child);
     
     // Generate UUID - use crypto.randomUUID() if available, otherwise fallback
     let transactionId;
