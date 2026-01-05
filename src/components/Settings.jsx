@@ -98,20 +98,60 @@ const Settings = ({ onClose }) => {
   };
 
   const handleImageUpload = async (childId, file) => {
-    if (!file) return;
+    // If file is null, remove the image
+    if (!file) {
+      try {
+        await updateProfileImage(childId, null);
+        await loadData();
+        alert('תמונת הפרופיל הוסרה בהצלחה!');
+      } catch (error) {
+        console.error('Error removing profile image:', error);
+        alert('שגיאה בהסרת תמונת הפרופיל: ' + (error.message || 'Unknown error'));
+      }
+      return;
+    }
+
+    // Validate file type
+    if (!file.type.startsWith('image/')) {
+      alert('אנא בחר קובץ תמונה בלבד');
+      return;
+    }
+
+    // Validate file size (max 5MB)
+    const maxSize = 5 * 1024 * 1024; // 5MB
+    if (file.size > maxSize) {
+      alert('גודל הקובץ גדול מדי. אנא בחר תמונה קטנה מ-5MB');
+      return;
+    }
 
     // Convert to base64
     const reader = new FileReader();
+    
+    reader.onerror = (error) => {
+      console.error('FileReader error:', error);
+      alert('שגיאה בקריאת הקובץ: ' + (error.message || 'Unknown error'));
+    };
+
     reader.onloadend = async () => {
       try {
+        if (reader.error) {
+          throw new Error('Failed to read file: ' + (reader.error.message || 'Unknown error'));
+        }
+        
         const base64Image = reader.result;
+        if (!base64Image) {
+          throw new Error('Failed to convert image to base64');
+        }
+        
         await updateProfileImage(childId, base64Image);
         await loadData();
         alert('תמונת הפרופיל עודכנה בהצלחה!');
       } catch (error) {
-        alert('שגיאה בעדכון תמונת הפרופיל: ' + error.message);
+        console.error('Error updating profile image:', error);
+        alert('שגיאה בעדכון תמונת הפרופיל: ' + (error.message || 'Unknown error'));
       }
     };
+    
     reader.readAsDataURL(file);
   };
 
