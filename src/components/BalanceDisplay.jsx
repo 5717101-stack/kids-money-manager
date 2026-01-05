@@ -99,7 +99,7 @@ const BalanceDisplay = ({ balance, cashBoxBalance, childName, color, editable = 
                 disabled={isUpdating}
                 style={{ color: color }}
               />
-              <span className="currency-symbol">₪</span>
+              <span className="currency-symbol" style={{ color: color }}>₪</span>
               {isUpdating && <span className="updating-indicator">...</span>}
             </div>
           ) : (
