@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { getCategories, addCategory, updateCategory, deleteCategory, getData, updateProfileImage, updateWeeklyAllowance } from '../utils/api';
+import { getCategories, addCategory, updateCategory, deleteCategory, getData, updateProfileImage, updateWeeklyAllowance, payWeeklyAllowance } from '../utils/api';
 
 const CHILD_COLORS = {
   child1: '#3b82f6', // כחול
@@ -315,6 +315,14 @@ const Settings = ({ onClose }) => {
                     />
                     <span className="currency-label">₪</span>
                   </div>
+                  {child.weeklyAllowance > 0 && (
+                    <button
+                      className="pay-allowance-button"
+                      onClick={() => handlePayAllowance(childId, child.name)}
+                    >
+                      💰 שלם דמי כיס עכשיו
+                    </button>
+                  )}
                 </div>
               );
             })}
