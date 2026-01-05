@@ -3,13 +3,13 @@ import React, { useState, useEffect } from 'react';
 const BalanceDisplay = ({ balance, cashBoxBalance, childName, color, editable = false, onCashBoxUpdate }) => {
   const totalBalance = (balance || 0) + (cashBoxBalance || 0);
   const parentBalance = balance || 0;
-  const [cashBoxValue, setCashBoxValue] = useState((cashBoxBalance || 0).toFixed(2));
+  const [cashBoxValue, setCashBoxValue] = useState(Math.round(cashBoxBalance || 0).toString());
   const [isEditing, setIsEditing] = useState(false);
   const [isUpdating, setIsUpdating] = useState(false);
 
   // Update local state when cashBoxBalance prop changes
   useEffect(() => {
-    setCashBoxValue((cashBoxBalance || 0).toFixed(2));
+    setCashBoxValue(Math.round(cashBoxBalance || 0).toString());
   }, [cashBoxBalance]);
 
   const handleCashBoxChange = (e) => {
@@ -17,16 +17,17 @@ const BalanceDisplay = ({ balance, cashBoxBalance, childName, color, editable = 
   };
 
   const handleCashBoxBlur = async () => {
-    const newValue = parseFloat(cashBoxValue);
+    const newValue = parseInt(cashBoxValue);
     if (isNaN(newValue) || newValue < 0) {
       // Reset to original value if invalid
-      setCashBoxValue((cashBoxBalance || 0).toFixed(2));
+      setCashBoxValue(Math.round(cashBoxBalance || 0).toString());
       setIsEditing(false);
       return;
     }
 
-    // Only update if value changed
-    if (Math.abs(newValue - (cashBoxBalance || 0)) > 0.01) {
+    // Only update if value changed (round to nearest integer)
+    const roundedCurrent = Math.round(cashBoxBalance || 0);
+    if (newValue !== roundedCurrent) {
       setIsUpdating(true);
       try {
         if (onCashBoxUpdate) {
@@ -35,7 +36,7 @@ const BalanceDisplay = ({ balance, cashBoxBalance, childName, color, editable = 
       } catch (error) {
         console.error('Error updating cash box:', error);
         // Reset to original value on error
-        setCashBoxValue((cashBoxBalance || 0).toFixed(2));
+        setCashBoxValue(Math.round(cashBoxBalance || 0).toString());
       } finally {
         setIsUpdating(false);
         setIsEditing(false);
@@ -55,7 +56,7 @@ const BalanceDisplay = ({ balance, cashBoxBalance, childName, color, editable = 
     if (e.key === 'Enter') {
       e.target.blur();
     } else if (e.key === 'Escape') {
-      setCashBoxValue((cashBoxBalance || 0).toFixed(2));
+      setCashBoxValue(Math.round(cashBoxBalance || 0).toString());
       setIsEditing(false);
       e.target.blur();
     }
@@ -85,7 +86,6 @@ const BalanceDisplay = ({ balance, cashBoxBalance, childName, color, editable = 
           <div className="balance-label-small">יתרה בקופה</div>
           {editable ? (
             <div className="cashbox-editable-wrapper">
-              <span className="currency-symbol">₪</span>
               <input
                 type="number"
                 className="cashbox-input"
@@ -94,11 +94,12 @@ const BalanceDisplay = ({ balance, cashBoxBalance, childName, color, editable = 
                 onBlur={handleCashBoxBlur}
                 onFocus={handleCashBoxFocus}
                 onKeyDown={handleCashBoxKeyPress}
-                step="0.01"
+                step="1"
                 min="0"
                 disabled={isUpdating}
                 style={{ color: color }}
               />
+              <span className="currency-symbol">₪</span>
               {isUpdating && <span className="updating-indicator">...</span>}
             </div>
           ) : (
