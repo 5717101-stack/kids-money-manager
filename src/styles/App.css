@@ -1100,6 +1100,40 @@ body {
   background: linear-gradient(135deg, #16a34a 0%, #15803d 100%);
 }
 
+.allowance-config-group {
+  margin-bottom: 15px;
+  display: flex;
+  align-items: center;
+  gap: 15px;
+}
+
+.allowance-label {
+  font-weight: 600;
+  color: #374151;
+  min-width: 120px;
+}
+
+.allowance-select {
+  padding: 10px 15px;
+  border: 2px solid #e5e7eb;
+  border-radius: 8px;
+  font-size: 16px;
+  background: white;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  min-width: 150px;
+}
+
+.allowance-select:hover {
+  border-color: #3b82f6;
+}
+
+.allowance-select:focus {
+  outline: none;
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+}
+
 /* Profile Images in UI */
 .profile-image-small {
   width: 50px;

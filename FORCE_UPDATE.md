@@ -67,3 +67,4 @@ Server running on http://0.0.0.0:3001
 2. נקה את ה-Cache בדפדפן (Ctrl+Shift+R)
 3. בדוק את ה-Console (F12) לשגיאות
 
+

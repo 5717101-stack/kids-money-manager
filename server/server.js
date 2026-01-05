@@ -62,6 +62,9 @@ async function initializeData() {
           cashBoxBalance: 0,
           profileImage: null,
           weeklyAllowance: 0,
+          allowanceType: 'weekly', // 'weekly' or 'monthly'
+          allowanceDay: 1, // 0-6 for weekly (0=Sunday), 1-31 for monthly
+          allowanceTime: '08:00', // HH:mm format
           transactions: []
         },
         {
@@ -71,6 +74,9 @@ async function initializeData() {
           cashBoxBalance: 0,
           profileImage: null,
           weeklyAllowance: 0,
+          allowanceType: 'weekly', // 'weekly' or 'monthly'
+          allowanceDay: 1, // 0-6 for weekly (0=Sunday), 1-31 for monthly
+          allowanceTime: '08:00', // HH:mm format
           transactions: []
         }
       ]);
@@ -135,6 +141,9 @@ let memoryStorage = {
       cashBoxBalance: 0,
       profileImage: null,
       weeklyAllowance: 0,
+      allowanceType: 'weekly', // 'weekly' or 'monthly'
+      allowanceDay: 1, // 0-6 for weekly (0=Sunday), 1-31 for monthly
+      allowanceTime: '08:00', // HH:mm format
       transactions: []
     },
     child2: {
@@ -144,6 +153,9 @@ let memoryStorage = {
       cashBoxBalance: 0,
       profileImage: null,
       weeklyAllowance: 0,
+      allowanceType: 'weekly', // 'weekly' or 'monthly'
+      allowanceDay: 1, // 0-6 for weekly (0=Sunday), 1-31 for monthly
+      allowanceTime: '08:00', // HH:mm format
       transactions: []
     }
   },
@@ -182,7 +194,7 @@ async function updateChild(childId, update) {
 }
 
 // Helper function to check and process weekly allowances
-async function processWeeklyAllowances() {
+async function processAllowances() {
   try {
     // Get current time in Israel timezone using Intl API
     const now = new Date();
@@ -191,78 +203,127 @@ async function processWeeklyAllowances() {
       weekday: 'long',
       hour: 'numeric',
       minute: 'numeric',
-      hour12: false
+      hour12: false,
+      day: 'numeric',
+      month: 'numeric'
     }).formatToParts(now);
     
     const dayOfWeek = now.toLocaleString('en-US', { timeZone: 'Asia/Jerusalem', weekday: 'long' });
+    const dayOfMonth = parseInt(israelTime.find(part => part.type === 'day').value);
     const hour = parseInt(israelTime.find(part => part.type === 'hour').value);
     const minute = parseInt(israelTime.find(part => part.type === 'minute').value);
     
-    console.log(`Checking weekly allowances - Israel time: ${dayOfWeek} ${hour}:${minute.toString().padStart(2, '0')}`);
+    // Map day names to numbers (0=Sunday, 1=Monday, etc.)
+    const dayNameToNumber = {
+      'Sunday': 0, 'Monday': 1, 'Tuesday': 2, 'Wednesday': 3,
+      'Thursday': 4, 'Friday': 5, 'Saturday': 6
+    };
+    const currentDayOfWeek = dayNameToNumber[dayOfWeek];
     
-    // Check if it's Monday at 14:35 Israel time (or within 14:35-14:36 to catch it)
-    const isMonday = dayOfWeek === 'Monday';
-    const isTime = hour === 14 && minute >= 35 && minute < 36;
+    console.log(`Checking allowances - Israel time: ${dayOfWeek} (${currentDayOfWeek}), day ${dayOfMonth}, ${hour}:${minute.toString().padStart(2, '0')}`);
     
-    if (isMonday && isTime) {
-      console.log('Processing weekly allowances...');
-      const children = db 
-        ? await db.collection('children').find({}).toArray()
-        : Object.values(memoryStorage.children);
+    const children = db 
+      ? await db.collection('children').find({}).toArray()
+      : Object.values(memoryStorage.children);
+    
+    for (const child of children) {
+      if (!child.weeklyAllowance || child.weeklyAllowance <= 0) {
+        continue;
+      }
       
-      for (const child of children) {
-        if (child.weeklyAllowance && child.weeklyAllowance > 0) {
+      const allowanceType = child.allowanceType || 'weekly';
+      const allowanceDay = child.allowanceDay !== undefined ? child.allowanceDay : 1;
+      const allowanceTime = child.allowanceTime || '08:00';
+      const [allowanceHour, allowanceMinute] = allowanceTime.split(':').map(Number);
+      
+      let shouldProcess = false;
+      
+      if (allowanceType === 'weekly') {
+        // Check if it's the correct day of week and time
+        const isCorrectDay = currentDayOfWeek === allowanceDay;
+        const isCorrectTime = hour === allowanceHour && minute >= allowanceMinute && minute < allowanceMinute + 1;
+        shouldProcess = isCorrectDay && isCorrectTime;
+        
+        if (shouldProcess) {
           // Check if allowance was already added this week
-          const oneWeekAgo = new Date();
-          oneWeekAgo.setDate(oneWeekAgo.getDate() - 7);
+          const startOfWeek = new Date(now);
+          startOfWeek.setDate(now.getDate() - (now.getDay() + 6) % 7); // Monday of current week
+          startOfWeek.setHours(0, 0, 0, 0);
           
           const recentAllowance = (child.transactions || []).find(t => 
             t.type === 'deposit' && 
-            t.description === 'דמי כיס שבועיים' &&
-            new Date(t.date) > oneWeekAgo
+            (t.description === 'דמי כיס שבועיים' || t.description === 'דמי כיס חודשיים') &&
+            new Date(t.date) >= startOfWeek
           );
           
           if (recentAllowance) {
-            console.log(`Allowance already added for ${child.name} this week`);
+            console.log(`Weekly allowance already added for ${child.name} this week`);
             continue;
           }
-          
-          // Add allowance as a deposit transaction
-          const transaction = {
-            id: `allowance_${Date.now()}_${child._id}`,
-            date: new Date().toISOString(),
-            type: 'deposit',
-            amount: child.weeklyAllowance,
-            description: 'דמי כיס שבועיים',
-            category: null,
-            childId: child._id
-          };
-          
-          const transactions = [...(child.transactions || []), transaction];
-          const balance = transactions.reduce((total, t) => {
-            if (t.type === 'deposit') {
-              return total + t.amount;
-            } else {
-              return total - t.amount;
-            }
-          }, 0);
-          
-          await updateChild(child._id, {
-            balance: balance,
-            transactions: transactions
-          });
-          
-          console.log(`✅ Added weekly allowance of ${child.weeklyAllowance} to ${child.name}`);
         }
+      } else if (allowanceType === 'monthly') {
+        // Check if it's the correct day of month and time
+        const isCorrectDay = dayOfMonth === allowanceDay;
+        const isCorrectTime = hour === allowanceHour && minute >= allowanceMinute && minute < allowanceMinute + 1;
+        shouldProcess = isCorrectDay && isCorrectTime;
+        
+        if (shouldProcess) {
+          // Check if allowance was already added this month
+          const startOfMonth = new Date(now);
+          startOfMonth.setDate(1);
+          startOfMonth.setHours(0, 0, 0, 0);
+          
+          const recentAllowance = (child.transactions || []).find(t => 
+            t.type === 'deposit' && 
+            (t.description === 'דמי כיס שבועיים' || t.description === 'דמי כיס חודשיים') &&
+            new Date(t.date) >= startOfMonth
+          );
+          
+          if (recentAllowance) {
+            console.log(`Monthly allowance already added for ${child.name} this month`);
+            continue;
+          }
+        }
+      }
+      
+      if (shouldProcess) {
+        const description = allowanceType === 'weekly' ? 'דמי כיס שבועיים' : 'דמי כיס חודשיים';
+        
+        // Add allowance as a deposit transaction
+        const transaction = {
+          id: `allowance_${Date.now()}_${child._id}`,
+          date: new Date().toISOString(),
+          type: 'deposit',
+          amount: child.weeklyAllowance,
+          description: description,
+          category: null,
+          childId: child._id
+        };
+        
+        const transactions = [...(child.transactions || []), transaction];
+        const balance = transactions.reduce((total, t) => {
+          if (t.type === 'deposit') {
+            return total + t.amount;
+          } else {
+            return total - t.amount;
+          }
+        }, 0);
+        
+        await updateChild(child._id, {
+          balance: balance,
+          transactions: transactions
+        });
+        
+        console.log(`✅ Added ${allowanceType} allowance of ${child.weeklyAllowance} to ${child.name}`);
       }
     }
   } catch (error) {
-    console.error('Error processing weekly allowances:', error);
+    console.error('Error processing allowances:', error);
   }
 }
 
-// Check weekly allowances every minute to catch the exact time (14:15)
-setInterval(processWeeklyAllowances, 60 * 1000); // Check every minute
+// Check allowances every minute to catch the exact time
+setInterval(processAllowances, 60 * 1000); // Check every minute
 
 // API Routes
 
@@ -278,6 +339,9 @@ app.get('/api/children', async (req, res) => {
           cashBoxBalance: child.cashBoxBalance || 0,
           profileImage: child.profileImage || null,
           weeklyAllowance: child.weeklyAllowance || 0,
+          allowanceType: child.allowanceType || 'weekly',
+          allowanceDay: child.allowanceDay !== undefined ? child.allowanceDay : 1,
+          allowanceTime: child.allowanceTime || '08:00',
           transactions: child.transactions || []
         };
         return acc;
@@ -290,6 +354,9 @@ app.get('/api/children', async (req, res) => {
         cashBoxBalance: child.cashBoxBalance || 0,
         profileImage: child.profileImage || null,
         weeklyAllowance: child.weeklyAllowance || 0,
+        allowanceType: child.allowanceType || 'weekly',
+        allowanceDay: child.allowanceDay !== undefined ? child.allowanceDay : 1,
+        allowanceTime: child.allowanceTime || '08:00',
         transactions: child.transactions || []
       }));
       res.json({ children: children.reduce((acc, child) => {
@@ -299,6 +366,9 @@ app.get('/api/children', async (req, res) => {
           cashBoxBalance: child.cashBoxBalance || 0,
           profileImage: child.profileImage || null,
           weeklyAllowance: child.weeklyAllowance || 0,
+          allowanceType: child.allowanceType || 'weekly',
+          allowanceDay: child.allowanceDay !== undefined ? child.allowanceDay : 1,
+          allowanceTime: child.allowanceTime || '08:00',
           transactions: child.transactions || []
         };
         return acc;
@@ -323,6 +393,9 @@ app.get('/api/children/:childId', async (req, res) => {
       cashBoxBalance: child.cashBoxBalance || 0,
       profileImage: child.profileImage || null,
       weeklyAllowance: child.weeklyAllowance || 0,
+      allowanceType: child.allowanceType || 'weekly',
+      allowanceDay: child.allowanceDay !== undefined ? child.allowanceDay : 1,
+      allowanceTime: child.allowanceTime || '08:00',
       transactions: child.transactions || []
     });
   } catch (error) {
@@ -717,11 +790,33 @@ app.put('/api/children/:childId/profile-image', async (req, res) => {
 app.put('/api/children/:childId/weekly-allowance', async (req, res) => {
   try {
     const { childId } = req.params;
-    const { weeklyAllowance } = req.body;
+    const { weeklyAllowance, allowanceType, allowanceDay, allowanceTime } = req.body;
     
     const amount = parseFloat(weeklyAllowance);
     if (isNaN(amount) || amount < 0) {
       return res.status(400).json({ error: 'Weekly allowance must be a valid non-negative number' });
+    }
+    
+    const type = allowanceType || 'weekly';
+    if (type !== 'weekly' && type !== 'monthly') {
+      return res.status(400).json({ error: 'Allowance type must be "weekly" or "monthly"' });
+    }
+    
+    let day = allowanceDay !== undefined ? parseInt(allowanceDay) : 1;
+    if (type === 'weekly') {
+      if (day < 0 || day > 6) {
+        return res.status(400).json({ error: 'Weekly allowance day must be 0-6 (0=Sunday, 1=Monday, etc.)' });
+      }
+    } else {
+      if (day < 1 || day > 31) {
+        return res.status(400).json({ error: 'Monthly allowance day must be 1-31' });
+      }
+    }
+    
+    const time = allowanceTime || '08:00';
+    const timeRegex = /^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$/;
+    if (!timeRegex.test(time)) {
+      return res.status(400).json({ error: 'Allowance time must be in HH:mm format' });
     }
     
     const child = await getChild(childId);
@@ -729,9 +824,14 @@ app.put('/api/children/:childId/weekly-allowance', async (req, res) => {
       return res.status(404).json({ error: 'Child not found' });
     }
     
-    await updateChild(childId, { weeklyAllowance: amount });
+    await updateChild(childId, { 
+      weeklyAllowance: amount,
+      allowanceType: type,
+      allowanceDay: day,
+      allowanceTime: time
+    });
     
-    res.json({ success: true, weeklyAllowance: amount });
+    res.json({ success: true, weeklyAllowance: amount, allowanceType: type, allowanceDay: day, allowanceTime: time });
   } catch (error) {
     console.error('Error updating weekly allowance:', error);
     res.status(500).json({ error: 'Failed to update weekly allowance' });
@@ -749,17 +849,28 @@ app.post('/api/children/:childId/pay-allowance', async (req, res) => {
     }
     
     if (!child.weeklyAllowance || child.weeklyAllowance <= 0) {
-      return res.status(400).json({ error: 'Weekly allowance is not set for this child' });
+      return res.status(400).json({ error: 'Allowance is not set for this child' });
     }
     
-    // Check if allowance was already added this week
-    const oneWeekAgo = new Date();
-    oneWeekAgo.setDate(oneWeekAgo.getDate() - 7);
+    const allowanceType = child.allowanceType || 'weekly';
+    const description = allowanceType === 'weekly' ? 'דמי כיס שבועיים' : 'דמי כיס חודשיים';
+    
+    // Check if allowance was already added recently
+    const now = new Date();
+    let cutoffDate;
+    if (allowanceType === 'weekly') {
+      cutoffDate = new Date(now);
+      cutoffDate.setDate(now.getDate() - 7);
+    } else {
+      cutoffDate = new Date(now);
+      cutoffDate.setDate(1);
+      cutoffDate.setHours(0, 0, 0, 0);
+    }
     
     const recentAllowance = (child.transactions || []).find(t => 
       t.type === 'deposit' && 
-      t.description === 'דמי כיס שבועיים' &&
-      new Date(t.date) > oneWeekAgo
+      (t.description === 'דמי כיס שבועיים' || t.description === 'דמי כיס חודשיים') &&
+      new Date(t.date) > cutoffDate
     );
     
     if (recentAllowance) {
@@ -772,7 +883,7 @@ app.post('/api/children/:childId/pay-allowance', async (req, res) => {
       date: new Date().toISOString(),
       type: 'deposit',
       amount: child.weeklyAllowance,
-      description: 'דמי כיס שבועיים',
+      description: description,
       category: null,
       childId: child._id
     };

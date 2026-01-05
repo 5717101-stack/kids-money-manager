@@ -79,6 +79,9 @@ export const getChild = async (childId) => {
     cashBoxBalance: response.cashBoxBalance || 0,
     profileImage: response.profileImage || null,
     weeklyAllowance: response.weeklyAllowance || 0,
+    allowanceType: response.allowanceType || 'weekly',
+    allowanceDay: response.allowanceDay !== undefined ? response.allowanceDay : 1,
+    allowanceTime: response.allowanceTime || '08:00',
     transactions: response.transactions || []
   };
 };
@@ -180,10 +183,15 @@ export const updateProfileImage = async (childId, profileImage) => {
 };
 
 // Weekly allowance API
-export const updateWeeklyAllowance = async (childId, weeklyAllowance) => {
+export const updateWeeklyAllowance = async (childId, weeklyAllowance, allowanceType, allowanceDay, allowanceTime) => {
   const response = await apiCall(`/children/${childId}/weekly-allowance`, {
     method: 'PUT',
-    body: JSON.stringify({ weeklyAllowance: parseFloat(weeklyAllowance) })
+    body: JSON.stringify({ 
+      weeklyAllowance: parseFloat(weeklyAllowance),
+      allowanceType: allowanceType || 'weekly',
+      allowanceDay: allowanceDay !== undefined ? parseInt(allowanceDay) : 1,
+      allowanceTime: allowanceTime || '08:00'
+    })
   });
   return response;
 };

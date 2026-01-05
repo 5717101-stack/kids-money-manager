@@ -88,3 +88,4 @@ const ExpensePieChart = ({ expensesByCategory, title, days }) => {
 
 export default ExpensePieChart;
 
+

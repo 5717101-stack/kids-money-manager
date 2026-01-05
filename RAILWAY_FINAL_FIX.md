@@ -60,3 +60,4 @@ Railway → Service → Settings → Root Directory = `server`?
 3. **נסה מחק וצור מחדש:**
    - לפעמים זה הכי מהיר
 
+

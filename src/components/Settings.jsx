@@ -18,6 +18,7 @@ const Settings = ({ onClose }) => {
   const [editingCategory, setEditingCategory] = useState(null);
   const [allData, setAllData] = useState({ children: {} });
   const [loading, setLoading] = useState(true);
+  const [allowanceStates, setAllowanceStates] = useState({});
 
   useEffect(() => {
     loadData();
@@ -32,6 +33,21 @@ const Settings = ({ onClose }) => {
       ]);
       setCategories(categoriesData);
       setAllData(childrenData);
+      
+      // Initialize allowance states
+      const states = {};
+      ['child1', 'child2'].forEach(childId => {
+        const child = childrenData.children[childId];
+        if (child) {
+          states[childId] = {
+            amount: child.weeklyAllowance || 0,
+            type: child.allowanceType || 'weekly',
+            day: child.allowanceDay !== undefined ? child.allowanceDay : 1,
+            time: child.allowanceTime || '08:00'
+          };
+        }
+      });
+      setAllowanceStates(states);
     } catch (error) {
       console.error('Error loading settings data:', error);
       alert('שגיאה בטעינת הנתונים: ' + error.message);
@@ -99,9 +115,9 @@ const Settings = ({ onClose }) => {
     reader.readAsDataURL(file);
   };
 
-  const handleAllowanceUpdate = async (childId, allowance) => {
+  const handleAllowanceUpdate = async (childId, allowance, allowanceType, allowanceDay, allowanceTime) => {
     try {
-      await updateWeeklyAllowance(childId, allowance);
+      await updateWeeklyAllowance(childId, allowance, allowanceType, allowanceDay, allowanceTime);
       await loadData();
       alert('דמי הכיס עודכנו בהצלחה!');
     } catch (error) {
@@ -153,7 +169,7 @@ const Settings = ({ onClose }) => {
           className={activeTab === 'allowances' ? 'active' : ''}
           onClick={() => setActiveTab('allowances')}
         >
-          דמי כיס שבועיים
+          דמי כיס
         </button>
       </div>
 
@@ -287,9 +303,9 @@ const Settings = ({ onClose }) => {
 
         {activeTab === 'allowances' && (
           <div className="allowances-section">
-            <h2>דמי כיס שבועיים</h2>
+            <h2>תצורת דמי כיס</h2>
             <p className="allowance-info">
-              הסכום שתגדיר כאן יתווסף אוטומטית ליתרה אצל ההורים בכל יום שני ב-14:35 שעון ישראל.
+              הגדר את הסכום, תדירות (שבועי/חודשי), יום/תאריך ושעה. הסכום יתווסף אוטומטית ליתרה אצל ההורים.
               ניתן גם לשלם ידנית באמצעות הכפתור למטה.
             </p>
             
@@ -297,29 +313,133 @@ const Settings = ({ onClose }) => {
               const child = allData.children[childId];
               if (!child) return null;
 
+              const state = allowanceStates[childId] || {
+                amount: child.weeklyAllowance || 0,
+                type: child.allowanceType || 'weekly',
+                day: child.allowanceDay !== undefined ? child.allowanceDay : 1,
+                time: child.allowanceTime || '08:00'
+              };
+
+              const updateState = (updates) => {
+                setAllowanceStates(prev => ({
+                  ...prev,
+                  [childId]: { ...state, ...updates }
+                }));
+              };
+
+              const saveChanges = () => {
+                const currentState = allowanceStates[childId] || state;
+                if (currentState.amount !== (child.weeklyAllowance || 0) || 
+                    currentState.type !== (child.allowanceType || 'weekly') ||
+                    currentState.day !== (child.allowanceDay !== undefined ? child.allowanceDay : 1) ||
+                    currentState.time !== (child.allowanceTime || '08:00')) {
+                  handleAllowanceUpdate(childId, currentState.amount, currentState.type, currentState.day, currentState.time);
+                }
+              };
+
               return (
                 <div key={childId} className="allowance-item">
                   <h3>{child.name}</h3>
-                  <div className="allowance-input-group">
+                  
+                  <div className="allowance-config-group">
+                    <label className="allowance-label">סכום:</label>
+                    <div className="allowance-input-group">
+                      <input
+                        type="number"
+                        step="1"
+                        min="0"
+                        value={state.amount}
+                        onChange={(e) => updateState({ amount: parseInt(e.target.value) || 0 })}
+                        onBlur={saveChanges}
+                        className="allowance-input"
+                      />
+                      <span className="currency-label">₪</span>
+                    </div>
+                  </div>
+
+                  <div className="allowance-config-group">
+                    <label className="allowance-label">תדירות:</label>
+                    <select
+                      value={state.type}
+                      onChange={(e) => {
+                        const newType = e.target.value;
+                        const newDay = newType === 'monthly' && state.day === 0 ? 1 : state.day;
+                        updateState({ type: newType, day: newDay });
+                        setTimeout(saveChanges, 0);
+                      }}
+                      className="allowance-select"
+                    >
+                      <option value="weekly">שבועי</option>
+                      <option value="monthly">חודשי</option>
+                    </select>
+                  </div>
+
+                  <div className="allowance-config-group">
+                    <label className="allowance-label">
+                      {state.type === 'weekly' ? 'יום בשבוע:' : 'תאריך בחודש:'}
+                    </label>
+                    {state.type === 'weekly' ? (
+                      <select
+                        value={state.day}
+                        onChange={(e) => {
+                          updateState({ day: parseInt(e.target.value) });
+                          setTimeout(saveChanges, 0);
+                        }}
+                        className="allowance-select"
+                      >
+                        <option value="0">ראשון</option>
+                        <option value="1">שני</option>
+                        <option value="2">שלישי</option>
+                        <option value="3">רביעי</option>
+                        <option value="4">חמישי</option>
+                        <option value="5">שישי</option>
+                        <option value="6">שבת</option>
+                      </select>
+                    ) : (
+                      <input
+                        type="number"
+                        min="1"
+                        max="31"
+                        value={state.day}
+                        onChange={(e) => {
+                          const dayValue = parseInt(e.target.value) || 1;
+                          if (dayValue >= 1 && dayValue <= 31) {
+                            updateState({ day: dayValue });
+                          }
+                        }}
+                        onBlur={saveChanges}
+                        className="allowance-input"
+                        style={{ width: '80px' }}
+                      />
+                    )}
+                  </div>
+
+                  <div className="allowance-config-group">
+                    <label className="allowance-label">שעה:</label>
                     <input
-                      type="number"
-                      step="1"
-                      min="0"
-                      defaultValue={child.weeklyAllowance || 0}
-                      onBlur={(e) => {
-                        const value = parseInt(e.target.value) || 0;
-                        if (value !== (child.weeklyAllowance || 0)) {
-                          handleAllowanceUpdate(childId, value);
-                        }
+                      type="time"
+                      value={state.time}
+                      onChange={(e) => {
+                        updateState({ time: e.target.value });
+                        setTimeout(saveChanges, 0);
                       }}
                       className="allowance-input"
+                      style={{ width: '120px' }}
                     />
-                    <span className="currency-label">₪</span>
                   </div>
+
                   {child.weeklyAllowance > 0 && (
                     <button
                       className="pay-allowance-button"
-                      onClick={() => handlePayAllowance(childId, child.name)}
+                      onClick={async () => {
+                        try {
+                          await payWeeklyAllowance(childId);
+                          await loadData();
+                          alert(`דמי כיס שולמו ל${child.name}!`);
+                        } catch (error) {
+                          alert('שגיאה בתשלום דמי הכיס: ' + error.message);
+                        }
+                      }}
                     >
                       💰 שלם דמי כיס עכשיו
                     </button>
