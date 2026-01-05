@@ -75,22 +75,39 @@ async function initializeData() {
         }
       ]);
       
-      // Initialize default categories
-      const defaultCategories = [
-        { name: 'משחקים', activeFor: ['child1', 'child2'] },
-        { name: 'ממתקים', activeFor: ['child1', 'child2'] },
-        { name: 'בגדים', activeFor: ['child1', 'child2'] },
-        { name: 'בילויים', activeFor: ['child1', 'child2'] },
-        { name: 'אחר', activeFor: ['child1', 'child2'] }
-      ];
-      
-      await db.collection('categories').insertMany(
-        defaultCategories.map((cat, index) => ({
-          _id: `cat_${index + 1}`,
-          name: cat.name,
-          activeFor: cat.activeFor
-        }))
-      );
+      // Initialize default categories if they don't exist
+      const existingCategories = await db.collection('categories').find({}).toArray();
+      if (existingCategories.length === 0) {
+        const defaultCategories = [
+          { name: 'משחקים', activeFor: ['child1', 'child2'] },
+          { name: 'ממתקים', activeFor: ['child1', 'child2'] },
+          { name: 'בגדים', activeFor: ['child1', 'child2'] },
+          { name: 'בילויים', activeFor: ['child1', 'child2'] },
+          { name: 'אחר', activeFor: ['child1', 'child2'] }
+        ];
+        
+        await db.collection('categories').insertMany(
+          defaultCategories.map((cat, index) => ({
+            _id: `cat_${index + 1}`,
+            name: cat.name,
+            activeFor: cat.activeFor
+          }))
+        );
+        console.log('Initialized default categories');
+      } else {
+        // Update existing categories to be active for both children if not already
+        for (const category of existingCategories) {
+          const activeFor = category.activeFor || [];
+          if (!activeFor.includes('child1') || !activeFor.includes('child2')) {
+            const updatedActiveFor = [...new Set([...activeFor, 'child1', 'child2'])];
+            await db.collection('categories').updateOne(
+              { _id: category._id },
+              { $set: { activeFor: updatedActiveFor } }
+            );
+          }
+        }
+        console.log('Updated existing categories to be active for both children');
+      }
       console.log('Initialized default children data');
     } else {
       // Update names if they still have old default values
@@ -167,12 +184,18 @@ async function updateChild(childId, update) {
 // Helper function to check and process weekly allowances
 async function processWeeklyAllowances() {
   try {
+    // Get current time in Israel timezone (UTC+2 in winter, UTC+3 in summer)
+    // We'll use UTC+2 as base (winter time)
     const now = new Date();
-    const dayOfWeek = now.getDay(); // 0 = Sunday, 1 = Monday, etc.
-    const hour = now.getHours();
+    const israelOffset = 2; // UTC+2 for Israel Standard Time (winter)
+    // Calculate Israel time: UTC + offset
+    const israelTime = new Date(now.getTime() + (israelOffset * 60 * 60 * 1000));
+    const dayOfWeek = israelTime.getDay(); // 0 = Sunday, 1 = Monday, etc.
+    const hour = israelTime.getHours();
+    const minute = israelTime.getMinutes();
     
-    // Check if it's Sunday and 8 AM
-    if (dayOfWeek === 0 && hour === 8) {
+    // Check if it's Monday (day 1) at 14:15 Israel time
+    if (dayOfWeek === 1 && hour === 14 && minute === 15) {
       const children = db 
         ? await db.collection('children').find({}).toArray()
         : Object.values(memoryStorage.children);
