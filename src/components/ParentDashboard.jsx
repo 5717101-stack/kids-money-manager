@@ -20,8 +20,6 @@ const ParentDashboard = () => {
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [resetting, setResetting] = useState(false);
-  const [cashBoxAmount, setCashBoxAmount] = useState('');
-  const [updatingCashBox, setUpdatingCashBox] = useState(false);
   
   const CATEGORIES = ['משחקים', 'ממתקים', 'בגדים', 'בילויים', 'אחר'];
 
@@ -105,24 +103,13 @@ const ParentDashboard = () => {
     }
   };
 
-  const handleUpdateCashBox = async (e) => {
-    e.preventDefault();
-    
-    if (!cashBoxAmount || parseFloat(cashBoxAmount) < 0) {
-      alert('אנא הכנס סכום תקין (0 ומעלה)');
-      return;
-    }
-
+  const handleCashBoxUpdate = async (newValue) => {
     try {
-      setUpdatingCashBox(true);
-      await updateCashBoxBalance(selectedChild, cashBoxAmount);
-      setCashBoxAmount('');
+      await updateCashBoxBalance(selectedChild, newValue);
       await loadChildData();
-      alert('יתרת הקופה עודכנה בהצלחה!');
     } catch (error) {
       alert('שגיאה בעדכון יתרת הקופה: ' + error.message);
-    } finally {
-      setUpdatingCashBox(false);
+      throw error; // Re-throw to let BalanceDisplay handle it
     }
   };
 
@@ -208,29 +195,9 @@ const ParentDashboard = () => {
             cashBoxBalance={childData.cashBoxBalance}
             childName={childData.name}
             color={CHILD_COLORS[selectedChild]}
+            editable={true}
+            onCashBoxUpdate={handleCashBoxUpdate}
           />
-
-          {/* Cash Box Update Form */}
-          <div className="cashbox-form-container">
-            <h2>עדכון יתרת הקופה</h2>
-            <form onSubmit={handleUpdateCashBox} className="cashbox-form">
-              <div className="form-group">
-                <label htmlFor="cashBoxAmount">יתרה בקופה (₪):</label>
-                <input
-                  type="number"
-                  id="cashBoxAmount"
-                  step="0.01"
-                  min="0"
-                  value={cashBoxAmount}
-                  onChange={(e) => setCashBoxAmount(e.target.value)}
-                  placeholder={`כרגע: ₪${(childData.cashBoxBalance || 0).toFixed(2)}`}
-                />
-              </div>
-              <button type="submit" className="submit-button" disabled={updatingCashBox}>
-                {updatingCashBox ? 'מעדכן...' : 'עדכן יתרת קופה'}
-              </button>
-            </form>
-          </div>
 
           {/* Transaction form */}
           <div className="transaction-form-container">
