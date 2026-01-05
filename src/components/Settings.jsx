@@ -223,7 +223,7 @@ const Settings = ({ onClose }) => {
         // Reload data without showing loading state to avoid UI freeze
         try {
           const [categoriesData, childrenData] = await Promise.all([
-            fetchCategories().catch(() => categories), // Keep current categories on error
+            getCategories().catch(() => categories), // Keep current categories on error
             getData().catch(() => allData) // Keep current data on error
           ]);
           
