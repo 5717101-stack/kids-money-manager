@@ -29,6 +29,7 @@ const ParentDashboard = () => {
     
     const initialize = async () => {
       try {
+        setLoading(true);
         // Load data in parallel
         const [dataResult, categoriesResult] = await Promise.allSettled([
           getData().catch(err => {
@@ -54,9 +55,17 @@ const ParentDashboard = () => {
             .map(cat => cat.name);
           if (activeCategories.length > 0) {
             setCategories(activeCategories);
-            if (!activeCategories.includes(category)) {
-              setCategory(activeCategories[0]);
-            }
+            // Only update category if current one is not in list
+            setCategory(prevCat => {
+              if (!activeCategories.includes(prevCat)) {
+                return activeCategories[0];
+              }
+              return prevCat;
+            });
+          } else {
+            // Fallback to default categories
+            const defaultCategories = ['משחקים', 'ממתקים', 'בגדים', 'בילויים', 'אחר'];
+            setCategories(defaultCategories);
           }
         }
       } catch (error) {
@@ -73,6 +82,7 @@ const ParentDashboard = () => {
     return () => {
       mounted = false;
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const loadCategories = async () => {
