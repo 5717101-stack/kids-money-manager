@@ -16,7 +16,8 @@ app.use(cors({
   allowedHeaders: ['Content-Type', 'Authorization'],
   credentials: true
 }));
-app.use(express.json());
+// Increase JSON payload limit to 10MB for image uploads
+app.use(express.json({ limit: '10mb' }));
 
 // Logging middleware for debugging
 app.use((req, res, next) => {

@@ -143,12 +143,20 @@ const Settings = ({ onClose }) => {
           throw new Error('Failed to convert image to base64');
         }
         
-        await updateProfileImage(childId, base64Image);
+        console.log('Uploading image, size:', base64Image.length, 'bytes');
+        const result = await updateProfileImage(childId, base64Image);
+        console.log('Image upload result:', result);
         await loadData();
         alert('תמונת הפרופיל עודכנה בהצלחה!');
       } catch (error) {
         console.error('Error updating profile image:', error);
-        alert('שגיאה בעדכון תמונת הפרופיל: ' + (error.message || 'Unknown error'));
+        console.error('Error details:', {
+          message: error.message,
+          stack: error.stack,
+          name: error.name
+        });
+        const errorMessage = error.message || 'Unknown error';
+        alert('שגיאה בעדכון תמונת הפרופיל: ' + errorMessage);
       }
     };
     

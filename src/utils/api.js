@@ -175,11 +175,18 @@ export const deleteCategory = async (categoryId) => {
 
 // Profile image API
 export const updateProfileImage = async (childId, profileImage) => {
-  const response = await apiCall(`/children/${childId}/profile-image`, {
-    method: 'PUT',
-    body: JSON.stringify({ profileImage })
-  });
-  return response;
+  try {
+    console.log('Calling updateProfileImage for', childId, 'image length:', profileImage ? profileImage.length : 0);
+    const response = await apiCall(`/children/${childId}/profile-image`, {
+      method: 'PUT',
+      body: JSON.stringify({ profileImage })
+    });
+    console.log('updateProfileImage response:', response);
+    return response;
+  } catch (error) {
+    console.error('updateProfileImage error:', error);
+    throw error;
+  }
 };
 
 // Weekly allowance API
