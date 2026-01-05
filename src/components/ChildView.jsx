@@ -56,6 +56,7 @@ const ChildView = ({ childId }) => {
       
       <BalanceDisplay
         balance={childData.balance}
+        cashBoxBalance={childData.cashBoxBalance}
         childName={childData.name}
         color={color}
       />

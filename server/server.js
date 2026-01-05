@@ -59,12 +59,14 @@ async function initializeData() {
           _id: 'child1',
           name: 'אדם',
           balance: 0,
+          cashBoxBalance: 0,
           transactions: []
         },
         {
           _id: 'child2',
           name: 'ג\'וּן',
           balance: 0,
+          cashBoxBalance: 0,
           transactions: []
         }
       ]);
@@ -92,12 +94,14 @@ let memoryStorage = {
       _id: 'child1',
       name: 'אדם',
       balance: 0,
+      cashBoxBalance: 0,
       transactions: []
     },
     child2: {
       _id: 'child2',
       name: 'ג\'וּן',
       balance: 0,
+      cashBoxBalance: 0,
       transactions: []
     }
   }
@@ -138,7 +142,8 @@ app.get('/api/children', async (req, res) => {
       res.json({ children: children.reduce((acc, child) => {
         acc[child._id] = {
           name: child.name,
-          balance: child.balance,
+          balance: child.balance || 0,
+          cashBoxBalance: child.cashBoxBalance || 0,
           transactions: child.transactions || []
         };
         return acc;
@@ -147,13 +152,15 @@ app.get('/api/children', async (req, res) => {
       const children = Object.values(memoryStorage.children).map(child => ({
         _id: child._id,
         name: child.name,
-        balance: child.balance,
+        balance: child.balance || 0,
+        cashBoxBalance: child.cashBoxBalance || 0,
         transactions: child.transactions || []
       }));
       res.json({ children: children.reduce((acc, child) => {
         acc[child._id] = {
           name: child.name,
-          balance: child.balance,
+          balance: child.balance || 0,
+          cashBoxBalance: child.cashBoxBalance || 0,
           transactions: child.transactions || []
         };
         return acc;
@@ -174,7 +181,8 @@ app.get('/api/children/:childId', async (req, res) => {
     }
     res.json({
       name: child.name,
-      balance: child.balance,
+      balance: child.balance || 0,
+      cashBoxBalance: child.cashBoxBalance || 0,
       transactions: child.transactions || []
     });
   } catch (error) {
@@ -372,12 +380,14 @@ app.post('/api/reset', async (req, res) => {
     // Reset child1
     await updateChild('child1', {
       balance: 0,
+      cashBoxBalance: 0,
       transactions: []
     });
     
     // Reset child2
     await updateChild('child2', {
       balance: 0,
+      cashBoxBalance: 0,
       transactions: []
     });
     
@@ -391,6 +401,45 @@ app.post('/api/reset', async (req, res) => {
     res.status(500).json({ 
       error: 'Failed to reset data',
       details: error.message 
+    });
+  }
+});
+
+// Update cash box balance for a child
+app.put('/api/children/:childId/cashbox', async (req, res) => {
+  try {
+    const { childId } = req.params;
+    const { cashBoxBalance } = req.body;
+    
+    if (cashBoxBalance === undefined || cashBoxBalance === null) {
+      return res.status(400).json({ error: 'cashBoxBalance is required' });
+    }
+    
+    const amount = parseFloat(cashBoxBalance);
+    if (isNaN(amount) || amount < 0) {
+      return res.status(400).json({ error: 'cashBoxBalance must be a valid non-negative number' });
+    }
+    
+    const child = await getChild(childId);
+    if (!child) {
+      return res.status(404).json({ error: 'Child not found' });
+    }
+    
+    await updateChild(childId, {
+      cashBoxBalance: amount
+    });
+    
+    const updatedChild = await getChild(childId);
+    res.json({
+      success: true,
+      cashBoxBalance: updatedChild.cashBoxBalance || 0,
+      message: 'Cash box balance updated successfully'
+    });
+  } catch (error) {
+    console.error('Error updating cash box balance:', error);
+    res.status(500).json({
+      error: 'Failed to update cash box balance',
+      details: error.message
     });
   }
 });

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { getChild, addTransaction, getChildTransactions, getData, resetAllData } from '../utils/api';
+import { getChild, addTransaction, getChildTransactions, getData, resetAllData, updateCashBoxBalance } from '../utils/api';
 import BalanceDisplay from './BalanceDisplay';
 import TransactionList from './TransactionList';
 
@@ -20,6 +20,8 @@ const ParentDashboard = () => {
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [resetting, setResetting] = useState(false);
+  const [cashBoxAmount, setCashBoxAmount] = useState('');
+  const [updatingCashBox, setUpdatingCashBox] = useState(false);
   
   const CATEGORIES = ['משחקים', 'ממתקים', 'בגדים', 'בילויים', 'אחר'];
 
@@ -103,8 +105,34 @@ const ParentDashboard = () => {
     }
   };
 
+  const handleUpdateCashBox = async (e) => {
+    e.preventDefault();
+    
+    if (!cashBoxAmount || parseFloat(cashBoxAmount) < 0) {
+      alert('אנא הכנס סכום תקין (0 ומעלה)');
+      return;
+    }
+
+    try {
+      setUpdatingCashBox(true);
+      await updateCashBoxBalance(selectedChild, cashBoxAmount);
+      setCashBoxAmount('');
+      await loadChildData();
+      alert('יתרת הקופה עודכנה בהצלחה!');
+    } catch (error) {
+      alert('שגיאה בעדכון יתרת הקופה: ' + error.message);
+    } finally {
+      setUpdatingCashBox(false);
+    }
+  };
+
   const child1Balance = allData.children.child1?.balance || 0;
+  const child1CashBox = allData.children.child1?.cashBoxBalance || 0;
+  const child1Total = child1Balance + child1CashBox;
+  
   const child2Balance = allData.children.child2?.balance || 0;
+  const child2CashBox = allData.children.child2?.cashBoxBalance || 0;
+  const child2Total = child2Balance + child2CashBox;
 
   if (loading) {
     return (
@@ -133,14 +161,16 @@ const ParentDashboard = () => {
         <div className="balance-card" style={{ borderColor: CHILD_COLORS.child1 }}>
           <h3>{allData.children.child1.name}</h3>
           <div className="balance-value" style={{ color: CHILD_COLORS.child1 }}>
-            ₪{child1Balance.toFixed(2)}
+            ₪{child1Total.toFixed(2)}
           </div>
+          <div className="balance-subtitle">יתרה כוללת</div>
         </div>
         <div className="balance-card" style={{ borderColor: CHILD_COLORS.child2 }}>
           <h3>{allData.children.child2.name}</h3>
           <div className="balance-value" style={{ color: CHILD_COLORS.child2 }}>
-            ₪{child2Balance.toFixed(2)}
+            ₪{child2Total.toFixed(2)}
           </div>
+          <div className="balance-subtitle">יתרה כוללת</div>
         </div>
       </div>
 
@@ -175,9 +205,32 @@ const ParentDashboard = () => {
         <>
           <BalanceDisplay
             balance={childData.balance}
+            cashBoxBalance={childData.cashBoxBalance}
             childName={childData.name}
             color={CHILD_COLORS[selectedChild]}
           />
+
+          {/* Cash Box Update Form */}
+          <div className="cashbox-form-container">
+            <h2>עדכון יתרת הקופה</h2>
+            <form onSubmit={handleUpdateCashBox} className="cashbox-form">
+              <div className="form-group">
+                <label htmlFor="cashBoxAmount">יתרה בקופה (₪):</label>
+                <input
+                  type="number"
+                  id="cashBoxAmount"
+                  step="0.01"
+                  min="0"
+                  value={cashBoxAmount}
+                  onChange={(e) => setCashBoxAmount(e.target.value)}
+                  placeholder={`כרגע: ₪${(childData.cashBoxBalance || 0).toFixed(2)}`}
+                />
+              </div>
+              <button type="submit" className="submit-button" disabled={updatingCashBox}>
+                {updatingCashBox ? 'מעדכן...' : 'עדכן יתרת קופה'}
+              </button>
+            </form>
+          </div>
 
           {/* Transaction form */}
           <div className="transaction-form-container">

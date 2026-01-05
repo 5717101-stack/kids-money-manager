@@ -75,7 +75,8 @@ export const getChild = async (childId) => {
   const response = await apiCall(`/children/${childId}`);
   return {
     name: response.name,
-    balance: response.balance,
+    balance: response.balance || 0,
+    cashBoxBalance: response.cashBoxBalance || 0,
     transactions: response.transactions || []
   };
 };
@@ -120,5 +121,21 @@ export const resetAllData = async () => {
 export const getExpensesByCategory = async (childId, days = 30) => {
   const response = await apiCall(`/children/${childId}/expenses-by-category?days=${days}`);
   return response.expensesByCategory || [];
+};
+
+// Update cash box balance for a child
+export const updateCashBoxBalance = async (childId, cashBoxBalance) => {
+  try {
+    const response = await apiCall(`/children/${childId}/cashbox`, {
+      method: 'PUT',
+      body: JSON.stringify({
+        cashBoxBalance: parseFloat(cashBoxBalance)
+      })
+    });
+    return response;
+  } catch (error) {
+    console.error('updateCashBoxBalance error:', error);
+    throw new Error(error.message || 'Failed to update cash box balance');
+  }
 };
 
