@@ -220,7 +220,7 @@ const Settings = ({ onClose }) => {
     try {
       // Compress image before uploading
       console.log('Compressing image, original size:', file.size, 'bytes');
-      const base64Image = await compressImage(file);
+      let base64Image = await compressImage(file);
       console.log('Compressed image size:', base64Image.length, 'bytes');
       
       // Check if compressed image is still too large (max 5MB base64 = ~3.75MB original)
@@ -232,6 +232,7 @@ const Settings = ({ onClose }) => {
           throw new Error('התמונה גדולה מדי גם לאחר דחיסה. אנא בחר תמונה קטנה יותר.');
         }
         base64Image = compressedImage;
+        console.log('Re-compressed image size:', base64Image.length, 'bytes');
       }
       
       console.log('Uploading image, final size:', base64Image.length, 'bytes');
