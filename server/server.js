@@ -796,17 +796,37 @@ app.put('/api/children/:childId/profile-image', async (req, res) => {
     const { childId } = req.params;
     const { profileImage } = req.body;
     
+    console.log(`Updating profile image for ${childId}, image length: ${profileImage ? profileImage.length : 0}`);
+    
     const child = await getChild(childId);
     if (!child) {
+      console.error(`Child not found: ${childId}`);
       return res.status(404).json({ error: 'Child not found' });
+    }
+    
+    // Validate base64 image if provided
+    if (profileImage && !profileImage.startsWith('data:image/')) {
+      console.error('Invalid image format - must be base64 data URL');
+      return res.status(400).json({ error: 'Invalid image format. Must be a valid base64 data URL.' });
+    }
+    
+    // Limit image size (approximately 2MB for base64)
+    if (profileImage && profileImage.length > 2 * 1024 * 1024) {
+      console.error('Image too large:', profileImage.length);
+      return res.status(400).json({ error: 'Image too large. Maximum size is 2MB.' });
     }
     
     await updateChild(childId, { profileImage: profileImage || null });
     
+    console.log(`Successfully updated profile image for ${childId}`);
     res.json({ success: true, profileImage: profileImage || null });
   } catch (error) {
     console.error('Error updating profile image:', error);
-    res.status(500).json({ error: 'Failed to update profile image' });
+    console.error('Error stack:', error.stack);
+    res.status(500).json({ 
+      error: 'Failed to update profile image',
+      details: error.message 
+    });
   }
 });
 
