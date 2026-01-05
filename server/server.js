@@ -200,9 +200,9 @@ async function processWeeklyAllowances() {
     
     console.log(`Checking weekly allowances - Israel time: ${dayOfWeek} ${hour}:${minute.toString().padStart(2, '0')}`);
     
-    // Check if it's Monday at 14:15 Israel time (or within 14:15-14:16 to catch it)
+    // Check if it's Monday at 14:35 Israel time (or within 14:35-14:36 to catch it)
     const isMonday = dayOfWeek === 'Monday';
-    const isTime = hour === 14 && minute >= 15 && minute < 16;
+    const isTime = hour === 14 && minute >= 35 && minute < 36;
     
     if (isMonday && isTime) {
       console.log('Processing weekly allowances...');
