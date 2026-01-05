@@ -146,10 +146,10 @@ const Settings = ({ onClose }) => {
       return;
     }
 
-    // Validate file size (max 2MB for better performance)
-    const maxSize = 2 * 1024 * 1024; // 2MB
+    // Validate file size (max 10MB)
+    const maxSize = 10 * 1024 * 1024; // 10MB
     if (file.size > maxSize) {
-      alert('גודל הקובץ גדול מדי. אנא בחר תמונה קטנה מ-2MB');
+      alert('גודל הקובץ גדול מדי. אנא בחר תמונה קטנה מ-10MB');
       // Reset input
       const input = fileInputRefs.current?.[childId];
       if (input) {
@@ -161,17 +161,91 @@ const Settings = ({ onClose }) => {
       }
       return;
     }
+    
+    // Function to compress image
+    const compressImage = (file, maxWidth = 1920, maxHeight = 1920, quality = 0.8) => {
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = (e) => {
+          const img = new Image();
+          img.onload = () => {
+            const canvas = document.createElement('canvas');
+            let width = img.width;
+            let height = img.height;
+            
+            // Calculate new dimensions
+            if (width > height) {
+              if (width > maxWidth) {
+                height = (height * maxWidth) / width;
+                width = maxWidth;
+              }
+            } else {
+              if (height > maxHeight) {
+                width = (width * maxHeight) / height;
+                height = maxHeight;
+              }
+            }
+            
+            canvas.width = width;
+            canvas.height = height;
+            
+            const ctx = canvas.getContext('2d');
+            ctx.drawImage(img, 0, 0, width, height);
+            
+            // Convert to base64 with compression
+            canvas.toBlob((blob) => {
+              if (blob) {
+                const reader2 = new FileReader();
+                reader2.onloadend = () => {
+                  resolve(reader2.result);
+                };
+                reader2.onerror = reject;
+                reader2.readAsDataURL(blob);
+              } else {
+                reject(new Error('Failed to compress image'));
+              }
+            }, 'image/jpeg', quality);
+          };
+          img.onerror = reject;
+          img.src = e.target.result;
+        };
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+      });
+    };
 
     // Set uploading state
     setUploadingImages(prev => ({ ...prev, [childId]: true }));
 
-    // Convert to base64
-    const reader = new FileReader();
-    
-    reader.onerror = (error) => {
-      console.error('FileReader error:', error);
-      setUploadingImages(prev => ({ ...prev, [childId]: false }));
-      // Reset input
+    try {
+      // Compress image before uploading
+      console.log('Compressing image, original size:', file.size, 'bytes');
+      const base64Image = await compressImage(file);
+      console.log('Compressed image size:', base64Image.length, 'bytes');
+      
+      // Check if compressed image is still too large (max 5MB base64 = ~3.75MB original)
+      if (base64Image.length > 5 * 1024 * 1024) {
+        // Try with lower quality
+        console.log('Image still too large, trying lower quality...');
+        const compressedImage = await compressImage(file, 1280, 1280, 0.6);
+        if (compressedImage.length > 5 * 1024 * 1024) {
+          throw new Error('התמונה גדולה מדי גם לאחר דחיסה. אנא בחר תמונה קטנה יותר.');
+        }
+        base64Image = compressedImage;
+      }
+      
+      console.log('Uploading image, final size:', base64Image.length, 'bytes');
+      
+      // Add timeout to prevent hanging
+      const uploadPromise = updateProfileImage(childId, base64Image);
+      const timeoutPromise = new Promise((_, reject) => 
+        setTimeout(() => reject(new Error('העלאה ארכה יותר מדי זמן. נסה שוב.')), 60000)
+      );
+      
+      const result = await Promise.race([uploadPromise, timeoutPromise]);
+      console.log('Image upload result:', result);
+      
+      // Reset input to allow selecting the same file again
       const input = fileInputRefs.current?.[childId];
       if (input) {
         try {
@@ -180,89 +254,47 @@ const Settings = ({ onClose }) => {
           console.warn('Could not reset input:', e);
         }
       }
-      alert('שגיאה בקריאת הקובץ: ' + (error.message || 'Unknown error'));
-    };
-
-    reader.onloadend = async () => {
+      
+      // Reload data without showing loading state to avoid UI freeze
       try {
-        if (reader.error) {
-          throw new Error('Failed to read file: ' + (reader.error.message || 'Unknown error'));
+        const [categoriesData, childrenData] = await Promise.all([
+          getCategories().catch(() => categories), // Keep current categories on error
+          getData().catch(() => allData) // Keep current data on error
+        ]);
+        
+        if (Array.isArray(categoriesData)) {
+          setCategories(categoriesData);
         }
-        
-        const base64Image = reader.result;
-        if (!base64Image) {
-          throw new Error('Failed to convert image to base64');
+        if (childrenData && childrenData.children) {
+          setAllData(childrenData);
         }
-        
-        // Check if base64 image is too large (after encoding, base64 is ~33% larger)
-        if (base64Image.length > 3 * 1024 * 1024) { // ~2.25MB original
-          throw new Error('התמונה גדולה מדי לאחר עיבוד. אנא בחר תמונה קטנה יותר.');
-        }
-        
-        console.log('Uploading image, size:', base64Image.length, 'bytes');
-        
-        // Add timeout to prevent hanging
-        const uploadPromise = updateProfileImage(childId, base64Image);
-        const timeoutPromise = new Promise((_, reject) => 
-          setTimeout(() => reject(new Error('העלאה ארכה יותר מדי זמן. נסה שוב.')), 30000)
-        );
-        
-        const result = await Promise.race([uploadPromise, timeoutPromise]);
-        console.log('Image upload result:', result);
-        
-        // Reset input to allow selecting the same file again
-        const input = fileInputRefs.current?.[childId];
-        if (input) {
-          try {
-            input.value = '';
-          } catch (e) {
-            console.warn('Could not reset input:', e);
-          }
-        }
-        
-        // Reload data without showing loading state to avoid UI freeze
-        try {
-          const [categoriesData, childrenData] = await Promise.all([
-            getCategories().catch(() => categories), // Keep current categories on error
-            getData().catch(() => allData) // Keep current data on error
-          ]);
-          
-          if (Array.isArray(categoriesData)) {
-            setCategories(categoriesData);
-          }
-          if (childrenData && childrenData.children) {
-            setAllData(childrenData);
-          }
-        } catch (reloadError) {
-          console.error('Error reloading data after upload:', reloadError);
-          // Don't show error to user, just log it
-        }
-        
-        alert('תמונת הפרופיל עודכנה בהצלחה!');
-      } catch (error) {
-        console.error('Error updating profile image:', error);
-        console.error('Error details:', {
-          message: error.message,
-          stack: error.stack,
-          name: error.name
-        });
-        const errorMessage = error.message || 'Unknown error';
-        alert('שגיאה בעדכון תמונת הפרופיל: ' + errorMessage);
-        // Reset input on error
-        const input = fileInputRefs.current?.[childId];
-        if (input) {
-          try {
-            input.value = '';
-          } catch (e) {
-            console.warn('Could not reset input:', e);
-          }
-        }
-      } finally {
-        setUploadingImages(prev => ({ ...prev, [childId]: false }));
+      } catch (reloadError) {
+        console.error('Error reloading data after upload:', reloadError);
+        // Don't show error to user, just log it
       }
-    };
-    
-    reader.readAsDataURL(file);
+      
+      alert('תמונת הפרופיל עודכנה בהצלחה!');
+    } catch (error) {
+      console.error('Error updating profile image:', error);
+      console.error('Error details:', {
+        message: error.message,
+        stack: error.stack,
+        name: error.name
+      });
+      const errorMessage = error.message || 'Unknown error';
+      alert('שגיאה בעדכון תמונת הפרופיל: ' + errorMessage);
+      // Reset input on error
+      const input = fileInputRefs.current?.[childId];
+      if (input) {
+        try {
+          input.value = '';
+        } catch (e) {
+          console.warn('Could not reset input:', e);
+        }
+      }
+    } finally {
+      setUploadingImages(prev => ({ ...prev, [childId]: false }));
+    }
   };
 
   const handleAllowanceUpdate = async (childId, allowance, allowanceType, allowanceDay, allowanceTime) => {

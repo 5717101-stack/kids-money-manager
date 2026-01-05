@@ -811,10 +811,10 @@ app.put('/api/children/:childId/profile-image', async (req, res) => {
       return res.status(400).json({ error: 'Invalid image format. Must be a valid base64 data URL.' });
     }
     
-    // Limit image size (approximately 2MB for base64)
-    if (profileImage && profileImage.length > 2 * 1024 * 1024) {
+    // Limit image size (approximately 5MB for base64, which is ~3.75MB original)
+    if (profileImage && profileImage.length > 5 * 1024 * 1024) {
       console.error('Image too large:', profileImage.length);
-      return res.status(400).json({ error: 'Image too large. Maximum size is 2MB.' });
+      return res.status(400).json({ error: 'Image too large. Maximum size is 5MB after compression.' });
     }
     
     await updateChild(childId, { profileImage: profileImage || null });
