@@ -9,7 +9,7 @@ import {
 
 ChartJS.register(ArcElement, Tooltip, Legend);
 
-// Default colors for categories
+// Default colors palette for categories
 const DEFAULT_COLORS = [
   '#3b82f6', // כחול
   '#ec4899', // ורוד
@@ -20,10 +20,15 @@ const DEFAULT_COLORS = [
   '#06b6d4', // ציאן
   '#f97316', // כתום כהה
   '#84cc16', // ירוק ליים
-  '#ec4899'  // ורוד
+  '#a855f7', // סגול כהה
+  '#14b8a6', // טורקיז
+  '#f43f5e', // ורוד כהה
+  '#6366f1', // אינדיגו
+  '#22c55e', // ירוק בהיר
+  '#eab308'  // צהוב
 ];
 
-// Legacy category colors for backward compatibility
+// Legacy category colors for backward compatibility (fixed colors)
 const CATEGORY_COLORS = {
   'משחקים': '#3b82f6',
   'ממתקים': '#ec4899',
@@ -32,14 +37,36 @@ const CATEGORY_COLORS = {
   'אחר': '#6b7280'
 };
 
-// Generate color for a category
-const getCategoryColor = (category, index) => {
-  // If it's a known category, use its color
-  if (CATEGORY_COLORS.hasOwnProperty(category)) {
-    return CATEGORY_COLORS[category];
+// Cache for category colors to ensure consistency
+const categoryColorCache = { ...CATEGORY_COLORS };
+
+// Simple hash function to convert string to number
+const hashString = (str) => {
+  let hash = 0;
+  for (let i = 0; i < str.length; i++) {
+    const char = str.charCodeAt(i);
+    hash = ((hash << 5) - hash) + char;
+    hash = hash & hash; // Convert to 32bit integer
   }
-  // Otherwise, use a color from the default palette based on index
-  return DEFAULT_COLORS[index % DEFAULT_COLORS.length];
+  return Math.abs(hash);
+};
+
+// Generate consistent color for a category based on its name
+const getCategoryColor = (category) => {
+  // If it's already in cache, use cached color
+  if (categoryColorCache.hasOwnProperty(category)) {
+    return categoryColorCache[category];
+  }
+  
+  // Generate a consistent color based on the category name hash
+  const hash = hashString(category);
+  const colorIndex = hash % DEFAULT_COLORS.length;
+  const color = DEFAULT_COLORS[colorIndex];
+  
+  // Cache it for future use
+  categoryColorCache[category] = color;
+  
+  return color;
 };
 
 const ExpensePieChart = ({ expensesByCategory, title, days }) => {
@@ -56,7 +83,7 @@ const ExpensePieChart = ({ expensesByCategory, title, days }) => {
 
   const labels = expensesByCategory.map(item => item.category);
   const data = expensesByCategory.map(item => item.amount);
-  const colors = expensesByCategory.map((item, index) => getCategoryColor(item.category, index));
+  const colors = expensesByCategory.map(item => getCategoryColor(item.category));
 
   const chartData = {
     labels: labels,
