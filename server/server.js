@@ -568,19 +568,36 @@ app.get('/api/children/:childId/expenses-by-category', async (req, res) => {
     
     console.log(`Found ${expenses.length} expenses`);
     
-    const categoryTotals = {
-      'משחקים': 0,
-      'ממתקים': 0,
-      'בגדים': 0,
-      'בילויים': 0,
-      'אחר': 0
-    };
+    // Get active categories for this child from database
+    let activeCategories = [];
+    if (db) {
+      const categories = await db.collection('categories').find({}).toArray();
+      activeCategories = categories
+        .filter(cat => (cat.activeFor || []).includes(childId))
+        .map(cat => cat.name);
+    } else {
+      activeCategories = (memoryStorage.categories || [])
+        .filter(cat => (cat.activeFor || []).includes(childId))
+        .map(cat => cat.name);
+    }
     
+    // Initialize category totals with all active categories
+    const categoryTotals = {};
+    activeCategories.forEach(cat => {
+      categoryTotals[cat] = 0;
+    });
+    // Always include 'אחר' as fallback
+    if (!categoryTotals.hasOwnProperty('אחר')) {
+      categoryTotals['אחר'] = 0;
+    }
+    
+    // Sum up expenses by category
     expenses.forEach(expense => {
       const category = expense.category || 'אחר';
       if (categoryTotals.hasOwnProperty(category)) {
         categoryTotals[category] += expense.amount;
       } else {
+        // If category doesn't exist in active categories, add to 'אחר'
         categoryTotals['אחר'] += expense.amount;
       }
     });
