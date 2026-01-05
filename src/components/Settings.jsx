@@ -19,6 +19,8 @@ const Settings = ({ onClose }) => {
   const [allData, setAllData] = useState({ children: {} });
   const [loading, setLoading] = useState(true);
   const [allowanceStates, setAllowanceStates] = useState({});
+  const [uploadingImages, setUploadingImages] = useState({});
+  const fileInputRefs = React.useRef({});
 
   useEffect(() => {
     loadData();
@@ -101,19 +103,32 @@ const Settings = ({ onClose }) => {
     // If file is null, remove the image
     if (!file) {
       try {
+        setUploadingImages(prev => ({ ...prev, [childId]: true }));
         await updateProfileImage(childId, null);
         await loadData();
         alert('תמונת הפרופיל הוסרה בהצלחה!');
       } catch (error) {
         console.error('Error removing profile image:', error);
         alert('שגיאה בהסרת תמונת הפרופיל: ' + (error.message || 'Unknown error'));
+      } finally {
+        setUploadingImages(prev => ({ ...prev, [childId]: false }));
       }
+      return;
+    }
+
+    // Prevent multiple uploads
+    if (uploadingImages[childId]) {
+      console.log('Upload already in progress for', childId);
       return;
     }
 
     // Validate file type
     if (!file.type.startsWith('image/')) {
       alert('אנא בחר קובץ תמונה בלבד');
+      // Reset input
+      if (fileInputRefs.current[childId]) {
+        fileInputRefs.current[childId].value = '';
+      }
       return;
     }
 
@@ -121,14 +136,26 @@ const Settings = ({ onClose }) => {
     const maxSize = 5 * 1024 * 1024; // 5MB
     if (file.size > maxSize) {
       alert('גודל הקובץ גדול מדי. אנא בחר תמונה קטנה מ-5MB');
+      // Reset input
+      if (fileInputRefs.current[childId]) {
+        fileInputRefs.current[childId].value = '';
+      }
       return;
     }
+
+    // Set uploading state
+    setUploadingImages(prev => ({ ...prev, [childId]: true }));
 
     // Convert to base64
     const reader = new FileReader();
     
     reader.onerror = (error) => {
       console.error('FileReader error:', error);
+      setUploadingImages(prev => ({ ...prev, [childId]: false }));
+      // Reset input
+      if (fileInputRefs.current[childId]) {
+        fileInputRefs.current[childId].value = '';
+      }
       alert('שגיאה בקריאת הקובץ: ' + (error.message || 'Unknown error'));
     };
 
@@ -146,6 +173,12 @@ const Settings = ({ onClose }) => {
         console.log('Uploading image, size:', base64Image.length, 'bytes');
         const result = await updateProfileImage(childId, base64Image);
         console.log('Image upload result:', result);
+        
+        // Reset input to allow selecting the same file again
+        if (fileInputRefs.current[childId]) {
+          fileInputRefs.current[childId].value = '';
+        }
+        
         await loadData();
         alert('תמונת הפרופיל עודכנה בהצלחה!');
       } catch (error) {
@@ -157,6 +190,12 @@ const Settings = ({ onClose }) => {
         });
         const errorMessage = error.message || 'Unknown error';
         alert('שגיאה בעדכון תמונת הפרופיל: ' + errorMessage);
+        // Reset input on error
+        if (fileInputRefs.current[childId]) {
+          fileInputRefs.current[childId].value = '';
+        }
+      } finally {
+        setUploadingImages(prev => ({ ...prev, [childId]: false }));
       }
     };
     
@@ -325,14 +364,21 @@ const Settings = ({ onClose }) => {
                   </div>
                   <div className="profile-image-info">
                     <h3>{child.name}</h3>
-                    <label className="file-upload-button">
+                    <label className="file-upload-button" style={{ opacity: uploadingImages[childId] ? 0.6 : 1, pointerEvents: uploadingImages[childId] ? 'none' : 'auto' }}>
                       <input
+                        ref={el => fileInputRefs.current[childId] = el}
                         type="file"
                         accept="image/*"
-                        onChange={(e) => handleImageUpload(childId, e.target.files[0])}
+                        onChange={(e) => {
+                          const file = e.target.files?.[0];
+                          if (file) {
+                            handleImageUpload(childId, file);
+                          }
+                        }}
+                        disabled={uploadingImages[childId]}
                         style={{ display: 'none' }}
                       />
-                      העלה תמונה
+                      {uploadingImages[childId] ? 'מעלה...' : 'העלה תמונה'}
                     </label>
                     {child.profileImage && (
                       <button
