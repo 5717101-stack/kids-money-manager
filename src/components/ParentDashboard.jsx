@@ -38,9 +38,26 @@ const ParentDashboard = () => {
         .map(cat => cat.name);
       if (activeCategories.length > 0) {
         setCategories(activeCategories);
+        // Reset category to first available if current is not in list
+        if (!activeCategories.includes(category)) {
+          setCategory(activeCategories[0]);
+        }
+      } else {
+        // Fallback to default categories if none found
+        const defaultCategories = ['משחקים', 'ממתקים', 'בגדים', 'בילויים', 'אחר'];
+        setCategories(defaultCategories);
+        if (!defaultCategories.includes(category)) {
+          setCategory(defaultCategories[0]);
+        }
       }
     } catch (error) {
       console.error('Error loading categories:', error);
+      // Fallback to default categories on error
+      const defaultCategories = ['משחקים', 'ממתקים', 'בגדים', 'בילויים', 'אחר'];
+      setCategories(defaultCategories);
+      if (!defaultCategories.includes(category)) {
+        setCategory(defaultCategories[0]);
+      }
     }
   };
 
@@ -299,7 +316,7 @@ const ParentDashboard = () => {
                     onChange={(e) => setCategory(e.target.value)}
                     className="category-select"
                   >
-                    {CATEGORIES.map(cat => (
+                    {categories.map(cat => (
                       <option key={cat} value={cat}>{cat}</option>
                     ))}
                   </select>
