@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { getChild, getChildTransactions, getExpensesByCategory } from '../utils/api';
+import { getChild, getChildTransactions, getExpensesByCategory, updateCashBoxBalance } from '../utils/api';
 import BalanceDisplay from './BalanceDisplay';
 import TransactionList from './TransactionList';
 import ExpensePieChart from './ExpensePieChart';
@@ -42,6 +42,16 @@ const ChildView = ({ childId }) => {
     }
   };
 
+  const handleCashBoxUpdate = async (newValue) => {
+    try {
+      await updateCashBoxBalance(childId, newValue);
+      await loadChildData();
+    } catch (error) {
+      alert('שגיאה בעדכון יתרת הקופה: ' + error.message);
+      throw error; // Re-throw to let BalanceDisplay handle it
+    }
+  };
+
   if (!childData) {
     return <div className="loading">טוען...</div>;
   }
@@ -59,6 +69,8 @@ const ChildView = ({ childId }) => {
         cashBoxBalance={childData.cashBoxBalance}
         childName={childData.name}
         color={color}
+        editable={true}
+        onCashBoxUpdate={handleCashBoxUpdate}
       />
 
       {/* Expense Charts */}

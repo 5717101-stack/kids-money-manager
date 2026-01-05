@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { getChild, addTransaction, getChildTransactions, getData, resetAllData, updateCashBoxBalance } from '../utils/api';
+import { getChild, addTransaction, getChildTransactions, getData, resetAllData } from '../utils/api';
 import BalanceDisplay from './BalanceDisplay';
 import TransactionList from './TransactionList';
 
@@ -103,15 +103,6 @@ const ParentDashboard = () => {
     }
   };
 
-  const handleCashBoxUpdate = async (newValue) => {
-    try {
-      await updateCashBoxBalance(selectedChild, newValue);
-      await loadChildData();
-    } catch (error) {
-      alert('שגיאה בעדכון יתרת הקופה: ' + error.message);
-      throw error; // Re-throw to let BalanceDisplay handle it
-    }
-  };
 
   const child1Balance = allData.children.child1?.balance || 0;
   const child1CashBox = allData.children.child1?.cashBoxBalance || 0;
@@ -195,8 +186,6 @@ const ParentDashboard = () => {
             cashBoxBalance={childData.cashBoxBalance}
             childName={childData.name}
             color={CHILD_COLORS[selectedChild]}
-            editable={true}
-            onCashBoxUpdate={handleCashBoxUpdate}
           />
 
           {/* Transaction form */}
