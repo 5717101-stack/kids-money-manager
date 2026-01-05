@@ -62,7 +62,7 @@ const App = () => {
       </main>
       
       <footer className="app-footer">
-        <span className="version">גרסה 1.13</span>
+        <span className="version">גרסה 1.14</span>
       </footer>
     </div>
   );
