@@ -1,5 +1,13 @@
-// Get API URL - check if we're in production or development
+// Get API URL - check if we're in production, development, or mobile app
 const getApiUrl = () => {
+  // Production API URL (replace with your Railway URL)
+  const PRODUCTION_API = 'https://your-railway-app.up.railway.app/api';
+  
+  // If we're in a mobile app (Capacitor)
+  if (typeof window !== 'undefined' && window.Capacitor?.isNativePlatform()) {
+    return PRODUCTION_API;
+  }
+  
   // In production (Vercel), use the environment variable
   if (import.meta.env.VITE_API_URL) {
     return import.meta.env.VITE_API_URL;
