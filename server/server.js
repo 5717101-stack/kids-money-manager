@@ -1195,8 +1195,13 @@ app.get('/', (req, res) => {
 let server;
 
 // Start server immediately, don't wait for DB
+// Railway needs the server to respond to health checks immediately
 server = app.listen(PORT, '0.0.0.0', () => {
   console.log(`[SERVER] Started on port ${PORT}`);
+  // Immediately respond to a test request to ensure server is ready
+  setTimeout(() => {
+    fetch(`http://localhost:${PORT}/health`).catch(() => {});
+  }, 100);
 });
 
 server.on('error', (error) => {
@@ -1205,6 +1210,7 @@ server.on('error', (error) => {
 
 server.on('listening', () => {
   console.log(`[SERVER] Listening on http://0.0.0.0:${PORT}`);
+  console.log(`[SERVER] Health check: http://0.0.0.0:${PORT}/health`);
 });
 
 // Handle shutdown gracefully
