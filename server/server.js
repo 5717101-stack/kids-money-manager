@@ -1279,17 +1279,19 @@ server = app.listen(PORT, '0.0.0.0', () => {
     }
   }, 5000); // Every 5 seconds for first 50 seconds
   
-  process.on('SIGTERM', () => {
-    console.log('⚠️  SIGTERM received, shutting down gracefully...');
-    if (server) {
-      server.close(() => {
-        console.log('✅ Server closed gracefully');
-        process.exit(0);
-      });
-    } else {
+process.on('SIGTERM', () => {
+  console.log('⚠️  SIGTERM received from Railway - this is normal for deployments');
+  console.log(`   Server was running for ${Math.floor(process.uptime())} seconds`);
+  console.log(`   This usually means Railway is redeploying or scaling`);
+  if (server) {
+    server.close(() => {
+      console.log('✅ Server closed gracefully');
       process.exit(0);
-    }
-  });
+    });
+  } else {
+    process.exit(0);
+  }
+});
   
   process.on('SIGINT', () => {
     console.log('⚠️  SIGINT received, shutting down gracefully...');
@@ -1313,7 +1315,10 @@ server = app.listen(PORT, '0.0.0.0', () => {
     console.error('❌ Unhandled Rejection at:', promise, 'reason:', reason);
     // Don't exit, let Railway handle it
   });
+
+// Connect to DB in background (don't block server startup)
+connectDB().then(() => {
+  console.log('✅ Database connection established');
 }).catch((error) => {
-  console.error('❌ Failed to start server:', error);
-  process.exit(1);
+  console.error('⚠️  Database connection failed, using in-memory storage:', error.message);
 });

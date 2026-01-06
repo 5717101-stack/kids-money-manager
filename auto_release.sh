@@ -5,7 +5,9 @@ set -e  # עצור אם יש שגיאה
 
 cd ~/Projects/kids-money-manager
 
-GITHUB_TOKEN="YOUR_TOKEN_HERE"
+# GitHub token should be in git credentials, not in script
+# Use: git config credential.helper store
+# Then save token to ~/.git-credentials
 
 echo "=== שחרור גרסה אוטומטי ==="
 echo ""
@@ -24,16 +26,17 @@ echo "   גרסה חדשה: $NEW_VERSION"
 # עדכן package.json
 sed -i '' "s/\"version\": \"$CURRENT_VERSION\"/\"version\": \"$NEW_VERSION\"/" package.json
 sed -i '' "s/\"version\": \"$CURRENT_VERSION\"/\"version\": \"$NEW_VERSION\"/" server/package.json
-sed -i '' "s/גרסה ${CURRENT_VERSION%.*}/גרסה ${NEW_VERSION%.*}/" src/App.jsx
 
-echo "   ✓ גרסה עודכנה"
-echo ""
+# עדכן גרסה בכל קבצי ה-React
+VERSION_DISPLAY="${NEW_VERSION%.*}"  # 2.8 במקום 2.8.0
+sed -i '' "s/גרסה [0-9]\+\.[0-9]\+/גרסה ${VERSION_DISPLAY}/g" src/App.jsx
+sed -i '' "s/גרסה [0-9]\+\.[0-9]\+/גרסה ${VERSION_DISPLAY}/g" src/components/WelcomeScreen.jsx
+sed -i '' "s/גרסה [0-9]\+\.[0-9]\+/גרסה ${VERSION_DISPLAY}/g" src/components/PhoneLogin.jsx
+sed -i '' "s/גרסה [0-9]\+\.[0-9]\+/גרסה ${VERSION_DISPLAY}/g" src/components/OTPVerification.jsx
 
-# 2. עדכן גרסה בכל הקבצים
-echo "2. מעדכן גרסה בכל הקבצים..."
-sed -i '' "s/\"version\": \"$CURRENT_VERSION\"/\"version\": \"$NEW_VERSION\"/" package.json
-sed -i '' "s/\"version\": \"$CURRENT_VERSION\"/\"version\": \"$NEW_VERSION\"/" server/package.json
-sed -i '' "s/גרסה ${CURRENT_VERSION%.*}/גרסה ${NEW_VERSION%.*}/" src/App.jsx
+# עדכן גרסה ב-server.js
+sed -i '' "s/version: '[0-9]\+\.[0-9]\+\.[0-9]\+'/version: '${NEW_VERSION}'/" server/server.js
+
 echo "   ✓ גרסה עודכנה בכל הקבצים"
 echo ""
 
@@ -46,9 +49,7 @@ echo ""
 
 # 4. Push
 echo "4. דוחף ל-GitHub..."
-git remote set-url origin https://${GITHUB_TOKEN}@github.com/5717101-stack/kids-money-manager.git
 git push origin main --no-verify 2>&1
-git remote set-url origin https://github.com/5717101-stack/kids-money-manager.git
 echo "   ✓ Push הושלם"
 echo ""
 
