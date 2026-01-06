@@ -1175,7 +1175,7 @@ app.get('/', (req, res) => {
   res.json({ 
     message: 'Kids Money Manager API',
     status: 'running',
-    version: '2.7.0'
+    version: '2.8.0'
   });
 });
 
