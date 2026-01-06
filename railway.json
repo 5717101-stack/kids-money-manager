@@ -4,7 +4,7 @@
     "builder": "NIXPACKS"
   },
   "deploy": {
-    "startCommand": "npm start",
+    "startCommand": "node server/server.js",
     "healthcheckPath": "/health",
     "healthcheckTimeout": 60,
     "healthcheckInterval": 10,
