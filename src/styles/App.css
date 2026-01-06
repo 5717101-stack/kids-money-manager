@@ -104,13 +104,13 @@ body {
 }
 
 .main-nav button.parent-button.active {
-  background: var(--success);
-  border-color: var(--success);
+  background: var(--secondary);
+  border-color: var(--secondary);
 }
 
 .main-nav button.parent-button:hover {
-  background: var(--success-light);
-  border-color: var(--success);
+  background: var(--primary-light);
+  border-color: var(--secondary);
 }
 
 /* Parent Dashboard */
