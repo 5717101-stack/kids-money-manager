@@ -41,8 +41,10 @@ if (TWILIO_ACCOUNT_SID && TWILIO_AUTH_TOKEN && TWILIO_PHONE_NUMBER) {
 // CRITICAL: Health check MUST be defined BEFORE any middleware
 // Railway checks this immediately and if it's slow, container stops
 app.get('/health', (req, res) => {
+  console.log(`[HEALTH] Health check requested from ${req.ip || req.connection.remoteAddress || 'unknown'}`);
   res.writeHead(200, { 'Content-Type': 'application/json' });
   res.end('{"status":"ok"}');
+  console.log(`[HEALTH] Health check responded with 200 OK`);
 });
 
 // Middleware - CORS configuration
@@ -1214,9 +1216,10 @@ let server;
 // Start server immediately, don't wait for DB
 // Railway needs the server to respond to health checks immediately
 server = app.listen(PORT, '0.0.0.0', () => {
-  console.log(`[SERVER] Started on port ${PORT}`);
+  console.log(`[SERVER] Version ${VERSION} - Started on port ${PORT}`);
   console.log(`[SERVER] Health check: http://0.0.0.0:${PORT}/health`);
   console.log(`[SERVER] Server is ready and listening`);
+  console.log(`[SERVER] Waiting for Railway health check...`);
 });
 
 server.on('error', (error) => {
