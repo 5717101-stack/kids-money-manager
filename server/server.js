@@ -76,8 +76,15 @@ function generateChildCode() {
 
 // Send SMS via Twilio or log to console
 async function sendSMS(phoneNumber, message) {
+  console.log(`📤 Attempting to send SMS...`);
+  console.log(`   From: ${TWILIO_PHONE_NUMBER || 'NOT SET'}`);
+  console.log(`   To: ${phoneNumber}`);
+  console.log(`   Message length: ${message.length} chars`);
+  console.log(`   Twilio Client: ${twilioClient ? 'Initialized' : 'NOT INITIALIZED'}`);
+  
   if (twilioClient && TWILIO_PHONE_NUMBER) {
     try {
+      console.log(`   Sending via Twilio API...`);
       const result = await twilioClient.messages.create({
         body: message,
         from: TWILIO_PHONE_NUMBER,
@@ -85,20 +92,34 @@ async function sendSMS(phoneNumber, message) {
       });
       console.log(`✅ SMS sent successfully to ${phoneNumber}`);
       console.log(`   Message SID: ${result.sid}`);
-      return { success: true, sid: result.sid };
+      console.log(`   Status: ${result.status}`);
+      return { success: true, sid: result.sid, status: result.status };
     } catch (error) {
-      console.error('❌ Error sending SMS:', error.message);
-      console.error('   Error code:', error.code);
-      console.error('   Error status:', error.status);
+      console.error('❌ Error sending SMS:');
+      console.error(`   Message: ${error.message}`);
+      console.error(`   Code: ${error.code}`);
+      console.error(`   Status: ${error.status}`);
+      console.error(`   Full error:`, JSON.stringify(error, null, 2));
       if (error.moreInfo) {
-        console.error('   More info:', error.moreInfo);
+        console.error(`   More info: ${error.moreInfo}`);
       }
-      return { success: false, error: error.message, code: error.code };
+      
+      // Common error codes
+      if (error.code === 21211) {
+        console.error('   ⚠️  Invalid phone number format. Should be: +972505717101');
+      } else if (error.code === 21608 || error.code === 21614) {
+        console.error('   ⚠️  Phone number not verified. Add it in Twilio Console → Verified Caller IDs');
+      } else if (error.code === 30008) {
+        console.error('   ⚠️  Unknown destination handset');
+      }
+      
+      return { success: false, error: error.message, code: error.code, status: error.status };
     }
   } else {
     // Development mode - log to console
-    console.log(`[SMS] To: ${phoneNumber}`);
-    console.log(`[SMS] Message: ${message}`);
+    console.log(`⚠️  [DEV MODE] SMS not sent (Twilio not configured)`);
+    console.log(`   To: ${phoneNumber}`);
+    console.log(`   Message: ${message}`);
     return { success: true, dev: true };
   }
 }
@@ -434,19 +455,34 @@ app.post('/api/auth/send-otp', async (req, res) => {
       ? `קוד האימות שלך: ${otpCode}. קוד זה תקף ל-10 דקות.`
       : `קוד האימות שלך: ${otpCode}. קוד זה תקף ל-10 דקות.`;
     
+    console.log(`\n📨 === Sending OTP ===`);
+    console.log(`   Phone: ${fullPhoneNumber}`);
+    console.log(`   OTP Code: ${otpCode}`);
+    console.log(`   Existing Family: ${!!existingFamily}`);
+    
     const smsResult = await sendSMS(fullPhoneNumber, message);
     
+    console.log(`📨 === SMS Result ===`);
+    console.log(`   Success: ${smsResult.success}`);
     if (!smsResult.success) {
-      console.error(`Failed to send SMS to ${fullPhoneNumber}:`, smsResult.error);
-      // Still return success to user, but log the error
-      // In production, you might want to return an error here
+      console.error(`   ❌ Failed to send SMS to ${fullPhoneNumber}`);
+      console.error(`   Error: ${smsResult.error}`);
+      console.error(`   Code: ${smsResult.code}`);
+      // Return error to user so they know SMS failed
+      return res.status(500).json({ 
+        error: 'שגיאה בשליחת SMS. אנא נסה שוב או פנה לתמיכה.',
+        smsError: smsResult.error,
+        smsCode: smsResult.code
+      });
     }
+    
+    console.log(`   ✅ SMS sent successfully\n`);
     
     res.json({ 
       success: true, 
       message: 'קוד נשלח בהצלחה',
       isExistingFamily: !!existingFamily,
-      smsSent: smsResult.success
+      smsSent: true
     });
   } catch (error) {
     console.error('Error sending OTP:', error);
