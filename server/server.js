@@ -78,22 +78,28 @@ function generateChildCode() {
 async function sendSMS(phoneNumber, message) {
   if (twilioClient && TWILIO_PHONE_NUMBER) {
     try {
-      await twilioClient.messages.create({
+      const result = await twilioClient.messages.create({
         body: message,
         from: TWILIO_PHONE_NUMBER,
         to: phoneNumber
       });
-      console.log(`SMS sent to ${phoneNumber}`);
-      return true;
+      console.log(`✅ SMS sent successfully to ${phoneNumber}`);
+      console.log(`   Message SID: ${result.sid}`);
+      return { success: true, sid: result.sid };
     } catch (error) {
-      console.error('Error sending SMS:', error);
-      return false;
+      console.error('❌ Error sending SMS:', error.message);
+      console.error('   Error code:', error.code);
+      console.error('   Error status:', error.status);
+      if (error.moreInfo) {
+        console.error('   More info:', error.moreInfo);
+      }
+      return { success: false, error: error.message, code: error.code };
     }
   } else {
     // Development mode - log to console
     console.log(`[SMS] To: ${phoneNumber}`);
     console.log(`[SMS] Message: ${message}`);
-    return true;
+    return { success: true, dev: true };
   }
 }
 
@@ -428,12 +434,19 @@ app.post('/api/auth/send-otp', async (req, res) => {
       ? `קוד האימות שלך: ${otpCode}. קוד זה תקף ל-10 דקות.`
       : `קוד האימות שלך: ${otpCode}. קוד זה תקף ל-10 דקות.`;
     
-    await sendSMS(fullPhoneNumber, message);
+    const smsResult = await sendSMS(fullPhoneNumber, message);
+    
+    if (!smsResult.success) {
+      console.error(`Failed to send SMS to ${fullPhoneNumber}:`, smsResult.error);
+      // Still return success to user, but log the error
+      // In production, you might want to return an error here
+    }
     
     res.json({ 
       success: true, 
       message: 'קוד נשלח בהצלחה',
-      isExistingFamily: !!existingFamily
+      isExistingFamily: !!existingFamily,
+      smsSent: smsResult.success
     });
   } catch (error) {
     console.error('Error sending OTP:', error);
@@ -1157,26 +1170,55 @@ let server;
 
 connectDB().then(() => {
   server = app.listen(PORT, '0.0.0.0', () => {
-    console.log(`Server running on http://0.0.0.0:${PORT}`);
-    console.log(`Health check available at http://0.0.0.0:${PORT}/api/health`);
+    console.log(`✅ Server running on http://0.0.0.0:${PORT}`);
+    console.log(`✅ Health check available at http://0.0.0.0:${PORT}/api/health`);
+    console.log(`✅ Server is ready to accept connections`);
+  });
+  
+  // Keep server alive
+  server.on('error', (error) => {
+    console.error('❌ Server error:', error);
+  });
+  
+  server.on('listening', () => {
+    console.log('✅ Server is listening and ready');
   });
   
   process.on('SIGTERM', () => {
-    console.log('SIGTERM received, shutting down gracefully...');
-    server.close(() => {
-      console.log('Server closed');
+    console.log('⚠️  SIGTERM received, shutting down gracefully...');
+    if (server) {
+      server.close(() => {
+        console.log('✅ Server closed gracefully');
+        process.exit(0);
+      });
+    } else {
       process.exit(0);
-    });
+    }
   });
   
   process.on('SIGINT', () => {
-    console.log('SIGINT received, shutting down gracefully...');
-    server.close(() => {
-      console.log('Server closed');
+    console.log('⚠️  SIGINT received, shutting down gracefully...');
+    if (server) {
+      server.close(() => {
+        console.log('✅ Server closed gracefully');
+        process.exit(0);
+      });
+    } else {
       process.exit(0);
-    });
+    }
+  });
+  
+  // Handle uncaught errors
+  process.on('uncaughtException', (error) => {
+    console.error('❌ Uncaught Exception:', error);
+    // Don't exit, let Railway handle it
+  });
+  
+  process.on('unhandledRejection', (reason, promise) => {
+    console.error('❌ Unhandled Rejection at:', promise, 'reason:', reason);
+    // Don't exit, let Railway handle it
   });
 }).catch((error) => {
-  console.error('Failed to start server:', error);
+  console.error('❌ Failed to start server:', error);
   process.exit(1);
 });
