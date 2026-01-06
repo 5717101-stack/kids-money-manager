@@ -104,7 +104,7 @@ const ExpensePieChart = ({ expensesByCategory, title, days }) => {
     animation: {
       animateRotate: true,
       animateScale: true,
-      duration: 1500,
+      duration: 2000,
       easing: 'easeOutQuart'
     },
     plugins: {
@@ -112,34 +112,57 @@ const ExpensePieChart = ({ expensesByCategory, title, days }) => {
         position: 'bottom',
         rtl: true,
         labels: {
-          padding: 20,
+          padding: 24,
           font: {
-            size: 15,
-            weight: '600',
+            size: 16,
+            weight: '700',
             family: '-apple-system, BlinkMacSystemFont, "Segoe UI", "Roboto", "Oxygen", "Ubuntu", "Cantarell", "Fira Sans", "Droid Sans", "Helvetica Neue", "Arial", "Noto Sans Hebrew", sans-serif'
           },
           usePointStyle: true,
           pointStyle: 'circle',
-          boxWidth: 12,
-          boxHeight: 12
+          boxWidth: 16,
+          boxHeight: 16,
+          generateLabels: function(chart) {
+            const data = chart.data;
+            if (data.labels.length && data.datasets.length) {
+              return data.labels.map((label, i) => {
+                const dataset = data.datasets[0];
+                const value = dataset.data[i];
+                const total = dataset.data.reduce((a, b) => a + b, 0);
+                const percentage = ((value / total) * 100).toFixed(1);
+                return {
+                  text: `${label} - ₪${value.toFixed(2)} (${percentage}%)`,
+                  fillStyle: dataset.backgroundColor[i],
+                  strokeStyle: dataset.borderColor[i],
+                  lineWidth: dataset.borderWidth,
+                  hidden: false,
+                  index: i
+                };
+              });
+            }
+            return [];
+          }
         }
       },
       tooltip: {
         rtl: true,
-        backgroundColor: 'rgba(0, 0, 0, 0.85)',
-        padding: 15,
+        backgroundColor: 'rgba(15, 23, 42, 0.95)',
+        padding: 20,
         titleFont: {
-          size: 16,
-          weight: '700'
+          size: 18,
+          weight: '700',
+          family: '-apple-system, BlinkMacSystemFont, "Segoe UI", "Roboto", sans-serif'
         },
         bodyFont: {
-          size: 15,
-          weight: '600'
+          size: 16,
+          weight: '600',
+          family: '-apple-system, BlinkMacSystemFont, "Segoe UI", "Roboto", sans-serif'
         },
-        borderColor: 'rgba(255, 255, 255, 0.2)',
-        borderWidth: 1,
-        cornerRadius: 12,
+        borderColor: 'rgba(255, 255, 255, 0.3)',
+        borderWidth: 2,
+        cornerRadius: 16,
         displayColors: true,
+        boxPadding: 12,
         callbacks: {
           title: function(context) {
             return context[0].label || '';
@@ -149,22 +172,33 @@ const ExpensePieChart = ({ expensesByCategory, title, days }) => {
             const value = context.parsed || 0;
             const total = context.dataset.data.reduce((a, b) => a + b, 0);
             const percentage = ((value / total) * 100).toFixed(1);
-            return `סכום: ₪${value.toFixed(2)} | אחוז: ${percentage}%`;
+            return `💰 סכום: ₪${value.toFixed(2)}`;
+          },
+          afterLabel: function(context) {
+            const value = context.parsed || 0;
+            const total = context.dataset.data.reduce((a, b) => a + b, 0);
+            const percentage = ((value / total) * 100).toFixed(1);
+            return `📊 אחוז: ${percentage}%`;
           },
           footer: function(tooltipItems) {
             const total = tooltipItems.reduce((sum, item) => sum + item.parsed, 0);
-            return `סה"כ: ₪${total.toFixed(2)}`;
+            return `━━━━━━━━━━━━━━\n💵 סה"כ: ₪${total.toFixed(2)}`;
           }
         }
       }
     },
     elements: {
       arc: {
-        borderWidth: 3,
+        borderWidth: 4,
         borderColor: '#ffffff',
-        hoverBorderWidth: 5,
-        hoverOffset: 8
+        hoverBorderWidth: 6,
+        hoverOffset: 12,
+        borderRadius: 8
       }
+    },
+    interaction: {
+      intersect: false,
+      mode: 'point'
     }
   };
 

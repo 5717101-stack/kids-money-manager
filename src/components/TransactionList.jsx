@@ -22,28 +22,60 @@ const TransactionList = ({ transactions, showAll = false }) => {
 
   return (
     <div className="transaction-list">
-      <h3>{showAll ? 'כל הפעולות' : 'פעולות אחרונות'}</h3>
+      <h2>{showAll ? 'כל הפעולות' : 'פעולות אחרונות'}</h2>
       <ul className="transactions">
         {transactions.map((transaction) => (
           <li key={transaction.id} className={`transaction ${transaction.type}`}>
             <div className="transaction-header">
-              <span className="transaction-type">
+              <div className="transaction-type-badge" style={{
+                background: transaction.type === 'deposit' 
+                  ? 'linear-gradient(135deg, #22c55e 0%, #16a34a 100%)'
+                  : 'linear-gradient(135deg, #ef4444 0%, #dc2626 100%)',
+                color: 'white',
+                padding: '8px 16px',
+                borderRadius: '20px',
+                fontSize: '14px',
+                fontWeight: '700',
+                boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)'
+              }}>
                 {transaction.type === 'deposit' ? '➕ הפקדה' : '➖ הוצאה'}
-              </span>
+              </div>
               <span className="transaction-date">{formatDate(transaction.date)}</span>
             </div>
             <div className="transaction-details">
-              <span className="transaction-amount" style={{
-                color: transaction.type === 'deposit' ? '#22c55e' : '#ef4444'
+              <div className="transaction-amount" style={{
+                color: transaction.type === 'deposit' ? '#22c55e' : '#ef4444',
+                fontSize: '24px',
+                fontWeight: '700',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px',
+                direction: 'rtl'
               }}>
-                {transaction.type === 'deposit' ? '+' : '-'}₪{transaction.amount.toFixed(2)}
-              </span>
+                <span>{transaction.type === 'deposit' ? '+' : '-'}</span>
+                <span>₪{transaction.amount.toFixed(2)}</span>
+              </div>
               <div className="transaction-meta">
                 {transaction.description && (
-                  <span className="transaction-description">{transaction.description}</span>
+                  <span className="transaction-description" style={{
+                    fontSize: '16px',
+                    fontWeight: '600',
+                    color: 'var(--text-primary)',
+                    marginBottom: '8px',
+                    display: 'block'
+                  }}>{transaction.description}</span>
                 )}
                 {transaction.category && (
-                  <span className="transaction-category">🏷️ {transaction.category}</span>
+                  <span className="transaction-category" style={{
+                    display: 'inline-block',
+                    padding: '6px 14px',
+                    background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                    color: 'white',
+                    borderRadius: '20px',
+                    fontSize: '13px',
+                    fontWeight: '600',
+                    boxShadow: '0 2px 4px rgba(0, 0, 0, 0.1)'
+                  }}>🏷️ {transaction.category}</span>
                 )}
               </div>
             </div>
