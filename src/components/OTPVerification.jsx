@@ -190,7 +190,7 @@ const OTPVerification = ({ phoneNumber, countryCode, isExistingFamily, onVerifie
         </form>
       </div>
       <footer className="app-footer">
-        <span className="version">גרסה 2.9</span>
+        <span className="version">גרסה 2.9.1</span>
       </footer>
     </div>
   );

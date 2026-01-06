@@ -125,9 +125,9 @@ async function initializeData() {
       await db.collection('otpCodes').createIndex({ phoneNumber: 1 });
       await db.collection('otpCodes').createIndex({ expiresAt: 1 }, { expireAfterSeconds: 0 });
     }
-    console.log('Database initialized');
+    console.log('[DB] Indexes created');
   } catch (error) {
-    console.error('Error initializing data:', error);
+    console.error('[DB] Error initializing:', error.message);
   }
 }
 

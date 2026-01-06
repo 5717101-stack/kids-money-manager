@@ -28,12 +28,11 @@ echo "   גרסה חדשה: $NEW_VERSION"
 sed -i '' "s/\"version\": \"$CURRENT_VERSION\"/\"version\": \"$NEW_VERSION\"/" package.json
 sed -i '' "s/\"version\": \"$CURRENT_VERSION\"/\"version\": \"$NEW_VERSION\"/" server/package.json
 
-# עדכן גרסה בכל קבצי ה-React
-VERSION_DISPLAY="${NEW_VERSION%.*}"  # 2.8 במקום 2.8.0
-sed -i '' "s/גרסה [0-9]\+\.[0-9]\+/גרסה ${VERSION_DISPLAY}/g" src/App.jsx
-sed -i '' "s/גרסה [0-9]\+\.[0-9]\+/גרסה ${VERSION_DISPLAY}/g" src/components/WelcomeScreen.jsx
-sed -i '' "s/גרסה [0-9]\+\.[0-9]\+/גרסה ${VERSION_DISPLAY}/g" src/components/PhoneLogin.jsx
-sed -i '' "s/גרסה [0-9]\+\.[0-9]\+/גרסה ${VERSION_DISPLAY}/g" src/components/OTPVerification.jsx
+# עדכן גרסה בכל קבצי ה-React - מציגים גרסה מלאה
+sed -i '' "s/גרסה [0-9]\+\.[0-9]\+\(\.\?[0-9]*\)\?/גרסה ${NEW_VERSION}/g" src/App.jsx
+sed -i '' "s/גרסה [0-9]\+\.[0-9]\+\(\.\?[0-9]*\)\?/גרסה ${NEW_VERSION}/g" src/components/WelcomeScreen.jsx
+sed -i '' "s/גרסה [0-9]\+\.[0-9]\+\(\.\?[0-9]*\)\?/גרסה ${NEW_VERSION}/g" src/components/PhoneLogin.jsx
+sed -i '' "s/גרסה [0-9]\+\.[0-9]\+\(\.\?[0-9]*\)\?/גרסה ${NEW_VERSION}/g" src/components/OTPVerification.jsx
 
 # עדכן גרסה ב-server.js
 sed -i '' "s/version: '[0-9]\+\.[0-9]\+\.[0-9]\+'/version: '${NEW_VERSION}'/" server/server.js
