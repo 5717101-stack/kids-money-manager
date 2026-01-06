@@ -1269,7 +1269,10 @@ process.on('SIGTERM', () => {
   console.log(`[SERVER] Version ${VERSION} - SIGTERM received, shutting down...`);
   console.log(`[SERVER] Server was running for ${Math.floor(uptime)} seconds`);
   console.log(`[SERVER] Server ready status: ${serverReady ? 'YES' : 'NO'}`);
+  console.log(`[SERVER] Port: ${PORT}`);
+  console.log(`[SERVER] Health check URL: http://0.0.0.0:${PORT}/health`);
   console.log(`[SERVER] This usually means Railway health check failed or timed out`);
+  console.log(`[SERVER] ⚠️  Check Railway Dashboard: Settings → Service Type → Must be 'Web Service' not 'Job'`);
   if (server) {
     server.close(() => {
       console.log('[SERVER] Closed');
