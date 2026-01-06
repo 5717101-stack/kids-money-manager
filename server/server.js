@@ -1153,7 +1153,21 @@ app.post('/api/families/:familyId/children/:childId/pay-allowance', async (req, 
 
 // Health check
 app.get('/api/health', (req, res) => {
-  res.json({ status: 'ok', db: db ? 'connected' : 'memory' });
+  res.json({ 
+    status: 'ok', 
+    db: db ? 'connected' : 'memory',
+    timestamp: new Date().toISOString(),
+    uptime: process.uptime()
+  });
+});
+
+// Additional health check for Railway
+app.get('/health', (req, res) => {
+  res.json({ 
+    status: 'ok', 
+    db: db ? 'connected' : 'memory',
+    timestamp: new Date().toISOString()
+  });
 });
 
 // Root endpoint
