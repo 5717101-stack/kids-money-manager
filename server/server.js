@@ -40,11 +40,13 @@ if (TWILIO_ACCOUNT_SID && TWILIO_AUTH_TOKEN && TWILIO_PHONE_NUMBER) {
 
 // CRITICAL: Health check MUST be defined BEFORE any middleware
 // Railway checks this immediately and if it's slow, container stops
+// This endpoint must respond IMMEDIATELY - no logging, no processing
+let serverReady = false;
+
 app.get('/health', (req, res) => {
-  console.log(`[HEALTH] Health check requested from ${req.ip || req.connection.remoteAddress || 'unknown'}`);
+  // Respond immediately - no logging to avoid delays
   res.writeHead(200, { 'Content-Type': 'application/json' });
   res.end('{"status":"ok"}');
-  console.log(`[HEALTH] Health check responded with 200 OK`);
 });
 
 // Middleware - CORS configuration
