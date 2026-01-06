@@ -44,19 +44,17 @@ if (TWILIO_ACCOUNT_SID && TWILIO_AUTH_TOKEN && TWILIO_PHONE_NUMBER) {
 let serverReady = false;
 
 // Health check endpoint - must be fastest possible
+// Railway checks this endpoint to determine if service is healthy
 app.get('/health', (req, res) => {
   // Respond immediately - no logging, no processing, no async
   // Railway needs instant 200 OK response
-  res.statusCode = 200;
-  res.setHeader('Content-Type', 'application/json');
-  res.end('{"status":"ok"}');
+  // Use res.status() and res.json() for Express compatibility
+  res.status(200).json({ status: 'ok', timestamp: Date.now() });
 });
 
 // Also respond to /api/health for compatibility
 app.get('/api/health', (req, res) => {
-  res.statusCode = 200;
-  res.setHeader('Content-Type', 'application/json');
-  res.end('{"status":"ok"}');
+  res.status(200).json({ status: 'ok', timestamp: Date.now() });
 });
 
 // Middleware - CORS configuration
@@ -78,9 +76,14 @@ app.use((req, res, next) => {
   next();
 });
 
-// Keep-alive endpoint
+// Keep-alive endpoint - Railway can use this to verify service is running
 app.get('/keepalive', (req, res) => {
-  res.json({ status: 'alive', timestamp: new Date().toISOString() });
+  res.status(200).json({ 
+    status: 'alive', 
+    timestamp: new Date().toISOString(),
+    uptime: process.uptime(),
+    version: VERSION
+  });
 });
 
 // MongoDB connection
