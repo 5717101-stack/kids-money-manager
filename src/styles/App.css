@@ -2361,3 +2361,12 @@ body {
     flex-direction: column;
   }
 }
+
+/* Green OTP Button */
+.otp-button-green {
+  background: linear-gradient(90deg, var(--success) 0%, #059669 100%) !important;
+}
+
+.otp-button-green:hover:not(:disabled) {
+  background: linear-gradient(90deg, #059669 0%, var(--success) 100%) !important;
+}
