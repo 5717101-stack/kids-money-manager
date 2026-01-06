@@ -164,3 +164,4 @@ VITE_API_URL = https://kids-money-manager-production.up.railway.app/api
 **שימו לב:** עם `/api` בסוף!
 
 
+
