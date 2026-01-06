@@ -36,9 +36,15 @@ app.use(cors({
 
 app.use(express.json({ limit: '10mb' }));
 
-// Logging middleware
+// Logging middleware - log ALL requests
 app.use((req, res, next) => {
-  console.log(`${new Date().toISOString()} - ${req.method} ${req.path}`);
+  const timestamp = new Date().toISOString();
+  console.log(`\n📥 ${timestamp} - ${req.method} ${req.path}`);
+  console.log(`   IP: ${req.ip || req.connection.remoteAddress}`);
+  console.log(`   Headers: ${JSON.stringify(req.headers).substring(0, 200)}...`);
+  if (req.body && Object.keys(req.body).length > 0) {
+    console.log(`   Body: ${JSON.stringify(req.body).substring(0, 200)}...`);
+  }
   next();
 });
 
@@ -429,8 +435,16 @@ setInterval(async () => {
 
 // Send OTP for family registration/login
 app.post('/api/auth/send-otp', async (req, res) => {
+  console.log('\n🔔 === NEW REQUEST: /api/auth/send-otp ===');
+  console.log(`   Method: ${req.method}`);
+  console.log(`   Headers:`, JSON.stringify(req.headers, null, 2));
+  console.log(`   Body:`, JSON.stringify(req.body, null, 2));
+  console.log(`   IP: ${req.ip}`);
+  console.log(`   Timestamp: ${new Date().toISOString()}`);
+  
   try {
     const { phoneNumber, countryCode = '+972' } = req.body;
+    console.log(`   Parsed phoneNumber: ${phoneNumber}, countryCode: ${countryCode}`);
     
     if (!phoneNumber || !phoneNumber.match(/^\d+$/)) {
       return res.status(400).json({ error: 'מספר טלפון לא תקין' });
