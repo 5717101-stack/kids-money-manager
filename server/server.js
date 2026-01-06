@@ -1237,7 +1237,10 @@ let isShuttingDown = false;
 process.on('SIGTERM', () => {
   if (isShuttingDown) return;
   isShuttingDown = true;
-  console.log(`[SERVER] SIGTERM received, shutting down...`);
+  const uptime = process.uptime();
+  console.log(`[SERVER] Version ${VERSION} - SIGTERM received, shutting down...`);
+  console.log(`[SERVER] Server was running for ${Math.floor(uptime)} seconds`);
+  console.log(`[SERVER] This usually means Railway didn't receive a health check response`);
   if (server) {
     server.close(() => {
       console.log('[SERVER] Closed');
