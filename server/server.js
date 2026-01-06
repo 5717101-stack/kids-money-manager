@@ -1238,12 +1238,14 @@ server = app.listen(PORT, '0.0.0.0', () => {
   console.log(`[SERVER] Server is ready and listening`);
   console.log(`[SERVER] ✅ Server is now ready to accept health checks`);
   
-  // Start heartbeat to keep container alive
+  // Start heartbeat to keep container alive and log activity
   // Railway sometimes needs activity to know the service is alive
+  let heartbeatCount = 0;
   setInterval(() => {
     if (serverReady) {
-      // Just keep the process active - don't do heavy operations
-      // This helps Railway know the process is active
+      heartbeatCount++;
+      const uptime = process.uptime();
+      console.log(`[HEARTBEAT] Server is alive - uptime: ${Math.floor(uptime)}s, heartbeat: ${heartbeatCount}`);
     }
   }, 30000); // Every 30 seconds
 });
