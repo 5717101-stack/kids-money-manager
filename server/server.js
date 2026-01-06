@@ -18,12 +18,9 @@ let twilioClient = null;
 
 if (TWILIO_ACCOUNT_SID && TWILIO_AUTH_TOKEN && TWILIO_PHONE_NUMBER) {
   twilioClient = twilio(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN);
-  console.log('✅ Twilio SMS service initialized');
-  console.log(`   Account SID: ${TWILIO_ACCOUNT_SID.substring(0, 10)}...`);
-  console.log(`   Phone Number: ${TWILIO_PHONE_NUMBER}`);
+  console.log(`[TWILIO] Initialized (from: ${TWILIO_PHONE_NUMBER})`);
 } else {
-  console.log('⚠️  Twilio not configured - SMS will be logged to console only');
-  console.log(`   Missing: ${!TWILIO_ACCOUNT_SID ? 'TWILIO_ACCOUNT_SID ' : ''}${!TWILIO_AUTH_TOKEN ? 'TWILIO_AUTH_TOKEN ' : ''}${!TWILIO_PHONE_NUMBER ? 'TWILIO_PHONE_NUMBER' : ''}`);
+  console.log(`[TWILIO] ⚠️  Not configured - SMS will not be sent`);
 }
 
 // Middleware - CORS configuration
@@ -36,14 +33,11 @@ app.use(cors({
 
 app.use(express.json({ limit: '10mb' }));
 
-// Logging middleware - log ALL requests
+// Logging middleware - only log important requests
 app.use((req, res, next) => {
-  const timestamp = new Date().toISOString();
-  console.log(`\n📥 ${timestamp} - ${req.method} ${req.path}`);
-  console.log(`   IP: ${req.ip || req.connection.remoteAddress}`);
-  console.log(`   Headers: ${JSON.stringify(req.headers).substring(0, 200)}...`);
-  if (req.body && Object.keys(req.body).length > 0) {
-    console.log(`   Body: ${JSON.stringify(req.body).substring(0, 200)}...`);
+  // Only log API requests, not health checks
+  if (req.path.startsWith('/api/') && req.path !== '/api/health') {
+    console.log(`[${new Date().toISOString()}] ${req.method} ${req.path}`);
   }
   next();
 });
@@ -62,11 +56,11 @@ async function connectDB() {
     const client = new MongoClient(MONGODB_URI);
     await client.connect();
     db = client.db();
-    console.log('Connected to MongoDB');
+    console.log('[DB] Connected to MongoDB');
     await initializeData();
   } catch (error) {
-    console.error('MongoDB connection error:', error);
-    console.log('Falling back to in-memory storage');
+    console.error('[DB] Connection error:', error.message);
+    console.log('[DB] Using in-memory storage');
   }
 }
 
@@ -82,50 +76,23 @@ function generateChildCode() {
 
 // Send SMS via Twilio or log to console
 async function sendSMS(phoneNumber, message) {
-  console.log(`📤 Attempting to send SMS...`);
-  console.log(`   From: ${TWILIO_PHONE_NUMBER || 'NOT SET'}`);
-  console.log(`   To: ${phoneNumber}`);
-  console.log(`   Message length: ${message.length} chars`);
-  console.log(`   Twilio Client: ${twilioClient ? 'Initialized' : 'NOT INITIALIZED'}`);
-  
   if (twilioClient && TWILIO_PHONE_NUMBER) {
     try {
-      console.log(`   Sending via Twilio API...`);
       const result = await twilioClient.messages.create({
         body: message,
         from: TWILIO_PHONE_NUMBER,
         to: phoneNumber
       });
-      console.log(`✅ SMS sent successfully to ${phoneNumber}`);
-      console.log(`   Message SID: ${result.sid}`);
-      console.log(`   Status: ${result.status}`);
       return { success: true, sid: result.sid, status: result.status };
     } catch (error) {
-      console.error('❌ Error sending SMS:');
-      console.error(`   Message: ${error.message}`);
-      console.error(`   Code: ${error.code}`);
-      console.error(`   Status: ${error.status}`);
-      console.error(`   Full error:`, JSON.stringify(error, null, 2));
-      if (error.moreInfo) {
-        console.error(`   More info: ${error.moreInfo}`);
+      const errorMsg = `Twilio error: ${error.message} (code: ${error.code})`;
+      if (error.code === 21608 || error.code === 21614) {
+        console.error(`[SMS] ⚠️  Phone number not verified. Add ${phoneNumber} in Twilio Console → Verified Caller IDs`);
       }
-      
-      // Common error codes
-      if (error.code === 21211) {
-        console.error('   ⚠️  Invalid phone number format. Should be: +972505717101');
-      } else if (error.code === 21608 || error.code === 21614) {
-        console.error('   ⚠️  Phone number not verified. Add it in Twilio Console → Verified Caller IDs');
-      } else if (error.code === 30008) {
-        console.error('   ⚠️  Unknown destination handset');
-      }
-      
       return { success: false, error: error.message, code: error.code, status: error.status };
     }
   } else {
-    // Development mode - log to console
-    console.log(`⚠️  [DEV MODE] SMS not sent (Twilio not configured)`);
-    console.log(`   To: ${phoneNumber}`);
-    console.log(`   Message: ${message}`);
+    console.log(`[SMS] ⚠️  Twilio not configured - SMS would be sent to ${phoneNumber}`);
     return { success: true, dev: true };
   }
 }
@@ -435,16 +402,10 @@ setInterval(async () => {
 
 // Send OTP for family registration/login
 app.post('/api/auth/send-otp', async (req, res) => {
-  console.log('\n🔔 === NEW REQUEST: /api/auth/send-otp ===');
-  console.log(`   Method: ${req.method}`);
-  console.log(`   Headers:`, JSON.stringify(req.headers, null, 2));
-  console.log(`   Body:`, JSON.stringify(req.body, null, 2));
-  console.log(`   IP: ${req.ip}`);
-  console.log(`   Timestamp: ${new Date().toISOString()}`);
+  console.log(`[SEND-OTP] Request received: ${req.body.phoneNumber} (${req.body.countryCode || '+972'})`);
   
   try {
     const { phoneNumber, countryCode = '+972' } = req.body;
-    console.log(`   Parsed phoneNumber: ${phoneNumber}, countryCode: ${countryCode}`);
     
     if (!phoneNumber || !phoneNumber.match(/^\d+$/)) {
       return res.status(400).json({ error: 'מספר טלפון לא תקין' });
@@ -465,24 +426,13 @@ app.post('/api/auth/send-otp', async (req, res) => {
     });
     
     // Send SMS
-    const message = existingFamily 
-      ? `קוד האימות שלך: ${otpCode}. קוד זה תקף ל-10 דקות.`
-      : `קוד האימות שלך: ${otpCode}. קוד זה תקף ל-10 דקות.`;
+    const message = `קוד האימות שלך: ${otpCode}. קוד זה תקף ל-10 דקות.`;
     
-    console.log(`\n📨 === Sending OTP ===`);
-    console.log(`   Phone: ${fullPhoneNumber}`);
-    console.log(`   OTP Code: ${otpCode}`);
-    console.log(`   Existing Family: ${!!existingFamily}`);
-    
+    console.log(`[SEND-OTP] Sending SMS to ${fullPhoneNumber}, OTP: ${otpCode}`);
     const smsResult = await sendSMS(fullPhoneNumber, message);
     
-    console.log(`📨 === SMS Result ===`);
-    console.log(`   Success: ${smsResult.success}`);
     if (!smsResult.success) {
-      console.error(`   ❌ Failed to send SMS to ${fullPhoneNumber}`);
-      console.error(`   Error: ${smsResult.error}`);
-      console.error(`   Code: ${smsResult.code}`);
-      // Return error to user so they know SMS failed
+      console.error(`[SEND-OTP] ❌ SMS failed: ${smsResult.error} (code: ${smsResult.code})`);
       return res.status(500).json({ 
         error: 'שגיאה בשליחת SMS. אנא נסה שוב או פנה לתמיכה.',
         smsError: smsResult.error,
@@ -490,7 +440,7 @@ app.post('/api/auth/send-otp', async (req, res) => {
       });
     }
     
-    console.log(`   ✅ SMS sent successfully\n`);
+    console.log(`[SEND-OTP] ✅ SMS sent successfully (SID: ${smsResult.sid})`);
     
     res.json({ 
       success: true, 
@@ -1227,7 +1177,7 @@ app.get('/', (req, res) => {
   res.status(200).json({ 
     message: 'Kids Money Manager API',
     status: 'running',
-    version: '2.8.0',
+    version: '2.9.1',
     timestamp: new Date().toISOString()
   });
 });
@@ -1237,7 +1187,7 @@ app.get('/', (req, res) => {
   res.json({ 
     message: 'Kids Money Manager API',
     status: 'running',
-    version: '2.8.0'
+    version: '2.9.1'
   });
 });
 
@@ -1245,94 +1195,62 @@ app.get('/', (req, res) => {
 let server;
 
 // Start server immediately, don't wait for DB
-// This ensures Railway sees the server as healthy ASAP
 server = app.listen(PORT, '0.0.0.0', () => {
-    console.log(`✅ Server running on http://0.0.0.0:${PORT}`);
-    console.log(`✅ Health check available at http://0.0.0.0:${PORT}/api/health`);
-    console.log(`✅ Health check also at http://0.0.0.0:${PORT}/health`);
-    console.log(`✅ Server is ready to accept connections`);
-    
-    // Send a test health check immediately
-    setTimeout(() => {
-      console.log(`✅ Health check test: Server is alive and responding`);
-    }, 1000);
-  });
-  
-  // Keep server alive
-  server.on('error', (error) => {
-    console.error('❌ Server error:', error);
-  });
-  
-  server.on('listening', () => {
-    console.log('✅ Server is listening and ready');
-    console.log(`✅ PID: ${process.pid}`);
-  });
-  
-  // Keep process alive - prevent Railway from killing it
-  // Also ping health check endpoint to keep it warm
-  setInterval(() => {
-    if (server && server.listening) {
-      const uptime = Math.floor(process.uptime());
-      console.log(`💓 Heartbeat: Server is alive (uptime: ${uptime}s, pid: ${process.pid})`);
-      
-      // Ping our own health check to keep it warm
-      fetch(`http://localhost:${PORT}/api/health`).catch(() => {
-        // Ignore errors, just keeping it warm
-      });
-    }
-  }, 30000); // Every 30 seconds
-  
-  // Also send heartbeat more frequently at the start
-  let heartbeatCount = 0;
-  const initialHeartbeat = setInterval(() => {
-    if (server && server.listening && heartbeatCount < 10) {
-      heartbeatCount++;
-      console.log(`💓 Initial heartbeat ${heartbeatCount}/10`);
-    } else {
-      clearInterval(initialHeartbeat);
-    }
-  }, 5000); // Every 5 seconds for first 50 seconds
-  
+  console.log(`[SERVER] Started on port ${PORT}`);
+});
+
+server.on('error', (error) => {
+  console.error('[SERVER] Error:', error);
+});
+
+server.on('listening', () => {
+  console.log(`[SERVER] Listening on http://0.0.0.0:${PORT}`);
+});
+
+// Handle shutdown gracefully
+let isShuttingDown = false;
+
 process.on('SIGTERM', () => {
-  console.log('⚠️  SIGTERM received from Railway - this is normal for deployments');
-  console.log(`   Server was running for ${Math.floor(process.uptime())} seconds`);
-  console.log(`   This usually means Railway is redeploying or scaling`);
+  if (isShuttingDown) return;
+  isShuttingDown = true;
+  console.log(`[SERVER] SIGTERM received, shutting down...`);
   if (server) {
     server.close(() => {
-      console.log('✅ Server closed gracefully');
+      console.log('[SERVER] Closed');
+      process.exit(0);
+    });
+    // Force exit after 10 seconds
+    setTimeout(() => {
+      console.log('[SERVER] Force exit');
+      process.exit(1);
+    }, 10000);
+  } else {
+    process.exit(0);
+  }
+});
+  
+process.on('SIGINT', () => {
+  if (isShuttingDown) return;
+  isShuttingDown = true;
+  console.log('[SERVER] SIGINT received, shutting down...');
+  if (server) {
+    server.close(() => {
       process.exit(0);
     });
   } else {
     process.exit(0);
   }
 });
-  
-  process.on('SIGINT', () => {
-    console.log('⚠️  SIGINT received, shutting down gracefully...');
-    if (server) {
-      server.close(() => {
-        console.log('✅ Server closed gracefully');
-        process.exit(0);
-      });
-    } else {
-      process.exit(0);
-    }
-  });
-  
-  // Handle uncaught errors
-  process.on('uncaughtException', (error) => {
-    console.error('❌ Uncaught Exception:', error);
-    // Don't exit, let Railway handle it
-  });
-  
-  process.on('unhandledRejection', (reason, promise) => {
-    console.error('❌ Unhandled Rejection at:', promise, 'reason:', reason);
-    // Don't exit, let Railway handle it
-  });
+
+// Handle uncaught errors
+process.on('uncaughtException', (error) => {
+  console.error('[ERROR] Uncaught Exception:', error.message);
+});
+
+process.on('unhandledRejection', (reason) => {
+  console.error('[ERROR] Unhandled Rejection:', reason);
+});
 
 // Connect to DB in background (don't block server startup)
-connectDB().then(() => {
-  console.log('✅ Database connection established');
-}).catch((error) => {
-  console.error('⚠️  Database connection failed, using in-memory storage:', error.message);
-});
+connectDB();
+
