@@ -125,6 +125,9 @@ const PhoneLogin = ({ onOTPSent, countryCode: initialCountryCode }) => {
           </button>
         </form>
       </div>
+      <footer className="app-footer">
+        <span className="version">גרסה 2.8</span>
+      </footer>
     </div>
   );
 };

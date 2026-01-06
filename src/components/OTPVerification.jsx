@@ -160,7 +160,7 @@ const OTPVerification = ({ phoneNumber, countryCode, isExistingFamily, onVerifie
 
           <button 
             type="submit" 
-            className="otp-button"
+            className="otp-button otp-button-green"
             disabled={isLoading || otp.join('').length !== 6}
           >
             {isLoading ? 'מאמת...' : 'אימות'}
@@ -183,6 +183,9 @@ const OTPVerification = ({ phoneNumber, countryCode, isExistingFamily, onVerifie
           </div>
         </form>
       </div>
+      <footer className="app-footer">
+        <span className="version">גרסה 2.8</span>
+      </footer>
     </div>
   );
 };
