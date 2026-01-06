@@ -4,7 +4,6 @@ import { MongoClient } from 'mongodb';
 import dotenv from 'dotenv';
 import crypto from 'crypto';
 import twilio from 'twilio';
-import http from 'http';
 
 dotenv.config();
 
@@ -23,6 +22,13 @@ if (TWILIO_ACCOUNT_SID && TWILIO_AUTH_TOKEN && TWILIO_PHONE_NUMBER) {
 } else {
   console.log(`[TWILIO] ⚠️  Not configured - SMS will not be sent`);
 }
+
+// CRITICAL: Health check MUST be defined BEFORE any middleware
+// Railway checks this immediately and if it's slow, container stops
+app.get('/health', (req, res) => {
+  res.writeHead(200, { 'Content-Type': 'application/json' });
+  res.end('{"status":"ok"}');
+});
 
 // Middleware - CORS configuration
 app.use(cors({
