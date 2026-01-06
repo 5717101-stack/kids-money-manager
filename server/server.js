@@ -1191,12 +1191,6 @@ let server;
 server = app.listen(PORT, '0.0.0.0', () => {
   console.log(`[SERVER] Started on port ${PORT}`);
   console.log(`[SERVER] Health check: http://0.0.0.0:${PORT}/health`);
-  // Test health check immediately to ensure it works
-  const http = require('http');
-  const testReq = http.get(`http://localhost:${PORT}/health`, (res) => {
-    console.log(`[SERVER] Health check test: ${res.statusCode}`);
-  });
-  testReq.on('error', () => {});
 });
 
 server.on('error', (error) => {

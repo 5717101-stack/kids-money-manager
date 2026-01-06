@@ -34,10 +34,15 @@ sed -i '' "s/גרסה [0-9]\+\.[0-9]\+\(\.\?[0-9]*\)\?/גרסה ${NEW_VERSION}/g
 sed -i '' "s/גרסה [0-9]\+\.[0-9]\+\(\.\?[0-9]*\)\?/גרסה ${NEW_VERSION}/g" src/components/PhoneLogin.jsx
 sed -i '' "s/גרסה [0-9]\+\.[0-9]\+\(\.\?[0-9]*\)\?/גרסה ${NEW_VERSION}/g" src/components/OTPVerification.jsx
 
-# עדכן גרסה ב-server.js
-sed -i '' "s/version: '[0-9]\+\.[0-9]\+\.[0-9]\+'/version: '${NEW_VERSION}'/" server/server.js
+# עדכן גרסה ב-server.js - כל המופעים
+sed -i '' "s/version: '[0-9]\+\.[0-9]\+\.[0-9]\+'/version: '${NEW_VERSION}'/g" server/server.js
 
-echo "   ✓ גרסה עודכנה בכל הקבצים"
+echo "   ✓ גרסה עודכנה בכל הקבצים:"
+echo "      - package.json: ${NEW_VERSION}"
+echo "      - server/package.json: ${NEW_VERSION}"
+echo "      - server/server.js: ${NEW_VERSION}"
+echo "      - src/App.jsx: גרסה ${NEW_VERSION}"
+echo "      - src/components/*.jsx: גרסה ${NEW_VERSION}"
 echo ""
 
 # 3. Commit
