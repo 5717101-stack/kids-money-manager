@@ -16,11 +16,14 @@ const TWILIO_AUTH_TOKEN = process.env.TWILIO_AUTH_TOKEN;
 const TWILIO_PHONE_NUMBER = process.env.TWILIO_PHONE_NUMBER;
 let twilioClient = null;
 
-if (TWILIO_ACCOUNT_SID && TWILIO_AUTH_TOKEN) {
+if (TWILIO_ACCOUNT_SID && TWILIO_AUTH_TOKEN && TWILIO_PHONE_NUMBER) {
   twilioClient = twilio(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN);
-  console.log('Twilio SMS service initialized');
+  console.log('✅ Twilio SMS service initialized');
+  console.log(`   Account SID: ${TWILIO_ACCOUNT_SID.substring(0, 10)}...`);
+  console.log(`   Phone Number: ${TWILIO_PHONE_NUMBER}`);
 } else {
-  console.log('Twilio not configured - SMS will be logged to console only');
+  console.log('⚠️  Twilio not configured - SMS will be logged to console only');
+  console.log(`   Missing: ${!TWILIO_ACCOUNT_SID ? 'TWILIO_ACCOUNT_SID ' : ''}${!TWILIO_AUTH_TOKEN ? 'TWILIO_AUTH_TOKEN ' : ''}${!TWILIO_PHONE_NUMBER ? 'TWILIO_PHONE_NUMBER' : ''}`);
 }
 
 // Middleware - CORS configuration
