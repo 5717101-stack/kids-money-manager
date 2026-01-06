@@ -369,16 +369,57 @@ const ParentDashboard = () => {
 
               <div className="form-group">
                 <label htmlFor="amount">סכום (₪):</label>
-                <input
-                  type="number"
-                  id="amount"
-                  step="1"
-                  min="1"
-                  value={amount}
-                  onChange={(e) => setAmount(e.target.value)}
-                  required
-                  placeholder="הכנס סכום"
-                />
+                <div style={{ 
+                  display: 'flex', 
+                  alignItems: 'center', 
+                  gap: '12px', 
+                  direction: 'rtl',
+                  padding: '8px',
+                  background: 'var(--bg)',
+                  borderRadius: 'var(--radius-lg)',
+                  border: '2px solid var(--border)',
+                  transition: 'all 0.2s ease'
+                }} className="amount-input-wrapper">
+                  <span style={{ 
+                    fontSize: '24px', 
+                    fontWeight: '700', 
+                    color: 'var(--text-primary)',
+                    minWidth: '35px',
+                    textAlign: 'center'
+                  }}>₪</span>
+                  <input
+                    type="number"
+                    id="amount"
+                    step="1"
+                    min="1"
+                    value={amount}
+                    onChange={(e) => setAmount(e.target.value)}
+                    required
+                    placeholder="0"
+                    style={{
+                      flex: 1,
+                      padding: '16px 20px',
+                      border: 'none',
+                      borderRadius: 'var(--radius-md)',
+                      fontSize: '20px',
+                      fontWeight: '700',
+                      textAlign: 'center',
+                      background: 'transparent',
+                      minHeight: '56px',
+                      letterSpacing: '1px'
+                    }}
+                    onFocus={(e) => {
+                      e.target.parentElement.style.borderColor = 'var(--primary)';
+                      e.target.parentElement.style.boxShadow = '0 0 0 4px var(--primary-light)';
+                      e.target.parentElement.style.background = 'var(--bg-card)';
+                    }}
+                    onBlur={(e) => {
+                      e.target.parentElement.style.borderColor = 'var(--border)';
+                      e.target.parentElement.style.boxShadow = 'none';
+                      e.target.parentElement.style.background = 'var(--bg)';
+                    }}
+                  />
+                </div>
               </div>
 
               <div className="form-group">

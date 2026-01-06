@@ -325,34 +325,47 @@ body {
 .cashbox-input-group {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 16px;
   direction: rtl;
-  margin-top: 16px;
+  margin-top: 20px;
+  padding: 8px;
+  background: var(--bg);
+  border-radius: var(--radius-lg);
+  border: 2px solid var(--border);
+  transition: all 0.2s ease;
+}
+
+.cashbox-input-group:focus-within {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 4px var(--primary-light);
+  background: var(--bg-card);
 }
 
 .cashbox-input-group input {
   flex: 1;
-  padding: 12px 16px;
-  border: 2px solid var(--border);
+  padding: 18px 24px;
+  border: none;
   border-radius: var(--radius-md);
-  font-size: 18px;
-  font-weight: 600;
+  font-size: 24px;
+  font-weight: 700;
   text-align: center;
   transition: all 0.2s ease;
-  background: var(--bg-card);
+  background: transparent;
+  min-height: 64px;
+  letter-spacing: 1px;
 }
 
 .cashbox-input-group input:focus {
   outline: none;
-  border-color: var(--primary);
-  box-shadow: 0 0 0 3px var(--primary-light);
+  transform: scale(1.05);
 }
 
 .cashbox-input-group .currency-symbol {
-  font-size: 20px;
+  font-size: 28px;
   font-weight: 700;
-  min-width: 30px;
+  min-width: 40px;
   text-align: center;
+  padding: 0 8px;
 }
 
 /* Transaction Form */
@@ -431,20 +444,34 @@ body {
 .form-group input[type="text"],
 .form-group input[type="number"],
 .form-group select {
-  padding: 12px 16px;
-  border: 1px solid var(--border);
+  padding: 16px 20px;
+  border: 2px solid var(--border);
   border-radius: var(--radius-md);
-  font-size: 15px;
+  font-size: 18px;
   transition: all 0.2s ease;
   background: var(--bg-card);
-  font-weight: 500;
+  font-weight: 600;
+  min-height: 56px;
+}
+
+.form-group input[type="number"] {
+  font-size: 20px;
+  text-align: center;
+  letter-spacing: 1px;
+  font-weight: 700;
 }
 
 .form-group input:focus,
 .form-group select:focus {
   outline: none;
   border-color: var(--primary);
-  box-shadow: 0 0 0 3px var(--primary-light);
+  box-shadow: 0 0 0 4px var(--primary-light);
+  transform: scale(1.02);
+}
+
+.form-group input[type="number"]:focus {
+  border-width: 3px;
+  box-shadow: 0 0 0 5px var(--primary-light);
 }
 
 .category-select {
@@ -1007,31 +1034,47 @@ body {
 .allowance-input-group {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 16px;
   direction: rtl;
+  padding: 8px;
+  background: var(--bg);
+  border-radius: var(--radius-lg);
+  border: 2px solid var(--border);
+  transition: all 0.2s ease;
+}
+
+.allowance-input-group:focus-within {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 4px var(--primary-light);
+  background: var(--bg-card);
 }
 
 .allowance-input {
-  padding: 10px 14px;
-  border: 1px solid var(--border);
+  padding: 16px 20px;
+  border: none;
   border-radius: var(--radius-md);
-  font-size: 16px;
-  font-weight: 600;
+  font-size: 20px;
+  font-weight: 700;
   text-align: center;
   transition: all 0.2s ease;
-  background: var(--bg-card);
+  background: transparent;
+  min-height: 56px;
+  min-width: 180px;
+  letter-spacing: 1px;
 }
 
 .allowance-input:focus {
   outline: none;
-  border-color: var(--primary);
-  box-shadow: 0 0 0 3px var(--primary-light);
+  transform: scale(1.05);
 }
 
 .currency-label {
-  font-size: 18px;
+  font-size: 24px;
   font-weight: 700;
   color: var(--text-primary);
+  padding: 0 8px;
+  min-width: 40px;
+  text-align: center;
 }
 
 .allowance-select {
