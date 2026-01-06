@@ -1201,11 +1201,11 @@ app.get('/api/health', (req, res) => {
 });
 
 // Additional health check for Railway - responds immediately (fastest possible)
+// This MUST be fast - Railway uses this to determine if the service is healthy
 app.get('/health', (req, res) => {
-  res.status(200).json({ 
-    status: 'ok',
-    timestamp: new Date().toISOString()
-  });
+  // Respond immediately with minimal processing
+  res.writeHead(200, { 'Content-Type': 'application/json' });
+  res.end(JSON.stringify({ status: 'ok' }));
 });
 
 // Root endpoint - also responds quickly
