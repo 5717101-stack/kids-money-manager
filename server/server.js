@@ -1230,15 +1230,7 @@ app.get('/api/health', (req, res) => {
 
 // /api/health is already defined above, no need for duplicate
 
-// Root endpoint
-app.get('/', (req, res) => {
-  res.status(200).json({ 
-    message: 'Kids Money Manager API',
-    status: 'running',
-    version: '2.9.1',
-    timestamp: new Date().toISOString()
-  });
-});
+// Root endpoint is already defined at the top - no duplicate needed
 
 // Start server
 let server;
