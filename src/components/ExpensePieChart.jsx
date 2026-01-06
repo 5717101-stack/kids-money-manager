@@ -101,29 +101,69 @@ const ExpensePieChart = ({ expensesByCategory, title, days }) => {
   const options = {
     responsive: true,
     maintainAspectRatio: false,
+    animation: {
+      animateRotate: true,
+      animateScale: true,
+      duration: 1500,
+      easing: 'easeOutQuart'
+    },
     plugins: {
       legend: {
         position: 'bottom',
         rtl: true,
         labels: {
-          padding: 15,
+          padding: 20,
           font: {
-            size: 14,
-            family: 'Arial, sans-serif'
-          }
+            size: 15,
+            weight: '600',
+            family: '-apple-system, BlinkMacSystemFont, "Segoe UI", "Roboto", "Oxygen", "Ubuntu", "Cantarell", "Fira Sans", "Droid Sans", "Helvetica Neue", "Arial", "Noto Sans Hebrew", sans-serif'
+          },
+          usePointStyle: true,
+          pointStyle: 'circle',
+          boxWidth: 12,
+          boxHeight: 12
         }
       },
       tooltip: {
         rtl: true,
+        backgroundColor: 'rgba(0, 0, 0, 0.85)',
+        padding: 15,
+        titleFont: {
+          size: 16,
+          weight: '700'
+        },
+        bodyFont: {
+          size: 15,
+          weight: '600'
+        },
+        borderColor: 'rgba(255, 255, 255, 0.2)',
+        borderWidth: 1,
+        cornerRadius: 12,
+        displayColors: true,
         callbacks: {
+          title: function(context) {
+            return context[0].label || '';
+          },
           label: function(context) {
             const label = context.label || '';
             const value = context.parsed || 0;
             const total = context.dataset.data.reduce((a, b) => a + b, 0);
             const percentage = ((value / total) * 100).toFixed(1);
-            return `${label}: ₪${value.toFixed(2)} (${percentage}%)`;
+            return `סכום: ₪${value.toFixed(2)} | אחוז: ${percentage}%`;
+          },
+          footer: function(tooltipItems) {
+            const total = tooltipItems.reduce((sum, item) => sum + item.parsed, 0);
+            return `סה"כ: ₪${total.toFixed(2)}`;
           }
         }
+      }
+    },
+    elements: {
+      arc: {
+        borderWidth: 3,
+        borderColor: '#ffffff',
+        hoverBorderWidth: 5,
+        hoverOffset: 8
       }
     }
   };
