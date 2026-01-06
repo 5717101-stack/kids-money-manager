@@ -1211,10 +1211,11 @@ let server;
 // Start server immediately, don't wait for DB
 // Railway needs the server to respond to health checks immediately
 server = app.listen(PORT, '0.0.0.0', () => {
+  serverReady = true;
   console.log(`[SERVER] Version ${VERSION} - Started on port ${PORT}`);
   console.log(`[SERVER] Health check: http://0.0.0.0:${PORT}/health`);
   console.log(`[SERVER] Server is ready and listening`);
-  console.log(`[SERVER] Waiting for Railway health check...`);
+  console.log(`[SERVER] ✅ Server is now ready to accept health checks`);
 });
 
 server.on('error', (error) => {
