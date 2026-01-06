@@ -1187,22 +1187,23 @@ app.post('/api/families/:familyId/children/:childId/pay-allowance', async (req, 
   }
 });
 
-// Health check - must respond quickly for Railway
+// Health check - must respond quickly for Railway (no async operations)
 app.get('/api/health', (req, res) => {
-  res.json({ 
+  // Respond immediately without waiting for anything
+  res.status(200).json({ 
     status: 'ok', 
     db: db ? 'connected' : 'memory',
     timestamp: new Date().toISOString(),
     uptime: process.uptime(),
-    twilio: twilioClient ? 'configured' : 'not configured'
+    twilio: twilioClient ? 'configured' : 'not configured',
+    pid: process.pid
   });
 });
 
-// Additional health check for Railway - responds immediately
+// Additional health check for Railway - responds immediately (fastest possible)
 app.get('/health', (req, res) => {
   res.status(200).json({ 
-    status: 'ok', 
-    db: db ? 'connected' : 'memory',
+    status: 'ok',
     timestamp: new Date().toISOString()
   });
 });
@@ -1253,11 +1254,29 @@ connectDB().then(() => {
   });
   
   // Keep process alive - prevent Railway from killing it
+  // Also ping health check endpoint to keep it warm
   setInterval(() => {
     if (server && server.listening) {
-      console.log(`💓 Heartbeat: Server is alive (uptime: ${Math.floor(process.uptime())}s)`);
+      const uptime = Math.floor(process.uptime());
+      console.log(`💓 Heartbeat: Server is alive (uptime: ${uptime}s, pid: ${process.pid})`);
+      
+      // Ping our own health check to keep it warm
+      fetch(`http://localhost:${PORT}/api/health`).catch(() => {
+        // Ignore errors, just keeping it warm
+      });
     }
   }, 30000); // Every 30 seconds
+  
+  // Also send heartbeat more frequently at the start
+  let heartbeatCount = 0;
+  const initialHeartbeat = setInterval(() => {
+    if (server && server.listening && heartbeatCount < 10) {
+      heartbeatCount++;
+      console.log(`💓 Initial heartbeat ${heartbeatCount}/10`);
+    } else {
+      clearInterval(initialHeartbeat);
+    }
+  }, 5000); // Every 5 seconds for first 50 seconds
   
   process.on('SIGTERM', () => {
     console.log('⚠️  SIGTERM received, shutting down gracefully...');
