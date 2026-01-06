@@ -30,7 +30,7 @@ const App = () => {
     <div className="app">
       <nav className="main-nav">
         <button
-          className={view === 'parent' ? 'active' : ''}
+          className={`parent-button ${view === 'parent' ? 'active' : ''}`}
           onClick={handleParentViewClick}
         >
           👨‍👩‍👧‍👦 ממשק הורה

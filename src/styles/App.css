@@ -103,6 +103,16 @@ body {
   box-shadow: var(--shadow-md);
 }
 
+.main-nav button.parent-button.active {
+  background: var(--success);
+  border-color: var(--success);
+}
+
+.main-nav button.parent-button:hover {
+  background: var(--success-light);
+  border-color: var(--success);
+}
+
 /* Parent Dashboard */
 .parent-dashboard {
   background: var(--bg-card);
