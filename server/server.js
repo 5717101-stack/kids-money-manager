@@ -46,10 +46,19 @@ let serverReady = false;
 // Health check endpoint - must be fastest possible
 // Railway checks this endpoint to determine if service is healthy
 app.get('/health', (req, res) => {
-  // Respond immediately - no logging, no processing, no async
-  // Railway needs instant 200 OK response
-  // Use res.status() and res.json() for Express compatibility
-  res.status(200).json({ status: 'ok', timestamp: Date.now() });
+  // Log health check request for debugging
+  const startTime = Date.now();
+  
+  // Respond immediately - Railway needs instant 200 OK response
+  res.status(200).json({ 
+    status: 'ok', 
+    timestamp: Date.now(),
+    uptime: process.uptime(),
+    version: VERSION
+  });
+  
+  const duration = Date.now() - startTime;
+  console.log(`[HEALTH] Health check responded in ${duration}ms from ${req.ip || req.headers['x-forwarded-for'] || 'unknown'}`);
 });
 
 // Also respond to /api/health for compatibility
