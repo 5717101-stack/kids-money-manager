@@ -1230,8 +1230,9 @@ app.get('/', (req, res) => {
 // Start server
 let server;
 
-connectDB().then(() => {
-  server = app.listen(PORT, '0.0.0.0', () => {
+// Start server immediately, don't wait for DB
+// This ensures Railway sees the server as healthy ASAP
+server = app.listen(PORT, '0.0.0.0', () => {
     console.log(`✅ Server running on http://0.0.0.0:${PORT}`);
     console.log(`✅ Health check available at http://0.0.0.0:${PORT}/api/health`);
     console.log(`✅ Health check also at http://0.0.0.0:${PORT}/health`);
