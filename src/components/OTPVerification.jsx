@@ -139,7 +139,7 @@ const OTPVerification = ({ phoneNumber, countryCode, isExistingFamily, onVerifie
         </div>
 
         <form onSubmit={handleSubmit} className="otp-form" onPaste={handlePaste}>
-          <div className="otp-inputs">
+          <div className="otp-inputs" dir="ltr">
             {otp.map((digit, index) => (
               <input
                 key={index}
