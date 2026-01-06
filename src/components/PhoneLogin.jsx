@@ -50,7 +50,12 @@ const PhoneLogin = ({ onOTPSent, countryCode: initialCountryCode }) => {
     setIsLoading(true);
 
     try {
-      const response = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3001/api'}/auth/send-otp`, {
+      const apiUrl = import.meta.env.VITE_API_URL || 'https://kids-money-manager-production.up.railway.app/api';
+      const url = `${apiUrl}/auth/send-otp`;
+      console.log('📤 Sending OTP request to:', url);
+      console.log('📤 Request body:', { phoneNumber: phoneNumber.replace(/\D/g, ''), countryCode });
+      
+      const response = await fetch(url, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -60,6 +65,9 @@ const PhoneLogin = ({ onOTPSent, countryCode: initialCountryCode }) => {
           countryCode
         })
       });
+      
+      console.log('📥 Response status:', response.status);
+      console.log('📥 Response ok:', response.ok);
 
       const data = await response.json();
 

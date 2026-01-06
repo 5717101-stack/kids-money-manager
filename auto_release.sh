@@ -17,8 +17,9 @@ echo "1. מעדכן גרסה..."
 CURRENT_VERSION=$(grep '"version"' package.json | cut -d'"' -f4)
 MAJOR=$(echo $CURRENT_VERSION | cut -d'.' -f1)
 MINOR=$(echo $CURRENT_VERSION | cut -d'.' -f2)
-NEW_MINOR=$((MINOR + 1))
-NEW_VERSION="${MAJOR}.${NEW_MINOR}.0"
+PATCH=$(echo $CURRENT_VERSION | cut -d'.' -f3)
+NEW_PATCH=$((PATCH + 1))
+NEW_VERSION="${MAJOR}.${MINOR}.${NEW_PATCH}"
 
 echo "   גרסה נוכחית: $CURRENT_VERSION"
 echo "   גרסה חדשה: $NEW_VERSION"

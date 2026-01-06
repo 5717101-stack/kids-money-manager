@@ -104,7 +104,11 @@ const OTPVerification = ({ phoneNumber, countryCode, isExistingFamily, onVerifie
     setOtp(['', '', '', '', '', '']);
 
     try {
-      const response = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3001/api'}/auth/send-otp`, {
+      const apiUrl = import.meta.env.VITE_API_URL || 'https://kids-money-manager-production.up.railway.app/api';
+      const url = `${apiUrl}/auth/send-otp`;
+      console.log('📤 Resending OTP request to:', url);
+      
+      const response = await fetch(url, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -114,6 +118,8 @@ const OTPVerification = ({ phoneNumber, countryCode, isExistingFamily, onVerifie
           countryCode
         })
       });
+      
+      console.log('📥 Response status:', response.status);
 
       const data = await response.json();
 
