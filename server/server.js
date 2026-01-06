@@ -1188,10 +1188,13 @@ let server;
 // Railway needs the server to respond to health checks immediately
 server = app.listen(PORT, '0.0.0.0', () => {
   console.log(`[SERVER] Started on port ${PORT}`);
-  // Immediately respond to a test request to ensure server is ready
-  setTimeout(() => {
-    fetch(`http://localhost:${PORT}/health`).catch(() => {});
-  }, 100);
+  console.log(`[SERVER] Health check: http://0.0.0.0:${PORT}/health`);
+  // Test health check immediately to ensure it works
+  const http = require('http');
+  const testReq = http.get(`http://localhost:${PORT}/health`, (res) => {
+    console.log(`[SERVER] Health check test: ${res.statusCode}`);
+  });
+  testReq.on('error', () => {});
 });
 
 server.on('error', (error) => {
@@ -1200,7 +1203,6 @@ server.on('error', (error) => {
 
 server.on('listening', () => {
   console.log(`[SERVER] Listening on http://0.0.0.0:${PORT}`);
-  console.log(`[SERVER] Health check: http://0.0.0.0:${PORT}/health`);
 });
 
 // Handle shutdown gracefully
@@ -1238,15 +1240,20 @@ process.on('SIGINT', () => {
   }
 });
 
-// Handle uncaught errors
+// Handle uncaught errors - don't crash on errors
 process.on('uncaughtException', (error) => {
   console.error('[ERROR] Uncaught Exception:', error.message);
+  // Don't exit - let Railway handle it
 });
 
 process.on('unhandledRejection', (reason) => {
   console.error('[ERROR] Unhandled Rejection:', reason);
+  // Don't exit - let Railway handle it
 });
 
 // Connect to DB in background (don't block server startup)
-connectDB();
+// This happens after server is already listening
+setTimeout(() => {
+  connectDB();
+}, 100);
 
