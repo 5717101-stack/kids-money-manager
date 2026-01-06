@@ -45,6 +45,7 @@ let serverReady = false;
 
 app.get('/health', (req, res) => {
   // Respond immediately - no logging to avoid delays
+  // Railway needs instant response
   res.writeHead(200, { 'Content-Type': 'application/json' });
   res.end('{"status":"ok"}');
 });
@@ -1234,7 +1235,8 @@ process.on('SIGTERM', () => {
   const uptime = process.uptime();
   console.log(`[SERVER] Version ${VERSION} - SIGTERM received, shutting down...`);
   console.log(`[SERVER] Server was running for ${Math.floor(uptime)} seconds`);
-  console.log(`[SERVER] This usually means Railway didn't receive a health check response`);
+  console.log(`[SERVER] Server ready status: ${serverReady ? 'YES' : 'NO'}`);
+  console.log(`[SERVER] This usually means Railway health check failed or timed out`);
   if (server) {
     server.close(() => {
       console.log('[SERVER] Closed');
