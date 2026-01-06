@@ -1187,21 +1187,32 @@ app.post('/api/families/:familyId/children/:childId/pay-allowance', async (req, 
   }
 });
 
-// Health check
+// Health check - must respond quickly for Railway
 app.get('/api/health', (req, res) => {
   res.json({ 
     status: 'ok', 
     db: db ? 'connected' : 'memory',
     timestamp: new Date().toISOString(),
-    uptime: process.uptime()
+    uptime: process.uptime(),
+    twilio: twilioClient ? 'configured' : 'not configured'
   });
 });
 
-// Additional health check for Railway
+// Additional health check for Railway - responds immediately
 app.get('/health', (req, res) => {
-  res.json({ 
+  res.status(200).json({ 
     status: 'ok', 
     db: db ? 'connected' : 'memory',
+    timestamp: new Date().toISOString()
+  });
+});
+
+// Root endpoint - also responds quickly
+app.get('/', (req, res) => {
+  res.status(200).json({ 
+    message: 'Kids Money Manager API',
+    status: 'running',
+    version: '2.8.0',
     timestamp: new Date().toISOString()
   });
 });
@@ -1222,7 +1233,13 @@ connectDB().then(() => {
   server = app.listen(PORT, '0.0.0.0', () => {
     console.log(`✅ Server running on http://0.0.0.0:${PORT}`);
     console.log(`✅ Health check available at http://0.0.0.0:${PORT}/api/health`);
+    console.log(`✅ Health check also at http://0.0.0.0:${PORT}/health`);
     console.log(`✅ Server is ready to accept connections`);
+    
+    // Send a test health check immediately
+    setTimeout(() => {
+      console.log(`✅ Health check test: Server is alive and responding`);
+    }, 1000);
   });
   
   // Keep server alive
@@ -1232,7 +1249,15 @@ connectDB().then(() => {
   
   server.on('listening', () => {
     console.log('✅ Server is listening and ready');
+    console.log(`✅ PID: ${process.pid}`);
   });
+  
+  // Keep process alive - prevent Railway from killing it
+  setInterval(() => {
+    if (server && server.listening) {
+      console.log(`💓 Heartbeat: Server is alive (uptime: ${Math.floor(process.uptime())}s)`);
+    }
+  }, 30000); // Every 30 seconds
   
   process.on('SIGTERM', () => {
     console.log('⚠️  SIGTERM received, shutting down gracefully...');
