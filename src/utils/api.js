@@ -1,7 +1,7 @@
 // Get API URL - check if we're in production, development, or mobile app
 const getApiUrl = () => {
-  // Production API URL (replace with your Railway URL)
-  const PRODUCTION_API = 'https://your-railway-app.up.railway.app/api';
+  // Production API URL
+  const PRODUCTION_API = 'https://kids-money-manager-production.up.railway.app/api';
   
   // If we're in a mobile app (Capacitor)
   if (typeof window !== 'undefined' && window.Capacitor?.isNativePlatform()) {
