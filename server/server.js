@@ -1228,6 +1228,15 @@ server = app.listen(PORT, '0.0.0.0', () => {
   console.log(`[SERVER] Health check: http://0.0.0.0:${PORT}/health`);
   console.log(`[SERVER] Server is ready and listening`);
   console.log(`[SERVER] ✅ Server is now ready to accept health checks`);
+  
+  // Start heartbeat to keep container alive
+  // Railway sometimes needs activity to know the service is alive
+  setInterval(() => {
+    if (serverReady) {
+      // Just keep the process active - don't do heavy operations
+      // This helps Railway know the process is active
+    }
+  }, 30000); // Every 30 seconds
 });
 
 server.on('error', (error) => {
