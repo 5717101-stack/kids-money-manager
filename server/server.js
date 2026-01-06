@@ -1175,11 +1175,7 @@ app.get('/health', (req, res) => {
   res.end('{"status":"ok"}');
 });
 
-// Also add /api/health for compatibility
-app.get('/api/health', (req, res) => {
-  res.writeHead(200, { 'Content-Type': 'application/json' });
-  res.end('{"status":"ok"}');
-});
+// /api/health is already defined above, no need for duplicate
 
 // Root endpoint
 app.get('/', (req, res) => {
