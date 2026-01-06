@@ -4,6 +4,7 @@ import { MongoClient } from 'mongodb';
 import dotenv from 'dotenv';
 import crypto from 'crypto';
 import twilio from 'twilio';
+import http from 'http';
 
 dotenv.config();
 
@@ -1166,9 +1167,16 @@ app.get('/api/health', (req, res) => {
 
 // Health check for Railway - responds immediately (fastest possible)
 // This MUST be fast - Railway uses this to determine if the service is healthy
+// MUST be defined BEFORE any other routes to ensure it's registered first
 app.get('/health', (req, res) => {
   // Respond immediately with minimal processing - no async, no DB checks
   // Use writeHead + end for fastest response (faster than res.json)
+  res.writeHead(200, { 'Content-Type': 'application/json' });
+  res.end('{"status":"ok"}');
+});
+
+// Also add /api/health for compatibility
+app.get('/api/health', (req, res) => {
   res.writeHead(200, { 'Content-Type': 'application/json' });
   res.end('{"status":"ok"}');
 });
@@ -1191,6 +1199,32 @@ let server;
 server = app.listen(PORT, '0.0.0.0', () => {
   console.log(`[SERVER] Started on port ${PORT}`);
   console.log(`[SERVER] Health check: http://0.0.0.0:${PORT}/health`);
+  console.log(`[SERVER] Server is ready and listening`);
+  
+  // Immediately test health check to ensure it works
+  setTimeout(() => {
+    const options = {
+      hostname: 'localhost',
+      port: PORT,
+      path: '/health',
+      method: 'GET',
+      timeout: 1000
+    };
+    const req = http.request(options, (res) => {
+      console.log(`[SERVER] Health check test: ${res.statusCode}`);
+      if (res.statusCode === 200) {
+        console.log(`[SERVER] ✅ Health check is working`);
+      }
+    });
+    req.on('error', (err) => {
+      console.log(`[SERVER] ⚠️  Health check test error: ${err.message}`);
+    });
+    req.on('timeout', () => {
+      req.destroy();
+      console.log(`[SERVER] ⚠️  Health check test timeout`);
+    });
+    req.end();
+  }, 100);
 });
 
 server.on('error', (error) => {
