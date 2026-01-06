@@ -18,9 +18,7 @@ const getApiUrl = () => {
     return 'http://localhost:3001/api';
   }
   
-  // Fallback - try to detect if we're on a deployed frontend
-  // If frontend is on Vercel but API URL not set, this will fail
-  // User needs to set VITE_API_URL in Vercel
+  // Fallback
   console.warn('VITE_API_URL not set! Please configure it in Vercel environment variables.');
   return 'http://localhost:3001/api';
 };
@@ -30,8 +28,6 @@ const API_BASE_URL = getApiUrl();
 // Helper function for API calls
 async function apiCall(endpoint, options = {}) {
   const url = `${API_BASE_URL}${endpoint}`;
-  
-  console.log('API Call:', url); // Debug log
   
   try {
     const response = await fetch(url, {
@@ -56,7 +52,6 @@ async function apiCall(endpoint, options = {}) {
       envVar: import.meta.env.VITE_API_URL
     });
     
-    // Provide more helpful error message
     if (error.message === 'Failed to fetch' || error.name === 'TypeError') {
       throw new Error(
         `לא ניתן להתחבר לשרת. בדוק:\n` +
@@ -70,17 +65,23 @@ async function apiCall(endpoint, options = {}) {
   }
 }
 
-// Get all children data
-export const getData = async () => {
-  const response = await apiCall('/children');
+// Get all children data for a family
+export const getData = async (familyId) => {
+  if (!familyId) {
+    throw new Error('Family ID is required');
+  }
+  const response = await apiCall(`/families/${familyId}/children`);
   return {
     children: response.children
   };
 };
 
 // Get child data
-export const getChild = async (childId) => {
-  const response = await apiCall(`/children/${childId}`);
+export const getChild = async (familyId, childId) => {
+  if (!familyId || !childId) {
+    throw new Error('Family ID and Child ID are required');
+  }
+  const response = await apiCall(`/families/${familyId}/children/${childId}`);
   return {
     name: response.name,
     balance: response.balance || 0,
@@ -95,9 +96,12 @@ export const getChild = async (childId) => {
 };
 
 // Add transaction (deposit or expense)
-export const addTransaction = async (childId, type, amount, description, category = null) => {
+export const addTransaction = async (familyId, childId, type, amount, description, category = null) => {
+  if (!familyId || !childId) {
+    throw new Error('Family ID and Child ID are required');
+  }
   try {
-    const response = await apiCall('/transactions', {
+    const response = await apiCall(`/families/${familyId}/transactions`, {
       method: 'POST',
       body: JSON.stringify({
         childId,
@@ -110,36 +114,36 @@ export const addTransaction = async (childId, type, amount, description, categor
     return response.transaction;
   } catch (error) {
     console.error('addTransaction error:', error);
-    // Re-throw with more details
     throw new Error(error.message || 'Failed to add transaction');
   }
 };
 
 // Get transactions for a child (optionally limited)
-export const getChildTransactions = async (childId, limit = null) => {
+export const getChildTransactions = async (familyId, childId, limit = null) => {
+  if (!familyId || !childId) {
+    throw new Error('Family ID and Child ID are required');
+  }
   const params = limit ? `?limit=${limit}` : '';
-  const response = await apiCall(`/children/${childId}/transactions${params}`);
+  const response = await apiCall(`/families/${familyId}/children/${childId}/transactions${params}`);
   return response.transactions || [];
 };
 
-// Reset all data (balances and transactions)
-export const resetAllData = async () => {
-  const response = await apiCall('/reset', {
-    method: 'POST'
-  });
-  return response;
-};
-
 // Get expenses by category for a child
-export const getExpensesByCategory = async (childId, days = 30) => {
-  const response = await apiCall(`/children/${childId}/expenses-by-category?days=${days}`);
+export const getExpensesByCategory = async (familyId, childId, days = 30) => {
+  if (!familyId || !childId) {
+    throw new Error('Family ID and Child ID are required');
+  }
+  const response = await apiCall(`/families/${familyId}/children/${childId}/expenses-by-category?days=${days}`);
   return response.expensesByCategory || [];
 };
 
 // Update cash box balance for a child
-export const updateCashBoxBalance = async (childId, cashBoxBalance) => {
+export const updateCashBoxBalance = async (familyId, childId, cashBoxBalance) => {
+  if (!familyId || !childId) {
+    throw new Error('Family ID and Child ID are required');
+  }
   try {
-    const response = await apiCall(`/children/${childId}/cashbox`, {
+    const response = await apiCall(`/families/${familyId}/children/${childId}/cashbox`, {
       method: 'PUT',
       body: JSON.stringify({
         cashBoxBalance: parseFloat(cashBoxBalance)
@@ -153,43 +157,56 @@ export const updateCashBoxBalance = async (childId, cashBoxBalance) => {
 };
 
 // Categories API
-export const getCategories = async () => {
-  const response = await apiCall('/categories');
+export const getCategories = async (familyId) => {
+  if (!familyId) {
+    throw new Error('Family ID is required');
+  }
+  const response = await apiCall(`/families/${familyId}/categories`);
   return response.categories || [];
 };
 
-export const addCategory = async (name, activeFor = []) => {
-  const response = await apiCall('/categories', {
+export const addCategory = async (familyId, name, activeFor = []) => {
+  if (!familyId) {
+    throw new Error('Family ID is required');
+  }
+  const response = await apiCall(`/families/${familyId}/categories`, {
     method: 'POST',
     body: JSON.stringify({ name, activeFor })
   });
   return response.category;
 };
 
-export const updateCategory = async (categoryId, name, activeFor) => {
-  const response = await apiCall(`/categories/${categoryId}`, {
+export const updateCategory = async (familyId, categoryId, name, activeFor) => {
+  if (!familyId || !categoryId) {
+    throw new Error('Family ID and Category ID are required');
+  }
+  const response = await apiCall(`/families/${familyId}/categories/${categoryId}`, {
     method: 'PUT',
     body: JSON.stringify({ name, activeFor })
   });
   return response;
 };
 
-export const deleteCategory = async (categoryId) => {
-  const response = await apiCall(`/categories/${categoryId}`, {
+export const deleteCategory = async (familyId, categoryId) => {
+  if (!familyId || !categoryId) {
+    throw new Error('Family ID and Category ID are required');
+  }
+  const response = await apiCall(`/families/${familyId}/categories/${categoryId}`, {
     method: 'DELETE'
   });
   return response;
 };
 
 // Profile image API
-export const updateProfileImage = async (childId, profileImage) => {
+export const updateProfileImage = async (familyId, childId, profileImage) => {
+  if (!familyId || !childId) {
+    throw new Error('Family ID and Child ID are required');
+  }
   try {
-    console.log('Calling updateProfileImage for', childId, 'image length:', profileImage ? profileImage.length : 0);
-    const response = await apiCall(`/children/${childId}/profile-image`, {
+    const response = await apiCall(`/families/${familyId}/children/${childId}/profile-image`, {
       method: 'PUT',
       body: JSON.stringify({ profileImage })
     });
-    console.log('updateProfileImage response:', response);
     return response;
   } catch (error) {
     console.error('updateProfileImage error:', error);
@@ -198,8 +215,11 @@ export const updateProfileImage = async (childId, profileImage) => {
 };
 
 // Weekly allowance API
-export const updateWeeklyAllowance = async (childId, weeklyAllowance, allowanceType, allowanceDay, allowanceTime) => {
-  const response = await apiCall(`/children/${childId}/weekly-allowance`, {
+export const updateWeeklyAllowance = async (familyId, childId, weeklyAllowance, allowanceType, allowanceDay, allowanceTime) => {
+  if (!familyId || !childId) {
+    throw new Error('Family ID and Child ID are required');
+  }
+  const response = await apiCall(`/families/${familyId}/children/${childId}/weekly-allowance`, {
     method: 'PUT',
     body: JSON.stringify({ 
       weeklyAllowance: parseFloat(weeklyAllowance),
@@ -212,10 +232,33 @@ export const updateWeeklyAllowance = async (childId, weeklyAllowance, allowanceT
 };
 
 // Manually pay weekly allowance
-export const payWeeklyAllowance = async (childId) => {
-  const response = await apiCall(`/children/${childId}/pay-allowance`, {
+export const payWeeklyAllowance = async (familyId, childId) => {
+  if (!familyId || !childId) {
+    throw new Error('Family ID and Child ID are required');
+  }
+  const response = await apiCall(`/families/${familyId}/children/${childId}/pay-allowance`, {
     method: 'POST'
   });
   return response;
 };
 
+// Create child
+export const createChild = async (familyId, name) => {
+  if (!familyId || !name) {
+    throw new Error('Family ID and name are required');
+  }
+  const response = await apiCall(`/families/${familyId}/children`, {
+    method: 'POST',
+    body: JSON.stringify({ name })
+  });
+  return response;
+};
+
+// Get child password (for recovery)
+export const getChildPassword = async (familyId, childId) => {
+  if (!familyId || !childId) {
+    throw new Error('Family ID and Child ID are required');
+  }
+  const response = await apiCall(`/families/${familyId}/children/${childId}/password`);
+  return response.password;
+};

@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { getCategories, addCategory, updateCategory, deleteCategory, getData, updateProfileImage, updateWeeklyAllowance, payWeeklyAllowance } from '../utils/api';
+import { getCategories, addCategory, updateCategory, deleteCategory, getData, updateProfileImage, updateWeeklyAllowance, payWeeklyAllowance, createChild, getChildPassword } from '../utils/api';
+import ChildJoin from './ChildJoin';
 
 const CHILD_COLORS = {
   child1: '#3b82f6', // כחול
@@ -11,8 +12,8 @@ const CHILD_NAMES = {
   child2: 'ג\'וּן'
 };
 
-const Settings = ({ onClose }) => {
-  const [activeTab, setActiveTab] = useState('categories'); // 'categories', 'profileImages', 'allowances'
+const Settings = ({ familyId, onClose }) => {
+  const [activeTab, setActiveTab] = useState('categories'); // 'categories', 'profileImages', 'allowances', 'children'
   const [categories, setCategories] = useState([]);
   const [newCategoryName, setNewCategoryName] = useState('');
   const [editingCategory, setEditingCategory] = useState(null);
@@ -21,6 +22,10 @@ const Settings = ({ onClose }) => {
   const [allowanceStates, setAllowanceStates] = useState({});
   const [uploadingImages, setUploadingImages] = useState({});
   const fileInputRefs = useRef({});
+  const [showChildJoin, setShowChildJoin] = useState(false);
+  const [newChildName, setNewChildName] = useState('');
+  const [creatingChild, setCreatingChild] = useState(false);
+  const [childPasswordModal, setChildPasswordModal] = useState(null); // { childId, childName, password }
 
   useEffect(() => {
     loadData();
@@ -29,12 +34,17 @@ const Settings = ({ onClose }) => {
   const loadData = async () => {
     try {
       setLoading(true);
+      if (!familyId) {
+        setLoading(false);
+        return;
+      }
+      
       const [categoriesData, childrenData] = await Promise.all([
-        getCategories().catch(err => {
+        getCategories(familyId).catch(err => {
           console.error('Error loading categories:', err);
           return [];
         }),
-        getData().catch(err => {
+        getData(familyId).catch(err => {
           console.error('Error loading children data:', err);
           return { children: {} };
         })
@@ -44,16 +54,13 @@ const Settings = ({ onClose }) => {
       
       // Initialize allowance states
       const states = {};
-      ['child1', 'child2'].forEach(childId => {
-        const child = childrenData?.children?.[childId];
-        if (child) {
-          states[childId] = {
-            amount: child.weeklyAllowance || 0,
-            type: child.allowanceType || 'weekly',
-            day: child.allowanceDay !== undefined ? child.allowanceDay : 1,
-            time: child.allowanceTime || '08:00'
-          };
-        }
+      Object.entries(childrenData?.children || {}).forEach(([childId, child]) => {
+        states[childId] = {
+          amount: child.weeklyAllowance || 0,
+          type: child.allowanceType || 'weekly',
+          day: child.allowanceDay !== undefined ? child.allowanceDay : 1,
+          time: child.allowanceTime || '08:00'
+        };
       });
       setAllowanceStates(states);
     } catch (error) {
@@ -74,8 +81,10 @@ const Settings = ({ onClose }) => {
       return;
     }
 
+    if (!familyId) return;
     try {
-      const category = await addCategory(newCategoryName.trim(), ['child1', 'child2']);
+      const childrenIds = Object.keys(allData.children || {});
+      const category = await addCategory(familyId, newCategoryName.trim(), childrenIds);
       setCategories([...categories, category]);
       setNewCategoryName('');
     } catch (error) {
@@ -84,8 +93,9 @@ const Settings = ({ onClose }) => {
   };
 
   const handleUpdateCategory = async (categoryId, name, activeFor) => {
+    if (!familyId) return;
     try {
-      await updateCategory(categoryId, name, activeFor);
+      await updateCategory(familyId, categoryId, name, activeFor);
       setCategories(categories.map(cat => 
         cat._id === categoryId ? { ...cat, name, activeFor } : cat
       ));
@@ -100,8 +110,9 @@ const Settings = ({ onClose }) => {
       return;
     }
 
+    if (!familyId) return;
     try {
-      await deleteCategory(categoryId);
+      await deleteCategory(familyId, categoryId);
       setCategories(categories.filter(cat => cat._id !== categoryId));
     } catch (error) {
       alert('שגיאה במחיקת קטגוריה: ' + error.message);
@@ -111,9 +122,10 @@ const Settings = ({ onClose }) => {
   const handleImageUpload = async (childId, file) => {
     // If file is null, remove the image
     if (!file) {
+      if (!familyId) return;
       try {
         setUploadingImages(prev => ({ ...prev, [childId]: true }));
-        await updateProfileImage(childId, null);
+        await updateProfileImage(familyId, childId, null);
         await loadData();
         alert('תמונת הפרופיל הוסרה בהצלחה!');
       } catch (error) {
@@ -237,8 +249,9 @@ const Settings = ({ onClose }) => {
       
       console.log('Uploading image, final size:', base64Image.length, 'bytes');
       
+      if (!familyId) return;
       // Add timeout to prevent hanging
-      const uploadPromise = updateProfileImage(childId, base64Image);
+      const uploadPromise = updateProfileImage(familyId, childId, base64Image);
       const timeoutPromise = new Promise((_, reject) => 
         setTimeout(() => reject(new Error('העלאה ארכה יותר מדי זמן. נסה שוב.')), 60000)
       );
@@ -259,8 +272,8 @@ const Settings = ({ onClose }) => {
       // Reload data without showing loading state to avoid UI freeze
       try {
         const [categoriesData, childrenData] = await Promise.all([
-          getCategories().catch(() => categories), // Keep current categories on error
-          getData().catch(() => allData) // Keep current data on error
+          getCategories(familyId).catch(() => categories), // Keep current categories on error
+          getData(familyId).catch(() => allData) // Keep current data on error
         ]);
         
         if (Array.isArray(categoriesData)) {
@@ -299,8 +312,9 @@ const Settings = ({ onClose }) => {
   };
 
   const handleAllowanceUpdate = async (childId, allowance, allowanceType, allowanceDay, allowanceTime) => {
+    if (!familyId) return;
     try {
-      await updateWeeklyAllowance(childId, allowance, allowanceType, allowanceDay, allowanceTime);
+      await updateWeeklyAllowance(familyId, childId, allowance, allowanceType, allowanceDay, allowanceTime);
       await loadData();
       alert('דמי הכיס עודכנו בהצלחה!');
     } catch (error) {
@@ -353,6 +367,12 @@ const Settings = ({ onClose }) => {
           onClick={() => setActiveTab('allowances')}
         >
           דמי כיס
+        </button>
+        <button
+          className={activeTab === 'children' ? 'active' : ''}
+          onClick={() => setActiveTab('children')}
+        >
+          ילדים
         </button>
       </div>
 
@@ -416,22 +436,16 @@ const Settings = ({ onClose }) => {
                   )}
                   
                   <div className="category-children">
-                    <label>
-                      <input
-                        type="checkbox"
-                        checked={(category.activeFor || []).includes('child1')}
-                        onChange={() => toggleCategoryForChild(category._id, 'child1')}
-                      />
-                      {CHILD_NAMES.child1}
-                    </label>
-                    <label>
-                      <input
-                        type="checkbox"
-                        checked={(category.activeFor || []).includes('child2')}
-                        onChange={() => toggleCategoryForChild(category._id, 'child2')}
-                      />
-                      {CHILD_NAMES.child2}
-                    </label>
+                    {Object.entries(allData.children || {}).map(([childId, child]) => (
+                      <label key={childId}>
+                        <input
+                          type="checkbox"
+                          checked={(category.activeFor || []).includes(childId)}
+                          onChange={() => toggleCategoryForChild(category._id, childId)}
+                        />
+                        {child.name}
+                      </label>
+                    ))}
                   </div>
                 </div>
               ))}
@@ -443,11 +457,10 @@ const Settings = ({ onClose }) => {
           <div className="profile-images-section">
             <h2>תמונות פרופיל</h2>
             
-            {['child1', 'child2'].map(childId => {
-              const child = allData?.children?.[childId];
+            {Object.entries(allData.children || {}).map(([childId, child]) => {
               if (!child) return null;
 
-              const childName = child?.name || CHILD_NAMES[childId] || 'ילד';
+              const childName = child?.name || 'ילד';
               const profileImage = child?.profileImage;
 
               return (
@@ -513,8 +526,7 @@ const Settings = ({ onClose }) => {
               ניתן גם לשלם ידנית באמצעות הכפתור למטה.
             </p>
             
-            {['child1', 'child2'].map(childId => {
-              const child = allData?.children?.[childId];
+            {Object.entries(allData.children || {}).map(([childId, child]) => {
               if (!child) return null;
 
               const state = allowanceStates[childId] || {
@@ -543,7 +555,7 @@ const Settings = ({ onClose }) => {
 
               return (
                 <div key={childId} className="allowance-item">
-                  <h3>{child?.name || CHILD_NAMES[childId] || 'ילד'}</h3>
+                  <h3>{child?.name || 'ילד'}</h3>
                   
                   <div className="allowance-config-group">
                     <label className="allowance-label">סכום:</label>
@@ -636,10 +648,11 @@ const Settings = ({ onClose }) => {
                     <button
                       className="pay-allowance-button"
                       onClick={async () => {
+                        if (!familyId) return;
                         try {
-                          await payWeeklyAllowance(childId);
+                          await payWeeklyAllowance(familyId, childId);
                           await loadData();
-                          alert(`דמי כיס שולמו ל${child?.name || CHILD_NAMES[childId] || 'ילד'}!`);
+                          alert(`דמי כיס שולמו ל${child?.name || 'ילד'}!`);
                         } catch (error) {
                           alert('שגיאה בתשלום דמי הכיס: ' + (error.message || 'Unknown error'));
                         }
@@ -653,7 +666,146 @@ const Settings = ({ onClose }) => {
             })}
           </div>
         )}
+
+        {activeTab === 'children' && (
+          <div className="children-section">
+            <h2>ניהול ילדים</h2>
+            
+            <div className="children-list">
+              {Object.entries(allData.children || {}).map(([childId, child]) => (
+                <div key={childId} className="child-item">
+                  <div className="child-info">
+                    {child.profileImage && (
+                      <img src={child.profileImage} alt={child.name} className="child-avatar" />
+                    )}
+                    <div>
+                      <h3>{child.name}</h3>
+                      <p>יתרה: ₪{((child.balance || 0) + (child.cashBoxBalance || 0)).toFixed(2)}</p>
+                    </div>
+                  </div>
+                  <button
+                    className="recover-password-button"
+                    onClick={async () => {
+                      if (!familyId) return;
+                      try {
+                        const password = await getChildPassword(familyId, childId);
+                        setChildPasswordModal({ childId, childName: child.name, password });
+                      } catch (error) {
+                        alert('שגיאה בקבלת סיסמה: ' + error.message);
+                      }
+                    }}
+                  >
+                    שחזר סיסמה
+                  </button>
+                </div>
+              ))}
+            </div>
+
+            <div className="add-child-section">
+              <h3>הוסף ילד חדש</h3>
+              <form
+                onSubmit={async (e) => {
+                  e.preventDefault();
+                  if (!familyId || !newChildName.trim()) return;
+                  
+                  setCreatingChild(true);
+                  try {
+                    const result = await createChild(familyId, newChildName.trim());
+                    setChildPasswordModal({
+                      childId: result.child._id,
+                      childName: result.child.name,
+                      password: result.password,
+                      joinCode: result.joinCode
+                    });
+                    setNewChildName('');
+                    await loadData();
+                    if (onClose) {
+                      setTimeout(() => {
+                        window.location.reload();
+                      }, 1000);
+                    }
+                  } catch (error) {
+                    alert('שגיאה ביצירת ילד: ' + error.message);
+                  } finally {
+                    setCreatingChild(false);
+                  }
+                }}
+                className="add-child-form"
+              >
+                <input
+                  type="text"
+                  value={newChildName}
+                  onChange={(e) => setNewChildName(e.target.value)}
+                  placeholder="שם הילד"
+                  className="child-name-input"
+                  required
+                />
+                <button type="submit" className="add-child-button" disabled={creatingChild}>
+                  {creatingChild ? 'יוצר...' : 'הוסף ילד'}
+                </button>
+              </form>
+            </div>
+
+            <div className="join-child-section">
+              <h3>הצטרף לחשבון משפחתי קיים</h3>
+              <button
+                className="join-child-button"
+                onClick={() => setShowChildJoin(true)}
+              >
+                הצטרף עם קוד
+              </button>
+            </div>
+          </div>
+        )}
       </div>
+
+      {showChildJoin && (
+        <ChildJoin
+          familyId={familyId}
+          onJoined={async (child) => {
+            setShowChildJoin(false);
+            await loadData();
+            if (onClose) {
+              setTimeout(() => {
+                window.location.reload();
+              }, 1000);
+            }
+          }}
+          onCancel={() => setShowChildJoin(false)}
+        />
+      )}
+
+      {childPasswordModal && (
+        <div className="password-modal-overlay" onClick={() => setChildPasswordModal(null)}>
+          <div className="password-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="password-modal-header">
+              <h2>סיסמה ל{childPasswordModal.childName}</h2>
+              <button className="close-button" onClick={() => setChildPasswordModal(null)}>×</button>
+            </div>
+            <div className="password-modal-content">
+              <p className="password-label">סיסמה:</p>
+              <div className="password-display">{childPasswordModal.password}</div>
+              {childPasswordModal.joinCode && (
+                <>
+                  <p className="password-label">קוד הצטרפות:</p>
+                  <div className="password-display">{childPasswordModal.joinCode}</div>
+                  <p className="password-note">
+                    שמור את הקוד הזה! הילד יכול להשתמש בו כדי להצטרף למשפחה ממכשיר אחר.
+                  </p>
+                </>
+              )}
+              <p className="password-note">
+                שמור את הסיסמה הזו! היא תצטרך אם הילד ישכח אותה או יחליף מכשיר.
+              </p>
+            </div>
+            <div className="password-modal-footer">
+              <button className="password-close-button" onClick={() => setChildPasswordModal(null)}>
+                סגור
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

@@ -9,7 +9,7 @@ const CHILD_COLORS = {
   child2: '#ec4899'  // ורוד
 };
 
-const ChildView = ({ childId }) => {
+const ChildView = ({ childId, familyId }) => {
   const [childData, setChildData] = useState(null);
   const [transactions, setTransactions] = useState([]);
   const [expenses7Days, setExpenses7Days] = useState([]);
@@ -23,17 +23,18 @@ const ChildView = ({ childId }) => {
   }, [childId]);
 
   const loadChildData = async () => {
+    if (!familyId || !childId) return;
     try {
-      const child = await getChild(childId);
+      const child = await getChild(familyId, childId);
       if (child) {
         setChildData(child);
         // Show last 15 transactions
-        const trans = await getChildTransactions(childId, 15);
+        const trans = await getChildTransactions(familyId, childId, 15);
         setTransactions(trans);
         
         // Load expense statistics
-        const expenses7 = await getExpensesByCategory(childId, 7);
-        const expenses30 = await getExpensesByCategory(childId, 30);
+        const expenses7 = await getExpensesByCategory(familyId, childId, 7);
+        const expenses30 = await getExpensesByCategory(familyId, childId, 30);
         setExpenses7Days(expenses7);
         setExpenses30Days(expenses30);
       }
@@ -43,8 +44,9 @@ const ChildView = ({ childId }) => {
   };
 
   const handleCashBoxUpdate = async (newValue) => {
+    if (!familyId || !childId) return;
     try {
-      await updateCashBoxBalance(childId, newValue);
+      await updateCashBoxBalance(familyId, childId, newValue);
       await loadChildData();
     } catch (error) {
       alert('שגיאה בעדכון יתרת הקופה: ' + error.message);

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { getChild, addTransaction, getChildTransactions, getData, resetAllData, getCategories } from '../utils/api';
+import { getChild, addTransaction, getChildTransactions, getData, getCategories } from '../utils/api';
 import BalanceDisplay from './BalanceDisplay';
 import TransactionList from './TransactionList';
 import Settings from './Settings';
@@ -9,8 +9,8 @@ const CHILD_COLORS = {
   child2: '#ec4899'  // ורוד
 };
 
-const ParentDashboard = () => {
-  const [selectedChild, setSelectedChild] = useState('child1');
+const ParentDashboard = ({ familyId, onChildrenUpdated }) => {
+  const [selectedChild, setSelectedChild] = useState(null);
   const [childData, setChildData] = useState(null);
   const [transactions, setTransactions] = useState([]);
   const [amount, setAmount] = useState('');
@@ -31,12 +31,17 @@ const ParentDashboard = () => {
       try {
         setLoading(true);
         // Load data in parallel
+        if (!familyId) {
+          setLoading(false);
+          return;
+        }
+        
         const [dataResult, categoriesResult] = await Promise.allSettled([
-          getData().catch(err => {
+          getData(familyId).catch(err => {
             console.error('Error loading data:', err);
             return null;
           }),
-          getCategories().catch(err => {
+          getCategories(familyId).catch(err => {
             console.error('Error loading categories:', err);
             return [];
           })
@@ -46,13 +51,18 @@ const ParentDashboard = () => {
         
         if (dataResult.status === 'fulfilled' && dataResult.value) {
           setAllData(dataResult.value);
+          // Set first child as selected if none selected
+          const children = Object.keys(dataResult.value.children || {});
+          if (children.length > 0 && !selectedChild) {
+            setSelectedChild(children[0]);
+          }
         }
         
         if (categoriesResult.status === 'fulfilled') {
           const cats = categoriesResult.value || [];
-          const activeCategories = cats
+          const activeCategories = selectedChild ? cats
             .filter(cat => (cat.activeFor || []).includes(selectedChild))
-            .map(cat => cat.name);
+            .map(cat => cat.name) : [];
           if (activeCategories.length > 0) {
             setCategories(activeCategories);
             // Only update category if current one is not in list
@@ -83,11 +93,12 @@ const ParentDashboard = () => {
       mounted = false;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [familyId]);
 
   const loadCategories = async () => {
+    if (!familyId || !selectedChild) return;
     try {
-      const cats = await getCategories();
+      const cats = await getCategories(familyId);
       // Filter categories that are active for the selected child
       const activeCategories = cats
         .filter(cat => (cat.activeFor || []).includes(selectedChild))
@@ -133,7 +144,8 @@ const ParentDashboard = () => {
         setTimeout(() => reject(new Error('טעינת הנתונים ארכה יותר מדי זמן. נסה לרענן את הדף.')), 10000)
       );
       
-      const dataPromise = getData();
+      if (!familyId) return;
+      const dataPromise = getData(familyId);
       const data = await Promise.race([dataPromise, timeoutPromise]);
       
       if (data && data.children) {
@@ -155,17 +167,18 @@ const ParentDashboard = () => {
   };
 
   const loadChildData = async () => {
+    if (!familyId || !selectedChild) return;
     try {
-      const child = await getChild(selectedChild);
+      const child = await getChild(familyId, selectedChild);
       if (child) {
         setChildData(child);
-        const trans = await getChildTransactions(selectedChild);
+        const trans = await getChildTransactions(familyId, selectedChild);
         setTransactions(trans);
       }
       // Refresh all data to update balances (but don't set loading state)
       // Only update if we have valid data
       try {
-        const data = await getData();
+        const data = await getData(familyId);
         if (data && data.children) {
           setAllData(data);
         }
@@ -190,10 +203,11 @@ const ParentDashboard = () => {
       return;
     }
 
+    if (!familyId || !selectedChild) return;
     try {
       setSubmitting(true);
       const transactionCategory = transactionType === 'expense' ? category : null;
-      await addTransaction(selectedChild, transactionType, amount, description, transactionCategory);
+      await addTransaction(familyId, selectedChild, transactionType, amount, description, transactionCategory);
       setAmount('');
       setDescription('');
       setCategory('אחר'); // Reset to default
@@ -210,9 +224,19 @@ const ParentDashboard = () => {
       return;
     }
 
+    if (!familyId) return;
     try {
       setResetting(true);
-      await resetAllData();
+      // Reset each child individually
+      const children = Object.keys(allData.children || {});
+      for (const childId of children) {
+        await addTransaction(familyId, childId, 'deposit', 0, 'איפוס', null);
+        // Set balance to 0 by adding a negative transaction equal to current balance
+        const child = await getChild(familyId, childId);
+        if (child && child.balance > 0) {
+          await addTransaction(familyId, childId, 'expense', child.balance, 'איפוס יתרה', 'אחר');
+        }
+      }
       await loadAllData();
       await loadChildData();
       alert('כל הנתונים אופסו בהצלחה!');
@@ -224,13 +248,7 @@ const ParentDashboard = () => {
   };
 
 
-  const child1Balance = allData.children.child1?.balance || 0;
-  const child1CashBox = allData.children.child1?.cashBoxBalance || 0;
-  const child1Total = child1Balance + child1CashBox;
-  
-  const child2Balance = allData.children.child2?.balance || 0;
-  const child2CashBox = allData.children.child2?.cashBoxBalance || 0;
-  const child2Total = child2Balance + child2CashBox;
+  const childrenList = Object.values(allData.children || {});
 
   if (loading) {
     return (
@@ -264,71 +282,69 @@ const ParentDashboard = () => {
       </div>
       
       {showSettings && (
-        <Settings onClose={() => {
-          setShowSettings(false);
-          loadCategories();
-          loadAllData();
-        }} />
+        <Settings 
+          familyId={familyId}
+          onClose={() => {
+            setShowSettings(false);
+            loadCategories();
+            loadAllData();
+            if (onChildrenUpdated) {
+              onChildrenUpdated();
+            }
+          }} 
+        />
       )}
       
       {/* Quick balance overview */}
-      <div className="balance-overview">
-        <div className="balance-card" style={{ borderColor: CHILD_COLORS.child1 }}>
-          {allData.children.child1?.profileImage && (
-            <img 
-              src={allData.children.child1.profileImage} 
-              alt={allData.children.child1.name}
-              className="profile-image-small"
-            />
-          )}
-          <h3>{allData.children.child1.name}</h3>
-          <div className="balance-value" style={{ color: CHILD_COLORS.child1 }}>
-            ₪{child1Total.toFixed(2)}
-          </div>
-          <div className="balance-subtitle">יתרה כוללת</div>
+      {childrenList.length > 0 && (
+        <div className="balance-overview">
+          {childrenList.map((child, index) => {
+            const total = (child.balance || 0) + (child.cashBoxBalance || 0);
+            const color = Object.values(CHILD_COLORS)[index % Object.keys(CHILD_COLORS).length];
+            return (
+              <div key={child._id} className="balance-card" style={{ borderColor: color }}>
+                {child.profileImage && (
+                  <img 
+                    src={child.profileImage} 
+                    alt={child.name}
+                    className="profile-image-small"
+                  />
+                )}
+                <h3>{child.name}</h3>
+                <div className="balance-value" style={{ color: color }}>
+                  ₪{total.toFixed(2)}
+                </div>
+                <div className="balance-subtitle">יתרה כוללת</div>
+              </div>
+            );
+          })}
         </div>
-        <div className="balance-card" style={{ borderColor: CHILD_COLORS.child2 }}>
-          {allData.children.child2?.profileImage && (
-            <img 
-              src={allData.children.child2.profileImage} 
-              alt={allData.children.child2.name}
-              className="profile-image-small"
-            />
-          )}
-          <h3>{allData.children.child2.name}</h3>
-          <div className="balance-value" style={{ color: CHILD_COLORS.child2 }}>
-            ₪{child2Total.toFixed(2)}
-          </div>
-          <div className="balance-subtitle">יתרה כוללת</div>
-        </div>
-      </div>
+      )}
 
       {/* Child selection */}
-      <div className="child-selection">
-        <h2>בחר ילד לניהול</h2>
-        <div className="child-buttons">
-          <button
-            className={selectedChild === 'child1' ? 'active' : ''}
-            onClick={() => setSelectedChild('child1')}
-            style={{
-              backgroundColor: selectedChild === 'child1' ? CHILD_COLORS.child1 : '#e5e7eb',
-              color: selectedChild === 'child1' ? 'white' : 'black'
-            }}
-          >
-            {allData.children.child1.name}
-          </button>
-          <button
-            className={selectedChild === 'child2' ? 'active' : ''}
-            onClick={() => setSelectedChild('child2')}
-            style={{
-              backgroundColor: selectedChild === 'child2' ? CHILD_COLORS.child2 : '#e5e7eb',
-              color: selectedChild === 'child2' ? 'white' : 'black'
-            }}
-          >
-            {allData.children.child2.name}
-          </button>
+      {childrenList.length > 0 && (
+        <div className="child-selection">
+          <h2>בחר ילד לניהול</h2>
+          <div className="child-buttons">
+            {childrenList.map((child, index) => {
+              const color = Object.values(CHILD_COLORS)[index % Object.keys(CHILD_COLORS).length];
+              return (
+                <button
+                  key={child._id}
+                  className={selectedChild === child._id ? 'active' : ''}
+                  onClick={() => setSelectedChild(child._id)}
+                  style={{
+                    backgroundColor: selectedChild === child._id ? color : '#e5e7eb',
+                    color: selectedChild === child._id ? 'white' : 'black'
+                  }}
+                >
+                  {child.name}
+                </button>
+              );
+            })}
+          </div>
         </div>
-      </div>
+      )}
 
       {childData && (
         <>
@@ -336,7 +352,7 @@ const ParentDashboard = () => {
             balance={childData.balance}
             cashBoxBalance={childData.cashBoxBalance}
             childName={childData.name}
-            color={CHILD_COLORS[selectedChild]}
+            color={selectedChild ? Object.values(CHILD_COLORS)[childrenList.findIndex(c => c._id === selectedChild) % Object.keys(CHILD_COLORS).length] : CHILD_COLORS.child1}
           />
 
           {/* Transaction form */}

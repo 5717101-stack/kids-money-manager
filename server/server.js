@@ -3,29 +3,43 @@ import cors from 'cors';
 import { MongoClient } from 'mongodb';
 import dotenv from 'dotenv';
 import crypto from 'crypto';
+import twilio from 'twilio';
 
 dotenv.config();
 
 const app = express();
 const PORT = process.env.PORT || 3001;
 
+// Twilio configuration (for SMS OTP)
+const TWILIO_ACCOUNT_SID = process.env.TWILIO_ACCOUNT_SID;
+const TWILIO_AUTH_TOKEN = process.env.TWILIO_AUTH_TOKEN;
+const TWILIO_PHONE_NUMBER = process.env.TWILIO_PHONE_NUMBER;
+let twilioClient = null;
+
+if (TWILIO_ACCOUNT_SID && TWILIO_AUTH_TOKEN) {
+  twilioClient = twilio(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN);
+  console.log('Twilio SMS service initialized');
+} else {
+  console.log('Twilio not configured - SMS will be logged to console only');
+}
+
 // Middleware - CORS configuration
 app.use(cors({
-  origin: '*', // Allow all origins in production (you can restrict this later)
+  origin: '*',
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization'],
   credentials: true
 }));
-// Increase JSON payload limit to 10MB for image uploads
+
 app.use(express.json({ limit: '10mb' }));
 
-// Logging middleware for debugging
+// Logging middleware
 app.use((req, res, next) => {
   console.log(`${new Date().toISOString()} - ${req.method} ${req.path}`);
   next();
 });
 
-// Keep-alive endpoint for Railway
+// Keep-alive endpoint
 app.get('/keepalive', (req, res) => {
   res.json({ status: 'alive', timestamp: new Date().toISOString() });
 });
@@ -40,164 +54,224 @@ async function connectDB() {
     await client.connect();
     db = client.db();
     console.log('Connected to MongoDB');
-    
-    // Initialize default data if needed
     await initializeData();
   } catch (error) {
     console.error('MongoDB connection error:', error);
-    // Fallback to in-memory storage if MongoDB is not available
     console.log('Falling back to in-memory storage');
   }
 }
 
+// Generate OTP code
+function generateOTP() {
+  return Math.floor(100000 + Math.random() * 900000).toString(); // 6-digit code
+}
+
+// Generate child join code
+function generateChildCode() {
+  return Math.random().toString(36).substring(2, 8).toUpperCase(); // 6-character code
+}
+
+// Send SMS via Twilio or log to console
+async function sendSMS(phoneNumber, message) {
+  if (twilioClient && TWILIO_PHONE_NUMBER) {
+    try {
+      await twilioClient.messages.create({
+        body: message,
+        from: TWILIO_PHONE_NUMBER,
+        to: phoneNumber
+      });
+      console.log(`SMS sent to ${phoneNumber}`);
+      return true;
+    } catch (error) {
+      console.error('Error sending SMS:', error);
+      return false;
+    }
+  } else {
+    // Development mode - log to console
+    console.log(`[SMS] To: ${phoneNumber}`);
+    console.log(`[SMS] Message: ${message}`);
+    return true;
+  }
+}
+
+// Store OTP codes temporarily (in production, use Redis or similar)
+const otpStore = new Map(); // phoneNumber -> { code, expiresAt, familyId }
+const childCodesStore = new Map(); // childCode -> { childId, familyId, expiresAt }
+
+// Clean expired OTPs every 5 minutes
+setInterval(() => {
+  const now = Date.now();
+  for (const [key, value] of otpStore.entries()) {
+    if (value.expiresAt < now) {
+      otpStore.delete(key);
+    }
+  }
+  for (const [key, value] of childCodesStore.entries()) {
+    if (value.expiresAt < now) {
+      childCodesStore.delete(key);
+    }
+  }
+}, 5 * 60 * 1000);
+
 async function initializeData() {
   try {
-    const children = await db.collection('children').find({}).toArray();
-    
-    if (children.length === 0) {
-      await db.collection('children').insertMany([
-        {
-          _id: 'child1',
-          name: 'אדם',
-          balance: 0,
-          cashBoxBalance: 0,
-          profileImage: null,
-          weeklyAllowance: 0,
-          allowanceType: 'weekly', // 'weekly' or 'monthly'
-          allowanceDay: 1, // 0-6 for weekly (0=Sunday), 1-31 for monthly
-          allowanceTime: '08:00', // HH:mm format
-          transactions: []
-        },
-        {
-          _id: 'child2',
-          name: 'ג\'וּן',
-          balance: 0,
-          cashBoxBalance: 0,
-          profileImage: null,
-          weeklyAllowance: 0,
-          allowanceType: 'weekly', // 'weekly' or 'monthly'
-          allowanceDay: 1, // 0-6 for weekly (0=Sunday), 1-31 for monthly
-          allowanceTime: '08:00', // HH:mm format
-          transactions: []
-        }
-      ]);
-      
-      // Initialize default categories if they don't exist
-      const existingCategories = await db.collection('categories').find({}).toArray();
-      if (existingCategories.length === 0) {
-        const defaultCategories = [
-          { name: 'משחקים', activeFor: ['child1', 'child2'] },
-          { name: 'ממתקים', activeFor: ['child1', 'child2'] },
-          { name: 'בגדים', activeFor: ['child1', 'child2'] },
-          { name: 'בילויים', activeFor: ['child1', 'child2'] },
-          { name: 'אחר', activeFor: ['child1', 'child2'] }
-        ];
-        
-        await db.collection('categories').insertMany(
-          defaultCategories.map((cat, index) => ({
-            _id: `cat_${index + 1}`,
-            name: cat.name,
-            activeFor: cat.activeFor
-          }))
-        );
-        console.log('Initialized default categories');
-      } else {
-        // Update existing categories to be active for both children if not already
-        for (const category of existingCategories) {
-          const activeFor = category.activeFor || [];
-          if (!activeFor.includes('child1') || !activeFor.includes('child2')) {
-            const updatedActiveFor = [...new Set([...activeFor, 'child1', 'child2'])];
-            await db.collection('categories').updateOne(
-              { _id: category._id },
-              { $set: { activeFor: updatedActiveFor } }
-            );
-          }
-        }
-        console.log('Updated existing categories to be active for both children');
-      }
-      console.log('Initialized default children data');
-    } else {
-      // Update names if they still have old default values
-      await db.collection('children').updateOne(
-        { _id: 'child1', name: 'ילד 1' },
-        { $set: { name: 'אדם' } }
-      );
-      await db.collection('children').updateOne(
-        { _id: 'child2', name: 'ילד 2' },
-        { $set: { name: 'ג\'וּן' } }
-      );
+    // Create indexes
+    if (db) {
+      await db.collection('families').createIndex({ phoneNumber: 1 }, { unique: true });
+      await db.collection('families').createIndex({ 'children._id': 1 });
+      await db.collection('otpCodes').createIndex({ phoneNumber: 1 });
+      await db.collection('otpCodes').createIndex({ expiresAt: 1 }, { expireAfterSeconds: 0 });
     }
+    console.log('Database initialized');
   } catch (error) {
     console.error('Error initializing data:', error);
   }
 }
 
-// In-memory fallback storage (if MongoDB is not available)
-let memoryStorage = {
-  children: {
-    child1: {
-      _id: 'child1',
-      name: 'אדם',
-      balance: 0,
-      cashBoxBalance: 0,
-      profileImage: null,
-      weeklyAllowance: 0,
-      allowanceType: 'weekly', // 'weekly' or 'monthly'
-      allowanceDay: 1, // 0-6 for weekly (0=Sunday), 1-31 for monthly
-      allowanceTime: '08:00', // HH:mm format
-      transactions: []
-    },
-    child2: {
-      _id: 'child2',
-      name: 'ג\'וּן',
-      balance: 0,
-      cashBoxBalance: 0,
-      profileImage: null,
-      weeklyAllowance: 0,
-      allowanceType: 'weekly', // 'weekly' or 'monthly'
-      allowanceDay: 1, // 0-6 for weekly (0=Sunday), 1-31 for monthly
-      allowanceTime: '08:00', // HH:mm format
-      transactions: []
-    }
-  },
-  categories: [
-    { _id: 'cat_1', name: 'משחקים', activeFor: ['child1', 'child2'] },
-    { _id: 'cat_2', name: 'ממתקים', activeFor: ['child1', 'child2'] },
-    { _id: 'cat_3', name: 'בגדים', activeFor: ['child1', 'child2'] },
-    { _id: 'cat_4', name: 'בילויים', activeFor: ['child1', 'child2'] },
-    { _id: 'cat_5', name: 'אחר', activeFor: ['child1', 'child2'] }
-  ]
-};
-
-// Helper function to get collection or memory storage
-async function getChild(childId) {
+// Helper functions
+async function getFamilyByPhone(phoneNumber) {
   if (db) {
-    return await db.collection('children').findOne({ _id: childId });
-  } else {
-    return memoryStorage.children[childId] || null;
+    return await db.collection('families').findOne({ phoneNumber });
   }
+  return null;
 }
 
-async function updateChild(childId, update) {
+async function getFamilyById(familyId) {
   if (db) {
-    const result = await db.collection('children').updateOne(
-      { _id: childId },
-      { $set: update }
+    return await db.collection('families').findOne({ _id: familyId });
+  }
+  return null;
+}
+
+async function createFamily(phoneNumber, countryCode = '+972') {
+  const familyId = `family_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
+  const family = {
+    _id: familyId,
+    phoneNumber: `${countryCode}${phoneNumber}`,
+    countryCode,
+    createdAt: new Date().toISOString(),
+    children: [],
+    categories: [
+      { _id: 'cat_1', name: 'משחקים', activeFor: [] },
+      { _id: 'cat_2', name: 'ממתקים', activeFor: [] },
+      { _id: 'cat_3', name: 'בגדים', activeFor: [] },
+      { _id: 'cat_4', name: 'בילויים', activeFor: [] },
+      { _id: 'cat_5', name: 'אחר', activeFor: [] }
+    ]
+  };
+  
+  if (db) {
+    await db.collection('families').insertOne(family);
+  }
+  
+  return family;
+}
+
+async function addChildToFamily(familyId, childName) {
+  const childId = `child_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
+  const childCode = generateChildCode();
+  const childPassword = generateChildCode(); // 6-character password
+  
+  const child = {
+    _id: childId,
+    name: childName,
+    balance: 0,
+    cashBoxBalance: 0,
+    profileImage: null,
+    weeklyAllowance: 0,
+    allowanceType: 'weekly',
+    allowanceDay: 1,
+    allowanceTime: '08:00',
+    transactions: [],
+    joinCode: childCode,
+    password: childPassword,
+    createdAt: new Date().toISOString()
+  };
+  
+  // Store child code for 30 days
+  childCodesStore.set(childCode, {
+    childId,
+    familyId,
+    expiresAt: Date.now() + (30 * 24 * 60 * 60 * 1000)
+  });
+  
+  if (db) {
+    await db.collection('families').updateOne(
+      { _id: familyId },
+      { 
+        $push: { children: child },
+        $push: { 'categories.$[].activeFor': childId }
+      }
     );
-    console.log(`Updated child ${childId}:`, result);
-    return result;
-  } else {
-    if (memoryStorage.children[childId]) {
-      Object.assign(memoryStorage.children[childId], update);
+    
+    // Update categories to include new child
+    const family = await getFamilyById(familyId);
+    if (family) {
+      for (const category of family.categories) {
+        if (!category.activeFor.includes(childId)) {
+          category.activeFor.push(childId);
+        }
+      }
+      await db.collection('families').updateOne(
+        { _id: familyId },
+        { $set: { categories: family.categories } }
+      );
     }
-    return { modifiedCount: 1 };
   }
+  
+  return { child, childCode, childPassword };
 }
 
-// Helper function to check and process weekly allowances
-async function processAllowances() {
+async function joinChildByCode(familyId, childCode) {
+  const codeData = childCodesStore.get(childCode);
+  if (!codeData || codeData.expiresAt < Date.now()) {
+    return null;
+  }
+  
+  if (codeData.familyId !== familyId) {
+    return null; // Code belongs to different family
+  }
+  
+  if (db) {
+    const family = await getFamilyById(familyId);
+    if (family) {
+      const child = family.children.find(c => c._id === codeData.childId);
+      if (child) {
+        // Update categories
+        for (const category of family.categories) {
+          if (!category.activeFor.includes(child._id)) {
+            category.activeFor.push(child._id);
+          }
+        }
+        await db.collection('families').updateOne(
+          { _id: familyId },
+          { $set: { categories: family.categories } }
+        );
+        return child;
+      }
+    }
+  }
+  
+  return null;
+}
+
+async function getChildPassword(familyId, childId) {
+  if (db) {
+    const family = await getFamilyById(familyId);
+    if (family) {
+      const child = family.children.find(c => c._id === childId);
+      return child ? child.password : null;
+    }
+  }
+  return null;
+}
+
+// Process allowances for a family
+async function processAllowancesForFamily(familyId) {
   try {
-    // Get current time in Israel timezone using Intl API
+    const family = await getFamilyById(familyId);
+    if (!family || !family.children) return;
+    
     const now = new Date();
     const israelTime = new Intl.DateTimeFormat('en-US', {
       timeZone: 'Asia/Jerusalem',
@@ -214,23 +288,14 @@ async function processAllowances() {
     const hour = parseInt(israelTime.find(part => part.type === 'hour').value);
     const minute = parseInt(israelTime.find(part => part.type === 'minute').value);
     
-    // Map day names to numbers (0=Sunday, 1=Monday, etc.)
     const dayNameToNumber = {
       'Sunday': 0, 'Monday': 1, 'Tuesday': 2, 'Wednesday': 3,
       'Thursday': 4, 'Friday': 5, 'Saturday': 6
     };
     const currentDayOfWeek = dayNameToNumber[dayOfWeek];
     
-    console.log(`Checking allowances - Israel time: ${dayOfWeek} (${currentDayOfWeek}), day ${dayOfMonth}, ${hour}:${minute.toString().padStart(2, '0')}`);
-    
-    const children = db 
-      ? await db.collection('children').find({}).toArray()
-      : Object.values(memoryStorage.children);
-    
-    for (const child of children) {
-      if (!child.weeklyAllowance || child.weeklyAllowance <= 0) {
-        continue;
-      }
+    for (const child of family.children) {
+      if (!child.weeklyAllowance || child.weeklyAllowance <= 0) continue;
       
       const allowanceType = child.allowanceType || 'weekly';
       const allowanceDay = child.allowanceDay !== undefined ? child.allowanceDay : 1;
@@ -240,15 +305,13 @@ async function processAllowances() {
       let shouldProcess = false;
       
       if (allowanceType === 'weekly') {
-        // Check if it's the correct day of week and time
         const isCorrectDay = currentDayOfWeek === allowanceDay;
         const isCorrectTime = hour === allowanceHour && minute >= allowanceMinute && minute < allowanceMinute + 1;
         shouldProcess = isCorrectDay && isCorrectTime;
         
         if (shouldProcess) {
-          // Check if allowance was already added this week
           const startOfWeek = new Date(now);
-          startOfWeek.setDate(now.getDate() - (now.getDay() + 6) % 7); // Monday of current week
+          startOfWeek.setDate(now.getDate() - (now.getDay() + 6) % 7);
           startOfWeek.setHours(0, 0, 0, 0);
           
           const recentAllowance = (child.transactions || []).find(t => 
@@ -257,19 +320,14 @@ async function processAllowances() {
             new Date(t.date) >= startOfWeek
           );
           
-          if (recentAllowance) {
-            console.log(`Weekly allowance already added for ${child.name} this week`);
-            continue;
-          }
+          if (recentAllowance) continue;
         }
       } else if (allowanceType === 'monthly') {
-        // Check if it's the correct day of month and time
         const isCorrectDay = dayOfMonth === allowanceDay;
         const isCorrectTime = hour === allowanceHour && minute >= allowanceMinute && minute < allowanceMinute + 1;
         shouldProcess = isCorrectDay && isCorrectTime;
         
         if (shouldProcess) {
-          // Check if allowance was already added this month
           const startOfMonth = new Date(now);
           startOfMonth.setDate(1);
           startOfMonth.setHours(0, 0, 0, 0);
@@ -280,17 +338,13 @@ async function processAllowances() {
             new Date(t.date) >= startOfMonth
           );
           
-          if (recentAllowance) {
-            console.log(`Monthly allowance already added for ${child.name} this month`);
-            continue;
-          }
+          if (recentAllowance) continue;
         }
       }
       
       if (shouldProcess) {
         const description = allowanceType === 'weekly' ? 'דמי כיס שבועיים' : 'דמי כיס חודשיים';
         
-        // Add allowance as a deposit transaction
         const transaction = {
           id: `allowance_${Date.now()}_${child._id}`,
           date: new Date().toISOString(),
@@ -310,12 +364,20 @@ async function processAllowances() {
           }
         }, 0);
         
-        await updateChild(child._id, {
-          balance: balance,
-          transactions: transactions
-        });
+        // Update child in family
+        if (db) {
+          await db.collection('families').updateOne(
+            { _id: familyId, 'children._id': child._id },
+            { 
+              $set: { 
+                'children.$.balance': balance,
+                'children.$.transactions': transactions
+              }
+            }
+          );
+        }
         
-        console.log(`✅ Added ${allowanceType} allowance of ${child.weeklyAllowance} to ${child.name}`);
+        console.log(`✅ Added ${allowanceType} allowance of ${child.weeklyAllowance} to ${child.name} in family ${familyId}`);
       }
     }
   } catch (error) {
@@ -323,58 +385,229 @@ async function processAllowances() {
   }
 }
 
-// Check allowances every minute to catch the exact time
-setInterval(processAllowances, 60 * 1000); // Check every minute
+// Check allowances every minute
+setInterval(async () => {
+  if (db) {
+    const families = await db.collection('families').find({}).toArray();
+    for (const family of families) {
+      await processAllowancesForFamily(family._id);
+    }
+  }
+}, 60 * 1000);
 
-// API Routes
+// ========== NEW AUTHENTICATION API ENDPOINTS ==========
 
-// Get all children
-app.get('/api/children', async (req, res) => {
+// Send OTP for family registration/login
+app.post('/api/auth/send-otp', async (req, res) => {
   try {
-    if (db) {
-      const children = await db.collection('children').find({}).toArray();
-      res.json({ children: children.reduce((acc, child) => {
-        acc[child._id] = {
-          name: child.name,
-          balance: child.balance || 0,
-          cashBoxBalance: child.cashBoxBalance || 0,
-          profileImage: child.profileImage || null,
-          weeklyAllowance: child.weeklyAllowance || 0,
-          allowanceType: child.allowanceType || 'weekly',
-          allowanceDay: child.allowanceDay !== undefined ? child.allowanceDay : 1,
-          allowanceTime: child.allowanceTime || '08:00',
-          transactions: child.transactions || []
-        };
-        return acc;
-      }, {}) });
-    } else {
-      const children = Object.values(memoryStorage.children).map(child => ({
+    const { phoneNumber, countryCode = '+972' } = req.body;
+    
+    if (!phoneNumber || !phoneNumber.match(/^\d+$/)) {
+      return res.status(400).json({ error: 'מספר טלפון לא תקין' });
+    }
+    
+    const fullPhoneNumber = `${countryCode}${phoneNumber}`;
+    const otpCode = generateOTP();
+    const expiresAt = Date.now() + (10 * 60 * 1000); // 10 minutes
+    
+    // Check if family exists
+    const existingFamily = await getFamilyByPhone(fullPhoneNumber);
+    
+    // Store OTP
+    otpStore.set(fullPhoneNumber, {
+      code: otpCode,
+      expiresAt,
+      familyId: existingFamily ? existingFamily._id : null
+    });
+    
+    // Send SMS
+    const message = existingFamily 
+      ? `קוד האימות שלך: ${otpCode}. קוד זה תקף ל-10 דקות.`
+      : `קוד האימות שלך: ${otpCode}. קוד זה תקף ל-10 דקות.`;
+    
+    await sendSMS(fullPhoneNumber, message);
+    
+    res.json({ 
+      success: true, 
+      message: 'קוד נשלח בהצלחה',
+      isExistingFamily: !!existingFamily
+    });
+  } catch (error) {
+    console.error('Error sending OTP:', error);
+    res.status(500).json({ error: 'שגיאה בשליחת קוד אימות' });
+  }
+});
+
+// Verify OTP and login/register
+app.post('/api/auth/verify-otp', async (req, res) => {
+  try {
+    const { phoneNumber, countryCode = '+972', otpCode } = req.body;
+    
+    if (!phoneNumber || !otpCode) {
+      return res.status(400).json({ error: 'מספר טלפון וקוד אימות נדרשים' });
+    }
+    
+    const fullPhoneNumber = `${countryCode}${phoneNumber}`;
+    const storedOTP = otpStore.get(fullPhoneNumber);
+    
+    if (!storedOTP || storedOTP.expiresAt < Date.now()) {
+      return res.status(400).json({ error: 'קוד אימות לא תקין או פג תוקף' });
+    }
+    
+    if (storedOTP.code !== otpCode) {
+      return res.status(400).json({ error: 'קוד אימות שגוי' });
+    }
+    
+    // OTP verified - get or create family
+    let family = await getFamilyByPhone(fullPhoneNumber);
+    
+    if (!family) {
+      // Create new family
+      family = await createFamily(phoneNumber, countryCode);
+    }
+    
+    // Remove OTP
+    otpStore.delete(fullPhoneNumber);
+    
+    res.json({
+      success: true,
+      familyId: family._id,
+      phoneNumber: family.phoneNumber,
+      isNewFamily: !storedOTP.familyId
+    });
+  } catch (error) {
+    console.error('Error verifying OTP:', error);
+    res.status(500).json({ error: 'שגיאה באימות קוד' });
+  }
+});
+
+// Create child and get join code
+app.post('/api/families/:familyId/children', async (req, res) => {
+  try {
+    const { familyId } = req.params;
+    const { name } = req.body;
+    
+    if (!name) {
+      return res.status(400).json({ error: 'שם הילד נדרש' });
+    }
+    
+    const family = await getFamilyById(familyId);
+    if (!family) {
+      return res.status(404).json({ error: 'משפחה לא נמצאה' });
+    }
+    
+    const { child, childCode, childPassword } = await addChildToFamily(familyId, name);
+    
+    res.json({
+      success: true,
+      child: {
         _id: child._id,
         name: child.name,
-        balance: child.balance || 0,
-        cashBoxBalance: child.cashBoxBalance || 0,
-        profileImage: child.profileImage || null,
-        weeklyAllowance: child.weeklyAllowance || 0,
-        allowanceType: child.allowanceType || 'weekly',
-        allowanceDay: child.allowanceDay !== undefined ? child.allowanceDay : 1,
-        allowanceTime: child.allowanceTime || '08:00',
-        transactions: child.transactions || []
-      }));
-      res.json({ children: children.reduce((acc, child) => {
-        acc[child._id] = {
-          name: child.name,
-          balance: child.balance || 0,
-          cashBoxBalance: child.cashBoxBalance || 0,
-          profileImage: child.profileImage || null,
-          weeklyAllowance: child.weeklyAllowance || 0,
-          allowanceType: child.allowanceType || 'weekly',
-          allowanceDay: child.allowanceDay !== undefined ? child.allowanceDay : 1,
-          allowanceTime: child.allowanceTime || '08:00',
-          transactions: child.transactions || []
-        };
-        return acc;
-      }, {}) });
+        balance: child.balance,
+        cashBoxBalance: child.cashBoxBalance,
+        profileImage: child.profileImage,
+        weeklyAllowance: child.weeklyAllowance,
+        allowanceType: child.allowanceType,
+        allowanceDay: child.allowanceDay,
+        allowanceTime: child.allowanceTime,
+        transactions: child.transactions
+      },
+      joinCode: childCode,
+      password: childPassword
+    });
+  } catch (error) {
+    console.error('Error creating child:', error);
+    res.status(500).json({ error: 'שגיאה ביצירת ילד' });
+  }
+});
+
+// Join child by code
+app.post('/api/families/:familyId/children/join', async (req, res) => {
+  try {
+    const { familyId } = req.params;
+    const { joinCode } = req.body;
+    
+    if (!joinCode) {
+      return res.status(400).json({ error: 'קוד הצטרפות נדרש' });
     }
+    
+    const child = await joinChildByCode(familyId, joinCode);
+    
+    if (!child) {
+      return res.status(400).json({ error: 'קוד הצטרפות לא תקין או פג תוקף' });
+    }
+    
+    res.json({
+      success: true,
+      child: {
+        _id: child._id,
+        name: child.name,
+        balance: child.balance,
+        cashBoxBalance: child.cashBoxBalance,
+        profileImage: child.profileImage,
+        weeklyAllowance: child.weeklyAllowance,
+        allowanceType: child.allowanceType,
+        allowanceDay: child.allowanceDay,
+        allowanceTime: child.allowanceTime,
+        transactions: child.transactions
+      }
+    });
+  } catch (error) {
+    console.error('Error joining child:', error);
+    res.status(500).json({ error: 'שגיאה בהצטרפות ילד' });
+  }
+});
+
+// Get child password (for recovery)
+app.get('/api/families/:familyId/children/:childId/password', async (req, res) => {
+  try {
+    const { familyId, childId } = req.params;
+    
+    const password = await getChildPassword(familyId, childId);
+    
+    if (!password) {
+      return res.status(404).json({ error: 'ילד לא נמצא' });
+    }
+    
+    res.json({
+      success: true,
+      password
+    });
+  } catch (error) {
+    console.error('Error getting child password:', error);
+    res.status(500).json({ error: 'שגיאה בקבלת סיסמה' });
+  }
+});
+
+// ========== UPDATED API ENDPOINTS (with family support) ==========
+
+// Get all children for a family
+app.get('/api/families/:familyId/children', async (req, res) => {
+  try {
+    const { familyId } = req.params;
+    const family = await getFamilyById(familyId);
+    
+    if (!family) {
+      return res.status(404).json({ error: 'משפחה לא נמצאה' });
+    }
+    
+    const children = (family.children || []).map(child => ({
+      _id: child._id,
+      name: child.name,
+      balance: child.balance || 0,
+      cashBoxBalance: child.cashBoxBalance || 0,
+      profileImage: child.profileImage || null,
+      weeklyAllowance: child.weeklyAllowance || 0,
+      allowanceType: child.allowanceType || 'weekly',
+      allowanceDay: child.allowanceDay !== undefined ? child.allowanceDay : 1,
+      allowanceTime: child.allowanceTime || '08:00',
+      transactions: child.transactions || []
+    }));
+    
+    res.json({ children: children.reduce((acc, child) => {
+      acc[child._id] = child;
+      return acc;
+    }, {}) });
   } catch (error) {
     console.error('Error fetching children:', error);
     res.status(500).json({ error: 'Failed to fetch children' });
@@ -382,12 +615,20 @@ app.get('/api/children', async (req, res) => {
 });
 
 // Get single child
-app.get('/api/children/:childId', async (req, res) => {
+app.get('/api/families/:familyId/children/:childId', async (req, res) => {
   try {
-    const child = await getChild(req.params.childId);
-    if (!child) {
-      return res.status(404).json({ error: 'Child not found' });
+    const { familyId, childId } = req.params;
+    const family = await getFamilyById(familyId);
+    
+    if (!family) {
+      return res.status(404).json({ error: 'משפחה לא נמצאה' });
     }
+    
+    const child = family.children.find(c => c._id === childId);
+    if (!child) {
+      return res.status(404).json({ error: 'ילד לא נמצא' });
+    }
+    
     res.json({
       name: child.name,
       balance: child.balance || 0,
@@ -406,11 +647,18 @@ app.get('/api/children/:childId', async (req, res) => {
 });
 
 // Get transactions for a child
-app.get('/api/children/:childId/transactions', async (req, res) => {
+app.get('/api/families/:familyId/children/:childId/transactions', async (req, res) => {
   try {
-    const child = await getChild(req.params.childId);
+    const { familyId, childId } = req.params;
+    const family = await getFamilyById(familyId);
+    
+    if (!family) {
+      return res.status(404).json({ error: 'משפחה לא נמצאה' });
+    }
+    
+    const child = family.children.find(c => c._id === childId);
     if (!child) {
-      return res.status(404).json({ error: 'Child not found' });
+      return res.status(404).json({ error: 'ילד לא נמצא' });
     }
     
     const limit = req.query.limit ? parseInt(req.query.limit) : null;
@@ -430,68 +678,38 @@ app.get('/api/children/:childId/transactions', async (req, res) => {
 });
 
 // Add transaction
-app.post('/api/transactions', async (req, res) => {
+app.post('/api/families/:familyId/transactions', async (req, res) => {
   try {
-    console.log('Received transaction request:', req.body);
+    const { familyId } = req.params;
     const { childId, type, amount, description, category } = req.body;
     
     if (!childId || !type || !amount) {
-      console.error('Missing required fields:', { childId, type, amount });
       return res.status(400).json({ error: 'Missing required fields' });
     }
     
-    if (type !== 'deposit' && type !== 'expense') {
-      console.error('Invalid transaction type:', type);
-      return res.status(400).json({ error: 'Invalid transaction type' });
+    const family = await getFamilyById(familyId);
+    if (!family) {
+      return res.status(404).json({ error: 'משפחה לא נמצאה' });
     }
     
-    // Get the child first
-    const child = await getChild(childId);
+    const child = family.children.find(c => c._id === childId);
     if (!child) {
-      console.error('Child not found:', childId);
-      return res.status(404).json({ error: 'Child not found' });
+      return res.status(404).json({ error: 'ילד לא נמצא' });
     }
     
-    console.log('Found child:', child);
-    
-    // Validate category for expenses - check against database
+    // Validate category
     if (type === 'expense' && category) {
-      let validCategories = [];
-      if (db) {
-        const categories = await db.collection('categories').find({}).toArray();
-        validCategories = categories
-          .filter(cat => (cat.activeFor || []).includes(childId))
-          .map(cat => cat.name);
-      } else {
-        validCategories = (memoryStorage.categories || [])
-          .filter(cat => (cat.activeFor || []).includes(childId))
-          .map(cat => cat.name);
-      }
+      const validCategories = (family.categories || [])
+        .filter(cat => (cat.activeFor || []).includes(childId))
+        .map(cat => cat.name);
       
       if (!validCategories.includes(category)) {
-        console.error('Invalid category:', category, 'Valid categories:', validCategories);
         return res.status(400).json({ error: 'Invalid category' });
       }
     }
     
-    // Generate UUID - use crypto.randomUUID() if available, otherwise fallback
-    let transactionId;
-    try {
-      // In Node.js, crypto.randomUUID() is available in v14.17.0+
-      if (typeof crypto !== 'undefined' && crypto.randomUUID) {
-        transactionId = crypto.randomUUID();
-      } else {
-        // Fallback: generate UUID manually
-        transactionId = 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
-          const r = Math.random() * 16 | 0;
-          const v = c === 'x' ? r : (r & 0x3 | 0x8);
-          return v.toString(16);
-        });
-      }
-    } catch (e) {
-      // Fallback if crypto.randomUUID fails
-      transactionId = 'txn_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
-    }
+    const transactionId = crypto.randomUUID ? crypto.randomUUID() : 
+      'txn_' + Date.now() + '_' + Math.random().toString(36).substring(2, 9);
     
     const transaction = {
       id: transactionId,
@@ -503,11 +721,7 @@ app.post('/api/transactions', async (req, res) => {
       childId: childId
     };
     
-    console.log('Created transaction:', transaction);
-    
     const transactions = [...(child.transactions || []), transaction];
-    
-    // Recalculate balance
     const balance = transactions.reduce((total, t) => {
       if (t.type === 'deposit') {
         return total + t.amount;
@@ -516,48 +730,44 @@ app.post('/api/transactions', async (req, res) => {
       }
     }, 0);
     
-    console.log('New balance:', balance);
-    console.log('Updating child with:', { balance, transactionsCount: transactions.length });
-    
-    const updateResult = await updateChild(childId, {
-      balance: balance,
-      transactions: transactions
-    });
-    
-    console.log('Update result:', updateResult);
-    
-    // Verify the update
-    const updatedChild = await getChild(childId);
-    console.log('Updated child:', updatedChild);
+    if (db) {
+      await db.collection('families').updateOne(
+        { _id: familyId, 'children._id': childId },
+        { 
+          $set: { 
+            'children.$.balance': balance,
+            'children.$.transactions': transactions
+          }
+        }
+      );
+    }
     
     res.json({ transaction, balance, updated: true });
   } catch (error) {
     console.error('Error adding transaction:', error);
-    console.error('Error stack:', error.stack);
-    res.status(500).json({ 
-      error: 'Failed to add transaction',
-      details: error.message 
-    });
+    res.status(500).json({ error: 'Failed to add transaction' });
   }
 });
 
-// Get expense statistics by category
-app.get('/api/children/:childId/expenses-by-category', async (req, res) => {
+// Get expenses by category
+app.get('/api/families/:familyId/children/:childId/expenses-by-category', async (req, res) => {
   try {
-    const { childId } = req.params;
+    const { familyId, childId } = req.params;
     const days = parseInt(req.query.days) || 30;
     
-    const child = await getChild(childId);
-    if (!child) {
-      return res.status(404).json({ error: 'Child not found' });
+    const family = await getFamilyById(familyId);
+    if (!family) {
+      return res.status(404).json({ error: 'משפחה לא נמצאה' });
     }
     
-    // Calculate cutoff date - include today by using start of today
-    const cutoffDate = new Date();
-    cutoffDate.setHours(0, 0, 0, 0); // Start of today
-    cutoffDate.setDate(cutoffDate.getDate() - days + 1); // Include today, so -days+1
+    const child = family.children.find(c => c._id === childId);
+    if (!child) {
+      return res.status(404).json({ error: 'ילד לא נמצא' });
+    }
     
-    console.log(`Fetching expenses for ${childId}, days: ${days}, cutoff: ${cutoffDate.toISOString()}`);
+    const cutoffDate = new Date();
+    cutoffDate.setHours(0, 0, 0, 0);
+    cutoffDate.setDate(cutoffDate.getDate() - days + 1);
     
     const expenses = (child.transactions || [])
       .filter(t => {
@@ -567,48 +777,30 @@ app.get('/api/children/:childId/expenses-by-category', async (req, res) => {
         return transactionDate >= cutoffDate;
       });
     
-    console.log(`Found ${expenses.length} expenses`);
+    const activeCategories = (family.categories || [])
+      .filter(cat => (cat.activeFor || []).includes(childId))
+      .map(cat => cat.name);
     
-    // Get active categories for this child from database
-    let activeCategories = [];
-    if (db) {
-      const categories = await db.collection('categories').find({}).toArray();
-      activeCategories = categories
-        .filter(cat => (cat.activeFor || []).includes(childId))
-        .map(cat => cat.name);
-    } else {
-      activeCategories = (memoryStorage.categories || [])
-        .filter(cat => (cat.activeFor || []).includes(childId))
-        .map(cat => cat.name);
-    }
-    
-    // Initialize category totals with all active categories
     const categoryTotals = {};
     activeCategories.forEach(cat => {
       categoryTotals[cat] = 0;
     });
-    // Always include 'אחר' as fallback
     if (!categoryTotals.hasOwnProperty('אחר')) {
       categoryTotals['אחר'] = 0;
     }
     
-    // Sum up expenses by category
     expenses.forEach(expense => {
       const category = expense.category || 'אחר';
       if (categoryTotals.hasOwnProperty(category)) {
         categoryTotals[category] += expense.amount;
       } else {
-        // If category doesn't exist in active categories, add to 'אחר'
         categoryTotals['אחר'] += expense.amount;
       }
     });
     
-    // Filter out categories with 0 expenses
     const result = Object.entries(categoryTotals)
       .filter(([_, amount]) => amount > 0)
       .map(([category, amount]) => ({ category, amount }));
-    
-    console.log('Expenses by category:', result);
     
     res.json({ expensesByCategory: result, totalDays: days });
   } catch (error) {
@@ -617,43 +809,10 @@ app.get('/api/children/:childId/expenses-by-category', async (req, res) => {
   }
 });
 
-// Reset all data (reset balances and transactions)
-app.post('/api/reset', async (req, res) => {
+// Update cash box balance
+app.put('/api/families/:familyId/children/:childId/cashbox', async (req, res) => {
   try {
-    console.log('Resetting all children data...');
-    
-    // Reset child1
-    await updateChild('child1', {
-      balance: 0,
-      cashBoxBalance: 0,
-      transactions: []
-    });
-    
-    // Reset child2
-    await updateChild('child2', {
-      balance: 0,
-      cashBoxBalance: 0,
-      transactions: []
-    });
-    
-    console.log('All data reset successfully');
-    res.json({ 
-      success: true, 
-      message: 'All balances and transactions have been reset' 
-    });
-  } catch (error) {
-    console.error('Error resetting data:', error);
-    res.status(500).json({ 
-      error: 'Failed to reset data',
-      details: error.message 
-    });
-  }
-});
-
-// Update cash box balance for a child
-app.put('/api/children/:childId/cashbox', async (req, res) => {
-  try {
-    const { childId } = req.params;
+    const { familyId, childId } = req.params;
     const { cashBoxBalance } = req.body;
     
     if (cashBoxBalance === undefined || cashBoxBalance === null) {
@@ -665,53 +824,58 @@ app.put('/api/children/:childId/cashbox', async (req, res) => {
       return res.status(400).json({ error: 'cashBoxBalance must be a valid non-negative number' });
     }
     
-    const child = await getChild(childId);
-    if (!child) {
-      return res.status(404).json({ error: 'Child not found' });
+    const family = await getFamilyById(familyId);
+    if (!family) {
+      return res.status(404).json({ error: 'משפחה לא נמצאה' });
     }
     
-    await updateChild(childId, {
-      cashBoxBalance: amount
-    });
+    if (db) {
+      await db.collection('families').updateOne(
+        { _id: familyId, 'children._id': childId },
+        { $set: { 'children.$.cashBoxBalance': amount } }
+      );
+    }
     
-    const updatedChild = await getChild(childId);
     res.json({
       success: true,
-      cashBoxBalance: updatedChild.cashBoxBalance || 0,
+      cashBoxBalance: amount,
       message: 'Cash box balance updated successfully'
     });
   } catch (error) {
     console.error('Error updating cash box balance:', error);
-    res.status(500).json({
-      error: 'Failed to update cash box balance',
-      details: error.message
-    });
+    res.status(500).json({ error: 'Failed to update cash box balance' });
   }
 });
 
 // Categories API
-// Get all categories
-app.get('/api/categories', async (req, res) => {
+app.get('/api/families/:familyId/categories', async (req, res) => {
   try {
-    if (db) {
-      const categories = await db.collection('categories').find({}).toArray();
-      res.json({ categories });
-    } else {
-      res.json({ categories: memoryStorage.categories || [] });
+    const { familyId } = req.params;
+    const family = await getFamilyById(familyId);
+    
+    if (!family) {
+      return res.status(404).json({ error: 'משפחה לא נמצאה' });
     }
+    
+    res.json({ categories: family.categories || [] });
   } catch (error) {
     console.error('Error fetching categories:', error);
     res.status(500).json({ error: 'Failed to fetch categories' });
   }
 });
 
-// Add new category
-app.post('/api/categories', async (req, res) => {
+app.post('/api/families/:familyId/categories', async (req, res) => {
   try {
+    const { familyId } = req.params;
     const { name, activeFor } = req.body;
     
     if (!name) {
       return res.status(400).json({ error: 'Category name is required' });
+    }
+    
+    const family = await getFamilyById(familyId);
+    if (!family) {
+      return res.status(404).json({ error: 'משפחה לא נמצאה' });
     }
     
     const category = {
@@ -720,10 +884,13 @@ app.post('/api/categories', async (req, res) => {
       activeFor: activeFor || []
     };
     
+    family.categories.push(category);
+    
     if (db) {
-      await db.collection('categories').insertOne(category);
-    } else {
-      memoryStorage.categories.push(category);
+      await db.collection('families').updateOne(
+        { _id: familyId },
+        { $set: { categories: family.categories } }
+      );
     }
     
     res.json({ category });
@@ -733,30 +900,29 @@ app.post('/api/categories', async (req, res) => {
   }
 });
 
-// Update category
-app.put('/api/categories/:categoryId', async (req, res) => {
+app.put('/api/families/:familyId/categories/:categoryId', async (req, res) => {
   try {
-    const { categoryId } = req.params;
+    const { familyId, categoryId } = req.params;
     const { name, activeFor } = req.body;
     
-    const update = {};
-    if (name !== undefined) update.name = name.trim();
-    if (activeFor !== undefined) update.activeFor = activeFor;
+    const family = await getFamilyById(familyId);
+    if (!family) {
+      return res.status(404).json({ error: 'משפחה לא נמצאה' });
+    }
+    
+    const category = family.categories.find(c => c._id === categoryId);
+    if (!category) {
+      return res.status(404).json({ error: 'Category not found' });
+    }
+    
+    if (name !== undefined) category.name = name.trim();
+    if (activeFor !== undefined) category.activeFor = activeFor;
     
     if (db) {
-      const result = await db.collection('categories').updateOne(
-        { _id: categoryId },
-        { $set: update }
+      await db.collection('families').updateOne(
+        { _id: familyId },
+        { $set: { categories: family.categories } }
       );
-      if (result.matchedCount === 0) {
-        return res.status(404).json({ error: 'Category not found' });
-      }
-    } else {
-      const category = memoryStorage.categories.find(c => c._id === categoryId);
-      if (!category) {
-        return res.status(404).json({ error: 'Category not found' });
-      }
-      Object.assign(category, update);
     }
     
     res.json({ success: true });
@@ -766,22 +932,22 @@ app.put('/api/categories/:categoryId', async (req, res) => {
   }
 });
 
-// Delete category
-app.delete('/api/categories/:categoryId', async (req, res) => {
+app.delete('/api/families/:familyId/categories/:categoryId', async (req, res) => {
   try {
-    const { categoryId } = req.params;
+    const { familyId, categoryId } = req.params;
+    
+    const family = await getFamilyById(familyId);
+    if (!family) {
+      return res.status(404).json({ error: 'משפחה לא נמצאה' });
+    }
+    
+    family.categories = family.categories.filter(c => c._id !== categoryId);
     
     if (db) {
-      const result = await db.collection('categories').deleteOne({ _id: categoryId });
-      if (result.deletedCount === 0) {
-        return res.status(404).json({ error: 'Category not found' });
-      }
-    } else {
-      const index = memoryStorage.categories.findIndex(c => c._id === categoryId);
-      if (index === -1) {
-        return res.status(404).json({ error: 'Category not found' });
-      }
-      memoryStorage.categories.splice(index, 1);
+      await db.collection('families').updateOne(
+        { _id: familyId },
+        { $set: { categories: family.categories } }
+      );
     }
     
     res.json({ success: true });
@@ -791,50 +957,48 @@ app.delete('/api/categories/:categoryId', async (req, res) => {
   }
 });
 
-// Update child profile image
-app.put('/api/children/:childId/profile-image', async (req, res) => {
+// Update profile image
+app.put('/api/families/:familyId/children/:childId/profile-image', async (req, res) => {
   try {
-    const { childId } = req.params;
+    const { familyId, childId } = req.params;
     const { profileImage } = req.body;
     
-    console.log(`Updating profile image for ${childId}, image length: ${profileImage ? profileImage.length : 0}`);
+    const family = await getFamilyById(familyId);
+    if (!family) {
+      return res.status(404).json({ error: 'משפחה לא נמצאה' });
+    }
     
-    const child = await getChild(childId);
+    const child = family.children.find(c => c._id === childId);
     if (!child) {
-      console.error(`Child not found: ${childId}`);
-      return res.status(404).json({ error: 'Child not found' });
+      return res.status(404).json({ error: 'ילד לא נמצא' });
     }
     
-    // Validate base64 image if provided
     if (profileImage && !profileImage.startsWith('data:image/')) {
-      console.error('Invalid image format - must be base64 data URL');
-      return res.status(400).json({ error: 'Invalid image format. Must be a valid base64 data URL.' });
+      return res.status(400).json({ error: 'Invalid image format' });
     }
     
-    // Limit image size (approximately 5MB for base64, which is ~3.75MB original)
     if (profileImage && profileImage.length > 5 * 1024 * 1024) {
-      console.error('Image too large:', profileImage.length);
-      return res.status(400).json({ error: 'Image too large. Maximum size is 5MB after compression.' });
+      return res.status(400).json({ error: 'Image too large' });
     }
     
-    await updateChild(childId, { profileImage: profileImage || null });
+    if (db) {
+      await db.collection('families').updateOne(
+        { _id: familyId, 'children._id': childId },
+        { $set: { 'children.$.profileImage': profileImage || null } }
+      );
+    }
     
-    console.log(`Successfully updated profile image for ${childId}`);
     res.json({ success: true, profileImage: profileImage || null });
   } catch (error) {
     console.error('Error updating profile image:', error);
-    console.error('Error stack:', error.stack);
-    res.status(500).json({ 
-      error: 'Failed to update profile image',
-      details: error.message 
-    });
+    res.status(500).json({ error: 'Failed to update profile image' });
   }
 });
 
-// Update child weekly allowance
-app.put('/api/children/:childId/weekly-allowance', async (req, res) => {
+// Update weekly allowance
+app.put('/api/families/:familyId/children/:childId/weekly-allowance', async (req, res) => {
   try {
-    const { childId } = req.params;
+    const { familyId, childId } = req.params;
     const { weeklyAllowance, allowanceType, allowanceDay, allowanceTime } = req.body;
     
     const amount = parseFloat(weeklyAllowance);
@@ -850,7 +1014,7 @@ app.put('/api/children/:childId/weekly-allowance', async (req, res) => {
     let day = allowanceDay !== undefined ? parseInt(allowanceDay) : 1;
     if (type === 'weekly') {
       if (day < 0 || day > 6) {
-        return res.status(400).json({ error: 'Weekly allowance day must be 0-6 (0=Sunday, 1=Monday, etc.)' });
+        return res.status(400).json({ error: 'Weekly allowance day must be 0-6' });
       }
     } else {
       if (day < 1 || day > 31) {
@@ -864,17 +1028,24 @@ app.put('/api/children/:childId/weekly-allowance', async (req, res) => {
       return res.status(400).json({ error: 'Allowance time must be in HH:mm format' });
     }
     
-    const child = await getChild(childId);
-    if (!child) {
-      return res.status(404).json({ error: 'Child not found' });
+    const family = await getFamilyById(familyId);
+    if (!family) {
+      return res.status(404).json({ error: 'משפחה לא נמצאה' });
     }
     
-    await updateChild(childId, { 
-      weeklyAllowance: amount,
-      allowanceType: type,
-      allowanceDay: day,
-      allowanceTime: time
-    });
+    if (db) {
+      await db.collection('families').updateOne(
+        { _id: familyId, 'children._id': childId },
+        { 
+          $set: { 
+            'children.$.weeklyAllowance': amount,
+            'children.$.allowanceType': type,
+            'children.$.allowanceDay': day,
+            'children.$.allowanceTime': time
+          }
+        }
+      );
+    }
     
     res.json({ success: true, weeklyAllowance: amount, allowanceType: type, allowanceDay: day, allowanceTime: time });
   } catch (error) {
@@ -883,14 +1054,19 @@ app.put('/api/children/:childId/weekly-allowance', async (req, res) => {
   }
 });
 
-// Manually trigger weekly allowance payment
-app.post('/api/children/:childId/pay-allowance', async (req, res) => {
+// Pay allowance manually
+app.post('/api/families/:familyId/children/:childId/pay-allowance', async (req, res) => {
   try {
-    const { childId } = req.params;
-    const child = await getChild(childId);
+    const { familyId, childId } = req.params;
+    const family = await getFamilyById(familyId);
     
+    if (!family) {
+      return res.status(404).json({ error: 'משפחה לא נמצאה' });
+    }
+    
+    const child = family.children.find(c => c._id === childId);
     if (!child) {
-      return res.status(404).json({ error: 'Child not found' });
+      return res.status(404).json({ error: 'ילד לא נמצא' });
     }
     
     if (!child.weeklyAllowance || child.weeklyAllowance <= 0) {
@@ -900,7 +1076,6 @@ app.post('/api/children/:childId/pay-allowance', async (req, res) => {
     const allowanceType = child.allowanceType || 'weekly';
     const description = allowanceType === 'weekly' ? 'דמי כיס שבועיים' : 'דמי כיס חודשיים';
     
-    // Check if allowance was already added recently
     const now = new Date();
     let cutoffDate;
     if (allowanceType === 'weekly') {
@@ -922,7 +1097,6 @@ app.post('/api/children/:childId/pay-allowance', async (req, res) => {
       return res.status(400).json({ error: 'Allowance already added this week' });
     }
     
-    // Add allowance as a deposit transaction
     const transaction = {
       id: `allowance_${Date.now()}_${child._id}`,
       date: new Date().toISOString(),
@@ -942,10 +1116,17 @@ app.post('/api/children/:childId/pay-allowance', async (req, res) => {
       }
     }, 0);
     
-    await updateChild(child._id, {
-      balance: balance,
-      transactions: transactions
-    });
+    if (db) {
+      await db.collection('families').updateOne(
+        { _id: familyId, 'children._id': childId },
+        { 
+          $set: { 
+            'children.$.balance': balance,
+            'children.$.transactions': transactions
+          }
+        }
+      );
+    }
     
     res.json({ success: true, transaction, balance });
   } catch (error) {
@@ -964,7 +1145,7 @@ app.get('/', (req, res) => {
   res.json({ 
     message: 'Kids Money Manager API',
     status: 'running',
-    version: '1.0.0'
+    version: '2.7.0'
   });
 });
 
@@ -977,7 +1158,6 @@ connectDB().then(() => {
     console.log(`Health check available at http://0.0.0.0:${PORT}/api/health`);
   });
   
-  // Handle graceful shutdown
   process.on('SIGTERM', () => {
     console.log('SIGTERM received, shutting down gracefully...');
     server.close(() => {
@@ -997,4 +1177,3 @@ connectDB().then(() => {
   console.error('Failed to start server:', error);
   process.exit(1);
 });
-
