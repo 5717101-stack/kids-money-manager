@@ -43,10 +43,19 @@ if (TWILIO_ACCOUNT_SID && TWILIO_AUTH_TOKEN && TWILIO_PHONE_NUMBER) {
 // This endpoint must respond IMMEDIATELY - no logging, no processing
 let serverReady = false;
 
+// Health check endpoint - must be fastest possible
 app.get('/health', (req, res) => {
-  // Respond immediately - no logging to avoid delays
-  // Railway needs instant response
-  res.writeHead(200, { 'Content-Type': 'application/json' });
+  // Respond immediately - no logging, no processing, no async
+  // Railway needs instant 200 OK response
+  res.statusCode = 200;
+  res.setHeader('Content-Type', 'application/json');
+  res.end('{"status":"ok"}');
+});
+
+// Also respond to /api/health for compatibility
+app.get('/api/health', (req, res) => {
+  res.statusCode = 200;
+  res.setHeader('Content-Type', 'application/json');
   res.end('{"status":"ok"}');
 });
 
