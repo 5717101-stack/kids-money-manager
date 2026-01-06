@@ -1859,6 +1859,7 @@ body {
 }
 
 .otp-inputs {
+  direction: ltr; /* Force left-to-right for OTP code */
   display: flex;
   gap: 12px;
   justify-content: center;
@@ -1872,6 +1873,7 @@ body {
   border-radius: var(--radius-md);
   font-size: 24px;
   font-weight: 700;
+  direction: ltr; /* Force left-to-right for OTP input */
   text-align: center;
   transition: all 0.3s ease;
   background: var(--bg);
