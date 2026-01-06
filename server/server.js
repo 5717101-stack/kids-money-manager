@@ -45,20 +45,34 @@ let serverReady = false;
 
 // Health check endpoint - must be fastest possible
 // Railway checks this endpoint to determine if service is healthy
+// CRITICAL: This MUST respond immediately - Railway uses this to keep container alive
 app.get('/health', (req, res) => {
   // Log health check request for debugging
   const startTime = Date.now();
+  const clientIP = req.ip || req.headers['x-forwarded-for'] || req.connection.remoteAddress || 'unknown';
   
   // Respond immediately - Railway needs instant 200 OK response
   res.status(200).json({ 
     status: 'ok', 
     timestamp: Date.now(),
     uptime: process.uptime(),
-    version: VERSION
+    version: VERSION,
+    serverReady: serverReady
   });
   
   const duration = Date.now() - startTime;
-  console.log(`[HEALTH] Health check responded in ${duration}ms from ${req.ip || req.headers['x-forwarded-for'] || 'unknown'}`);
+  console.log(`[HEALTH] ✅ Health check responded in ${duration}ms from ${clientIP}`);
+});
+
+// Also add root endpoint that responds immediately
+app.get('/', (req, res) => {
+  res.status(200).json({ 
+    message: 'Kids Money Manager API',
+    status: 'running',
+    version: VERSION,
+    health: '/health',
+    timestamp: new Date().toISOString()
+  });
 });
 
 // Also respond to /api/health for compatibility
