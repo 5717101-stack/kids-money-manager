@@ -1168,7 +1168,9 @@ app.get('/api/health', (req, res) => {
 // This MUST be fast - Railway uses this to determine if the service is healthy
 app.get('/health', (req, res) => {
   // Respond immediately with minimal processing - no async, no DB checks
-  res.status(200).json({ status: 'ok', timestamp: Date.now() });
+  // Use writeHead + end for fastest response (faster than res.json)
+  res.writeHead(200, { 'Content-Type': 'application/json' });
+  res.end('{"status":"ok"}');
 });
 
 // Root endpoint
