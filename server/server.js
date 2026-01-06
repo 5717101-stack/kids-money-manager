@@ -7,6 +7,21 @@ import twilio from 'twilio';
 
 dotenv.config();
 
+// Get version from package.json
+import { readFileSync } from 'fs';
+import { fileURLToPath } from 'url';
+import { dirname, join } from 'path';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
+const packageJson = JSON.parse(readFileSync(join(__dirname, 'package.json'), 'utf8'));
+const VERSION = packageJson.version;
+
+// Log version at startup
+console.log(`\n=== Kids Money Manager Server ===`);
+console.log(`Version: ${VERSION}`);
+console.log(`Starting...\n`);
+
 const app = express();
 const PORT = process.env.PORT || 3001;
 
@@ -1209,7 +1224,8 @@ server.on('error', (error) => {
 });
 
 server.on('listening', () => {
-  console.log(`[SERVER] Listening on http://0.0.0.0:${PORT}`);
+  console.log(`[SERVER] Version ${VERSION} - Listening on http://0.0.0.0:${PORT}`);
+  console.log(`[SERVER] Health check endpoint is ready at /health`);
 });
 
 // Handle shutdown gracefully
