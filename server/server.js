@@ -1164,30 +1164,20 @@ app.get('/api/health', (req, res) => {
   });
 });
 
-// Additional health check for Railway - responds immediately (fastest possible)
+// Health check for Railway - responds immediately (fastest possible)
 // This MUST be fast - Railway uses this to determine if the service is healthy
 app.get('/health', (req, res) => {
-  // Respond immediately with minimal processing
-  res.writeHead(200, { 'Content-Type': 'application/json' });
-  res.end(JSON.stringify({ status: 'ok' }));
+  // Respond immediately with minimal processing - no async, no DB checks
+  res.status(200).json({ status: 'ok', timestamp: Date.now() });
 });
 
-// Root endpoint - also responds quickly
+// Root endpoint
 app.get('/', (req, res) => {
   res.status(200).json({ 
     message: 'Kids Money Manager API',
     status: 'running',
     version: '2.9.1',
     timestamp: new Date().toISOString()
-  });
-});
-
-// Root endpoint
-app.get('/', (req, res) => {
-  res.json({ 
-    message: 'Kids Money Manager API',
-    status: 'running',
-    version: '2.9.1'
   });
 });
 
