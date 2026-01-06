@@ -414,6 +414,57 @@ body {
   gap: 4px;
 }
 
+.cashbox-editable-container {
+  position: relative;
+}
+
+.cashbox-input-inline {
+  font-size: 32px;
+  font-weight: 700;
+  line-height: 1.2;
+  letter-spacing: -0.5px;
+  direction: rtl;
+  text-align: center;
+  border: none;
+  background: transparent;
+  padding: 0;
+  margin: 0;
+  width: auto;
+  min-width: 80px;
+  max-width: 200px;
+  color: inherit;
+  outline: none;
+  -moz-appearance: textfield;
+}
+
+.cashbox-input-inline::-webkit-outer-spin-button,
+.cashbox-input-inline::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+.cashbox-input-inline:focus {
+  background: rgba(0, 0, 0, 0.02);
+  border-radius: var(--radius-sm);
+  padding: 4px 8px;
+}
+
+.currency-symbol-inline {
+  font-size: 32px;
+  font-weight: 700;
+  margin-right: 4px;
+}
+
+.updating-indicator-inline {
+  position: absolute;
+  right: -25px;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 16px;
+  color: var(--text-secondary);
+  animation: pulse 1.5s ease-in-out infinite;
+}
+
 .cashbox-editable-wrapper {
   display: flex;
   align-items: center;

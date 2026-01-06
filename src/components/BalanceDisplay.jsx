@@ -85,10 +85,10 @@ const BalanceDisplay = ({ balance, cashBoxBalance, childName, color, editable = 
         <div className="balance-split-item">
           <div className="balance-label-small">יתרה בקופה</div>
           {editable ? (
-            <div className="cashbox-editable-wrapper">
+            <div className="balance-amount-small cashbox-editable-container" style={{ color: color }}>
               <input
                 type="number"
-                className="cashbox-input"
+                className="cashbox-input-inline"
                 value={cashBoxValue}
                 onChange={handleCashBoxChange}
                 onBlur={handleCashBoxBlur}
@@ -99,8 +99,8 @@ const BalanceDisplay = ({ balance, cashBoxBalance, childName, color, editable = 
                 disabled={isUpdating}
                 style={{ color: color }}
               />
-              <span className="currency-symbol" style={{ color: color }}>₪</span>
-              {isUpdating && <span className="updating-indicator">...</span>}
+              <span className="currency-symbol-inline" style={{ color: color }}>₪</span>
+              {isUpdating && <span className="updating-indicator-inline">...</span>}
             </div>
           ) : (
             <div className="balance-amount-small" style={{ color: color }}>
