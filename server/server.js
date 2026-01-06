@@ -1190,15 +1190,7 @@ app.get('/api/health', (req, res) => {
   });
 });
 
-// Health check for Railway - responds immediately (fastest possible)
-// This MUST be fast - Railway uses this to determine if the service is healthy
-// MUST be defined BEFORE any other routes to ensure it's registered first
-app.get('/health', (req, res) => {
-  // Respond immediately with minimal processing - no async, no DB checks
-  // Use writeHead + end for fastest response (faster than res.json)
-  res.writeHead(200, { 'Content-Type': 'application/json' });
-  res.end('{"status":"ok"}');
-});
+// /health is already defined at the top (before middleware) - no duplicate needed
 
 // /api/health is already defined above, no need for duplicate
 
