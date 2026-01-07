@@ -103,19 +103,59 @@ const OTPVerification = ({ phoneNumber, isExistingFamily, onVerified, onBack }) 
     setOtp(['', '', '', '', '', '']);
 
     try {
-      const apiUrl = import.meta.env.VITE_API_URL || 'https://kids-money-manager-server.onrender.com/api';
+      // For iOS, always use Render URL directly
+      let apiUrl;
+      if (typeof window !== 'undefined' && window.Capacitor?.isNativePlatform()) {
+        // In native app, use Render URL directly
+        apiUrl = 'https://kids-money-manager-server.onrender.com/api';
+        console.log('[OTP-RESEND] Using Render API URL for native app:', apiUrl);
+      } else {
+        // In web, use environment variable or fallback
+        apiUrl = import.meta.env.VITE_API_URL || 'https://kids-money-manager-server.onrender.com/api';
+        console.log('[OTP-RESEND] Using API URL:', apiUrl);
+      }
+      
       const url = `${apiUrl}/auth/send-otp`;
       console.log('📤 Resending OTP request to:', url);
       
-      const response = await fetch(url, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          phoneNumber
-        })
-      });
+      // Create AbortController for timeout
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 seconds timeout
+      
+      let response;
+      try {
+        response = await fetch(url, {
+          method: 'POST',
+          mode: 'cors',
+          credentials: 'omit',
+          headers: {
+            'Content-Type': 'application/json',
+            'Accept': 'application/json',
+          },
+          body: JSON.stringify({
+            phoneNumber
+          }),
+          signal: controller.signal
+        });
+        clearTimeout(timeoutId);
+      } catch (fetchError) {
+        clearTimeout(timeoutId);
+        console.error('[OTP-RESEND] Fetch error details:', {
+          name: fetchError.name,
+          message: fetchError.message,
+          stack: fetchError.stack,
+          url: url
+        });
+        
+        // Handle specific iOS/WebView errors
+        if (fetchError.name === 'TypeError' && (fetchError.message === 'Load failed' || fetchError.message.includes('Failed to fetch'))) {
+          throw new Error('שגיאת רשת: לא ניתן להתחבר לשרת. בדוק את חיבור האינטרנט או נסה שוב מאוחר יותר.');
+        }
+        if (fetchError.name === 'AbortError') {
+          throw new Error('הבקשה בוטלה: השרת לא הגיב בזמן. נסה שוב.');
+        }
+        throw fetchError;
+      }
       
       console.log('📥 Response status:', response.status);
 
@@ -192,7 +232,13 @@ const OTPVerification = ({ phoneNumber, isExistingFamily, onVerified, onBack }) 
           className="test-logs-button"
           onClick={async () => {
             try {
-              const apiUrl = import.meta.env.VITE_API_URL || 'https://kids-money-manager-server.onrender.com/api';
+              // For iOS, always use Render URL directly
+              let apiUrl;
+              if (typeof window !== 'undefined' && window.Capacitor?.isNativePlatform()) {
+                apiUrl = 'https://kids-money-manager-server.onrender.com/api';
+              } else {
+                apiUrl = import.meta.env.VITE_API_URL || 'https://kids-money-manager-server.onrender.com/api';
+              }
               await fetch(`${apiUrl}/test-logs`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' }
