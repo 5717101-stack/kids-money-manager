@@ -104,14 +104,21 @@ app.get('/health', (req, res) => {
   lastHealthCheckTime = Date.now();
   // NO LOGGING HERE - respond immediately
   // Railway needs instant 200 OK response
-  // But log to stderr occasionally (every 10th check) to show it's working
-  if (healthCheckCount % 10 === 0) {
+  // But log to stderr occasionally to show it's working
+  if (healthCheckCount % 5 === 0) {
     process.stderr.write(`[HEALTH] Health check #${healthCheckCount} - Server is alive\n`);
   }
+  // Log every health check to stderr (but after response to not delay)
+  process.stderr.write(`[HEALTH] ✅ Health check #${healthCheckCount} received\n`);
+  
+  // Respond immediately with proper headers
+  res.setHeader('Content-Type', 'application/json');
+  res.setHeader('Cache-Control', 'no-cache');
   res.status(200).json({ 
     status: 'ok',
     timestamp: new Date().toISOString(),
-    healthCheckCount: healthCheckCount
+    healthCheckCount: healthCheckCount,
+    uptime: process.uptime()
   });
 });
 
