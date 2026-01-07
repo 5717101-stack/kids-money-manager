@@ -761,101 +761,95 @@ app.post('/api/auth/send-otp', async (req, res) => {
   const requestStart = Date.now();
   console.log(`\n[SEND-OTP] ========================================`);
   console.log(`[SEND-OTP] 🚀 Request received at ${new Date().toISOString()}`);
-  console.log(`[SEND-OTP] Phone: ${req.body.phoneNumber}, Country: ${req.body.countryCode || '+972'}`);
+  console.log(`[SEND-OTP] Email: ${req.body.email}`);
   console.log(`[SEND-OTP] ========================================\n`);
   
-  process.stderr.write(`\n[SEND-OTP] Request received: ${req.body.phoneNumber}\n`);
+  process.stderr.write(`\n[SEND-OTP] Request received: ${req.body.email}\n`);
   
   try {
-    const { phoneNumber, countryCode = '+972' } = req.body;
+    const { email } = req.body;
     
-    if (!phoneNumber || !phoneNumber.match(/^\d+$/)) {
-      console.error(`[SEND-OTP] ❌ Invalid phone number format`);
-      return res.status(400).json({ error: 'מספר טלפון לא תקין' });
+    // Validate email
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!email || !emailRegex.test(email)) {
+      console.error(`[SEND-OTP] ❌ Invalid email format`);
+      return res.status(400).json({ error: 'כתובת מייל לא תקינה' });
     }
     
-    const fullPhoneNumber = `${countryCode}${phoneNumber}`;
+    const normalizedEmail = email.trim().toLowerCase();
     const otpCode = generateOTP();
     const expiresAt = Date.now() + (10 * 60 * 1000); // 10 minutes
     
-    console.log(`[SEND-OTP] Full phone: ${fullPhoneNumber}`);
+    console.log(`[SEND-OTP] Normalized email: ${normalizedEmail}`);
     console.log(`[SEND-OTP] Generated OTP: ${otpCode}`);
     console.log(`[SEND-OTP] OTP expires at: ${new Date(expiresAt).toISOString()}`);
     
-    // Check Twilio configuration
-    console.log(`[SEND-OTP] Twilio Status Check:`);
-    console.log(`[SEND-OTP]   - Account SID: ${TWILIO_ACCOUNT_SID ? 'SET' : 'NOT SET'}`);
-    console.log(`[SEND-OTP]   - Auth Token: ${TWILIO_AUTH_TOKEN ? 'SET' : 'NOT SET'}`);
-    console.log(`[SEND-OTP]   - Phone Number: ${TWILIO_PHONE_NUMBER || 'NOT SET'}`);
-    console.log(`[SEND-OTP]   - Client: ${twilioClient ? 'INITIALIZED' : 'NOT INITIALIZED'}`);
+    // Check Resend configuration
+    console.log(`[SEND-OTP] Resend Status Check:`);
+    console.log(`[SEND-OTP]   - API Key: ${RESEND_API_KEY ? 'SET' : 'NOT SET'}`);
+    console.log(`[SEND-OTP]   - From Email: ${RESEND_FROM_EMAIL}`);
+    console.log(`[SEND-OTP]   - Client: ${resendClient ? 'INITIALIZED' : 'NOT INITIALIZED'}`);
     
-    process.stderr.write(`[SEND-OTP] Twilio configured: ${(TWILIO_ACCOUNT_SID && TWILIO_AUTH_TOKEN && TWILIO_PHONE_NUMBER) ? 'YES' : 'NO'}\n`);
+    process.stderr.write(`[SEND-OTP] Resend configured: ${(RESEND_API_KEY && resendClient) ? 'YES' : 'NO'}\n`);
     
     // Check if family exists
-    const existingFamily = await getFamilyByPhone(fullPhoneNumber);
+    const existingFamily = await getFamilyByEmail(normalizedEmail);
     console.log(`[SEND-OTP] Family exists: ${existingFamily ? 'YES' : 'NO'}`);
     
     // Store OTP
-    otpStore.set(fullPhoneNumber, {
+    otpStore.set(normalizedEmail, {
       code: otpCode,
       expiresAt,
       familyId: existingFamily ? existingFamily._id : null
     });
     console.log(`[SEND-OTP] OTP stored in memory`);
     
-    // Send SMS
-    const message = `קוד האימות שלך: ${otpCode}. קוד זה תקף ל-10 דקות.`;
-    
+    // Send Email
     console.log(`[SEND-OTP] ========================================`);
-    console.log(`[SEND-OTP] 📱 Attempting to send SMS...`);
-    console.log(`[SEND-OTP] To: ${fullPhoneNumber}`);
-    console.log(`[SEND-OTP] Message: ${message}`);
+    console.log(`[SEND-OTP] 📧 Attempting to send Email...`);
+    console.log(`[SEND-OTP] To: ${normalizedEmail}`);
+    console.log(`[SEND-OTP] OTP: ${otpCode}`);
     console.log(`[SEND-OTP] ========================================\n`);
     
-    process.stderr.write(`[SEND-OTP] Calling sendSMS function...\n`);
+    process.stderr.write(`[SEND-OTP] Calling sendEmail function...\n`);
     
-    const smsResult = await sendSMS(fullPhoneNumber, message);
+    const emailResult = await sendEmail(normalizedEmail, otpCode);
     
     console.log(`[SEND-OTP] ========================================`);
-    console.log(`[SEND-OTP] SMS Result received:`);
-    console.log(`[SEND-OTP] Success: ${smsResult.success}`);
-    console.log(`[SEND-OTP] Result:`, JSON.stringify(smsResult, null, 2));
+    console.log(`[SEND-OTP] Email Result received:`);
+    console.log(`[SEND-OTP] Success: ${emailResult.success}`);
+    console.log(`[SEND-OTP] Result:`, JSON.stringify(emailResult, null, 2));
     console.log(`[SEND-OTP] ========================================\n`);
     
-    process.stderr.write(`[SEND-OTP] SMS result: ${smsResult.success ? 'SUCCESS' : 'FAILED'}\n`);
+    process.stderr.write(`[SEND-OTP] Email result: ${emailResult.success ? 'SUCCESS' : 'FAILED'}\n`);
     
-    if (!smsResult.success) {
-      console.error(`[SEND-OTP] ❌❌❌ SMS FAILED ❌❌❌`);
-      console.error(`[SEND-OTP] Error: ${smsResult.error}`);
-      console.error(`[SEND-OTP] Code: ${smsResult.code}`);
-      console.error(`[SEND-OTP] Status: ${smsResult.status}`);
+    if (!emailResult.success) {
+      console.error(`[SEND-OTP] ❌❌❌ EMAIL FAILED ❌❌❌`);
+      console.error(`[SEND-OTP] Error: ${emailResult.error}`);
       
-      process.stderr.write(`[SEND-OTP] ERROR: ${smsResult.error}\n`);
-      process.stderr.write(`[SEND-OTP] CODE: ${smsResult.code}\n`);
+      process.stderr.write(`[SEND-OTP] ERROR: ${emailResult.error}\n`);
       
       return res.status(500).json({ 
-        error: 'שגיאה בשליחת SMS. אנא נסה שוב או פנה לתמיכה.',
-        smsError: smsResult.error,
-        smsCode: smsResult.code,
+        error: 'שגיאה בשליחת מייל. אנא נסה שוב או פנה לתמיכה.',
+        emailError: emailResult.error,
         details: 'בדוק את ה-Logs ב-Railway לפרטים נוספים'
       });
     }
     
     const duration = Date.now() - requestStart;
-    console.log(`[SEND-OTP] ✅✅✅ SMS SENT SUCCESSFULLY ✅✅✅`);
-    console.log(`[SEND-OTP] SID: ${smsResult.sid}`);
-    console.log(`[SEND-OTP] Status: ${smsResult.status}`);
+    console.log(`[SEND-OTP] ✅✅✅ EMAIL SENT SUCCESSFULLY ✅✅✅`);
+    console.log(`[SEND-OTP] Email ID: ${emailResult.id}`);
     console.log(`[SEND-OTP] Total request time: ${duration}ms`);
     console.log(`[SEND-OTP] ========================================\n`);
     
-    process.stderr.write(`[SEND-OTP] SUCCESS - SID: ${smsResult.sid}\n`);
+    process.stderr.write(`[SEND-OTP] SUCCESS - Email ID: ${emailResult.id}\n`);
     
     res.json({ 
       success: true, 
       message: 'קוד נשלח בהצלחה',
       isExistingFamily: !!existingFamily,
-      smsSent: true,
-      smsSid: smsResult.sid
+      emailSent: true,
+      emailId: emailResult.id
     });
   } catch (error) {
     const duration = Date.now() - requestStart;
