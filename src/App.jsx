@@ -19,6 +19,7 @@ const App = () => {
   const [children, setChildren] = useState([]);
   const [currentChild, setCurrentChild] = useState(null); // For child-only view
   const [isChildView, setIsChildView] = useState(false); // Track if we're in child-only mode
+  const [isCreatingFamily, setIsCreatingFamily] = useState(false); // Track if user is creating a new family
 
   // Update document direction based on language
   useEffect(() => {
@@ -68,20 +69,24 @@ const App = () => {
   };
 
   const handleWelcomeCreate = () => {
+    setIsCreatingFamily(true); // Mark that user wants to create a family
     setScreen('phone');
   };
 
   const handleWelcomeJoinAsParent = () => {
+    setIsCreatingFamily(false); // Not creating, joining as parent
     setScreen('parent-invite');
   };
 
   const handleWelcomeJoinAsChild = () => {
+    setIsCreatingFamily(false); // Not creating, joining as child
     setScreen('child-invite');
   };
 
   const handleOTPSent = (phoneNum, isExistingFamily) => {
     setPhoneNumber(phoneNum);
     setScreen('otp');
+    // If user is creating family but number exists, we'll handle it in OTP verification
   };
 
   const loadChildData = async (fId, childId) => {
@@ -103,8 +108,9 @@ const App = () => {
     sessionStorage.setItem('familyId', fId);
     sessionStorage.setItem('phoneNumber', phoneNum);
     
-    if (isNewFamily) {
-      // New family - show parent dashboard
+    // If user was creating a family (even if number already exists), treat them as parent
+    if (isNewFamily || isCreatingFamily) {
+      // New family OR existing family but user came from "Create" - show parent dashboard
       sessionStorage.setItem('parentLoggedIn', 'true');
       sessionStorage.removeItem('isChildView');
       sessionStorage.removeItem('childId');
@@ -112,10 +118,13 @@ const App = () => {
       setScreen('dashboard');
       loadChildren(fId);
     } else {
-      // Existing family - show child password login
+      // Existing family and user came from "Join" - show child password login
       sessionStorage.removeItem('parentLoggedIn');
       setScreen('child-password');
     }
+    
+    // Reset the flag
+    setIsCreatingFamily(false);
   };
 
   const handleChildPasswordVerified = (child, fId) => {
