@@ -1693,6 +1693,15 @@ body {
   margin-bottom: 12px;
 }
 
+.welcome-header h1 .kids-red {
+  color: #ef4444 !important;
+  font-weight: 800;
+}
+
+.welcome-header h1 span.kids-red {
+  color: #ef4444 !important;
+}
+
 .welcome-subtitle {
   font-size: 18px;
   color: var(--text-secondary);
