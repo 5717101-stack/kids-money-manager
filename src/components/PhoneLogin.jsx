@@ -79,6 +79,10 @@ const PhoneLogin = ({ onOTPSent }) => {
       console.log('[FRONTEND] 🚀 Calling fetch()...');
       console.log('[FRONTEND] Request start time:', new Date().toISOString());
       
+      // Create AbortController for timeout
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 seconds timeout
+      
       let response;
       try {
         response = await fetch(url, {
@@ -87,10 +91,11 @@ const PhoneLogin = ({ onOTPSent }) => {
             'Content-Type': 'application/json',
           },
           body: JSON.stringify(requestBody),
-          // Add timeout for iOS/WebView
-          signal: AbortSignal.timeout(30000) // 30 seconds timeout
+          signal: controller.signal
         });
+        clearTimeout(timeoutId);
       } catch (fetchError) {
+        clearTimeout(timeoutId);
         console.error('[FRONTEND] Fetch error details:', {
           name: fetchError.name,
           message: fetchError.message,
@@ -99,7 +104,7 @@ const PhoneLogin = ({ onOTPSent }) => {
         });
         
         // Handle specific iOS/WebView errors
-        if (fetchError.name === 'TypeError' && fetchError.message === 'Load failed') {
+        if (fetchError.name === 'TypeError' && (fetchError.message === 'Load failed' || fetchError.message.includes('Failed to fetch'))) {
           throw new Error('שגיאת רשת: לא ניתן להתחבר לשרת. בדוק את חיבור האינטרנט או נסה שוב מאוחר יותר.');
         }
         if (fetchError.name === 'AbortError') {
