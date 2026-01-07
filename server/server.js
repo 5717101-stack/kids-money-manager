@@ -1188,22 +1188,51 @@ app.post('/api/auth/verify-otp', async (req, res) => {
 
 // Create child and get join code
 app.post('/api/families/:familyId/children', async (req, res) => {
+  const requestStart = Date.now();
+  const timestamp = new Date().toISOString();
+  
+  console.log(`\n[CREATE-CHILD-ENDPOINT] ========================================`);
+  console.log(`[CREATE-CHILD-ENDPOINT] 📥 Request received at ${timestamp}`);
+  console.log(`[CREATE-CHILD-ENDPOINT] ========================================`);
+  console.log(`[CREATE-CHILD-ENDPOINT] Method: ${req.method}`);
+  console.log(`[CREATE-CHILD-ENDPOINT] Path: ${req.path}`);
+  console.log(`[CREATE-CHILD-ENDPOINT] Family ID: ${req.params.familyId}`);
+  console.log(`[CREATE-CHILD-ENDPOINT] Body:`, JSON.stringify(req.body, null, 2));
+  console.log(`[CREATE-CHILD-ENDPOINT] ========================================\n`);
+  
+  process.stderr.write(`[CREATE-CHILD-ENDPOINT] Request received - Family: ${req.params.familyId}, Name: ${req.body?.name || 'NOT PROVIDED'}\n`);
+  
   try {
     const { familyId } = req.params;
     const { name } = req.body;
     
+    console.log(`[CREATE-CHILD-ENDPOINT] Step 1: Validating input...`);
+    console.log(`[CREATE-CHILD-ENDPOINT]   Family ID: ${familyId}`);
+    console.log(`[CREATE-CHILD-ENDPOINT]   Name: ${name || 'NOT PROVIDED'}`);
+    
     if (!name) {
+      console.error(`[CREATE-CHILD-ENDPOINT] ❌ Name is required`);
+      process.stderr.write(`[CREATE-CHILD-ENDPOINT] ❌ Name is required\n`);
       return res.status(400).json({ error: 'שם הילד נדרש' });
     }
     
+    console.log(`[CREATE-CHILD-ENDPOINT] Step 2: Getting family...`);
     const family = await getFamilyById(familyId);
     if (!family) {
+      console.error(`[CREATE-CHILD-ENDPOINT] ❌ Family not found: ${familyId}`);
+      process.stderr.write(`[CREATE-CHILD-ENDPOINT] ❌ Family not found: ${familyId}\n`);
       return res.status(404).json({ error: 'משפחה לא נמצאה' });
     }
+    console.log(`[CREATE-CHILD-ENDPOINT] ✅ Family found: ${familyId}`);
+    console.log(`[CREATE-CHILD-ENDPOINT]   Family has ${family.children?.length || 0} children`);
     
+    console.log(`[CREATE-CHILD-ENDPOINT] Step 3: Adding child to family...`);
     const { child, childCode, childPassword } = await addChildToFamily(familyId, name);
+    console.log(`[CREATE-CHILD-ENDPOINT] ✅ Child added successfully`);
+    console.log(`[CREATE-CHILD-ENDPOINT]   Child ID: ${child._id}`);
+    console.log(`[CREATE-CHILD-ENDPOINT]   Child Name: ${child.name}`);
     
-    res.json({
+    const responseBody = {
       success: true,
       child: {
         _id: child._id,
@@ -1219,10 +1248,32 @@ app.post('/api/families/:familyId/children', async (req, res) => {
       },
       joinCode: childCode,
       password: childPassword
-    });
+    };
+    
+    const duration = Date.now() - requestStart;
+    console.log(`[CREATE-CHILD-ENDPOINT] Step 4: Sending response...`);
+    console.log(`[CREATE-CHILD-ENDPOINT]   Response Status: 200`);
+    console.log(`[CREATE-CHILD-ENDPOINT]   Response Body:`, JSON.stringify(responseBody, null, 2));
+    console.log(`[CREATE-CHILD-ENDPOINT]   Duration: ${duration}ms`);
+    console.log(`[CREATE-CHILD-ENDPOINT] ========================================\n`);
+    
+    process.stderr.write(`[CREATE-CHILD-ENDPOINT] ✅ Success - Child created: ${child._id}, Name: ${child.name}\n`);
+    
+    res.json(responseBody);
   } catch (error) {
-    console.error('Error creating child:', error);
-    res.status(500).json({ error: 'שגיאה ביצירת ילד' });
+    const duration = Date.now() - requestStart;
+    console.error(`[CREATE-CHILD-ENDPOINT] ========================================`);
+    console.error(`[CREATE-CHILD-ENDPOINT] ❌❌❌ ERROR ❌❌❌`);
+    console.error(`[CREATE-CHILD-ENDPOINT] ========================================`);
+    console.error(`[CREATE-CHILD-ENDPOINT] Error Name: ${error.name || 'Unknown'}`);
+    console.error(`[CREATE-CHILD-ENDPOINT] Error Message: ${error.message || 'No message'}`);
+    console.error(`[CREATE-CHILD-ENDPOINT] Error Stack: ${error.stack || 'No stack'}`);
+    console.error(`[CREATE-CHILD-ENDPOINT] Duration: ${duration}ms`);
+    console.error(`[CREATE-CHILD-ENDPOINT] ========================================\n`);
+    
+    process.stderr.write(`[CREATE-CHILD-ENDPOINT] ❌ ERROR: ${error.message}\n`);
+    
+    res.status(500).json({ error: 'שגיאה ביצירת ילד', details: error.message });
   }
 });
 

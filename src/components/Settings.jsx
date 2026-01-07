@@ -706,11 +706,29 @@ const Settings = ({ familyId, onClose }) => {
               <form
                 onSubmit={async (e) => {
                   e.preventDefault();
-                  if (!familyId || !newChildName.trim()) return;
+                  console.log('[CREATE-CHILD] ========================================');
+                  console.log('[CREATE-CHILD] Form submitted');
+                  console.log('[CREATE-CHILD] Family ID:', familyId);
+                  console.log('[CREATE-CHILD] Child Name:', newChildName.trim());
+                  console.log('[CREATE-CHILD] ========================================');
+                  
+                  if (!familyId || !newChildName.trim()) {
+                    console.error('[CREATE-CHILD] ❌ Missing familyId or child name');
+                    alert('אנא הכנס שם ילד');
+                    return;
+                  }
                   
                   setCreatingChild(true);
                   try {
+                    console.log('[CREATE-CHILD] Calling createChild API...');
                     const result = await createChild(familyId, newChildName.trim());
+                    console.log('[CREATE-CHILD] ✅ API call successful');
+                    console.log('[CREATE-CHILD] Result:', JSON.stringify(result, null, 2));
+                    
+                    if (!result || !result.child) {
+                      throw new Error('תגובה לא תקינה מהשרת');
+                    }
+                    
                     setChildPasswordModal({
                       childId: result.child._id,
                       childName: result.child.name,
@@ -718,13 +736,24 @@ const Settings = ({ familyId, onClose }) => {
                       joinCode: result.joinCode
                     });
                     setNewChildName('');
+                    
+                    console.log('[CREATE-CHILD] Reloading data...');
                     await loadData();
+                    console.log('[CREATE-CHILD] ✅ Data reloaded');
+                    
                     if (onClose) {
                       setTimeout(() => {
                         window.location.reload();
                       }, 1000);
                     }
                   } catch (error) {
+                    console.error('[CREATE-CHILD] ========================================');
+                    console.error('[CREATE-CHILD] ❌❌❌ ERROR ❌❌❌');
+                    console.error('[CREATE-CHILD] Error Name:', error.name);
+                    console.error('[CREATE-CHILD] Error Message:', error.message);
+                    console.error('[CREATE-CHILD] Error Stack:', error.stack);
+                    console.error('[CREATE-CHILD] Full Error:', error);
+                    console.error('[CREATE-CHILD] ========================================');
                     alert('שגיאה ביצירת ילד: ' + error.message);
                   } finally {
                     setCreatingChild(false);
