@@ -1,6 +1,5 @@
 import React, { useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { getParentInviteCode } from '../utils/api';
 
 const JoinParentScreen = ({ onVerified, onBack }) => {
   const { t } = useTranslation();
