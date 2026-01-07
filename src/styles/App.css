@@ -2412,6 +2412,153 @@ body {
   box-shadow: var(--shadow-md);
 }
 
+/* ========== CHILD PASSWORD LOGIN ========== */
+.child-password-login {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  min-height: 100vh;
+  background: linear-gradient(135deg, var(--primary-light) 0%, var(--bg) 100%);
+  padding: 20px;
+}
+
+.child-password-container {
+  background: var(--bg-card);
+  border-radius: var(--radius-xl);
+  padding: 40px;
+  box-shadow: var(--shadow-xl);
+  text-align: center;
+  max-width: 450px;
+  width: 100%;
+  border: 2px solid var(--border);
+}
+
+.child-password-header {
+  margin-bottom: 32px;
+}
+
+.child-password-header .back-button {
+  position: absolute;
+  top: 20px;
+  right: 20px;
+  background: none;
+  border: none;
+  font-size: 18px;
+  cursor: pointer;
+  color: var(--text-secondary);
+  padding: 8px;
+  transition: color 0.2s ease;
+}
+
+.child-password-header .back-button:hover {
+  color: var(--primary);
+}
+
+.child-password-header h1 {
+  font-size: 28px;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin-bottom: 12px;
+}
+
+.child-password-subtitle {
+  font-size: 16px;
+  color: var(--text-secondary);
+  margin: 0;
+}
+
+.child-password-form {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.child-password-form .form-group {
+  text-align: right;
+}
+
+.child-password-form label {
+  display: block;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-bottom: 8px;
+}
+
+.password-input {
+  width: 100%;
+  padding: 16px 18px;
+  border: 2px solid var(--border);
+  border-radius: var(--radius-md);
+  font-size: 20px;
+  font-weight: 600;
+  font-family: 'Courier New', monospace;
+  letter-spacing: 4px;
+  text-align: center;
+  color: var(--text-primary);
+  background: var(--bg);
+  transition: all 0.2s ease;
+}
+
+.password-input:focus {
+  outline: none;
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px var(--primary-light);
+}
+
+.child-password-button {
+  padding: 16px 32px;
+  background: var(--primary);
+  color: white;
+  border: none;
+  border-radius: var(--radius-md);
+  font-size: 18px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.child-password-button:hover:not(:disabled) {
+  background: var(--primary-hover);
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-md);
+}
+
+.child-password-button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+/* ========== CHILD ONLY NAV ========== */
+.child-only-nav {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 16px 24px;
+  background: var(--bg-card);
+  border-bottom: 2px solid var(--border);
+}
+
+.child-nav-info {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.child-nav-info .nav-profile-icon {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  object-fit: cover;
+}
+
+.child-nav-info .child-name {
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
 /* Mobile Responsive */
 @media (max-width: 768px) {
   .password-modal {
@@ -2448,5 +2595,13 @@ body {
 
   .recover-password-button {
     width: 100%;
+  }
+
+  .child-password-container {
+    padding: 32px 24px;
+  }
+
+  .child-password-header h1 {
+    font-size: 24px;
   }
 }

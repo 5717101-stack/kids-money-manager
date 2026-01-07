@@ -1297,6 +1297,79 @@ app.post('/api/families/:familyId/children', async (req, res) => {
   }
 });
 
+// Verify child password and return child
+app.post('/api/auth/verify-child-password', async (req, res) => {
+  const timestamp = new Date().toISOString();
+  console.log(`\n[VERIFY-CHILD-PASSWORD] ========================================`);
+  console.log(`[VERIFY-CHILD-PASSWORD] 📥 Request received at ${timestamp}`);
+  console.log(`[VERIFY-CHILD-PASSWORD] ========================================`);
+  console.log(`[VERIFY-CHILD-PASSWORD] Family ID: ${req.body.familyId}`);
+  console.log(`[VERIFY-CHILD-PASSWORD] Password: ${req.body.password ? '***' : 'NOT PROVIDED'}`);
+  console.log(`[VERIFY-CHILD-PASSWORD] ========================================\n`);
+  
+  try {
+    const { familyId, password } = req.body;
+    
+    if (!familyId || !password) {
+      console.error(`[VERIFY-CHILD-PASSWORD] ❌ Missing familyId or password`);
+      return res.status(400).json({ error: 'מספר משפחה וסיסמה נדרשים' });
+    }
+    
+    console.log(`[VERIFY-CHILD-PASSWORD] Step 1: Getting family...`);
+    const family = await getFamilyById(familyId);
+    
+    if (!family) {
+      console.error(`[VERIFY-CHILD-PASSWORD] ❌ Family not found: ${familyId}`);
+      return res.status(404).json({ error: 'משפחה לא נמצאה' });
+    }
+    
+    console.log(`[VERIFY-CHILD-PASSWORD] ✅ Family found: ${familyId}`);
+    console.log(`[VERIFY-CHILD-PASSWORD]   Family has ${family.children?.length || 0} children`);
+    
+    if (!family.children || family.children.length === 0) {
+      console.error(`[VERIFY-CHILD-PASSWORD] ❌ No children in family`);
+      return res.status(400).json({ error: 'אין ילדים במשפחה זו' });
+    }
+    
+    console.log(`[VERIFY-CHILD-PASSWORD] Step 2: Searching for child with matching password...`);
+    const child = family.children.find(c => c.password === password.trim());
+    
+    if (!child) {
+      console.error(`[VERIFY-CHILD-PASSWORD] ❌ No child found with matching password`);
+      return res.status(401).json({ error: 'סיסמה שגויה' });
+    }
+    
+    console.log(`[VERIFY-CHILD-PASSWORD] ✅ Child found: ${child._id} (${child.name})`);
+    console.log(`[VERIFY-CHILD-PASSWORD] ========================================\n`);
+    
+    res.json({
+      success: true,
+      child: {
+        _id: child._id,
+        name: child.name,
+        balance: child.balance || 0,
+        cashBoxBalance: child.cashBoxBalance || 0,
+        profileImage: child.profileImage || null,
+        weeklyAllowance: child.weeklyAllowance || 0,
+        allowanceType: child.allowanceType || 'weekly',
+        allowanceDay: child.allowanceDay !== undefined ? child.allowanceDay : 1,
+        allowanceTime: child.allowanceTime || '08:00',
+        transactions: child.transactions || []
+      }
+    });
+  } catch (error) {
+    console.error(`[VERIFY-CHILD-PASSWORD] ========================================`);
+    console.error(`[VERIFY-CHILD-PASSWORD] ❌❌❌ ERROR ❌❌❌`);
+    console.error(`[VERIFY-CHILD-PASSWORD] ========================================`);
+    console.error(`[VERIFY-CHILD-PASSWORD] Error Name: ${error.name || 'Unknown'}`);
+    console.error(`[VERIFY-CHILD-PASSWORD] Error Message: ${error.message || 'No message'}`);
+    console.error(`[VERIFY-CHILD-PASSWORD] Error Stack: ${error.stack || 'No stack'}`);
+    console.error(`[VERIFY-CHILD-PASSWORD] ========================================\n`);
+    
+    res.status(500).json({ error: 'שגיאה באימות סיסמה' });
+  }
+});
+
 // Join child by code
 app.post('/api/families/:familyId/children/join', async (req, res) => {
   try {

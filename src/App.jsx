@@ -4,24 +4,38 @@ import PhoneLogin from './components/PhoneLogin';
 import OTPVerification from './components/OTPVerification';
 import ParentDashboard from './components/ParentDashboard';
 import ChildView from './components/ChildView';
+import ChildPasswordLogin from './components/ChildPasswordLogin';
 
 const App = () => {
-  const [screen, setScreen] = useState('welcome'); // 'welcome', 'phone', 'otp', 'dashboard'
+  const [screen, setScreen] = useState('welcome'); // 'welcome', 'phone', 'otp', 'child-password', 'dashboard', 'child-view'
   const [familyId, setFamilyId] = useState(null);
   const [phoneNumber, setPhoneNumber] = useState('');
   const [view, setView] = useState('parent'); // 'parent', 'child1', 'child2', etc.
   const [children, setChildren] = useState([]);
+  const [currentChild, setCurrentChild] = useState(null); // For child-only view
+  const [isChildView, setIsChildView] = useState(false); // Track if we're in child-only mode
 
   useEffect(() => {
     // Check if already logged in
     const savedFamilyId = sessionStorage.getItem('familyId');
     const savedPhoneNumber = sessionStorage.getItem('phoneNumber');
+    const savedChildId = sessionStorage.getItem('childId');
+    const savedIsChildView = sessionStorage.getItem('isChildView') === 'true';
     
     if (savedFamilyId) {
       setFamilyId(savedFamilyId);
       setPhoneNumber(savedPhoneNumber || '');
-      setScreen('dashboard');
-      loadChildren(savedFamilyId);
+      
+      if (savedIsChildView && savedChildId) {
+        // Load child data and show child view
+        setIsChildView(true);
+        setCurrentChild({ _id: savedChildId });
+        setScreen('child-view');
+        loadChildData(savedFamilyId, savedChildId);
+      } else {
+        setScreen('dashboard');
+        loadChildren(savedFamilyId);
+      }
     }
   }, []);
 
@@ -54,20 +68,47 @@ const App = () => {
     setScreen('otp');
   };
 
+  const loadChildData = async (fId, childId) => {
+    try {
+      const apiUrl = import.meta.env.VITE_API_URL || 'https://kids-money-manager-server.onrender.com/api';
+      const response = await fetch(`${apiUrl}/families/${fId}/children/${childId}`);
+      const data = await response.json();
+      if (data) {
+        setCurrentChild({ ...data, _id: childId });
+      }
+    } catch (error) {
+      console.error('Error loading child data:', error);
+    }
+  };
+
   const handleOTPVerified = (fId, phoneNum, isNewFamily) => {
     setFamilyId(fId);
     setPhoneNumber(phoneNum);
     sessionStorage.setItem('familyId', fId);
     sessionStorage.setItem('phoneNumber', phoneNum);
-    sessionStorage.setItem('parentLoggedIn', 'true');
     
     if (isNewFamily) {
+      // New family - show parent dashboard
+      sessionStorage.setItem('parentLoggedIn', 'true');
+      sessionStorage.removeItem('isChildView');
+      sessionStorage.removeItem('childId');
+      setIsChildView(false);
       setScreen('dashboard');
       loadChildren(fId);
     } else {
-      setScreen('dashboard');
-      loadChildren(fId);
+      // Existing family - show child password login
+      sessionStorage.removeItem('parentLoggedIn');
+      setScreen('child-password');
     }
+  };
+
+  const handleChildPasswordVerified = (child, fId) => {
+    setCurrentChild(child);
+    setIsChildView(true);
+    sessionStorage.setItem('childId', child._id);
+    sessionStorage.setItem('isChildView', 'true');
+    sessionStorage.removeItem('parentLoggedIn');
+    setScreen('child-view');
   };
 
   const handleBack = () => {
@@ -78,9 +119,13 @@ const App = () => {
     sessionStorage.removeItem('familyId');
     sessionStorage.removeItem('phoneNumber');
     sessionStorage.removeItem('parentLoggedIn');
+    sessionStorage.removeItem('childId');
+    sessionStorage.removeItem('isChildView');
     setFamilyId(null);
     setPhoneNumber('');
     setChildren([]);
+    setCurrentChild(null);
+    setIsChildView(false);
     setView('parent');
     setScreen('welcome');
   };
@@ -109,7 +154,45 @@ const App = () => {
         />
       )}
 
-      {screen === 'dashboard' && familyId && (
+      {screen === 'child-password' && familyId && (
+        <ChildPasswordLogin
+          familyId={familyId}
+          onChildVerified={handleChildPasswordVerified}
+          onBack={handleBack}
+        />
+      )}
+
+      {screen === 'child-view' && familyId && currentChild && (
+        <>
+          <nav className="main-nav child-only-nav">
+            <div className="child-nav-info">
+              {currentChild.profileImage ? (
+                <img src={currentChild.profileImage} alt={currentChild.name} className="nav-profile-icon" />
+              ) : (
+                <span>👦</span>
+              )}
+              <span className="child-name">{currentChild.name}</span>
+            </div>
+            <button
+              className="logout-button"
+              onClick={handleLogout}
+              title="התנתק"
+            >
+              🚪 התנתק
+            </button>
+          </nav>
+
+          <main className="main-content">
+            <ChildView childId={currentChild._id} familyId={familyId} />
+          </main>
+          
+          <footer className="app-footer">
+            <span className="version">גרסה 2.9.37</span>
+          </footer>
+        </>
+      )}
+
+      {screen === 'dashboard' && familyId && !isChildView && (
         <>
           <nav className="main-nav">
             <button
