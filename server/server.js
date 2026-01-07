@@ -64,18 +64,16 @@ let serverReady = false;
 // Railway checks this endpoint to determine if service is healthy
 // CRITICAL: This MUST respond immediately - Railway uses this to keep container alive
 // MUST be defined BEFORE middleware to ensure fastest response
+// NO LOGGING - any delay will cause Railway to kill the container
 let healthCheckCount = 0;
+let lastHealthCheckTime = Date.now();
 app.get('/health', (req, res) => {
   healthCheckCount++;
-  // Minimal logging - only every 10th call to avoid performance impact
-  if (healthCheckCount % 10 === 1) {
-    console.log(`[HEALTH] Check #${healthCheckCount} - ${new Date().toISOString()}`);
-  }
-  // Respond immediately - Railway needs instant 200 OK response
+  lastHealthCheckTime = Date.now();
+  // NO LOGGING HERE - respond immediately
+  // Railway needs instant 200 OK response
   res.status(200).json({ 
-    status: 'ok',
-    timestamp: Date.now(),
-    serverReady: serverReady
+    status: 'ok'
   });
 });
 
@@ -91,16 +89,13 @@ app.get('/', (req, res) => {
 });
 
 // Also respond to /api/health for compatibility
+// NO LOGGING - respond immediately
 app.get('/api/health', (req, res) => {
   healthCheckCount++;
-  // Minimal logging - only every 10th call to avoid performance impact
-  if (healthCheckCount % 10 === 1) {
-    console.log(`[HEALTH] /api/health Check #${healthCheckCount} - ${new Date().toISOString()}`);
-  }
+  lastHealthCheckTime = Date.now();
+  // NO LOGGING - respond immediately
   res.status(200).json({ 
-    status: 'ok', 
-    timestamp: Date.now(),
-    serverReady: serverReady
+    status: 'ok'
   });
 });
 
@@ -1357,6 +1352,8 @@ let sigtermCount = 0;
 process.on('SIGTERM', () => {
   sigtermCount++;
   const uptime = process.uptime();
+  const timeSinceLastHealthCheck = Date.now() - lastHealthCheckTime;
+  
   console.log(`\n[SERVER] ⚠️  ========================================`);
   console.log(`[SERVER] ⚠️  SIGTERM received (call #${sigtermCount})`);
   console.log(`[SERVER] ⚠️  Server has been running for ${Math.floor(uptime)} seconds`);
@@ -1366,24 +1363,27 @@ process.on('SIGTERM', () => {
   console.log(`[SERVER] ⚠️  Server listening: ${server && server.listening ? 'YES' : 'NO'}`);
   console.log(`[SERVER] ⚠️  Health check URL: http://0.0.0.0:${PORT}/health`);
   console.log(`[SERVER] ⚠️  Total health check calls received: ${healthCheckCount}`);
+  console.log(`[SERVER] ⚠️  Last health check: ${Math.floor(timeSinceLastHealthCheck / 1000)}s ago`);
   
   if (healthCheckCount === 0) {
     console.log(`[SERVER] ❌ CRITICAL: No health check calls were received!`);
     console.log(`[SERVER] ❌ This means Railway is NOT calling /health endpoint`);
-    console.log(`[SERVER] ❌ Service is likely configured as 'Job' instead of 'Web Service'`);
+    console.log(`[SERVER] ❌ Service is DEFINITELY configured as 'Job' instead of 'Web Service'`);
+    console.log(`[SERVER] ❌ SOLUTION: Railway Dashboard → Settings → Service Type → Change to 'Web Service'`);
+  } else if (timeSinceLastHealthCheck > 300000) {
+    console.log(`[SERVER] ❌ CRITICAL: No health checks for ${Math.floor(timeSinceLastHealthCheck / 1000)}s!`);
+    console.log(`[SERVER] ❌ Railway stopped calling /health after ${healthCheckCount} calls`);
+    console.log(`[SERVER] ❌ Service is likely configured as 'Job' - it runs once and stops`);
     console.log(`[SERVER] ❌ SOLUTION: Railway Dashboard → Settings → Service Type → Change to 'Web Service'`);
   } else {
     console.log(`[SERVER] ⚠️  Health checks were received (${healthCheckCount} total) but Railway still sent SIGTERM`);
-    console.log(`[SERVER] ⚠️  This may indicate:`);
-    console.log(`[SERVER] ⚠️    1. Health check response is too slow (>600s timeout)`);
-    console.log(`[SERVER] ⚠️    2. Health check response format is incorrect`);
-    console.log(`[SERVER] ⚠️    3. Service is still configured as 'Job' (not enough health checks)`);
-    console.log(`[SERVER] ⚠️    4. Railway health check interval is too long`);
+    console.log(`[SERVER] ⚠️  This may indicate health check response format issue`);
   }
   
   console.log(`[SERVER] ⚠️  ========================================`);
   console.log(`[SERVER] ⚠️  IGNORING SIGTERM - Server will continue running`);
   console.log(`[SERVER] ⚠️  Server is still active and accepting requests`);
+  console.log(`[SERVER] ⚠️  Note: Railway may force kill the container, but we'll try to keep running`);
   console.log(`[SERVER] ⚠️  ========================================\n`);
   
   // DO NOT shut down - continue running
