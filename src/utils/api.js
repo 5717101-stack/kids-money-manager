@@ -304,3 +304,33 @@ export const getChildPassword = async (familyId, childId) => {
   const response = await apiCall(`/families/${familyId}/children/${childId}/password`);
   return response.password;
 };
+
+// Savings Goals API
+export const getSavingsGoal = async (familyId, childId) => {
+  if (!familyId || !childId) {
+    throw new Error('Family ID and Child ID are required');
+  }
+  const response = await apiCall(`/families/${familyId}/children/${childId}/savings-goal`);
+  return response.savingsGoal;
+};
+
+export const updateSavingsGoal = async (familyId, childId, name, targetAmount) => {
+  if (!familyId || !childId) {
+    throw new Error('Family ID and Child ID are required');
+  }
+  const response = await apiCall(`/families/${familyId}/children/${childId}/savings-goal`, {
+    method: 'PUT',
+    body: JSON.stringify({ name, targetAmount: parseFloat(targetAmount) })
+  });
+  return response.savingsGoal;
+};
+
+export const deleteSavingsGoal = async (familyId, childId) => {
+  if (!familyId || !childId) {
+    throw new Error('Family ID and Child ID are required');
+  }
+  const response = await apiCall(`/families/${familyId}/children/${childId}/savings-goal`, {
+    method: 'DELETE'
+  });
+  return response;
+};
