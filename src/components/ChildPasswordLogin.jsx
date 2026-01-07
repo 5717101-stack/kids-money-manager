@@ -59,6 +59,19 @@ const ChildPasswordLogin = ({ familyId, onChildVerified, onBack }) => {
           <p className="child-password-subtitle">
             הכנס את הסיסמה שלך כדי להתחבר לחשבון
           </p>
+          <p style={{ 
+            fontSize: '14px', 
+            color: '#64748b', 
+            marginTop: '8px',
+            padding: '12px',
+            backgroundColor: '#f1f5f9',
+            borderRadius: '8px',
+            textAlign: 'center'
+          }}>
+            💡 <strong>איפה למצוא את הסיסמה?</strong><br/>
+            ההורה שלך יכול לראות את הסיסמה שלך בהגדרות<br/>
+            (⚙️ הגדרות → בחר אותך → 🔑 שחזר סיסמה)
+          </p>
         </div>
 
         <form onSubmit={handleSubmit} className="child-password-form">
@@ -92,7 +105,7 @@ const ChildPasswordLogin = ({ familyId, onChildVerified, onBack }) => {
         </form>
       </div>
       <footer className="app-footer">
-        <span className="version">גרסה 2.9.40</span>
+        <span className="version">גרסה 3.0.0</span>
       </footer>
     </div>
   );
