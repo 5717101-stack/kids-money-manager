@@ -1,9 +1,7 @@
 // Get API URL - check if we're in production, development, or mobile app
 const getApiUrl = () => {
   // Production API URL (Render)
-  // TODO: Update this with your Render service URL after deployment
-  // Format: https://YOUR-SERVICE-NAME.onrender.com/api
-  const PRODUCTION_API = import.meta.env.VITE_API_URL || 'https://YOUR-SERVICE-NAME.onrender.com/api';
+  const PRODUCTION_API = import.meta.env.VITE_API_URL || 'https://kids-money-manager-server.onrender.com/api';
   
   // If we're in a mobile app (Capacitor)
   if (typeof window !== 'undefined' && window.Capacitor?.isNativePlatform()) {

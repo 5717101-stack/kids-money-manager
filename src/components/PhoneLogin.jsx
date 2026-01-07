@@ -54,8 +54,7 @@ const PhoneLogin = ({ onOTPSent }) => {
     setIsLoading(true);
 
     try {
-      // TODO: Update with your Render service URL after deployment
-      const apiUrl = import.meta.env.VITE_API_URL || 'https://YOUR-SERVICE-NAME.onrender.com/api';
+      const apiUrl = import.meta.env.VITE_API_URL || 'https://kids-money-manager-server.onrender.com/api';
       const url = `${apiUrl}/auth/send-otp`;
       const normalizedEmail = email.trim().toLowerCase();
       const requestBody = { email: normalizedEmail };
@@ -189,8 +188,7 @@ const PhoneLogin = ({ onOTPSent }) => {
           className="test-logs-button"
           onClick={async () => {
             try {
-              // TODO: Update with your Render service URL after deployment
-      const apiUrl = import.meta.env.VITE_API_URL || 'https://YOUR-SERVICE-NAME.onrender.com/api';
+              const apiUrl = import.meta.env.VITE_API_URL || 'https://kids-money-manager-server.onrender.com/api';
               await fetch(`${apiUrl}/test-logs`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' }
@@ -203,7 +201,7 @@ const PhoneLogin = ({ onOTPSent }) => {
         >
           🔍 בדיקת לוגים
         </button>
-        <span className="version">גרסה 2.9.27</span>
+        <span className="version">גרסה 2.9.28</span>
       </footer>
     </div>
   );

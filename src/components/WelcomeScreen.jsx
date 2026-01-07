@@ -9,8 +9,7 @@ const WelcomeScreen = ({ onSelectCreate, onSelectJoin }) => {
     
     try {
       // Use the same logic as api.js
-      // TODO: Update with your Render service URL after deployment
-      const PRODUCTION_API = import.meta.env.VITE_API_URL || 'https://YOUR-SERVICE-NAME.onrender.com/api';
+      const PRODUCTION_API = import.meta.env.VITE_API_URL || 'https://kids-money-manager-server.onrender.com/api';
       let apiUrl;
       
       console.log('[TEST-LOGS] Checking environment...');
@@ -120,7 +119,7 @@ const WelcomeScreen = ({ onSelectCreate, onSelectJoin }) => {
         >
           🔍 בדיקת לוגים
         </button>
-        <span className="version">גרסה 2.9.27</span>
+        <span className="version">גרסה 2.9.28</span>
       </footer>
     </div>
   );
