@@ -199,12 +199,22 @@ function generateChildCode() {
 // Send Email via Resend
 async function sendEmail(emailAddress, otpCode) {
   const startTime = Date.now();
-  console.log(`\n[EMAIL] ===== Email Send Attempt =====`);
+  console.log(`\n[EMAIL] ========================================`);
+  console.log(`[EMAIL] ===== Email Send Attempt =====`);
+  console.log(`[EMAIL] ========================================`);
   console.log(`[EMAIL] Timestamp: ${new Date().toISOString()}`);
   console.log(`[EMAIL] To: ${emailAddress}`);
   console.log(`[EMAIL] From: ${RESEND_FROM_EMAIL}`);
+  console.log(`[EMAIL] OTP Code: ${otpCode}`);
   console.log(`[EMAIL] Resend Client: ${resendClient ? 'INITIALIZED' : 'NOT INITIALIZED'}`);
+  console.log(`[EMAIL] Resend API Key: ${RESEND_API_KEY ? 'SET' : 'NOT SET'}`);
   console.log(`[EMAIL] API Endpoint: https://api.resend.com/emails`);
+  console.log(`[EMAIL] ========================================\n`);
+  
+  process.stderr.write(`\n[EMAIL] ===== Email Send Attempt =====\n`);
+  process.stderr.write(`[EMAIL] To: ${emailAddress}\n`);
+  process.stderr.write(`[EMAIL] From: ${RESEND_FROM_EMAIL}\n`);
+  process.stderr.write(`[EMAIL] Resend Client: ${resendClient ? 'INITIALIZED' : 'NOT INITIALIZED'}\n`);
   
   if (resendClient && RESEND_API_KEY) {
     try {
@@ -242,36 +252,102 @@ async function sendEmail(emailAddress, otpCode) {
       
       const emailText = `קוד האימות שלך: ${otpCode}. קוד זה תקף ל-10 דקות.`;
       
-      console.log(`[EMAIL] Sending email...`);
-      console.log(`[EMAIL] Subject: ${emailSubject}`);
-      console.log(`[EMAIL] To: ${emailAddress}`);
-      
-      const result = await resendClient.emails.send({
+      // Prepare request payload
+      const requestPayload = {
         from: RESEND_FROM_EMAIL,
         to: emailAddress,
         subject: emailSubject,
         html: emailHtml,
         text: emailText
-      });
+      };
       
-      const duration = Date.now() - startTime;
+      console.log(`[EMAIL] ========================================`);
+      console.log(`[EMAIL] 📤 Preparing to send email...`);
+      console.log(`[EMAIL] API Endpoint: https://api.resend.com/emails`);
+      console.log(`[EMAIL] Request Method: POST`);
+      console.log(`[EMAIL] Request Headers: Authorization: Bearer ${RESEND_API_KEY.substring(0, 10)}...${RESEND_API_KEY.substring(RESEND_API_KEY.length - 4)}`);
+      console.log(`[EMAIL] ========================================`);
+      console.log(`[EMAIL] 📦 Request Payload (JSON):`);
+      console.log(`[EMAIL] {`);
+      console.log(`[EMAIL]   "from": "${RESEND_FROM_EMAIL}",`);
+      console.log(`[EMAIL]   "to": "${emailAddress}",`);
+      console.log(`[EMAIL]   "subject": "${emailSubject}",`);
+      console.log(`[EMAIL]   "html": "<html>... (${emailHtml.length} characters)",`);
+      console.log(`[EMAIL]   "text": "${emailText}"`);
+      console.log(`[EMAIL] }`);
+      console.log(`[EMAIL] ========================================\n`);
+      
+      process.stderr.write(`[EMAIL] Sending request to: https://api.resend.com/emails\n`);
+      process.stderr.write(`[EMAIL] From: ${RESEND_FROM_EMAIL}\n`);
+      process.stderr.write(`[EMAIL] To: ${emailAddress}\n`);
+      process.stderr.write(`[EMAIL] Subject: ${emailSubject}\n`);
+      
+      console.log(`[EMAIL] 🚀 Calling resendClient.emails.send()...`);
+      const requestTime = Date.now();
+      
+      const result = await resendClient.emails.send(requestPayload);
+      
+      const apiDuration = Date.now() - requestTime;
+      const totalDuration = Date.now() - startTime;
+      
+      console.log(`[EMAIL] ========================================`);
       console.log(`[EMAIL] ✅ Email sent successfully!`);
-      console.log(`[EMAIL] Response Time: ${duration}ms`);
+      console.log(`[EMAIL] ========================================`);
+      console.log(`[EMAIL] 📥 Response received from Resend API:`);
+      console.log(`[EMAIL] Response Time: ${apiDuration}ms`);
+      console.log(`[EMAIL] Total Time: ${totalDuration}ms`);
+      console.log(`[EMAIL] ========================================`);
+      console.log(`[EMAIL] 📋 Response Data (JSON):`);
+      console.log(`[EMAIL] {`);
+      console.log(`[EMAIL]   "id": "${result.id}",`);
+      if (result.from) console.log(`[EMAIL]   "from": "${result.from}",`);
+      if (result.to) console.log(`[EMAIL]   "to": "${Array.isArray(result.to) ? result.to.join(', ') : result.to}",`);
+      if (result.created_at) console.log(`[EMAIL]   "created_at": "${result.created_at}",`);
+      Object.keys(result).forEach(key => {
+        if (!['id', 'from', 'to', 'created_at'].includes(key)) {
+          console.log(`[EMAIL]   "${key}": ${JSON.stringify(result[key])},`);
+        }
+      });
+      console.log(`[EMAIL] }`);
+      console.log(`[EMAIL] ========================================`);
       console.log(`[EMAIL] Email ID: ${result.id}`);
       console.log(`[EMAIL] From: ${RESEND_FROM_EMAIL}`);
       console.log(`[EMAIL] To: ${emailAddress}`);
-      console.log(`[EMAIL] ============================\n`);
+      console.log(`[EMAIL] Subject: ${emailSubject}`);
+      console.log(`[EMAIL] ========================================\n`);
       
-      return { success: true, id: result.id, email: emailAddress };
+      process.stderr.write(`[EMAIL] SUCCESS - Email ID: ${result.id}\n`);
+      process.stderr.write(`[EMAIL] Response Time: ${apiDuration}ms\n`);
+      
+      return { success: true, id: result.id, email: emailAddress, result: result };
     } catch (error) {
       const duration = Date.now() - startTime;
-      console.log(`[EMAIL] ❌ Email send failed!`);
+      console.log(`[EMAIL] ========================================`);
+      console.log(`[EMAIL] ❌❌❌ Email send failed! ❌❌❌`);
+      console.log(`[EMAIL] ========================================`);
       console.log(`[EMAIL] Response Time: ${duration}ms`);
-      console.log(`[EMAIL] Error Message: ${error.message}`);
-      console.log(`[EMAIL] Full Error:`, JSON.stringify(error, null, 2));
-      console.log(`[EMAIL] ============================\n`);
+      console.log(`[EMAIL] Error Name: ${error.name || 'Unknown'}`);
+      console.log(`[EMAIL] Error Message: ${error.message || 'No message'}`);
+      console.log(`[EMAIL] Error Code: ${error.code || 'N/A'}`);
+      console.log(`[EMAIL] Error Status: ${error.status || 'N/A'}`);
+      console.log(`[EMAIL] Error Status Code: ${error.statusCode || 'N/A'}`);
+      if (error.response) {
+        console.log(`[EMAIL] Error Response:`, JSON.stringify(error.response, null, 2));
+      }
+      if (error.request) {
+        console.log(`[EMAIL] Error Request:`, JSON.stringify(error.request, null, 2));
+      }
+      console.log(`[EMAIL] Error Stack: ${error.stack || 'No stack'}`);
+      console.log(`[EMAIL] ========================================`);
+      console.log(`[EMAIL] 📋 Full Error Object (JSON):`);
+      console.log(JSON.stringify(error, Object.getOwnPropertyNames(error), 2));
+      console.log(`[EMAIL] ========================================\n`);
       
-      return { success: false, error: error.message, fullError: error };
+      process.stderr.write(`[EMAIL] ERROR: ${error.message}\n`);
+      process.stderr.write(`[EMAIL] CODE: ${error.code || 'N/A'}\n`);
+      process.stderr.write(`[EMAIL] STATUS: ${error.status || error.statusCode || 'N/A'}\n`);
+      
+      return { success: false, error: error.message, code: error.code, status: error.status || error.statusCode, fullError: error };
     }
   } else {
     console.log(`[EMAIL] ⚠️  Resend not configured - Email would be sent to ${emailAddress}`);
@@ -761,54 +837,84 @@ app.post('/api/auth/send-otp', async (req, res) => {
   const requestStart = Date.now();
   console.log(`\n[SEND-OTP] ========================================`);
   console.log(`[SEND-OTP] 🚀 Request received at ${new Date().toISOString()}`);
-  console.log(`[SEND-OTP] Email: ${req.body.email}`);
+  console.log(`[SEND-OTP] ========================================`);
+  console.log(`[SEND-OTP] 📥 Incoming Request Details:`);
+  console.log(`[SEND-OTP]   Method: ${req.method}`);
+  console.log(`[SEND-OTP]   Path: ${req.path}`);
+  console.log(`[SEND-OTP]   Headers:`, JSON.stringify(req.headers, null, 2));
+  console.log(`[SEND-OTP]   Body:`, JSON.stringify(req.body, null, 2));
+  console.log(`[SEND-OTP]   Email: ${req.body.email || 'NOT PROVIDED'}`);
   console.log(`[SEND-OTP] ========================================\n`);
   
-  process.stderr.write(`\n[SEND-OTP] Request received: ${req.body.email}\n`);
+  process.stderr.write(`\n[SEND-OTP] ===== Request received =====\n`);
+  process.stderr.write(`[SEND-OTP] Email: ${req.body.email || 'NOT PROVIDED'}\n`);
+  process.stderr.write(`[SEND-OTP] Method: ${req.method}\n`);
+  process.stderr.write(`[SEND-OTP] Path: ${req.path}\n`);
   
   try {
     const { email } = req.body;
+    
+    console.log(`[SEND-OTP] ========================================`);
+    console.log(`[SEND-OTP] Step 1: Validating email...`);
+    console.log(`[SEND-OTP]   Raw email: ${email || 'undefined'}`);
     
     // Validate email
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!email || !emailRegex.test(email)) {
       console.error(`[SEND-OTP] ❌ Invalid email format`);
+      console.error(`[SEND-OTP]   Email regex test: ${email ? emailRegex.test(email) : 'false'}`);
       return res.status(400).json({ error: 'כתובת מייל לא תקינה' });
     }
     
     const normalizedEmail = email.trim().toLowerCase();
+    console.log(`[SEND-OTP] ✅ Email validated`);
+    console.log(`[SEND-OTP]   Normalized email: ${normalizedEmail}`);
+    console.log(`[SEND-OTP] ========================================\n`);
+    
+    console.log(`[SEND-OTP] ========================================`);
+    console.log(`[SEND-OTP] Step 2: Generating OTP...`);
     const otpCode = generateOTP();
     const expiresAt = Date.now() + (10 * 60 * 1000); // 10 minutes
+    console.log(`[SEND-OTP]   Generated OTP: ${otpCode}`);
+    console.log(`[SEND-OTP]   OTP expires at: ${new Date(expiresAt).toISOString()}`);
+    console.log(`[SEND-OTP]   Expires in: 10 minutes`);
+    console.log(`[SEND-OTP] ========================================\n`);
     
-    console.log(`[SEND-OTP] Normalized email: ${normalizedEmail}`);
-    console.log(`[SEND-OTP] Generated OTP: ${otpCode}`);
-    console.log(`[SEND-OTP] OTP expires at: ${new Date(expiresAt).toISOString()}`);
-    
-    // Check Resend configuration
-    console.log(`[SEND-OTP] Resend Status Check:`);
-    console.log(`[SEND-OTP]   - API Key: ${RESEND_API_KEY ? 'SET' : 'NOT SET'}`);
+    console.log(`[SEND-OTP] ========================================`);
+    console.log(`[SEND-OTP] Step 3: Checking Resend configuration...`);
+    console.log(`[SEND-OTP]   - API Key: ${RESEND_API_KEY ? `SET (${RESEND_API_KEY.substring(0, 10)}...${RESEND_API_KEY.substring(RESEND_API_KEY.length - 4)})` : 'NOT SET'}`);
     console.log(`[SEND-OTP]   - From Email: ${RESEND_FROM_EMAIL}`);
     console.log(`[SEND-OTP]   - Client: ${resendClient ? 'INITIALIZED' : 'NOT INITIALIZED'}`);
+    console.log(`[SEND-OTP]   - Configuration Status: ${(RESEND_API_KEY && resendClient) ? '✅ READY' : '❌ NOT CONFIGURED'}`);
+    console.log(`[SEND-OTP] ========================================\n`);
     
     process.stderr.write(`[SEND-OTP] Resend configured: ${(RESEND_API_KEY && resendClient) ? 'YES' : 'NO'}\n`);
     
-    // Check if family exists
+    console.log(`[SEND-OTP] ========================================`);
+    console.log(`[SEND-OTP] Step 4: Checking if family exists...`);
     const existingFamily = await getFamilyByEmail(normalizedEmail);
-    console.log(`[SEND-OTP] Family exists: ${existingFamily ? 'YES' : 'NO'}`);
+    console.log(`[SEND-OTP]   Family exists: ${existingFamily ? 'YES' : 'NO'}`);
+    if (existingFamily) {
+      console.log(`[SEND-OTP]   Family ID: ${existingFamily._id}`);
+    }
+    console.log(`[SEND-OTP] ========================================\n`);
     
-    // Store OTP
+    console.log(`[SEND-OTP] ========================================`);
+    console.log(`[SEND-OTP] Step 5: Storing OTP in memory...`);
     otpStore.set(normalizedEmail, {
       code: otpCode,
       expiresAt,
       familyId: existingFamily ? existingFamily._id : null
     });
-    console.log(`[SEND-OTP] OTP stored in memory`);
+    console.log(`[SEND-OTP]   OTP stored for: ${normalizedEmail}`);
+    console.log(`[SEND-OTP]   OTP code: ${otpCode}`);
+    console.log(`[SEND-OTP]   Expires at: ${new Date(expiresAt).toISOString()}`);
+    console.log(`[SEND-OTP] ========================================\n`);
     
-    // Send Email
     console.log(`[SEND-OTP] ========================================`);
-    console.log(`[SEND-OTP] 📧 Attempting to send Email...`);
-    console.log(`[SEND-OTP] To: ${normalizedEmail}`);
-    console.log(`[SEND-OTP] OTP: ${otpCode}`);
+    console.log(`[SEND-OTP] Step 6: Calling sendEmail function...`);
+    console.log(`[SEND-OTP]   To: ${normalizedEmail}`);
+    console.log(`[SEND-OTP]   OTP: ${otpCode}`);
     console.log(`[SEND-OTP] ========================================\n`);
     
     process.stderr.write(`[SEND-OTP] Calling sendEmail function...\n`);
@@ -816,33 +922,72 @@ app.post('/api/auth/send-otp', async (req, res) => {
     const emailResult = await sendEmail(normalizedEmail, otpCode);
     
     console.log(`[SEND-OTP] ========================================`);
-    console.log(`[SEND-OTP] Email Result received:`);
-    console.log(`[SEND-OTP] Success: ${emailResult.success}`);
-    console.log(`[SEND-OTP] Result:`, JSON.stringify(emailResult, null, 2));
+    console.log(`[SEND-OTP] Step 7: Email result received`);
+    console.log(`[SEND-OTP] ========================================`);
+    console.log(`[SEND-OTP] 📥 Email Result:`);
+    console.log(`[SEND-OTP]   Success: ${emailResult.success}`);
+    console.log(`[SEND-OTP]   Email ID: ${emailResult.id || 'N/A'}`);
+    console.log(`[SEND-OTP]   Email Address: ${emailResult.email || normalizedEmail}`);
+    if (emailResult.error) {
+      console.log(`[SEND-OTP]   Error: ${emailResult.error}`);
+      console.log(`[SEND-OTP]   Error Code: ${emailResult.code || 'N/A'}`);
+      console.log(`[SEND-OTP]   Error Status: ${emailResult.status || 'N/A'}`);
+    }
+    console.log(`[SEND-OTP] ========================================`);
+    console.log(`[SEND-OTP] 📋 Full Result Object (JSON):`);
+    console.log(JSON.stringify(emailResult, null, 2));
     console.log(`[SEND-OTP] ========================================\n`);
     
     process.stderr.write(`[SEND-OTP] Email result: ${emailResult.success ? 'SUCCESS' : 'FAILED'}\n`);
+    if (emailResult.id) {
+      process.stderr.write(`[SEND-OTP] Email ID: ${emailResult.id}\n`);
+    }
     
     if (!emailResult.success) {
+      console.error(`[SEND-OTP] ========================================`);
       console.error(`[SEND-OTP] ❌❌❌ EMAIL FAILED ❌❌❌`);
+      console.error(`[SEND-OTP] ========================================`);
       console.error(`[SEND-OTP] Error: ${emailResult.error}`);
+      console.error(`[SEND-OTP] Error Code: ${emailResult.code || 'N/A'}`);
+      console.error(`[SEND-OTP] Error Status: ${emailResult.status || 'N/A'}`);
+      console.error(`[SEND-OTP] ========================================\n`);
       
       process.stderr.write(`[SEND-OTP] ERROR: ${emailResult.error}\n`);
+      if (emailResult.code) process.stderr.write(`[SEND-OTP] CODE: ${emailResult.code}\n`);
+      if (emailResult.status) process.stderr.write(`[SEND-OTP] STATUS: ${emailResult.status}\n`);
       
       return res.status(500).json({ 
         error: 'שגיאה בשליחת מייל. אנא נסה שוב או פנה לתמיכה.',
         emailError: emailResult.error,
+        emailCode: emailResult.code,
+        emailStatus: emailResult.status,
         details: 'בדוק את ה-Logs ב-Railway לפרטים נוספים'
       });
     }
     
     const duration = Date.now() - requestStart;
+    console.log(`[SEND-OTP] ========================================`);
     console.log(`[SEND-OTP] ✅✅✅ EMAIL SENT SUCCESSFULLY ✅✅✅`);
+    console.log(`[SEND-OTP] ========================================`);
     console.log(`[SEND-OTP] Email ID: ${emailResult.id}`);
+    console.log(`[SEND-OTP] To: ${normalizedEmail}`);
     console.log(`[SEND-OTP] Total request time: ${duration}ms`);
     console.log(`[SEND-OTP] ========================================\n`);
     
     process.stderr.write(`[SEND-OTP] SUCCESS - Email ID: ${emailResult.id}\n`);
+    process.stderr.write(`[SEND-OTP] Total time: ${duration}ms\n`);
+    
+    console.log(`[SEND-OTP] ========================================`);
+    console.log(`[SEND-OTP] Step 8: Sending response to client...`);
+    console.log(`[SEND-OTP]   Response Status: 200`);
+    console.log(`[SEND-OTP]   Response Body:`, JSON.stringify({
+      success: true,
+      message: 'קוד נשלח בהצלחה',
+      isExistingFamily: !!existingFamily,
+      emailSent: true,
+      emailId: emailResult.id
+    }, null, 2));
+    console.log(`[SEND-OTP] ========================================\n`);
     
     res.json({ 
       success: true, 
@@ -855,12 +1000,18 @@ app.post('/api/auth/send-otp', async (req, res) => {
     const duration = Date.now() - requestStart;
     console.error(`[SEND-OTP] ========================================`);
     console.error(`[SEND-OTP] ❌❌❌ EXCEPTION CAUGHT ❌❌❌`);
-    console.error(`[SEND-OTP] Error: ${error.message}`);
-    console.error(`[SEND-OTP] Stack: ${error.stack}`);
+    console.error(`[SEND-OTP] ========================================`);
+    console.error(`[SEND-OTP] Error Name: ${error.name || 'Unknown'}`);
+    console.error(`[SEND-OTP] Error Message: ${error.message || 'No message'}`);
+    console.error(`[SEND-OTP] Error Stack: ${error.stack || 'No stack'}`);
     console.error(`[SEND-OTP] Duration: ${duration}ms`);
+    console.error(`[SEND-OTP] ========================================`);
+    console.error(`[SEND-OTP] 📋 Full Error Object (JSON):`);
+    console.error(JSON.stringify(error, Object.getOwnPropertyNames(error), 2));
     console.error(`[SEND-OTP] ========================================\n`);
     
     process.stderr.write(`[SEND-OTP] EXCEPTION: ${error.message}\n`);
+    process.stderr.write(`[SEND-OTP] STACK: ${error.stack || 'No stack'}\n`);
     
     res.status(500).json({ 
       error: 'שגיאה בשליחת קוד אימות',
