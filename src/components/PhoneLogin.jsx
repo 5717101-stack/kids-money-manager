@@ -118,6 +118,15 @@ const PhoneLogin = ({ onOTPSent }) => {
       console.log('[FRONTEND] Email ID:', data.emailId || 'N/A');
       console.log('[FRONTEND] ========================================\n');
 
+      // Show success message from server
+      const successMessage = data.message || `✅ קוד אימות נשלח בהצלחה למייל ${normalizedEmail}`;
+      alert(successMessage);
+      console.log('[FRONTEND] ========================================');
+      console.log('[FRONTEND] 📢 SUCCESS MESSAGE SHOWN TO USER');
+      console.log('[FRONTEND] ========================================');
+      console.log('[FRONTEND] Message:', successMessage);
+      console.log('[FRONTEND] ========================================\n');
+
       console.log('[FRONTEND] Calling onOTPSent callback...');
       onOTPSent(normalizedEmail, data.isExistingFamily);
       console.log('[FRONTEND] ✅ onOTPSent called successfully');
@@ -192,7 +201,7 @@ const PhoneLogin = ({ onOTPSent }) => {
         >
           🔍 בדיקת לוגים
         </button>
-        <span className="version">גרסה 2.9.23</span>
+        <span className="version">גרסה 2.9.24</span>
       </footer>
     </div>
   );

@@ -1061,36 +1061,43 @@ app.post('/api/auth/send-otp', async (req, res) => {
     }
     
     const duration = Date.now() - requestStart;
+    const successMessage = `✅ קוד אימות נשלח בהצלחה למייל ${normalizedEmail}`;
+    
     console.log(`[SEND-OTP] ========================================`);
     console.log(`[SEND-OTP] ✅✅✅ EMAIL SENT SUCCESSFULLY ✅✅✅`);
     console.log(`[SEND-OTP] ========================================`);
     console.log(`[SEND-OTP] Email ID: ${emailResult.id}`);
     console.log(`[SEND-OTP] To: ${normalizedEmail}`);
     console.log(`[SEND-OTP] Total request time: ${duration}ms`);
+    console.log(`[SEND-OTP] Success Message: ${successMessage}`);
     console.log(`[SEND-OTP] ========================================\n`);
     
-    process.stderr.write(`[SEND-OTP] SUCCESS - Email ID: ${emailResult.id}\n`);
+    process.stderr.write(`[SEND-OTP] ========================================\n`);
+    process.stderr.write(`[SEND-OTP] ✅✅✅ EMAIL SENT SUCCESSFULLY ✅✅✅\n`);
+    process.stderr.write(`[SEND-OTP] ========================================\n`);
+    process.stderr.write(`[SEND-OTP] Email ID: ${emailResult.id}\n`);
+    process.stderr.write(`[SEND-OTP] To: ${normalizedEmail}\n`);
     process.stderr.write(`[SEND-OTP] Total time: ${duration}ms\n`);
+    process.stderr.write(`[SEND-OTP] Success Message: ${successMessage}\n`);
+    process.stderr.write(`[SEND-OTP] ========================================\n\n`);
     
     console.log(`[SEND-OTP] ========================================`);
     console.log(`[SEND-OTP] Step 8: Sending response to client...`);
     console.log(`[SEND-OTP]   Response Status: 200`);
-    console.log(`[SEND-OTP]   Response Body:`, JSON.stringify({
+    const responseBody = {
       success: true,
-      message: 'קוד נשלח בהצלחה',
+      message: successMessage,
       isExistingFamily: !!existingFamily,
       emailSent: true,
       emailId: emailResult.id
-    }, null, 2));
+    };
+    console.log(`[SEND-OTP]   Response Body:`, JSON.stringify(responseBody, null, 2));
     console.log(`[SEND-OTP] ========================================\n`);
     
-    res.json({ 
-      success: true, 
-      message: 'קוד נשלח בהצלחה',
-      isExistingFamily: !!existingFamily,
-      emailSent: true,
-      emailId: emailResult.id
-    });
+    process.stderr.write(`[SEND-OTP] Sending response to client...\n`);
+    process.stderr.write(`[SEND-OTP] Response: ${JSON.stringify(responseBody)}\n`);
+    
+    res.json(responseBody);
   } catch (error) {
     const duration = Date.now() - requestStart;
     console.error(`[SEND-OTP] ========================================`);
