@@ -18,16 +18,29 @@ const ChildPasswordLogin = ({ familyId, onChildVerified, onBack }) => {
 
     try {
       const apiUrl = import.meta.env.VITE_API_URL || 'https://kids-money-manager-server.onrender.com/api';
+      const trimmedPassword = password.trim();
+      
+      console.log('[CHILD-PASSWORD] Verifying password:', {
+        familyId,
+        passwordLength: trimmedPassword.length,
+        passwordPreview: trimmedPassword.substring(0, 2) + '***',
+        apiUrl
+      });
+      
+      const requestBody = {
+        familyId,
+        password: trimmedPassword
+      };
+      
       const response = await fetch(`${apiUrl}/auth/verify-child-password`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({
-          familyId,
-          password: password.trim()
-        })
+        body: JSON.stringify(requestBody)
       });
+      
+      console.log('[CHILD-PASSWORD] Response status:', response.status);
 
       let data;
       try {
