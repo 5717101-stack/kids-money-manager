@@ -1756,7 +1756,10 @@ server = app.listen(PORT, '0.0.0.0', () => {
   console.log(`[SERVER] Server is ready and listening`);
   console.log(`[SERVER] ✅ Server is now ready to accept health checks`);
   console.log(`[SERVER] ⚠️  Waiting for Railway health check calls...`);
-  console.log(`[SERVER] ⚠️  If no health check calls appear, service may be configured as 'Job' instead of 'Web Service'`);
+  console.log(`[SERVER] ⚠️  If no health check calls appear, check:`);
+  console.log(`[SERVER] ⚠️  1. Domain/Public URL is set in Railway Dashboard → Settings → Networking`);
+  console.log(`[SERVER] ⚠️  2. Health Check Path is set to '/health' in Railway Dashboard → Settings`);
+  console.log(`[SERVER] ⚠️  3. Health Check is enabled in Railway Dashboard → Settings`);
   
   // Start heartbeat to keep container alive and log activity
   // Railway sometimes needs activity to know the service is alive
@@ -1770,7 +1773,14 @@ server = app.listen(PORT, '0.0.0.0', () => {
       
       // If no health checks for 5 minutes, log warning
       if (timeSinceLastHealthCheck > 300000 && healthCheckCount > 0) {
-        console.log(`[HEARTBEAT] ⚠️  WARNING: No health checks for ${Math.floor(timeSinceLastHealthCheck / 1000)}s - Railway may be configured as Job`);
+        console.log(`[HEARTBEAT] ⚠️  WARNING: No health checks for ${Math.floor(timeSinceLastHealthCheck / 1000)}s`);
+        console.log(`[HEARTBEAT] ⚠️  Check: Railway Dashboard → Settings → Networking → Domain should be Public`);
+      }
+      // If no health checks at all, log critical warning
+      if (healthCheckCount === 0 && uptime > 60) {
+        console.log(`[HEARTBEAT] ❌ CRITICAL: No health checks received after ${Math.floor(uptime)}s`);
+        console.log(`[HEARTBEAT] ❌ Railway needs a Public Domain to call health checks`);
+        console.log(`[HEARTBEAT] ❌ SOLUTION: Railway Dashboard → Settings → Networking → Generate Domain`);
       }
     }
   }, 30000); // Every 30 seconds
@@ -1810,16 +1820,18 @@ process.on('SIGTERM', () => {
   if (healthCheckCount === 0) {
     console.log(`[SERVER] ❌ CRITICAL: No health check calls were received!`);
     console.log(`[SERVER] ❌ This means Railway is NOT calling /health endpoint`);
-    console.log(`[SERVER] ❌ Service is DEFINITELY configured as 'Job' instead of 'Web Service'`);
-    console.log(`[SERVER] ❌ SOLUTION: Railway Dashboard → Settings → Service Type → Change to 'Web Service'`);
+    console.log(`[SERVER] ❌ SOLUTION: Railway Dashboard → Settings → Networking → Generate Domain`);
+    console.log(`[SERVER] ❌ Make sure Domain is set to 'Public' (not Private)`);
+    console.log(`[SERVER] ❌ Also check: Settings → Health Check → Path should be '/health'`);
   } else if (timeSinceLastHealthCheck > 300000) {
     console.log(`[SERVER] ❌ CRITICAL: No health checks for ${Math.floor(timeSinceLastHealthCheck / 1000)}s!`);
     console.log(`[SERVER] ❌ Railway stopped calling /health after ${healthCheckCount} calls`);
-    console.log(`[SERVER] ❌ Service is likely configured as 'Job' - it runs once and stops`);
-    console.log(`[SERVER] ❌ SOLUTION: Railway Dashboard → Settings → Service Type → Change to 'Web Service'`);
+    console.log(`[SERVER] ❌ SOLUTION: Railway Dashboard → Settings → Networking → Check Domain is Public`);
+    console.log(`[SERVER] ❌ Also check: Settings → Health Check → Make sure it's enabled`);
   } else {
     console.log(`[SERVER] ⚠️  Health checks were received (${healthCheckCount} total) but Railway still sent SIGTERM`);
     console.log(`[SERVER] ⚠️  This may indicate health check response format issue`);
+    console.log(`[SERVER] ⚠️  Check: Settings → Health Check → Path should be '/health'`);
   }
   
   console.log(`[SERVER] ⚠️  ========================================`);
