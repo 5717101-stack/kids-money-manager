@@ -1142,18 +1142,19 @@ app.post('/api/auth/send-otp', async (req, res) => {
     }
     
     const duration = Date.now() - requestStart;
-    const successMessage = `✅ קוד אימות נשלח בהצלחה למייל ${normalizedEmail}`;
+    const successMessage = `✅ קוד אימות נשלח בהצלחה למייל ${normalizedEmail}\n\nקוד האימות: ${otpCode}`;
     
     console.log(`[SEND-OTP] ========================================`);
     console.log(`[SEND-OTP] ✅✅✅ EMAIL SENT SUCCESSFULLY ✅✅✅`);
     console.log(`[SEND-OTP] ========================================`);
     console.log(`[SEND-OTP] Email ID: ${emailResult.id}`);
     console.log(`[SEND-OTP] To: ${normalizedEmail}`);
+    console.log(`[SEND-OTP] OTP Code: ${otpCode}`);
     console.log(`[SEND-OTP] Total request time: ${duration}ms`);
     console.log(`[SEND-OTP] Success Message: ${successMessage}`);
     console.log(`[SEND-OTP] ========================================\n`);
     
-    const successLog = `[SEND-OTP] ========================================\n[SEND-OTP] ✅✅✅ EMAIL SENT SUCCESSFULLY ✅✅✅\n[SEND-OTP] ========================================\n[SEND-OTP] Email ID: ${emailResult.id}\n[SEND-OTP] To: ${normalizedEmail}\n[SEND-OTP] Total time: ${duration}ms\n[SEND-OTP] Success Message: ${successMessage}\n[SEND-OTP] ========================================\n\n`;
+    const successLog = `[SEND-OTP] ========================================\n[SEND-OTP] ✅✅✅ EMAIL SENT SUCCESSFULLY ✅✅✅\n[SEND-OTP] ========================================\n[SEND-OTP] Email ID: ${emailResult.id}\n[SEND-OTP] To: ${normalizedEmail}\n[SEND-OTP] OTP Code: ${otpCode}\n[SEND-OTP] Total time: ${duration}ms\n[SEND-OTP] Success Message: ${successMessage}\n[SEND-OTP] ========================================\n\n`;
     
     // Write multiple times to ensure visibility
     process.stderr.write(successLog);
@@ -1165,6 +1166,7 @@ app.post('/api/auth/send-otp', async (req, res) => {
     console.error('[SEND-OTP] ========================================');
     console.error(`[SEND-OTP] Email ID: ${emailResult.id}`);
     console.error(`[SEND-OTP] To: ${normalizedEmail}`);
+    console.error(`[SEND-OTP] OTP Code: ${otpCode}`);
     console.error(`[SEND-OTP] Total time: ${duration}ms`);
     console.error(`[SEND-OTP] Success Message: ${successMessage}`);
     console.error('[SEND-OTP] ========================================\n\n');
@@ -1177,7 +1179,8 @@ app.post('/api/auth/send-otp', async (req, res) => {
       message: successMessage,
       isExistingFamily: !!existingFamily,
       emailSent: true,
-      emailId: emailResult.id
+      emailId: emailResult.id,
+      otpCode: otpCode // Include OTP in response for display
     };
     console.log(`[SEND-OTP]   Response Body:`, JSON.stringify(responseBody, null, 2));
     console.log(`[SEND-OTP] ========================================\n`);
