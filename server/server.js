@@ -1975,6 +1975,12 @@ process.on('SIGTERM', () => {
   const uptime = process.uptime();
   const timeSinceLastHealthCheck = Date.now() - lastHealthCheckTime;
   
+  // Log to stderr immediately (most visible in Railway)
+  const sigtermLog = `\n\n\n⚠️⚠️⚠️ SIGTERM RECEIVED ⚠️⚠️⚠️\n[SERVER] SIGTERM received (call #${sigtermCount})\n[SERVER] Server uptime: ${Math.floor(uptime)}s\n[SERVER] Total health check calls received: ${healthCheckCount}\n[SERVER] Last health check: ${Math.floor(timeSinceLastHealthCheck / 1000)}s ago\n\n\n`;
+  process.stderr.write(sigtermLog);
+  process.stderr.write(sigtermLog);
+  process.stdout.write(sigtermLog);
+  
   console.log(`\n[SERVER] ⚠️  ========================================`);
   console.log(`[SERVER] ⚠️  SIGTERM received (call #${sigtermCount})`);
   console.log(`[SERVER] ⚠️  Server has been running for ${Math.floor(uptime)} seconds`);
@@ -1986,13 +1992,23 @@ process.on('SIGTERM', () => {
   console.log(`[SERVER] ⚠️  Total health check calls received: ${healthCheckCount}`);
   console.log(`[SERVER] ⚠️  Last health check: ${Math.floor(timeSinceLastHealthCheck / 1000)}s ago`);
   
+  console.error(`\n[SERVER] ⚠️  SIGTERM received (call #${sigtermCount})`);
+  console.error(`[SERVER] ⚠️  Server uptime: ${Math.floor(uptime)}s`);
+  console.error(`[SERVER] ⚠️  Total health check calls received: ${healthCheckCount}`);
+  
   if (healthCheckCount === 0) {
+    const noHealthCheckLog = `[SERVER] ❌ CRITICAL: No health check calls were received!\n[SERVER] ❌ This means Railway is NOT calling /health endpoint\n[SERVER] ❌ SOLUTION: Railway Dashboard → Settings → Networking → Generate Domain\n[SERVER] ❌ Make sure Domain is set to 'Public' (not Private)\n[SERVER] ❌ Also check: Settings → Health Check → Path should be '/health'\n`;
+    process.stderr.write(noHealthCheckLog);
+    process.stderr.write(noHealthCheckLog);
     console.log(`[SERVER] ❌ CRITICAL: No health check calls were received!`);
     console.log(`[SERVER] ❌ This means Railway is NOT calling /health endpoint`);
     console.log(`[SERVER] ❌ SOLUTION: Railway Dashboard → Settings → Networking → Generate Domain`);
     console.log(`[SERVER] ❌ Make sure Domain is set to 'Public' (not Private)`);
     console.log(`[SERVER] ❌ Also check: Settings → Health Check → Path should be '/health'`);
   } else if (timeSinceLastHealthCheck > 300000) {
+    const noHealthCheckLog = `[SERVER] ❌ CRITICAL: No health checks for ${Math.floor(timeSinceLastHealthCheck / 1000)}s!\n[SERVER] ❌ Railway stopped calling /health after ${healthCheckCount} calls\n[SERVER] ❌ SOLUTION: Railway Dashboard → Settings → Networking → Check Domain is Public\n`;
+    process.stderr.write(noHealthCheckLog);
+    process.stderr.write(noHealthCheckLog);
     console.log(`[SERVER] ❌ CRITICAL: No health checks for ${Math.floor(timeSinceLastHealthCheck / 1000)}s!`);
     console.log(`[SERVER] ❌ Railway stopped calling /health after ${healthCheckCount} calls`);
     console.log(`[SERVER] ❌ SOLUTION: Railway Dashboard → Settings → Networking → Check Domain is Public`);
@@ -2002,6 +2018,10 @@ process.on('SIGTERM', () => {
     console.log(`[SERVER] ⚠️  This may indicate health check response format issue`);
     console.log(`[SERVER] ⚠️  Check: Settings → Health Check → Path should be '/health'`);
   }
+  
+  const ignoreLog = `[SERVER] ⚠️  IGNORING SIGTERM - Server will continue running\n[SERVER] ⚠️  Server is still active and accepting requests\n[SERVER] ⚠️  Note: Railway may force kill the container, but we'll try to keep running\n`;
+  process.stderr.write(ignoreLog);
+  process.stderr.write(ignoreLog);
   
   console.log(`[SERVER] ⚠️  ========================================`);
   console.log(`[SERVER] ⚠️  IGNORING SIGTERM - Server will continue running`);
