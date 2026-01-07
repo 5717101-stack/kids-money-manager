@@ -79,13 +79,34 @@ const PhoneLogin = ({ onOTPSent }) => {
       console.log('[FRONTEND] 🚀 Calling fetch()...');
       console.log('[FRONTEND] Request start time:', new Date().toISOString());
       
-      const response = await fetch(url, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(requestBody)
-      });
+      let response;
+      try {
+        response = await fetch(url, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(requestBody),
+          // Add timeout for iOS/WebView
+          signal: AbortSignal.timeout(30000) // 30 seconds timeout
+        });
+      } catch (fetchError) {
+        console.error('[FRONTEND] Fetch error details:', {
+          name: fetchError.name,
+          message: fetchError.message,
+          stack: fetchError.stack,
+          url: url
+        });
+        
+        // Handle specific iOS/WebView errors
+        if (fetchError.name === 'TypeError' && fetchError.message === 'Load failed') {
+          throw new Error('שגיאת רשת: לא ניתן להתחבר לשרת. בדוק את חיבור האינטרנט או נסה שוב מאוחר יותר.');
+        }
+        if (fetchError.name === 'AbortError') {
+          throw new Error('הבקשה בוטלה: השרת לא הגיב בזמן. נסה שוב.');
+        }
+        throw fetchError;
+      }
       
       const requestDuration = Date.now() - requestStartTime;
       console.log('[FRONTEND] ========================================');
