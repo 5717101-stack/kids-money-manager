@@ -634,12 +634,19 @@ app.post('/api/test-logs', (req, res) => {
 });
 
 app.post('/api/auth/send-otp', async (req, res) => {
-  console.log(`[SEND-OTP] Request received: ${req.body.phoneNumber} (${req.body.countryCode || '+972'})`);
+  const requestStart = Date.now();
+  console.log(`\n[SEND-OTP] ========================================`);
+  console.log(`[SEND-OTP] 🚀 Request received at ${new Date().toISOString()}`);
+  console.log(`[SEND-OTP] Phone: ${req.body.phoneNumber}, Country: ${req.body.countryCode || '+972'}`);
+  console.log(`[SEND-OTP] ========================================\n`);
+  
+  process.stderr.write(`\n[SEND-OTP] Request received: ${req.body.phoneNumber}\n`);
   
   try {
     const { phoneNumber, countryCode = '+972' } = req.body;
     
     if (!phoneNumber || !phoneNumber.match(/^\d+$/)) {
+      console.error(`[SEND-OTP] ❌ Invalid phone number format`);
       return res.status(400).json({ error: 'מספר טלפון לא תקין' });
     }
     
@@ -647,8 +654,22 @@ app.post('/api/auth/send-otp', async (req, res) => {
     const otpCode = generateOTP();
     const expiresAt = Date.now() + (10 * 60 * 1000); // 10 minutes
     
+    console.log(`[SEND-OTP] Full phone: ${fullPhoneNumber}`);
+    console.log(`[SEND-OTP] Generated OTP: ${otpCode}`);
+    console.log(`[SEND-OTP] OTP expires at: ${new Date(expiresAt).toISOString()}`);
+    
+    // Check Twilio configuration
+    console.log(`[SEND-OTP] Twilio Status Check:`);
+    console.log(`[SEND-OTP]   - Account SID: ${TWILIO_ACCOUNT_SID ? 'SET' : 'NOT SET'}`);
+    console.log(`[SEND-OTP]   - Auth Token: ${TWILIO_AUTH_TOKEN ? 'SET' : 'NOT SET'}`);
+    console.log(`[SEND-OTP]   - Phone Number: ${TWILIO_PHONE_NUMBER || 'NOT SET'}`);
+    console.log(`[SEND-OTP]   - Client: ${twilioClient ? 'INITIALIZED' : 'NOT INITIALIZED'}`);
+    
+    process.stderr.write(`[SEND-OTP] Twilio configured: ${(TWILIO_ACCOUNT_SID && TWILIO_AUTH_TOKEN && TWILIO_PHONE_NUMBER) ? 'YES' : 'NO'}\n`);
+    
     // Check if family exists
     const existingFamily = await getFamilyByPhone(fullPhoneNumber);
+    console.log(`[SEND-OTP] Family exists: ${existingFamily ? 'YES' : 'NO'}`);
     
     // Store OTP
     otpStore.set(fullPhoneNumber, {
@@ -656,33 +677,77 @@ app.post('/api/auth/send-otp', async (req, res) => {
       expiresAt,
       familyId: existingFamily ? existingFamily._id : null
     });
+    console.log(`[SEND-OTP] OTP stored in memory`);
     
     // Send SMS
     const message = `קוד האימות שלך: ${otpCode}. קוד זה תקף ל-10 דקות.`;
     
-    console.log(`[SEND-OTP] Sending SMS to ${fullPhoneNumber}, OTP: ${otpCode}`);
+    console.log(`[SEND-OTP] ========================================`);
+    console.log(`[SEND-OTP] 📱 Attempting to send SMS...`);
+    console.log(`[SEND-OTP] To: ${fullPhoneNumber}`);
+    console.log(`[SEND-OTP] Message: ${message}`);
+    console.log(`[SEND-OTP] ========================================\n`);
+    
+    process.stderr.write(`[SEND-OTP] Calling sendSMS function...\n`);
+    
     const smsResult = await sendSMS(fullPhoneNumber, message);
     
+    console.log(`[SEND-OTP] ========================================`);
+    console.log(`[SEND-OTP] SMS Result received:`);
+    console.log(`[SEND-OTP] Success: ${smsResult.success}`);
+    console.log(`[SEND-OTP] Result:`, JSON.stringify(smsResult, null, 2));
+    console.log(`[SEND-OTP] ========================================\n`);
+    
+    process.stderr.write(`[SEND-OTP] SMS result: ${smsResult.success ? 'SUCCESS' : 'FAILED'}\n`);
+    
     if (!smsResult.success) {
-      console.error(`[SEND-OTP] ❌ SMS failed: ${smsResult.error} (code: ${smsResult.code})`);
+      console.error(`[SEND-OTP] ❌❌❌ SMS FAILED ❌❌❌`);
+      console.error(`[SEND-OTP] Error: ${smsResult.error}`);
+      console.error(`[SEND-OTP] Code: ${smsResult.code}`);
+      console.error(`[SEND-OTP] Status: ${smsResult.status}`);
+      
+      process.stderr.write(`[SEND-OTP] ERROR: ${smsResult.error}\n`);
+      process.stderr.write(`[SEND-OTP] CODE: ${smsResult.code}\n`);
+      
       return res.status(500).json({ 
         error: 'שגיאה בשליחת SMS. אנא נסה שוב או פנה לתמיכה.',
         smsError: smsResult.error,
-        smsCode: smsResult.code
+        smsCode: smsResult.code,
+        details: 'בדוק את ה-Logs ב-Railway לפרטים נוספים'
       });
     }
     
-    console.log(`[SEND-OTP] ✅ SMS sent successfully (SID: ${smsResult.sid})`);
+    const duration = Date.now() - requestStart;
+    console.log(`[SEND-OTP] ✅✅✅ SMS SENT SUCCESSFULLY ✅✅✅`);
+    console.log(`[SEND-OTP] SID: ${smsResult.sid}`);
+    console.log(`[SEND-OTP] Status: ${smsResult.status}`);
+    console.log(`[SEND-OTP] Total request time: ${duration}ms`);
+    console.log(`[SEND-OTP] ========================================\n`);
+    
+    process.stderr.write(`[SEND-OTP] SUCCESS - SID: ${smsResult.sid}\n`);
     
     res.json({ 
       success: true, 
       message: 'קוד נשלח בהצלחה',
       isExistingFamily: !!existingFamily,
-      smsSent: true
+      smsSent: true,
+      smsSid: smsResult.sid
     });
   } catch (error) {
-    console.error('Error sending OTP:', error);
-    res.status(500).json({ error: 'שגיאה בשליחת קוד אימות' });
+    const duration = Date.now() - requestStart;
+    console.error(`[SEND-OTP] ========================================`);
+    console.error(`[SEND-OTP] ❌❌❌ EXCEPTION CAUGHT ❌❌❌`);
+    console.error(`[SEND-OTP] Error: ${error.message}`);
+    console.error(`[SEND-OTP] Stack: ${error.stack}`);
+    console.error(`[SEND-OTP] Duration: ${duration}ms`);
+    console.error(`[SEND-OTP] ========================================\n`);
+    
+    process.stderr.write(`[SEND-OTP] EXCEPTION: ${error.message}\n`);
+    
+    res.status(500).json({ 
+      error: 'שגיאה בשליחת קוד אימות',
+      details: error.message
+    });
   }
 });
 
