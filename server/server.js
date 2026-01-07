@@ -1352,18 +1352,21 @@ server.on('listening', () => {
 // Handle shutdown gracefully
 let isShuttingDown = false;
 
+// Track SIGTERM calls but don't shut down - continue running
+let sigtermCount = 0;
 process.on('SIGTERM', () => {
-  if (isShuttingDown) return;
-  isShuttingDown = true;
+  sigtermCount++;
   const uptime = process.uptime();
-  console.log(`[SERVER] Version ${VERSION} - SIGTERM received, shutting down...`);
-  console.log(`[SERVER] Server was running for ${Math.floor(uptime)} seconds`);
-  console.log(`[SERVER] Server ready status: ${serverReady ? 'YES' : 'NO'}`);
-  console.log(`[SERVER] Port (process.env.PORT): ${process.env.PORT || 'NOT SET'}`);
-  console.log(`[SERVER] Port (actual): ${PORT}`);
-  console.log(`[SERVER] Server listening: ${server && server.listening ? 'YES' : 'NO'}`);
-  console.log(`[SERVER] Health check URL: http://0.0.0.0:${PORT}/health`);
-  console.log(`[SERVER] Total health check calls received: ${healthCheckCount}`);
+  console.log(`\n[SERVER] ⚠️  ========================================`);
+  console.log(`[SERVER] ⚠️  SIGTERM received (call #${sigtermCount})`);
+  console.log(`[SERVER] ⚠️  Server has been running for ${Math.floor(uptime)} seconds`);
+  console.log(`[SERVER] ⚠️  Server ready status: ${serverReady ? 'YES' : 'NO'}`);
+  console.log(`[SERVER] ⚠️  Port (process.env.PORT): ${process.env.PORT || 'NOT SET'}`);
+  console.log(`[SERVER] ⚠️  Port (actual): ${PORT}`);
+  console.log(`[SERVER] ⚠️  Server listening: ${server && server.listening ? 'YES' : 'NO'}`);
+  console.log(`[SERVER] ⚠️  Health check URL: http://0.0.0.0:${PORT}/health`);
+  console.log(`[SERVER] ⚠️  Total health check calls received: ${healthCheckCount}`);
+  
   if (healthCheckCount === 0) {
     console.log(`[SERVER] ❌ CRITICAL: No health check calls were received!`);
     console.log(`[SERVER] ❌ This means Railway is NOT calling /health endpoint`);
@@ -1377,19 +1380,14 @@ process.on('SIGTERM', () => {
     console.log(`[SERVER] ⚠️    3. Service is still configured as 'Job' (not enough health checks)`);
     console.log(`[SERVER] ⚠️    4. Railway health check interval is too long`);
   }
-  if (server) {
-    server.close(() => {
-      console.log('[SERVER] Closed');
-      process.exit(0);
-    });
-    // Force exit after 10 seconds
-    setTimeout(() => {
-      console.log('[SERVER] Force exit');
-      process.exit(1);
-    }, 10000);
-  } else {
-    process.exit(0);
-  }
+  
+  console.log(`[SERVER] ⚠️  ========================================`);
+  console.log(`[SERVER] ⚠️  IGNORING SIGTERM - Server will continue running`);
+  console.log(`[SERVER] ⚠️  Server is still active and accepting requests`);
+  console.log(`[SERVER] ⚠️  ========================================\n`);
+  
+  // DO NOT shut down - continue running
+  // Railway may force kill the container, but we'll try to keep running
 });
   
 process.on('SIGINT', () => {
