@@ -64,12 +64,18 @@ let serverReady = false;
 // Railway checks this endpoint to determine if service is healthy
 // CRITICAL: This MUST respond immediately - Railway uses this to keep container alive
 // MUST be defined BEFORE middleware to ensure fastest response
+let healthCheckCount = 0;
 app.get('/health', (req, res) => {
-  // Respond immediately - no logging, no processing, no async
-  // Railway needs instant 200 OK response
+  healthCheckCount++;
+  // Minimal logging - only every 10th call to avoid performance impact
+  if (healthCheckCount % 10 === 1) {
+    console.log(`[HEALTH] Check #${healthCheckCount} - ${new Date().toISOString()}`);
+  }
+  // Respond immediately - Railway needs instant 200 OK response
   res.status(200).json({ 
     status: 'ok',
-    timestamp: Date.now()
+    timestamp: Date.now(),
+    serverReady: serverReady
   });
 });
 
@@ -86,7 +92,16 @@ app.get('/', (req, res) => {
 
 // Also respond to /api/health for compatibility
 app.get('/api/health', (req, res) => {
-  res.status(200).json({ status: 'ok', timestamp: Date.now() });
+  healthCheckCount++;
+  // Minimal logging - only every 10th call to avoid performance impact
+  if (healthCheckCount % 10 === 1) {
+    console.log(`[HEALTH] /api/health Check #${healthCheckCount} - ${new Date().toISOString()}`);
+  }
+  res.status(200).json({ 
+    status: 'ok', 
+    timestamp: Date.now(),
+    serverReady: serverReady
+  });
 });
 
 // Middleware - CORS configuration
@@ -1289,14 +1304,8 @@ app.post('/api/families/:familyId/children/:childId/pay-allowance', async (req, 
   }
 });
 
-// Health check - must respond quickly for Railway (no async operations)
-app.get('/api/health', (req, res) => {
-  // Respond immediately without waiting for anything
-  res.status(200).json({ 
-    status: 'ok', 
-    db: db ? 'connected' : 'memory',
-    timestamp: new Date().toISOString(),
-    uptime: process.uptime(),
+// REMOVED: Duplicate /api/health endpoint - already defined above
+// This was causing confusion - keeping only the one defined before middleware
     twilio: twilioClient ? 'configured' : 'not configured',
     pid: process.pid
   });
@@ -1319,6 +1328,8 @@ server = app.listen(PORT, '0.0.0.0', () => {
   console.log(`[SERVER] Health check: http://0.0.0.0:${PORT}/health`);
   console.log(`[SERVER] Server is ready and listening`);
   console.log(`[SERVER] ✅ Server is now ready to accept health checks`);
+  console.log(`[SERVER] ⚠️  Waiting for Railway health check calls...`);
+  console.log(`[SERVER] ⚠️  If no health check calls appear, service may be configured as 'Job' instead of 'Web Service'`);
   
   // Start heartbeat to keep container alive and log activity
   // Railway sometimes needs activity to know the service is alive
@@ -1327,7 +1338,7 @@ server = app.listen(PORT, '0.0.0.0', () => {
     if (serverReady) {
       heartbeatCount++;
       const uptime = process.uptime();
-      console.log(`[HEARTBEAT] Server is alive - uptime: ${Math.floor(uptime)}s, heartbeat: ${heartbeatCount}`);
+      console.log(`[HEARTBEAT] Server is alive - uptime: ${Math.floor(uptime)}s, heartbeat: ${heartbeatCount}, health checks received: ${healthCheckCount}`);
     }
   }, 30000); // Every 30 seconds
 });
@@ -1356,9 +1367,16 @@ process.on('SIGTERM', () => {
   console.log(`[SERVER] Port (actual): ${PORT}`);
   console.log(`[SERVER] Server listening: ${server && server.listening ? 'YES' : 'NO'}`);
   console.log(`[SERVER] Health check URL: http://0.0.0.0:${PORT}/health`);
-  console.log(`[SERVER] This usually means Railway health check failed or timed out`);
-  console.log(`[SERVER] ⚠️  Check Railway Dashboard: Settings → Service Type → Must be 'Web Service' not 'Job'`);
-  console.log(`[SERVER] ⚠️  No health check calls were received - Railway is not calling /health endpoint`);
+  console.log(`[SERVER] Total health check calls received: ${healthCheckCount}`);
+  if (healthCheckCount === 0) {
+    console.log(`[SERVER] ❌ CRITICAL: No health check calls were received!`);
+    console.log(`[SERVER] ❌ This means Railway is NOT calling /health endpoint`);
+    console.log(`[SERVER] ❌ Service is likely configured as 'Job' instead of 'Web Service'`);
+    console.log(`[SERVER] ❌ SOLUTION: Railway Dashboard → Settings → Service Type → Change to 'Web Service'`);
+  } else {
+    console.log(`[SERVER] ⚠️  Health checks were received but Railway still sent SIGTERM`);
+    console.log(`[SERVER] ⚠️  This may indicate health check timeout or failure`);
+  }
   if (server) {
     server.close(() => {
       console.log('[SERVER] Closed');
