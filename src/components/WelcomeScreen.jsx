@@ -9,7 +9,7 @@ const WelcomeScreen = ({ onSelectCreate, onSelectJoin }) => {
     
     try {
       // Use the same logic as api.js
-      const PRODUCTION_API = 'https://kids-money-manager-production.up.railway.app/api';
+      const PRODUCTION_API = 'https://web-production-4e378.up.railway.app/api';
       let apiUrl;
       
       console.log('[TEST-LOGS] Checking environment...');

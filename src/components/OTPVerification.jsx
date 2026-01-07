@@ -103,7 +103,7 @@ const OTPVerification = ({ email, isExistingFamily, onVerified, onBack }) => {
     setOtp(['', '', '', '', '', '']);
 
     try {
-      const apiUrl = import.meta.env.VITE_API_URL || 'https://kids-money-manager-production.up.railway.app/api';
+      const apiUrl = import.meta.env.VITE_API_URL || 'https://web-production-4e378.up.railway.app/api';
       const url = `${apiUrl}/auth/send-otp`;
       console.log('📤 Resending OTP request to:', url);
       
@@ -192,7 +192,7 @@ const OTPVerification = ({ email, isExistingFamily, onVerified, onBack }) => {
           className="test-logs-button"
           onClick={async () => {
             try {
-              const apiUrl = import.meta.env.VITE_API_URL || 'https://kids-money-manager-production.up.railway.app/api';
+              const apiUrl = import.meta.env.VITE_API_URL || 'https://web-production-4e378.up.railway.app/api';
               await fetch(`${apiUrl}/test-logs`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' }
