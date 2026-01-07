@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 
 const COUNTRY_CODES = [
   { code: '+972', name: 'ישראל', flag: '🇮🇱' },
@@ -19,13 +19,17 @@ const COUNTRY_CODES = [
 ];
 
 const PhoneLogin = ({ onOTPSent }) => {
-  const [email, setEmail] = useState('');
+  const [selectedCountry, setSelectedCountry] = useState(COUNTRY_CODES[0]);
+  const [phoneNumber, setPhoneNumber] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
+  const [showCountryList, setShowCountryList] = useState(false);
 
-  const validateEmail = (email) => {
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    return emailRegex.test(email);
+  const validatePhoneNumber = (phone) => {
+    // Remove all non-digits
+    const digitsOnly = phone.replace(/\D/g, '');
+    // Check if it's a valid phone number (at least 7 digits, max 15)
+    return digitsOnly.length >= 7 && digitsOnly.length <= 15;
   };
 
   const handleSubmit = async (e) => {
@@ -36,28 +40,29 @@ const PhoneLogin = ({ onOTPSent }) => {
     console.log('[FRONTEND] 🎯 SEND OTP BUTTON CLICKED 🎯');
     console.log('[FRONTEND] ========================================');
     console.log('[FRONTEND] Timestamp:', clickTime);
-    console.log('[FRONTEND] Email entered:', email);
+    console.log('[FRONTEND] Country Code:', selectedCountry.code);
+    console.log('[FRONTEND] Phone Number:', phoneNumber);
     console.log('[FRONTEND] ========================================\n');
     
     setError('');
     
-    if (!email || !validateEmail(email)) {
-      console.error('[FRONTEND] ❌ Email validation failed');
-      console.error('[FRONTEND] Email:', email);
-      console.error('[FRONTEND] Valid format:', validateEmail(email));
-      setError('כתובת מייל לא תקינה');
+    if (!phoneNumber || !validatePhoneNumber(phoneNumber)) {
+      console.error('[FRONTEND] ❌ Phone validation failed');
+      console.error('[FRONTEND] Phone:', phoneNumber);
+      setError('מספר טלפון לא תקין');
       return;
     }
 
-    console.log('[FRONTEND] ✅ Email validation passed');
+    const fullPhoneNumber = `${selectedCountry.code}${phoneNumber.replace(/\D/g, '')}`;
+    console.log('[FRONTEND] ✅ Phone validation passed');
+    console.log('[FRONTEND] Full Phone Number:', fullPhoneNumber);
     console.log('[FRONTEND] Setting loading state to true...');
     setIsLoading(true);
 
     try {
       const apiUrl = import.meta.env.VITE_API_URL || 'https://kids-money-manager-server.onrender.com/api';
       const url = `${apiUrl}/auth/send-otp`;
-      const normalizedEmail = email.trim().toLowerCase();
-      const requestBody = { email: normalizedEmail };
+      const requestBody = { phoneNumber: fullPhoneNumber };
       
       console.log('[FRONTEND] ========================================');
       console.log('[FRONTEND] 📤 Preparing to send OTP request...');
@@ -67,7 +72,7 @@ const PhoneLogin = ({ onOTPSent }) => {
       console.log('[FRONTEND] Method: POST');
       console.log('[FRONTEND] Headers:', { 'Content-Type': 'application/json' });
       console.log('[FRONTEND] Request Body (JSON):', JSON.stringify(requestBody, null, 2));
-      console.log('[FRONTEND] Normalized Email:', normalizedEmail);
+      console.log('[FRONTEND] Full Phone Number:', fullPhoneNumber);
       console.log('[FRONTEND] ========================================\n');
       
       const requestStartTime = Date.now();
@@ -90,7 +95,6 @@ const PhoneLogin = ({ onOTPSent }) => {
       console.log('[FRONTEND] Response Status:', response.status);
       console.log('[FRONTEND] Response Status Text:', response.statusText);
       console.log('[FRONTEND] Response OK:', response.ok);
-      console.log('[FRONTEND] Response Headers:', Object.fromEntries(response.headers.entries()));
       console.log('[FRONTEND] ========================================\n');
 
       console.log('[FRONTEND] 📋 Parsing response JSON...');
@@ -103,7 +107,6 @@ const PhoneLogin = ({ onOTPSent }) => {
         console.error('[FRONTEND] ========================================');
         console.error('[FRONTEND] Status:', response.status);
         console.error('[FRONTEND] Error:', data.error || 'Unknown error');
-        console.error('[FRONTEND] Full Error Data:', JSON.stringify(data, null, 2));
         console.error('[FRONTEND] ========================================\n');
         throw new Error(data.error || 'שגיאה בשליחת קוד');
       }
@@ -114,23 +117,18 @@ const PhoneLogin = ({ onOTPSent }) => {
       console.log('[FRONTEND] Success:', data.success);
       console.log('[FRONTEND] Message:', data.message);
       console.log('[FRONTEND] Is Existing Family:', data.isExistingFamily);
-      console.log('[FRONTEND] Email Sent:', data.emailSent);
-      console.log('[FRONTEND] Email ID:', data.emailId || 'N/A');
+      console.log('[FRONTEND] SMS Sent:', data.smsSent);
       console.log('[FRONTEND] OTP Code:', data.otpCode || 'NOT PROVIDED');
       console.log('[FRONTEND] ========================================\n');
 
-      // Show success message from server (includes OTP)
-      // Build message with OTP - use data.otpCode if available, otherwise use data.message
+      // Show success message with OTP
       let successMessage;
       if (data.otpCode) {
-        // If OTP is in response, use it explicitly
-        successMessage = `✅ קוד אימות נשלח בהצלחה למייל ${normalizedEmail}\n\nקוד האימות: ${data.otpCode}`;
+        successMessage = `✅ קוד אימות נשלח בהצלחה לטלפון ${fullPhoneNumber}\n\nקוד האימות: ${data.otpCode}`;
       } else if (data.message) {
-        // Use server message (should already include OTP)
         successMessage = data.message;
       } else {
-        // Fallback
-        successMessage = `✅ קוד אימות נשלח בהצלחה למייל ${normalizedEmail}`;
+        successMessage = `✅ קוד אימות נשלח בהצלחה לטלפון ${fullPhoneNumber}`;
       }
       
       console.log('[FRONTEND] ========================================');
@@ -144,7 +142,7 @@ const PhoneLogin = ({ onOTPSent }) => {
       alert(successMessage);
 
       console.log('[FRONTEND] Calling onOTPSent callback...');
-      onOTPSent(normalizedEmail, data.isExistingFamily);
+      onOTPSent(fullPhoneNumber, data.isExistingFamily);
       console.log('[FRONTEND] ✅ onOTPSent called successfully');
     } catch (error) {
       console.error('[FRONTEND] ========================================');
@@ -153,7 +151,6 @@ const PhoneLogin = ({ onOTPSent }) => {
       console.error('[FRONTEND] Error Name:', error.name);
       console.error('[FRONTEND] Error Message:', error.message);
       console.error('[FRONTEND] Error Stack:', error.stack);
-      console.error('[FRONTEND] Full Error:', error);
       console.error('[FRONTEND] ========================================\n');
       setError(error.message || 'שגיאה בשליחת קוד אימות');
     } finally {
@@ -167,24 +164,50 @@ const PhoneLogin = ({ onOTPSent }) => {
     <div className="phone-login">
       <div className="phone-login-container">
         <div className="phone-login-header">
-          <h1>📧 הכנס כתובת מייל</h1>
-          <p className="phone-login-subtitle">נשלח לך קוד אימות במייל</p>
+          <h1>📱 הכנס מספר טלפון</h1>
+          <p className="phone-login-subtitle">נשלח לך קוד אימות ב-SMS</p>
         </div>
 
         <form onSubmit={handleSubmit} className="phone-login-form">
           <div className="phone-input-group">
+            <div className="country-code-selector">
+              <button
+                type="button"
+                className="country-code-button"
+                onClick={() => setShowCountryList(!showCountryList)}
+              >
+                {selectedCountry.flag} {selectedCountry.code}
+              </button>
+              {showCountryList && (
+                <div className="country-list">
+                  {COUNTRY_CODES.map((country) => (
+                    <button
+                      key={country.code}
+                      type="button"
+                      className="country-item"
+                      onClick={() => {
+                        setSelectedCountry(country);
+                        setShowCountryList(false);
+                      }}
+                    >
+                      {country.flag} {country.code} {country.name}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
             <input
-              type="email"
+              type="tel"
               className="phone-input"
-              value={email}
+              value={phoneNumber}
               onChange={(e) => {
-                setEmail(e.target.value);
+                setPhoneNumber(e.target.value);
                 setError('');
               }}
-              placeholder="כתובת מייל"
+              placeholder="מספר טלפון"
               required
               autoFocus
-              inputMode="email"
+              inputMode="numeric"
             />
           </div>
 
@@ -193,7 +216,7 @@ const PhoneLogin = ({ onOTPSent }) => {
           <button 
             type="submit" 
             className="phone-login-button"
-            disabled={isLoading || !email}
+            disabled={isLoading || !phoneNumber}
           >
             {isLoading ? 'שולח...' : 'שלח קוד אימות'}
           </button>
@@ -217,11 +240,10 @@ const PhoneLogin = ({ onOTPSent }) => {
         >
           🔍 בדיקת לוגים
         </button>
-        <span className="version">גרסה 2.9.30</span>
+        <span className="version">גרסה 2.9.31</span>
       </footer>
     </div>
   );
 };
 
 export default PhoneLogin;
-

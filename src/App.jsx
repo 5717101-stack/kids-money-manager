@@ -8,18 +8,18 @@ import ChildView from './components/ChildView';
 const App = () => {
   const [screen, setScreen] = useState('welcome'); // 'welcome', 'phone', 'otp', 'dashboard'
   const [familyId, setFamilyId] = useState(null);
-  const [email, setEmail] = useState('');
+  const [phoneNumber, setPhoneNumber] = useState('');
   const [view, setView] = useState('parent'); // 'parent', 'child1', 'child2', etc.
   const [children, setChildren] = useState([]);
 
   useEffect(() => {
     // Check if already logged in
     const savedFamilyId = sessionStorage.getItem('familyId');
-    const savedEmail = sessionStorage.getItem('email');
+    const savedPhoneNumber = sessionStorage.getItem('phoneNumber');
     
     if (savedFamilyId) {
       setFamilyId(savedFamilyId);
-      setEmail(savedEmail || '');
+      setPhoneNumber(savedPhoneNumber || '');
       setScreen('dashboard');
       loadChildren(savedFamilyId);
     }
@@ -49,16 +49,16 @@ const App = () => {
     setScreen('phone');
   };
 
-  const handleOTPSent = (emailAddress, isExistingFamily) => {
-    setEmail(emailAddress);
+  const handleOTPSent = (phoneNum, isExistingFamily) => {
+    setPhoneNumber(phoneNum);
     setScreen('otp');
   };
 
-  const handleOTPVerified = (fId, emailAddress, isNewFamily) => {
+  const handleOTPVerified = (fId, phoneNum, isNewFamily) => {
     setFamilyId(fId);
-    setEmail(emailAddress);
+    setPhoneNumber(phoneNum);
     sessionStorage.setItem('familyId', fId);
-    sessionStorage.setItem('email', emailAddress);
+    sessionStorage.setItem('phoneNumber', phoneNum);
     sessionStorage.setItem('parentLoggedIn', 'true');
     
     if (isNewFamily) {
@@ -76,10 +76,10 @@ const App = () => {
 
   const handleLogout = () => {
     sessionStorage.removeItem('familyId');
-    sessionStorage.removeItem('email');
+    sessionStorage.removeItem('phoneNumber');
     sessionStorage.removeItem('parentLoggedIn');
     setFamilyId(null);
-    setEmail('');
+    setPhoneNumber('');
     setChildren([]);
     setView('parent');
     setScreen('welcome');
@@ -102,7 +102,7 @@ const App = () => {
 
       {screen === 'otp' && (
         <OTPVerification 
-          email={email}
+          phoneNumber={phoneNumber}
           isExistingFamily={false}
           onVerified={handleOTPVerified}
           onBack={handleBack}
@@ -170,7 +170,7 @@ const App = () => {
             >
               🔍 בדיקת לוגים
             </button>
-            <span className="version">גרסה 2.9.30</span>
+            <span className="version">גרסה 2.9.31</span>
           </footer>
         </>
       )}

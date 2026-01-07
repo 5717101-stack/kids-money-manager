@@ -459,68 +459,22 @@ async function sendEmail(emailAddress, otpCode) {
   }
 }
 
-// Send SMS via Twilio or log to console (DEPRECATED - using email instead)
+// Send SMS via Twilio or return success without sending (for development)
 async function sendSMS(phoneNumber, message) {
   const startTime = Date.now();
   console.log(`\n[SMS] ===== SMS Send Attempt =====`);
   console.log(`[SMS] Timestamp: ${new Date().toISOString()}`);
   console.log(`[SMS] To: ${phoneNumber}`);
-  console.log(`[SMS] From: ${TWILIO_PHONE_NUMBER || 'NOT SET'}`);
-  console.log(`[SMS] Message Length: ${message.length} characters`);
-  console.log(`[SMS] Message Preview: ${message.substring(0, 50)}...`);
-  console.log(`[SMS] Twilio Client: ${twilioClient ? 'INITIALIZED' : 'NOT INITIALIZED'}`);
-  console.log(`[SMS] API Endpoint: https://api.twilio.com/2010-04-01/Accounts/${TWILIO_ACCOUNT_SID?.substring(0, 10)}.../Messages.json`);
+  console.log(`[SMS] Message: ${message}`);
+  console.log(`[SMS] ============================\n`);
   
-  if (twilioClient && TWILIO_PHONE_NUMBER) {
-    try {
-      const requestPayload = {
-        body: message,
-        from: TWILIO_PHONE_NUMBER,
-        to: phoneNumber
-      };
-      console.log(`[SMS] Request Payload:`, JSON.stringify(requestPayload, null, 2));
-      console.log(`[SMS] Sending request to Twilio API...`);
-      
-      const result = await twilioClient.messages.create(requestPayload);
-      
-      const duration = Date.now() - startTime;
-      console.log(`[SMS] ✅ SMS sent successfully!`);
-      console.log(`[SMS] Response Time: ${duration}ms`);
-      console.log(`[SMS] Message SID: ${result.sid}`);
-      console.log(`[SMS] Status: ${result.status}`);
-      console.log(`[SMS] Account SID: ${result.accountSid}`);
-      console.log(`[SMS] From: ${result.from}`);
-      console.log(`[SMS] To: ${result.to}`);
-      console.log(`[SMS] Date Created: ${result.dateCreated}`);
-      console.log(`[SMS] Date Sent: ${result.dateSent || 'Pending'}`);
-      console.log(`[SMS] Price: ${result.price || 'N/A'}`);
-      console.log(`[SMS] Price Unit: ${result.priceUnit || 'N/A'}`);
-      console.log(`[SMS] ============================\n`);
-      
-      return { success: true, sid: result.sid, status: result.status, result: result };
-    } catch (error) {
-      const duration = Date.now() - startTime;
-      console.log(`[SMS] ❌ SMS send failed!`);
-      console.log(`[SMS] Response Time: ${duration}ms`);
-      console.log(`[SMS] Error Code: ${error.code}`);
-      console.log(`[SMS] Error Message: ${error.message}`);
-      console.log(`[SMS] Error Status: ${error.status || 'N/A'}`);
-      console.log(`[SMS] Error More Info: ${error.moreInfo || 'N/A'}`);
-      console.log(`[SMS] Full Error:`, JSON.stringify(error, null, 2));
-      
-      if (error.code === 21608 || error.code === 21614) {
-        console.error(`[SMS] ⚠️  Phone number not verified. Add ${phoneNumber} in Twilio Console → Verified Caller IDs`);
-      }
-      console.log(`[SMS] ============================\n`);
-      
-      return { success: false, error: error.message, code: error.code, status: error.status, fullError: error };
-    }
-  } else {
-    console.log(`[SMS] ⚠️  Twilio not configured - SMS would be sent to ${phoneNumber}`);
-    console.log(`[SMS] Message: ${message}`);
-    console.log(`[SMS] ============================\n`);
-    return { success: true, dev: true };
-  }
+  // Always return success - SMS provider not configured
+  // OTP will be shown in the alert message instead
+  console.log(`[SMS] ⚠️  SMS provider not configured - OTP will be shown in alert`);
+  console.log(`[SMS] OTP Code: ${message.match(/\d{6}/)?.[0] || 'N/A'}`);
+  console.log(`[SMS] ============================\n`);
+  
+  return { success: true, dev: true, message: 'OTP shown in alert (SMS provider not configured)' };
 }
 
 // Store OTP codes temporarily (in production, use Redis or similar)
@@ -953,7 +907,7 @@ app.post('/api/auth/send-otp', async (req, res) => {
   res.setTimeout(60000); // 60 seconds timeout
   
   // Write to stderr first (most visible in Render) - IMMEDIATE
-  const logMessage = `========================================\n📧📧📧 SEND OTP REQUEST RECEIVED 📧📧📧\n========================================\n[SEND-OTP] Timestamp: ${timestamp}\n[SEND-OTP] Method: ${req.method}\n[SEND-OTP] Path: ${req.path}\n[SEND-OTP] Email: ${req.body?.email || 'NOT PROVIDED'}\n[SEND-OTP] Full Body: ${JSON.stringify(req.body || {})}\n========================================\n\n`;
+  const logMessage = `========================================\n📱📱📱 SEND OTP REQUEST RECEIVED 📱📱📱\n========================================\n[SEND-OTP] Timestamp: ${timestamp}\n[SEND-OTP] Method: ${req.method}\n[SEND-OTP] Path: ${req.path}\n[SEND-OTP] Phone: ${req.body?.phoneNumber || 'NOT PROVIDED'}\n[SEND-OTP] Full Body: ${JSON.stringify(req.body || {})}\n========================================\n\n`;
   
   // Write multiple times to ensure visibility
   process.stderr.write(logMessage);
@@ -964,22 +918,22 @@ app.post('/api/auth/send-otp', async (req, res) => {
   
   // Also use console methods
   console.error('\n\n\n========================================');
-  console.error('📧📧📧 SEND OTP REQUEST RECEIVED 📧📧📧');
+  console.error('📱📱📱 SEND OTP REQUEST RECEIVED 📱📱📱');
   console.error('========================================');
   console.error(`[SEND-OTP] Timestamp: ${timestamp}`);
   console.error(`[SEND-OTP] Method: ${req.method}`);
   console.error(`[SEND-OTP] Path: ${req.path}`);
-  console.error(`[SEND-OTP] Email: ${req.body?.email || 'NOT PROVIDED'}`);
+  console.error(`[SEND-OTP] Phone: ${req.body?.phoneNumber || 'NOT PROVIDED'}`);
   console.error(`[SEND-OTP] Full Body:`, req.body);
   console.error('========================================\n\n\n');
   
   console.log('\n\n\n========================================');
-  console.log('📧📧📧 SEND OTP REQUEST RECEIVED 📧📧📧');
+  console.log('📱📱📱 SEND OTP REQUEST RECEIVED 📱📱📱');
   console.log('========================================');
   console.log(`[SEND-OTP] Timestamp: ${timestamp}`);
   console.log(`[SEND-OTP] Method: ${req.method}`);
   console.log(`[SEND-OTP] Path: ${req.path}`);
-  console.log(`[SEND-OTP] Email: ${req.body?.email || 'NOT PROVIDED'}`);
+  console.log(`[SEND-OTP] Phone: ${req.body?.phoneNumber || 'NOT PROVIDED'}`);
   console.log(`[SEND-OTP] Full Body:`, req.body);
   console.log('========================================\n\n\n');
   
@@ -991,41 +945,38 @@ app.post('/api/auth/send-otp', async (req, res) => {
   console.log(`[SEND-OTP]   Path: ${req.path}`);
   console.log(`[SEND-OTP]   Headers:`, JSON.stringify(req.headers, null, 2));
   console.log(`[SEND-OTP]   Body:`, JSON.stringify(req.body, null, 2));
-  console.log(`[SEND-OTP]   Email: ${req.body.email || 'NOT PROVIDED'}`);
+  console.log(`[SEND-OTP]   Phone: ${req.body.phoneNumber || 'NOT PROVIDED'}`);
   console.log(`[SEND-OTP] ========================================\n`);
   
   console.error(`\n[SEND-OTP] ========================================`);
   console.error(`[SEND-OTP] 🚀 Request received at ${timestamp}`);
-  console.error(`[SEND-OTP] Email: ${req.body.email || 'NOT PROVIDED'}`);
+  console.error(`[SEND-OTP] Phone: ${req.body.phoneNumber || 'NOT PROVIDED'}`);
   console.error(`[SEND-OTP] ========================================\n`);
   
   try {
-    const { email } = req.body;
+    const { phoneNumber } = req.body;
     
     console.log(`[SEND-OTP] ========================================`);
-    console.log(`[SEND-OTP] Step 1: Validating email...`);
-    console.log(`[SEND-OTP]   Raw email: ${email || 'undefined'}`);
+    console.log(`[SEND-OTP] Step 1: Validating phone number...`);
+    console.log(`[SEND-OTP]   Raw phone: ${phoneNumber || 'undefined'}`);
     
-    process.stderr.write(`[SEND-OTP] Step 1: Validating email...\n`);
-    process.stderr.write(`[SEND-OTP] Raw email: ${email || 'undefined'}\n`);
+    process.stderr.write(`[SEND-OTP] Step 1: Validating phone number...\n`);
+    process.stderr.write(`[SEND-OTP] Raw phone: ${phoneNumber || 'undefined'}\n`);
     
-    // Validate email
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!email || !emailRegex.test(email)) {
-      console.error(`[SEND-OTP] ❌ Invalid email format`);
-      console.error(`[SEND-OTP]   Email regex test: ${email ? emailRegex.test(email) : 'false'}`);
-      process.stderr.write(`[SEND-OTP] ❌ Invalid email format\n`);
-      process.stderr.write(`[SEND-OTP] Email regex test: ${email ? emailRegex.test(email) : 'false'}\n`);
-      return res.status(400).json({ error: 'כתובת מייל לא תקינה' });
+    // Validate phone number
+    if (!phoneNumber || phoneNumber.trim().length < 10) {
+      console.error(`[SEND-OTP] ❌ Invalid phone number format`);
+      process.stderr.write(`[SEND-OTP] ❌ Invalid phone number format\n`);
+      return res.status(400).json({ error: 'מספר טלפון לא תקין' });
     }
     
-    const normalizedEmail = email.trim().toLowerCase();
-    console.log(`[SEND-OTP] ✅ Email validated`);
-    console.log(`[SEND-OTP]   Normalized email: ${normalizedEmail}`);
+    const normalizedPhone = phoneNumber.trim();
+    console.log(`[SEND-OTP] ✅ Phone validated`);
+    console.log(`[SEND-OTP]   Normalized phone: ${normalizedPhone}`);
     console.log(`[SEND-OTP] ========================================\n`);
     
-    process.stderr.write(`[SEND-OTP] ✅ Email validated\n`);
-    process.stderr.write(`[SEND-OTP] Normalized email: ${normalizedEmail}\n`);
+    process.stderr.write(`[SEND-OTP] ✅ Phone validated\n`);
+    process.stderr.write(`[SEND-OTP] Normalized phone: ${normalizedPhone}\n`);
     
     console.log(`[SEND-OTP] ========================================`);
     console.log(`[SEND-OTP] Step 2: Generating OTP...`);
@@ -1041,120 +992,83 @@ app.post('/api/auth/send-otp', async (req, res) => {
     process.stderr.write(`[SEND-OTP] OTP expires at: ${new Date(expiresAt).toISOString()}\n`);
     
     console.log(`[SEND-OTP] ========================================`);
-    console.log(`[SEND-OTP] Step 3: Checking Resend configuration...`);
-    console.log(`[SEND-OTP]   - API Key: ${RESEND_API_KEY ? `SET (${RESEND_API_KEY.substring(0, 10)}...${RESEND_API_KEY.substring(RESEND_API_KEY.length - 4)})` : 'NOT SET'}`);
-    console.log(`[SEND-OTP]   - From Email: ${RESEND_FROM_EMAIL}`);
-    console.log(`[SEND-OTP]   - Client: ${resendClient ? 'INITIALIZED' : 'NOT INITIALIZED'}`);
-    console.log(`[SEND-OTP]   - Configuration Status: ${(RESEND_API_KEY && resendClient) ? '✅ READY' : '❌ NOT CONFIGURED'}`);
-    console.log(`[SEND-OTP] ========================================\n`);
-    
-    process.stderr.write(`[SEND-OTP] Step 3: Checking Resend configuration...\n`);
-    process.stderr.write(`[SEND-OTP] API Key: ${RESEND_API_KEY ? 'SET' : 'NOT SET'}\n`);
-    process.stderr.write(`[SEND-OTP] From Email: ${RESEND_FROM_EMAIL}\n`);
-    process.stderr.write(`[SEND-OTP] Client: ${resendClient ? 'INITIALIZED' : 'NOT INITIALIZED'}\n`);
-    process.stderr.write(`[SEND-OTP] Resend configured: ${(RESEND_API_KEY && resendClient) ? 'YES' : 'NO'}\n`);
-    
-    console.log(`[SEND-OTP] ========================================`);
-    console.log(`[SEND-OTP] Step 4: Checking if family exists...`);
-    const existingFamily = await getFamilyByEmail(normalizedEmail);
+    console.log(`[SEND-OTP] Step 3: Checking if family exists...`);
+    const existingFamily = await getFamilyByPhone(normalizedPhone);
     console.log(`[SEND-OTP]   Family exists: ${existingFamily ? 'YES' : 'NO'}`);
     if (existingFamily) {
       console.log(`[SEND-OTP]   Family ID: ${existingFamily._id}`);
     }
     console.log(`[SEND-OTP] ========================================\n`);
     
-    process.stderr.write(`[SEND-OTP] Step 4: Checking if family exists...\n`);
+    process.stderr.write(`[SEND-OTP] Step 3: Checking if family exists...\n`);
     process.stderr.write(`[SEND-OTP] Family exists: ${existingFamily ? 'YES' : 'NO'}\n`);
     if (existingFamily) {
       process.stderr.write(`[SEND-OTP] Family ID: ${existingFamily._id}\n`);
     }
     
     console.log(`[SEND-OTP] ========================================`);
-    console.log(`[SEND-OTP] Step 5: Storing OTP in memory...`);
-    otpStore.set(normalizedEmail, {
+    console.log(`[SEND-OTP] Step 4: Storing OTP in memory...`);
+    otpStore.set(normalizedPhone, {
       code: otpCode,
       expiresAt,
       familyId: existingFamily ? existingFamily._id : null
     });
-    console.log(`[SEND-OTP]   OTP stored for: ${normalizedEmail}`);
+    console.log(`[SEND-OTP]   OTP stored for: ${normalizedPhone}`);
     console.log(`[SEND-OTP]   OTP code: ${otpCode}`);
     console.log(`[SEND-OTP]   Expires at: ${new Date(expiresAt).toISOString()}`);
     console.log(`[SEND-OTP] ========================================\n`);
     
-    process.stderr.write(`[SEND-OTP] Step 5: Storing OTP in memory...\n`);
-    process.stderr.write(`[SEND-OTP] OTP stored for: ${normalizedEmail}\n`);
+    process.stderr.write(`[SEND-OTP] Step 4: Storing OTP in memory...\n`);
+    process.stderr.write(`[SEND-OTP] OTP stored for: ${normalizedPhone}\n`);
     process.stderr.write(`[SEND-OTP] OTP code: ${otpCode}\n`);
     
     console.log(`[SEND-OTP] ========================================`);
-    console.log(`[SEND-OTP] Step 6: Calling sendEmail function...`);
-    console.log(`[SEND-OTP]   To: ${normalizedEmail}`);
+    console.log(`[SEND-OTP] Step 5: Calling sendSMS function...`);
+    console.log(`[SEND-OTP]   To: ${normalizedPhone}`);
     console.log(`[SEND-OTP]   OTP: ${otpCode}`);
     console.log(`[SEND-OTP] ========================================\n`);
     
-    process.stderr.write(`[SEND-OTP] Step 6: Calling sendEmail function...\n`);
-    process.stderr.write(`[SEND-OTP] To: ${normalizedEmail}\n`);
+    process.stderr.write(`[SEND-OTP] Step 5: Calling sendSMS function...\n`);
+    process.stderr.write(`[SEND-OTP] To: ${normalizedPhone}\n`);
     process.stderr.write(`[SEND-OTP] OTP: ${otpCode}\n`);
     
-    const emailResult = await sendEmail(normalizedEmail, otpCode);
+    const smsResult = await sendSMS(normalizedPhone, `קוד האימות שלך: ${otpCode}`);
     
     console.log(`[SEND-OTP] ========================================`);
-    console.log(`[SEND-OTP] Step 7: Email result received`);
+    console.log(`[SEND-OTP] Step 6: SMS result received`);
     console.log(`[SEND-OTP] ========================================`);
-    console.log(`[SEND-OTP] 📥 Email Result:`);
-    console.log(`[SEND-OTP]   Success: ${emailResult.success}`);
-    console.log(`[SEND-OTP]   Email ID: ${emailResult.id || 'N/A'}`);
-    console.log(`[SEND-OTP]   Email Address: ${emailResult.email || normalizedEmail}`);
-    if (emailResult.error) {
-      console.log(`[SEND-OTP]   Error: ${emailResult.error}`);
-      console.log(`[SEND-OTP]   Error Code: ${emailResult.code || 'N/A'}`);
-      console.log(`[SEND-OTP]   Error Status: ${emailResult.status || 'N/A'}`);
+    console.log(`[SEND-OTP] 📥 SMS Result:`);
+    console.log(`[SEND-OTP]   Success: ${smsResult.success}`);
+    if (smsResult.sid) {
+      console.log(`[SEND-OTP]   SMS SID: ${smsResult.sid}`);
+    }
+    if (smsResult.error) {
+      console.log(`[SEND-OTP]   Error: ${smsResult.error}`);
+      console.log(`[SEND-OTP]   Error Code: ${smsResult.code || 'N/A'}`);
     }
     console.log(`[SEND-OTP] ========================================`);
     console.log(`[SEND-OTP] 📋 Full Result Object (JSON):`);
-    console.log(JSON.stringify(emailResult, null, 2));
+    console.log(JSON.stringify(smsResult, null, 2));
     console.log(`[SEND-OTP] ========================================\n`);
     
-    process.stderr.write(`[SEND-OTP] Email result: ${emailResult.success ? 'SUCCESS' : 'FAILED'}\n`);
-    if (emailResult.id) {
-      process.stderr.write(`[SEND-OTP] Email ID: ${emailResult.id}\n`);
-    }
-    
-    if (!emailResult.success) {
-      console.error(`[SEND-OTP] ========================================`);
-      console.error(`[SEND-OTP] ❌❌❌ EMAIL FAILED ❌❌❌`);
-      console.error(`[SEND-OTP] ========================================`);
-      console.error(`[SEND-OTP] Error: ${emailResult.error}`);
-      console.error(`[SEND-OTP] Error Code: ${emailResult.code || 'N/A'}`);
-      console.error(`[SEND-OTP] Error Status: ${emailResult.status || 'N/A'}`);
-      console.error(`[SEND-OTP] ========================================\n`);
-      
-      process.stderr.write(`[SEND-OTP] ERROR: ${emailResult.error}\n`);
-      if (emailResult.code) process.stderr.write(`[SEND-OTP] CODE: ${emailResult.code}\n`);
-      if (emailResult.status) process.stderr.write(`[SEND-OTP] STATUS: ${emailResult.status}\n`);
-      
-      return res.status(500).json({ 
-        error: 'שגיאה בשליחת מייל. אנא נסה שוב או פנה לתמיכה.',
-        emailError: emailResult.error,
-        emailCode: emailResult.code,
-        emailStatus: emailResult.status,
-        details: 'בדוק את ה-Logs ב-Render לפרטים נוספים'
-      });
+    process.stderr.write(`[SEND-OTP] SMS result: ${smsResult.success ? 'SUCCESS' : 'FAILED'}\n`);
+    if (smsResult.sid) {
+      process.stderr.write(`[SEND-OTP] SMS SID: ${smsResult.sid}\n`);
     }
     
     const duration = Date.now() - requestStart;
-    const successMessage = `✅ קוד אימות נשלח בהצלחה למייל ${normalizedEmail}\n\nקוד האימות: ${otpCode}`;
+    const successMessage = `✅ קוד אימות נשלח בהצלחה לטלפון ${normalizedPhone}\n\nקוד האימות: ${otpCode}`;
     
     console.log(`[SEND-OTP] ========================================`);
-    console.log(`[SEND-OTP] ✅✅✅ EMAIL SENT SUCCESSFULLY ✅✅✅`);
+    console.log(`[SEND-OTP] ✅✅✅ OTP GENERATED SUCCESSFULLY ✅✅✅`);
     console.log(`[SEND-OTP] ========================================`);
-    console.log(`[SEND-OTP] Email ID: ${emailResult.id}`);
-    console.log(`[SEND-OTP] To: ${normalizedEmail}`);
+    console.log(`[SEND-OTP] To: ${normalizedPhone}`);
     console.log(`[SEND-OTP] OTP Code: ${otpCode}`);
     console.log(`[SEND-OTP] Total request time: ${duration}ms`);
     console.log(`[SEND-OTP] Success Message: ${successMessage}`);
     console.log(`[SEND-OTP] ========================================\n`);
     
-    const successLog = `[SEND-OTP] ========================================\n[SEND-OTP] ✅✅✅ EMAIL SENT SUCCESSFULLY ✅✅✅\n[SEND-OTP] ========================================\n[SEND-OTP] Email ID: ${emailResult.id}\n[SEND-OTP] To: ${normalizedEmail}\n[SEND-OTP] OTP Code: ${otpCode}\n[SEND-OTP] Total time: ${duration}ms\n[SEND-OTP] Success Message: ${successMessage}\n[SEND-OTP] ========================================\n\n`;
+    const successLog = `[SEND-OTP] ========================================\n[SEND-OTP] ✅✅✅ OTP GENERATED SUCCESSFULLY ✅✅✅\n[SEND-OTP] ========================================\n[SEND-OTP] To: ${normalizedPhone}\n[SEND-OTP] OTP Code: ${otpCode}\n[SEND-OTP] Total time: ${duration}ms\n[SEND-OTP] Success Message: ${successMessage}\n[SEND-OTP] ========================================\n\n`;
     
     // Write multiple times to ensure visibility
     process.stderr.write(successLog);
@@ -1162,24 +1076,22 @@ app.post('/api/auth/send-otp', async (req, res) => {
     process.stdout.write(successLog);
     
     console.error('\n[SEND-OTP] ========================================');
-    console.error('[SEND-OTP] ✅✅✅ EMAIL SENT SUCCESSFULLY ✅✅✅');
+    console.error('[SEND-OTP] ✅✅✅ OTP GENERATED SUCCESSFULLY ✅✅✅');
     console.error('[SEND-OTP] ========================================');
-    console.error(`[SEND-OTP] Email ID: ${emailResult.id}`);
-    console.error(`[SEND-OTP] To: ${normalizedEmail}`);
+    console.error(`[SEND-OTP] To: ${normalizedPhone}`);
     console.error(`[SEND-OTP] OTP Code: ${otpCode}`);
     console.error(`[SEND-OTP] Total time: ${duration}ms`);
     console.error(`[SEND-OTP] Success Message: ${successMessage}`);
     console.error('[SEND-OTP] ========================================\n\n');
     
     console.log(`[SEND-OTP] ========================================`);
-    console.log(`[SEND-OTP] Step 8: Sending response to client...`);
+    console.log(`[SEND-OTP] Step 7: Sending response to client...`);
     console.log(`[SEND-OTP]   Response Status: 200`);
     const responseBody = {
       success: true,
       message: successMessage,
       isExistingFamily: !!existingFamily,
-      emailSent: true,
-      emailId: emailResult.id,
+      smsSent: smsResult.success,
       otpCode: otpCode // Include OTP in response for display
     };
     console.log(`[SEND-OTP]   Response Body:`, JSON.stringify(responseBody, null, 2));
@@ -1216,14 +1128,14 @@ app.post('/api/auth/send-otp', async (req, res) => {
 // Verify OTP and login/register
 app.post('/api/auth/verify-otp', async (req, res) => {
   try {
-    const { email, otpCode } = req.body;
+    const { phoneNumber, otpCode } = req.body;
     
-    if (!email || !otpCode) {
-      return res.status(400).json({ error: 'כתובת מייל וקוד אימות נדרשים' });
+    if (!phoneNumber || !otpCode) {
+      return res.status(400).json({ error: 'מספר טלפון וקוד אימות נדרשים' });
     }
     
-    const normalizedEmail = email.trim().toLowerCase();
-    const storedOTP = otpStore.get(normalizedEmail);
+    const normalizedPhone = phoneNumber.trim();
+    const storedOTP = otpStore.get(normalizedPhone);
     
     if (!storedOTP || storedOTP.expiresAt < Date.now()) {
       return res.status(400).json({ error: 'קוד אימות לא תקין או פג תוקף' });
@@ -1234,14 +1146,14 @@ app.post('/api/auth/verify-otp', async (req, res) => {
     }
     
     // OTP verified - get or create family
-    let family = await getFamilyByEmail(normalizedEmail);
+    let family = await getFamilyByPhone(normalizedPhone);
     
     if (!family) {
-      // Create new family with email
+      // Create new family with phone number
       const familyId = `family_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
       family = {
         _id: familyId,
-        email: normalizedEmail,
+        phoneNumber: normalizedPhone,
         createdAt: new Date().toISOString(),
         children: [],
         categories: [
@@ -1255,17 +1167,17 @@ app.post('/api/auth/verify-otp', async (req, res) => {
       
       if (db) {
         await db.collection('families').insertOne(family);
-        console.log(`[CREATE-FAMILY] ✅ Family created with email: ${normalizedEmail}`);
+        console.log(`[CREATE-FAMILY] ✅ Family created with phone: ${normalizedPhone}`);
       }
     }
     
     // Remove OTP
-    otpStore.delete(normalizedEmail);
+    otpStore.delete(normalizedPhone);
     
     res.json({
       success: true,
       familyId: family._id,
-      email: normalizedEmail,
+      phoneNumber: normalizedPhone,
       isNewFamily: !storedOTP.familyId
     });
   } catch (error) {
