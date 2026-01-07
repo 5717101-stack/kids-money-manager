@@ -29,10 +29,24 @@ const ChildPasswordLogin = ({ familyId, onChildVerified, onBack }) => {
         })
       });
 
-      const data = await response.json();
+      let data;
+      try {
+        data = await response.json();
+      } catch (jsonError) {
+        // If response is not JSON, try to get text
+        const text = await response.text();
+        throw new Error(text || 'שגיאה בעת אימות הסיסמה');
+      }
 
       if (!response.ok) {
-        throw new Error(data.error || 'סיסמה שגויה');
+        // Better error handling for different error types
+        const errorMessage = data?.error || data?.message || 'סיסמה שגויה';
+        console.error('Password verification error:', {
+          status: response.status,
+          error: errorMessage,
+          data: data
+        });
+        throw new Error(errorMessage);
       }
 
       if (data.child) {
@@ -42,7 +56,18 @@ const ChildPasswordLogin = ({ familyId, onChildVerified, onBack }) => {
       }
     } catch (error) {
       console.error('Error verifying child password:', error);
-      setError(error.message || 'סיסמה שגויה');
+      // Translate common error messages to Hebrew
+      let errorMessage = error.message || 'סיסמה שגויה';
+      
+      if (errorMessage.includes('pattern') || errorMessage.includes('expected pattern')) {
+        errorMessage = 'סיסמה לא תקינה. אנא בדוק שהסיסמה נכונה והעתקת אותה במלואה.';
+      } else if (errorMessage.includes('not found') || errorMessage.includes('לא נמצא')) {
+        errorMessage = 'ילד לא נמצא במשפחה זו.';
+      } else if (errorMessage.includes('incorrect') || errorMessage.includes('שגויה')) {
+        errorMessage = 'סיסמה שגויה. אנא נסה שוב.';
+      }
+      
+      setError(errorMessage);
     } finally {
       setIsLoading(false);
     }
@@ -89,7 +114,6 @@ const ChildPasswordLogin = ({ familyId, onChildVerified, onBack }) => {
               placeholder="הכנס סיסמה"
               required
               autoFocus
-              inputMode="numeric"
             />
           </div>
 
