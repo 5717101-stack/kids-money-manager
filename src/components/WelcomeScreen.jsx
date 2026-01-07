@@ -1,6 +1,18 @@
 import React from 'react';
 
 const WelcomeScreen = ({ onSelectCreate, onSelectJoin }) => {
+  const handleTestLogs = async () => {
+    try {
+      const apiUrl = import.meta.env.VITE_API_URL || 'https://kids-money-manager-production.up.railway.app/api';
+      await fetch(`${apiUrl}/test-logs`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' }
+      });
+    } catch (error) {
+      console.error('Error sending test log:', error);
+    }
+  };
+
   return (
     <div className="welcome-screen">
       <div className="welcome-container">
@@ -34,11 +46,17 @@ const WelcomeScreen = ({ onSelectCreate, onSelectJoin }) => {
         </div>
       </div>
       <footer className="app-footer">
-        <span className="version">גרסה 2.9.15</span>
+        <button 
+          className="test-logs-button"
+          onClick={handleTestLogs}
+          title="בדיקת לוגים"
+        >
+          🔍 בדיקת לוגים
+        </button>
+        <span className="version">גרסה 2.9.17</span>
       </footer>
     </div>
   );
 };
 
 export default WelcomeScreen;
-

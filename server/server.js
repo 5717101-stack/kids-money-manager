@@ -549,6 +549,18 @@ setInterval(async () => {
 // ========== NEW AUTHENTICATION API ENDPOINTS ==========
 
 // Send OTP for family registration/login
+// Log test endpoint - for testing logs from frontend
+app.post('/api/test-logs', (req, res) => {
+  const timestamp = new Date().toISOString();
+  const clientIP = req.ip || req.connection.remoteAddress;
+  console.log(`[TEST-LOGS] ========================================`);
+  console.log(`[TEST-LOGS] Button clicked - ${timestamp}`);
+  console.log(`[TEST-LOGS] Client IP: ${clientIP}`);
+  console.log(`[TEST-LOGS] User Agent: ${req.get('user-agent') || 'N/A'}`);
+  console.log(`[TEST-LOGS] ========================================`);
+  res.status(200).json({ success: true, message: 'Log entry created', timestamp });
+});
+
 app.post('/api/auth/send-otp', async (req, res) => {
   console.log(`[SEND-OTP] Request received: ${req.body.phoneNumber} (${req.body.countryCode || '+972'})`);
   
