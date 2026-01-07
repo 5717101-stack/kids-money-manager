@@ -14,6 +14,11 @@ const ChildPasswordLogin = ({ familyId, onChildVerified, onBack }) => {
       return;
     }
 
+    if (!familyId) {
+      setError('שגיאה: לא נמצא מספר משפחה. אנא נסה להתחבר מחדש.');
+      return;
+    }
+
     setIsLoading(true);
 
     try {
@@ -22,15 +27,25 @@ const ChildPasswordLogin = ({ familyId, onChildVerified, onBack }) => {
       
       console.log('[CHILD-PASSWORD] Verifying password:', {
         familyId,
+        familyIdType: typeof familyId,
+        familyIdLength: familyId?.length,
         passwordLength: trimmedPassword.length,
         passwordPreview: trimmedPassword.substring(0, 2) + '***',
         apiUrl
       });
       
+      // Ensure familyId is a string
+      const familyIdStr = String(familyId).trim();
+      
       const requestBody = {
-        familyId,
+        familyId: familyIdStr,
         password: trimmedPassword
       };
+      
+      console.log('[CHILD-PASSWORD] Request body:', {
+        ...requestBody,
+        password: '***'
+      });
       
       const response = await fetch(`${apiUrl}/auth/verify-child-password`, {
         method: 'POST',
@@ -41,23 +56,30 @@ const ChildPasswordLogin = ({ familyId, onChildVerified, onBack }) => {
       });
       
       console.log('[CHILD-PASSWORD] Response status:', response.status);
+      console.log('[CHILD-PASSWORD] Response headers:', Object.fromEntries(response.headers.entries()));
 
       let data;
+      let responseText;
       try {
-        data = await response.json();
+        responseText = await response.text();
+        console.log('[CHILD-PASSWORD] Response text:', responseText);
+        data = JSON.parse(responseText);
       } catch (jsonError) {
-        // If response is not JSON, try to get text
-        const text = await response.text();
-        throw new Error(text || 'שגיאה בעת אימות הסיסמה');
+        // If response is not JSON, use the text as error
+        console.error('[CHILD-PASSWORD] Failed to parse JSON:', jsonError);
+        console.error('[CHILD-PASSWORD] Response text was:', responseText);
+        throw new Error(responseText || 'שגיאה בעת אימות הסיסמה');
       }
 
       if (!response.ok) {
         // Better error handling for different error types
-        const errorMessage = data?.error || data?.message || 'סיסמה שגויה';
-        console.error('Password verification error:', {
+        const errorMessage = data?.error || data?.message || data?.details || responseText || 'סיסמה שגויה';
+        console.error('[CHILD-PASSWORD] Password verification error:', {
           status: response.status,
+          statusText: response.statusText,
           error: errorMessage,
-          data: data
+          fullData: data,
+          responseText: responseText
         });
         throw new Error(errorMessage);
       }
@@ -68,16 +90,33 @@ const ChildPasswordLogin = ({ familyId, onChildVerified, onBack }) => {
         throw new Error('ילד לא נמצא');
       }
     } catch (error) {
-      console.error('Error verifying child password:', error);
+      console.error('[CHILD-PASSWORD] Error verifying child password:', error);
+      console.error('[CHILD-PASSWORD] Error name:', error.name);
+      console.error('[CHILD-PASSWORD] Error message:', error.message);
+      console.error('[CHILD-PASSWORD] Error stack:', error.stack);
+      
       // Translate common error messages to Hebrew
       let errorMessage = error.message || 'סיסמה שגויה';
       
-      if (errorMessage.includes('pattern') || errorMessage.includes('expected pattern')) {
-        errorMessage = 'סיסמה לא תקינה. אנא בדוק שהסיסמה נכונה והעתקת אותה במלואה.';
-      } else if (errorMessage.includes('not found') || errorMessage.includes('לא נמצא')) {
+      // Handle network errors
+      if (error.name === 'TypeError' && error.message.includes('fetch')) {
+        errorMessage = 'שגיאת רשת. אנא בדוק את החיבור לאינטרנט ונסה שוב.';
+      }
+      // Handle pattern validation errors
+      else if (errorMessage.includes('pattern') || errorMessage.includes('expected pattern') || errorMessage.includes('validation')) {
+        errorMessage = 'סיסמה לא תקינה. אנא בדוק שהסיסמה נכונה והעתקת אותה במלואה (ללא רווחים מיותרים).';
+      }
+      // Handle not found errors
+      else if (errorMessage.includes('not found') || errorMessage.includes('לא נמצא') || errorMessage.includes('NotFound')) {
         errorMessage = 'ילד לא נמצא במשפחה זו.';
-      } else if (errorMessage.includes('incorrect') || errorMessage.includes('שגויה')) {
+      }
+      // Handle incorrect password
+      else if (errorMessage.includes('incorrect') || errorMessage.includes('שגויה') || errorMessage.includes('Invalid')) {
         errorMessage = 'סיסמה שגויה. אנא נסה שוב.';
+      }
+      // Handle ObjectId validation errors
+      else if (errorMessage.includes('ObjectId') || errorMessage.includes('Cast to ObjectId')) {
+        errorMessage = 'שגיאה: מספר משפחה לא תקין. אנא נסה להתחבר מחדש.';
       }
       
       setError(errorMessage);
@@ -142,7 +181,7 @@ const ChildPasswordLogin = ({ familyId, onChildVerified, onBack }) => {
         </form>
       </div>
       <footer className="app-footer">
-        <span className="version">גרסה 3.0.1</span>
+        <span className="version">גרסה 3.0.2</span>
       </footer>
     </div>
   );
