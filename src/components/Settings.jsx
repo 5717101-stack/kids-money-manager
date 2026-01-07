@@ -751,10 +751,12 @@ const Settings = ({ familyId, onClose }) => {
                     await loadData();
                     console.log('[CREATE-CHILD] ✅ Data reloaded');
                     
+                    // Notify parent component to refresh children list
                     if (onClose) {
+                      // Call onClose to trigger refresh in ParentDashboard
                       setTimeout(() => {
-                        window.location.reload();
-                      }, 1000);
+                        onClose();
+                      }, 500);
                     }
                   } catch (error) {
                     console.error('[CREATE-CHILD] ========================================');

@@ -45,9 +45,29 @@ const WelcomeScreen = ({ onSelectCreate, onSelectJoin }) => {
     
     try {
       console.log('[DELETE-ALL] Starting delete all users...');
-      const apiUrl = import.meta.env.VITE_API_URL || 'https://kids-money-manager-server.onrender.com/api';
       
-      const response = await fetch(`${apiUrl}/admin/delete-all-users`, {
+      // Use the same logic as api.js
+      const PRODUCTION_API = import.meta.env.VITE_API_URL || 'https://kids-money-manager-server.onrender.com/api';
+      let apiUrl;
+      
+      if (typeof window !== 'undefined' && window.Capacitor?.isNativePlatform()) {
+        apiUrl = PRODUCTION_API;
+        console.log('[DELETE-ALL] Using mobile app - PRODUCTION_API');
+      } else if (import.meta.env.VITE_API_URL) {
+        apiUrl = import.meta.env.VITE_API_URL;
+        console.log('[DELETE-ALL] Using VITE_API_URL from env');
+      } else if (import.meta.env.DEV) {
+        apiUrl = 'http://localhost:3001/api';
+        console.log('[DELETE-ALL] Using development - localhost');
+      } else {
+        apiUrl = PRODUCTION_API;
+        console.log('[DELETE-ALL] Using fallback - PRODUCTION_API');
+      }
+      
+      const fullUrl = `${apiUrl}/admin/delete-all-users`;
+      console.log('[DELETE-ALL] Full URL:', fullUrl);
+      
+      const response = await fetch(fullUrl, {
         method: 'DELETE',
         headers: {
           'Content-Type': 'application/json'

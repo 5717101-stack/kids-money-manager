@@ -248,7 +248,8 @@ const ParentDashboard = ({ familyId, onChildrenUpdated }) => {
   };
 
 
-  const childrenList = Object.values(allData.children || {});
+  // Convert children object to array, ensuring we have valid children
+  const childrenList = Object.values(allData.children || {}).filter(child => child && child._id);
 
   if (loading) {
     return (
@@ -284,12 +285,19 @@ const ParentDashboard = ({ familyId, onChildrenUpdated }) => {
       {showSettings && (
         <Settings 
           familyId={familyId}
-          onClose={() => {
+          onClose={async () => {
             setShowSettings(false);
-            loadCategories();
-            loadAllData();
+            // Reload all data to get new children
+            await loadAllData();
+            await loadCategories();
+            // Update children list in parent component
             if (onChildrenUpdated) {
-              onChildrenUpdated();
+              await onChildrenUpdated();
+            }
+            // Update selected child if needed
+            const children = Object.keys(allData.children || {});
+            if (children.length > 0 && !selectedChild) {
+              setSelectedChild(children[0]);
             }
           }} 
         />
