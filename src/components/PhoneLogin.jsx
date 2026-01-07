@@ -343,7 +343,7 @@ const PhoneLogin = ({ onOTPSent }) => {
         >
           🔍 בדיקת לוגים
         </button>
-        <span className="version">גרסה 3.0.7</span>
+        <span className="version">גרסה 3.0.8</span>
       </footer>
     </div>
   );
