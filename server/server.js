@@ -99,6 +99,19 @@ let serverReady = false;
 // NO LOGGING - any delay will cause Railway to kill the container
 let healthCheckCount = 0;
 let lastHealthCheckTime = Date.now();
+
+// Heartbeat to keep Railway alive
+// Railway needs to see activity every 30 seconds
+setInterval(() => {
+  const timeSinceLastCheck = Date.now() - lastHealthCheckTime;
+  if (timeSinceLastCheck > 60000) { // 60 seconds
+    process.stderr.write(`[HEARTBEAT] ⚠️  WARNING: No health check received in ${Math.floor(timeSinceLastCheck / 1000)}s\n`);
+    process.stderr.write(`[HEARTBEAT] ⚠️  This means Railway is NOT calling /health endpoint\n`);
+    process.stderr.write(`[HEARTBEAT] ⚠️  Service may be configured as 'Job' instead of 'Web Service'\n`);
+  } else {
+    process.stderr.write(`[HEARTBEAT] ✅ Server is alive - health checks: ${healthCheckCount}, last check: ${Math.floor(timeSinceLastCheck / 1000)}s ago\n`);
+  }
+}, 30000); // Every 30 seconds
 app.get('/health', (req, res) => {
   healthCheckCount++;
   lastHealthCheckTime = Date.now();
