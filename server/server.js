@@ -909,12 +909,17 @@ app.post('/api/test-logs', (req, res) => {
 });
 
 app.post('/api/auth/send-otp', async (req, res) => {
+  // CRITICAL: Log IMMEDIATELY at the very start, before anything else
   const requestStart = Date.now();
   const timestamp = new Date().toISOString();
   
-  // Force immediate output - MULTIPLE METHODS
-  process.stdout.write('\n\n\n');
-  process.stderr.write('\n\n\n');
+  // Force immediate output - MULTIPLE METHODS AND MULTIPLE TIMES
+  const immediateLog = `\n\n\n🎯🎯🎯 ENDPOINT CALLED - FIRST LINE 🎯🎯🎯\n\n\n`;
+  process.stderr.write(immediateLog);
+  process.stderr.write(immediateLog);
+  process.stderr.write(immediateLog);
+  process.stdout.write(immediateLog);
+  process.stdout.write(immediateLog);
   
   // Write to stderr first (most visible in Railway) - IMMEDIATE
   const logMessage = `========================================\n📧📧📧 SEND OTP REQUEST RECEIVED 📧📧📧\n========================================\n[SEND-OTP] Timestamp: ${timestamp}\n[SEND-OTP] Method: ${req.method}\n[SEND-OTP] Path: ${req.path}\n[SEND-OTP] Email: ${req.body?.email || 'NOT PROVIDED'}\n[SEND-OTP] Full Body: ${JSON.stringify(req.body || {})}\n========================================\n\n`;
@@ -922,10 +927,12 @@ app.post('/api/auth/send-otp', async (req, res) => {
   // Write multiple times to ensure visibility
   process.stderr.write(logMessage);
   process.stderr.write(logMessage); // Write twice
+  process.stderr.write(logMessage); // Write three times
+  process.stdout.write(logMessage);
   process.stdout.write(logMessage);
   
   // Also use console methods
-  console.error('\n\n========================================');
+  console.error('\n\n\n========================================');
   console.error('📧📧📧 SEND OTP REQUEST RECEIVED 📧📧📧');
   console.error('========================================');
   console.error(`[SEND-OTP] Timestamp: ${timestamp}`);
@@ -933,7 +940,17 @@ app.post('/api/auth/send-otp', async (req, res) => {
   console.error(`[SEND-OTP] Path: ${req.path}`);
   console.error(`[SEND-OTP] Email: ${req.body?.email || 'NOT PROVIDED'}`);
   console.error(`[SEND-OTP] Full Body:`, req.body);
-  console.error('========================================\n\n');
+  console.error('========================================\n\n\n');
+  
+  console.log('\n\n\n========================================');
+  console.log('📧📧📧 SEND OTP REQUEST RECEIVED 📧📧📧');
+  console.log('========================================');
+  console.log(`[SEND-OTP] Timestamp: ${timestamp}`);
+  console.log(`[SEND-OTP] Method: ${req.method}`);
+  console.log(`[SEND-OTP] Path: ${req.path}`);
+  console.log(`[SEND-OTP] Email: ${req.body?.email || 'NOT PROVIDED'}`);
+  console.log(`[SEND-OTP] Full Body:`, req.body);
+  console.log('========================================\n\n\n');
   
   console.log(`\n[SEND-OTP] ========================================`);
   console.log(`[SEND-OTP] 🚀 Request received at ${timestamp}`);
