@@ -1306,10 +1306,6 @@ app.post('/api/families/:familyId/children/:childId/pay-allowance', async (req, 
 
 // REMOVED: Duplicate /api/health endpoint - already defined above
 // This was causing confusion - keeping only the one defined before middleware
-    twilio: twilioClient ? 'configured' : 'not configured',
-    pid: process.pid
-  });
-});
 
 // /health is already defined at the top (before middleware) - no duplicate needed
 
