@@ -34,7 +34,7 @@ const WelcomeScreen = ({ onSelectCreate, onSelectJoin }) => {
         </div>
       </div>
       <footer className="app-footer">
-        <span className="version">גרסה 2.9.13</span>
+        <span className="version">גרסה 2.9.15</span>
       </footer>
     </div>
   );

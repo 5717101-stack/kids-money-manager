@@ -1370,8 +1370,12 @@ process.on('SIGTERM', () => {
     console.log(`[SERVER] ❌ Service is likely configured as 'Job' instead of 'Web Service'`);
     console.log(`[SERVER] ❌ SOLUTION: Railway Dashboard → Settings → Service Type → Change to 'Web Service'`);
   } else {
-    console.log(`[SERVER] ⚠️  Health checks were received but Railway still sent SIGTERM`);
-    console.log(`[SERVER] ⚠️  This may indicate health check timeout or failure`);
+    console.log(`[SERVER] ⚠️  Health checks were received (${healthCheckCount} total) but Railway still sent SIGTERM`);
+    console.log(`[SERVER] ⚠️  This may indicate:`);
+    console.log(`[SERVER] ⚠️    1. Health check response is too slow (>600s timeout)`);
+    console.log(`[SERVER] ⚠️    2. Health check response format is incorrect`);
+    console.log(`[SERVER] ⚠️    3. Service is still configured as 'Job' (not enough health checks)`);
+    console.log(`[SERVER] ⚠️    4. Railway health check interval is too long`);
   }
   if (server) {
     server.close(() => {
