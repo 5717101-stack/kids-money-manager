@@ -1329,7 +1329,13 @@ server = app.listen(PORT, '0.0.0.0', () => {
     if (serverReady) {
       heartbeatCount++;
       const uptime = process.uptime();
-      console.log(`[HEARTBEAT] Server is alive - uptime: ${Math.floor(uptime)}s, heartbeat: ${heartbeatCount}, health checks received: ${healthCheckCount}`);
+      const timeSinceLastHealthCheck = Date.now() - lastHealthCheckTime;
+      console.log(`[HEARTBEAT] Server is alive - uptime: ${Math.floor(uptime)}s, heartbeat: ${heartbeatCount}, health checks received: ${healthCheckCount}, last check: ${Math.floor(timeSinceLastHealthCheck / 1000)}s ago`);
+      
+      // If no health checks for 5 minutes, log warning
+      if (timeSinceLastHealthCheck > 300000 && healthCheckCount > 0) {
+        console.log(`[HEARTBEAT] ⚠️  WARNING: No health checks for ${Math.floor(timeSinceLastHealthCheck / 1000)}s - Railway may be configured as Job`);
+      }
     }
   }, 30000); // Every 30 seconds
 });
