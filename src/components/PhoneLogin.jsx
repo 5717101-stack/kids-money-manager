@@ -60,7 +60,17 @@ const PhoneLogin = ({ onOTPSent }) => {
     setIsLoading(true);
 
     try {
-      const apiUrl = import.meta.env.VITE_API_URL || 'https://kids-money-manager-server.onrender.com/api';
+      // For iOS, always use Render URL directly
+      let apiUrl;
+      if (typeof window !== 'undefined' && window.Capacitor?.isNativePlatform()) {
+        // In native app, use Render URL directly
+        apiUrl = 'https://kids-money-manager-server.onrender.com/api';
+        console.log('[FRONTEND] Using Render API URL for native app:', apiUrl);
+      } else {
+        // In web, use environment variable or fallback
+        apiUrl = import.meta.env.VITE_API_URL || 'https://kids-money-manager-server.onrender.com/api';
+        console.log('[FRONTEND] Using API URL:', apiUrl);
+      }
       const url = `${apiUrl}/auth/send-otp`;
       const requestBody = { phoneNumber: fullPhoneNumber };
       
@@ -105,8 +115,15 @@ const PhoneLogin = ({ onOTPSent }) => {
           message: fetchError.message,
           stack: fetchError.stack,
           url: url,
-          isNative: typeof window !== 'undefined' && window.Capacitor?.isNativePlatform()
+          isNative: typeof window !== 'undefined' && window.Capacitor?.isNativePlatform(),
+          userAgent: typeof navigator !== 'undefined' ? navigator.userAgent : 'N/A',
+          platform: typeof window !== 'undefined' && window.Capacitor?.getPlatform ? window.Capacitor.getPlatform() : 'N/A'
         });
+        
+        // Log the actual URL being used
+        console.error('[FRONTEND] API URL being used:', apiUrl);
+        console.error('[FRONTEND] Full URL:', url);
+        console.error('[FRONTEND] Is Native Platform:', typeof window !== 'undefined' && window.Capacitor?.isNativePlatform());
         
         // Handle specific iOS/WebView errors
         if (fetchError.name === 'TypeError' && (fetchError.message === 'Load failed' || fetchError.message.includes('Failed to fetch'))) {
