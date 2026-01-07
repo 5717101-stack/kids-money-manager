@@ -556,23 +556,51 @@ app.post('/api/test-logs', (req, res) => {
   const userAgent = req.get('user-agent') || 'N/A';
   const referer = req.get('referer') || 'N/A';
   
-  // Log with multiple lines to make it very visible in Railway logs
-  console.log(`\n`);
-  console.log(`[TEST-LOGS] ========================================`);
-  console.log(`[TEST-LOGS] 🎯 TEST LOG BUTTON CLICKED 🎯`);
-  console.log(`[TEST-LOGS] ========================================`);
+  // Use process.stdout.write for immediate output (bypasses buffering)
+  // Also use console.error which is unbuffered and always shows in Railway
+  process.stdout.write('\n\n');
+  console.error('\n\n');
+  
+  // Log with multiple methods to ensure visibility
+  console.error('========================================');
+  console.error('🎯🎯🎯 TEST LOG BUTTON CLICKED 🎯🎯🎯');
+  console.error('========================================');
+  console.log('========================================');
+  console.log('🎯🎯🎯 TEST LOG BUTTON CLICKED 🎯🎯🎯');
+  console.log('========================================');
+  
+  console.error(`[TEST-LOGS] Timestamp: ${timestamp}`);
   console.log(`[TEST-LOGS] Timestamp: ${timestamp}`);
+  
+  console.error(`[TEST-LOGS] Client IP: ${clientIP}`);
   console.log(`[TEST-LOGS] Client IP: ${clientIP}`);
+  
+  console.error(`[TEST-LOGS] User Agent: ${userAgent}`);
   console.log(`[TEST-LOGS] User Agent: ${userAgent}`);
+  
+  console.error(`[TEST-LOGS] Referer: ${referer}`);
   console.log(`[TEST-LOGS] Referer: ${referer}`);
+  
+  console.error(`[TEST-LOGS] Request Method: ${req.method}`);
   console.log(`[TEST-LOGS] Request Method: ${req.method}`);
+  
+  console.error(`[TEST-LOGS] Request Path: ${req.path}`);
   console.log(`[TEST-LOGS] Request Path: ${req.path}`);
-  console.log(`[TEST-LOGS] Request Headers:`, JSON.stringify(req.headers, null, 2));
+  
+  console.error(`[TEST-LOGS] Request Body:`, JSON.stringify(req.body, null, 2));
   console.log(`[TEST-LOGS] Request Body:`, JSON.stringify(req.body, null, 2));
-  console.log(`[TEST-LOGS] ========================================`);
-  console.log(`[TEST-LOGS] ✅ Log entry created successfully`);
-  console.log(`[TEST-LOGS] ========================================`);
-  console.log(`\n`);
+  
+  // Force flush
+  process.stdout.write('\n');
+  console.error('========================================');
+  console.error('✅✅✅ LOG ENTRY CREATED SUCCESSFULLY ✅✅✅');
+  console.error('========================================');
+  console.log('========================================');
+  console.log('✅✅✅ LOG ENTRY CREATED SUCCESSFULLY ✅✅✅');
+  console.log('========================================');
+  
+  process.stdout.write('\n\n');
+  console.error('\n\n');
   
   res.status(200).json({ 
     success: true, 
