@@ -1,40 +1,84 @@
-# תיקון: הגדרת השירות כ-Web Service ב-Railway
+# תיקון הגדרת Railway: Job → Web Service
 
 ## הבעיה
-השרת רץ 95 שניות לפני שהוא מקבל SIGTERM. זה אומר ש-Railway לא מזהה את השירות כ-Web Service.
+השירות מוגדר כ-"Job" במקום "Web Service", מה שגורם ל-Railway:
+- לא לקרוא ל-health check endpoint
+- לנסות לעצור את הקונטיינר אחרי כמה שניות
+- לא להשאיר את השירות רץ
 
-## הפתרון
-צריך לוודא שהשירות מוגדר כ-Web Service ולא כ-Job.
+## הפתרון - שלב אחר שלב
 
-## שלבים
+### שלב 1: לך ל-Railway Dashboard
+1. היכנס ל-[Railway Dashboard](https://railway.app/dashboard)
+2. בחר את הפרויקט שלך
+3. לחץ על ה-Service (Backend)
 
-1. **היכנס ל-Railway Dashboard**
-   - לך לפרויקט שלך
-   - בחר את השירות `kids-money-manager-server`
+### שלב 2: שנה את Service Type
+1. לחץ על **"Settings"** בתפריט
+2. גלול למטה למצוא **"Service Type"** או **"Type"**
+3. ודא שזה מוגדר כ-**"Web Service"** (לא "Job")
+4. אם זה "Job", שנה ל-**"Web Service"**
+5. לחץ **"Save"** או **"Update"**
 
-2. **Settings → Service Type**
-   - לחץ על Settings
-   - מצא את "Service Type" או "Service Configuration"
-   - ודא שהשירות מוגדר כ-Web Service (לא Job)
-   - אם זה Job, שנה ל-Web Service
+### שלב 3: ודא את ההגדרות הבאות
 
-3. **Settings → Health Check**
-   - ודא ש-Health Check Path הוא: `/health`
-   - ודא ש-Health Check Timeout הוא: 300 שניות (או יותר)
-   - ודא ש-Health Check Interval הוא: 5 שניות
+**Root Directory:**
+- צריך להיות: `server`
 
-4. **Redeploy**
-   - לחץ על "Redeploy" או המתן ל-auto deploy
-   - השרת אמור להישאר בחיים
+**Start Command:**
+- צריך להיות: `npm start` (או ריק - Railway ישתמש ב-Procfile)
 
-## למה זה חשוב?
-- Job = Railway מצפה שהתהליך יסתיים אחרי ביצוע המשימה
-- Web Service = Railway מצפה שהתהליך ימשיך לרוץ
-- אם השירות מוגדר כ-Job, Railway יעצור אותו אחרי זמן קצר
+**Health Check Path:**
+- צריך להיות: `/health`
+
+**Health Check Timeout:**
+- מומלץ: `600` שניות
+
+**Health Check Interval:**
+- מומלץ: `10` שניות
+
+### שלב 4: Redeploy
+1. לחץ **"Deployments"**
+2. לחץ **"..."** → **"Redeploy"**
+3. המתן 2-3 דקות
+
+### שלב 5: בדוק את ה-Logs
+אחרי ה-Redeploy, בדוק את ה-Logs. אמור לראות:
+```
+[SERVER] ✅ Health check calls received: X
+[SERVER] ✅ Server is running normally
+```
+
+אם עדיין רואה:
+```
+[SERVER] ❌ No health check calls were received!
+```
+→ זה אומר שהשירות עדיין מוגדר כ-"Job". נסה שוב.
+
+## איך לזהות את הבעיה
+
+**אם השירות מוגדר כ-"Job":**
+- Railway לא קורא ל-`/health` endpoint
+- הקונטיינר נעצר אחרי כמה שניות
+- ה-Logs מציגים: `SIGTERM received`
+- ה-Logs מציגים: `No health check calls were received!`
+
+**אם השירות מוגדר כ-"Web Service":**
+- Railway קורא ל-`/health` endpoint כל 10 שניות
+- הקונטיינר רץ כל הזמן
+- ה-Logs מציגים: `Health check calls received: X`
+
+## הערות חשובות
+
+1. **Service Type** הוא ההגדרה החשובה ביותר
+2. אם זה "Job", Railway מצפה שהתהליך יסתיים - לא שירות ארוך טווח
+3. "Web Service" הוא מה שאנחנו צריכים - שירות שרץ כל הזמן
+4. אחרי שינוי ה-Service Type, צריך לעשות Redeploy
 
 ## אם עדיין לא עובד
-אם השירות כבר מוגדר כ-Web Service ועדיין לא עובד:
-1. בדוק את הלוגים - האם health check נקרא?
-2. בדוק את ה-Settings - האם health check path נכון?
-3. נסה Manual Redeploy
 
+1. ודא שהשירות מוגדר כ-"Web Service" (לא "Job")
+2. ודא ש-Root Directory = `server`
+3. ודא ש-Start Command = `npm start` (או ריק)
+4. ודא ש-Health Check Path = `/health`
+5. נסה Clear Cache + Redeploy
