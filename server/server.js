@@ -2061,6 +2061,80 @@ process.on('SIGINT', () => {
 });
 
 // Handle uncaught errors - don't crash on errors
+// Admin endpoint - Delete all users and data
+app.delete('/api/admin/delete-all-users', async (req, res) => {
+  const timestamp = new Date().toISOString();
+  console.log(`\n[DELETE-ALL-USERS] ========================================`);
+  console.log(`[DELETE-ALL-USERS] ⚠️⚠️⚠️ DELETE ALL USERS REQUEST ⚠️⚠️⚠️`);
+  console.log(`[DELETE-ALL-USERS] ========================================`);
+  console.log(`[DELETE-ALL-USERS] Timestamp: ${timestamp}`);
+  console.log(`[DELETE-ALL-USERS] Method: ${req.method}`);
+  console.log(`[DELETE-ALL-USERS] Path: ${req.path}`);
+  console.log(`[DELETE-ALL-USERS] ========================================\n`);
+  
+  process.stderr.write(`[DELETE-ALL-USERS] ⚠️⚠️⚠️ DELETE ALL USERS REQUEST ⚠️⚠️⚠️\n`);
+  
+  try {
+    if (!db) {
+      console.error(`[DELETE-ALL-USERS] ❌ No database connection`);
+      return res.status(500).json({ error: 'אין חיבור למסד הנתונים' });
+    }
+    
+    console.log(`[DELETE-ALL-USERS] Step 1: Counting families...`);
+    const countBefore = await db.collection('families').countDocuments();
+    console.log(`[DELETE-ALL-USERS]   Families before deletion: ${countBefore}`);
+    
+    if (countBefore === 0) {
+      console.log(`[DELETE-ALL-USERS] ⚠️  No families to delete`);
+      return res.json({ 
+        success: true, 
+        message: 'אין משתמשים במערכת',
+        deletedCount: 0 
+      });
+    }
+    
+    console.log(`[DELETE-ALL-USERS] Step 2: Deleting all families...`);
+    const deleteResult = await db.collection('families').deleteMany({});
+    console.log(`[DELETE-ALL-USERS] ✅ Deletion completed`);
+    console.log(`[DELETE-ALL-USERS]   Deleted count: ${deleteResult.deletedCount}`);
+    
+    // Also clear in-memory stores
+    console.log(`[DELETE-ALL-USERS] Step 3: Clearing in-memory stores...`);
+    otpStore.clear();
+    childCodesStore.clear();
+    console.log(`[DELETE-ALL-USERS] ✅ In-memory stores cleared`);
+    
+    console.log(`[DELETE-ALL-USERS] ========================================`);
+    console.log(`[DELETE-ALL-USERS] ✅✅✅ ALL USERS DELETED ✅✅✅`);
+    console.log(`[DELETE-ALL-USERS] ========================================`);
+    console.log(`[DELETE-ALL-USERS] Deleted families: ${deleteResult.deletedCount}`);
+    console.log(`[DELETE-ALL-USERS] ========================================\n`);
+    
+    process.stderr.write(`[DELETE-ALL-USERS] ✅ Deleted ${deleteResult.deletedCount} families\n`);
+    
+    res.json({
+      success: true,
+      message: 'כל המשתמשים והנתונים נמחקו בהצלחה',
+      deletedCount: deleteResult.deletedCount
+    });
+  } catch (error) {
+    console.error(`[DELETE-ALL-USERS] ========================================`);
+    console.error(`[DELETE-ALL-USERS] ❌❌❌ ERROR ❌❌❌`);
+    console.error(`[DELETE-ALL-USERS] ========================================`);
+    console.error(`[DELETE-ALL-USERS] Error Name: ${error.name || 'Unknown'}`);
+    console.error(`[DELETE-ALL-USERS] Error Message: ${error.message || 'No message'}`);
+    console.error(`[DELETE-ALL-USERS] Error Stack: ${error.stack || 'No stack'}`);
+    console.error(`[DELETE-ALL-USERS] ========================================\n`);
+    
+    process.stderr.write(`[DELETE-ALL-USERS] ❌ ERROR: ${error.message}\n`);
+    
+    res.status(500).json({ 
+      error: 'שגיאה במחיקת המשתמשים',
+      details: error.message 
+    });
+  }
+});
+
 process.on('uncaughtException', (error) => {
   console.error('[ERROR] Uncaught Exception:', error.message);
   // Don't exit - let Render handle it

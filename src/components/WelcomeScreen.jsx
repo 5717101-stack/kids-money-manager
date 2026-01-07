@@ -1,6 +1,76 @@
 import React from 'react';
 
 const WelcomeScreen = ({ onSelectCreate, onSelectJoin }) => {
+  const handleDeleteAllUsers = async () => {
+    // First confirmation
+    const firstConfirm = window.confirm(
+      '⚠️ אזהרה: פעולה זו תמחק את כל המשתמשים והנתונים מהמערכת!\n\n' +
+      'זה כולל:\n' +
+      '• כל המשפחות\n' +
+      '• כל הילדים\n' +
+      '• כל העסקאות\n' +
+      '• כל הקטגוריות\n' +
+      '• כל התמונות\n\n' +
+      'האם אתה בטוח שברצונך להמשיך?'
+    );
+    
+    if (!firstConfirm) {
+      return;
+    }
+    
+    // Second confirmation with typing requirement
+    const confirmText = 'מחק הכל';
+    const userInput = window.prompt(
+      '⚠️⚠️⚠️ פעולה מסוכנת מאוד! ⚠️⚠️⚠️\n\n' +
+      'זה ימחק את כל הנתונים ללא אפשרות שחזור!\n\n' +
+      'אם אתה בטוח, הקלד "' + confirmText + '" כדי לאשר:'
+    );
+    
+    if (userInput !== confirmText) {
+      alert('הפעולה בוטלה. לא הקלדת את הטקסט הנכון.');
+      return;
+    }
+    
+    // Final confirmation
+    const finalConfirm = window.confirm(
+      '⚠️⚠️⚠️ אישור אחרון! ⚠️⚠️⚠️\n\n' +
+      'אתה עומד למחוק את כל הנתונים מהמערכת.\n\n' +
+      'זה לא ניתן לביטול!\n\n' +
+      'לחץ OK רק אם אתה בטוח לחלוטין.'
+    );
+    
+    if (!finalConfirm) {
+      return;
+    }
+    
+    try {
+      console.log('[DELETE-ALL] Starting delete all users...');
+      const apiUrl = import.meta.env.VITE_API_URL || 'https://kids-money-manager-server.onrender.com/api';
+      
+      const response = await fetch(`${apiUrl}/admin/delete-all-users`, {
+        method: 'DELETE',
+        headers: {
+          'Content-Type': 'application/json'
+        }
+      });
+      
+      const data = await response.json();
+      
+      if (response.ok) {
+        console.log('[DELETE-ALL] ✅ Success:', data);
+        alert(`✅ כל המשתמשים והנתונים נמחקו בהצלחה!\n\nנמחקו ${data.deletedCount || 0} משפחות.`);
+        // Reload page to reset state
+        window.location.reload();
+      } else {
+        console.error('[DELETE-ALL] ❌ Error:', data);
+        alert(`❌ שגיאה במחיקה: ${data.error || 'Unknown error'}`);
+      }
+    } catch (error) {
+      console.error('[DELETE-ALL] ❌ Exception:', error);
+      alert(`❌ שגיאה במחיקה: ${error.message}`);
+    }
+  };
+
   const handleTestLogs = async () => {
     console.log('========================================');
     console.log('[TEST-LOGS] 🎯 Button clicked!');
@@ -112,14 +182,34 @@ const WelcomeScreen = ({ onSelectCreate, onSelectJoin }) => {
         </div>
       </div>
       <footer className="app-footer">
-        <button 
-          className="test-logs-button"
-          onClick={handleTestLogs}
-          title="בדיקת לוגים"
-        >
-          🔍 בדיקת לוגים
-        </button>
-        <span className="version">גרסה 2.9.33</span>
+        <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
+          <button 
+            className="test-logs-button"
+            onClick={handleTestLogs}
+            title="בדיקת לוגים"
+          >
+            🔍 בדיקת לוגים
+          </button>
+          <button 
+            className="delete-all-button"
+            onClick={handleDeleteAllUsers}
+            title="מחק את כל המשתמשים והנתונים"
+            style={{
+              padding: '8px 16px',
+              backgroundColor: '#ef4444',
+              color: 'white',
+              border: 'none',
+              borderRadius: '8px',
+              cursor: 'pointer',
+              fontSize: '14px',
+              fontWeight: '600',
+              transition: 'all 0.2s ease'
+            }}
+          >
+            🗑️ מחק הכל
+          </button>
+        </div>
+        <span className="version">גרסה 2.9.34</span>
       </footer>
     </div>
   );
