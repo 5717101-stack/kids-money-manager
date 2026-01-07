@@ -62,13 +62,33 @@ const ChildPasswordLogin = ({ familyId, onChildVerified, onBack }) => {
       let responseText;
       try {
         responseText = await response.text();
-        console.log('[CHILD-PASSWORD] Response text:', responseText);
-        data = JSON.parse(responseText);
+        console.log('[CHILD-PASSWORD] Response text (first 200 chars):', responseText.substring(0, 200));
+        
+        // Check if response is HTML (error page)
+        if (responseText.trim().startsWith('<!DOCTYPE') || responseText.trim().startsWith('<html')) {
+          console.error('[CHILD-PASSWORD] Server returned HTML instead of JSON - likely an error page');
+          throw new Error('השרת החזיר שגיאה. אנא נסה שוב מאוחר יותר או פנה לתמיכה.');
+        }
+        
+        // Try to parse as JSON
+        try {
+          data = JSON.parse(responseText);
+        } catch (parseError) {
+          // If it's not JSON and not HTML, it might be plain text error
+          console.error('[CHILD-PASSWORD] Failed to parse JSON:', parseError);
+          throw new Error(responseText || 'שגיאה בעת אימות הסיסמה');
+        }
       } catch (jsonError) {
         // If response is not JSON, use the text as error
-        console.error('[CHILD-PASSWORD] Failed to parse JSON:', jsonError);
-        console.error('[CHILD-PASSWORD] Response text was:', responseText);
-        throw new Error(responseText || 'שגיאה בעת אימות הסיסמה');
+        console.error('[CHILD-PASSWORD] Failed to parse response:', jsonError);
+        console.error('[CHILD-PASSWORD] Response text was:', responseText?.substring(0, 500));
+        
+        // If it's an HTML error page, provide a user-friendly message
+        if (responseText?.trim().startsWith('<!DOCTYPE') || responseText?.trim().startsWith('<html')) {
+          throw new Error('השרת החזיר שגיאה. אנא נסה שוב מאוחר יותר או פנה לתמיכה.');
+        }
+        
+        throw new Error(jsonError.message || responseText || 'שגיאה בעת אימות הסיסמה');
       }
 
       if (!response.ok) {
@@ -101,6 +121,10 @@ const ChildPasswordLogin = ({ familyId, onChildVerified, onBack }) => {
       // Handle network errors
       if (error.name === 'TypeError' && error.message.includes('fetch')) {
         errorMessage = 'שגיאת רשת. אנא בדוק את החיבור לאינטרנט ונסה שוב.';
+      }
+      // Handle JSON parse errors (HTML response)
+      else if (error.message.includes('Unexpected token') || error.message.includes('JSON') || error.message.includes('DOCTYPE')) {
+        errorMessage = 'השרת החזיר שגיאה. אנא נסה שוב מאוחר יותר או פנה לתמיכה.';
       }
       // Handle pattern validation errors
       else if (errorMessage.includes('pattern') || errorMessage.includes('expected pattern') || errorMessage.includes('validation')) {
@@ -181,7 +205,7 @@ const ChildPasswordLogin = ({ familyId, onChildVerified, onBack }) => {
         </form>
       </div>
       <footer className="app-footer">
-        <span className="version">גרסה 3.0.2</span>
+        <span className="version">גרסה 3.0.3</span>
       </footer>
     </div>
   );
