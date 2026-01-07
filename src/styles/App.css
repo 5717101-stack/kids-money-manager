@@ -146,6 +146,15 @@ body {
   color: #ef4444 !important;
 }
 
+.dashboard-header h1 .kids-green {
+  color: #22c55e !important;
+  font-weight: 700;
+}
+
+.dashboard-header h1 span.kids-green {
+  color: #22c55e !important;
+}
+
 .header-buttons {
   display: flex;
   gap: 12px;
@@ -1702,6 +1711,15 @@ body {
 
 .welcome-header h1 span.kids-red {
   color: #ef4444 !important;
+}
+
+.welcome-header h1 .kids-green {
+  color: #22c55e !important;
+  font-weight: 800;
+}
+
+.welcome-header h1 span.kids-green {
+  color: #22c55e !important;
 }
 
 .welcome-subtitle {

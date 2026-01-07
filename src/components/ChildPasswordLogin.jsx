@@ -92,7 +92,7 @@ const ChildPasswordLogin = ({ familyId, onChildVerified, onBack }) => {
         </form>
       </div>
       <footer className="app-footer">
-        <span className="version">גרסה 2.9.37</span>
+        <span className="version">גרסה 2.9.39</span>
       </footer>
     </div>
   );

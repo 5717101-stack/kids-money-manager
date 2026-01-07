@@ -187,7 +187,7 @@ const App = () => {
           </main>
           
           <footer className="app-footer">
-            <span className="version">גרסה 2.9.37</span>
+            <span className="version">גרסה 2.9.39</span>
           </footer>
         </>
       )}
@@ -253,7 +253,7 @@ const App = () => {
             >
               🔍 בדיקת לוגים
             </button>
-            <span className="version">גרסה 2.9.36</span>
+            <span className="version">גרסה 2.9.39</span>
           </footer>
         </>
       )}

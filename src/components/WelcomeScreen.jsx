@@ -173,7 +173,7 @@ const WelcomeScreen = ({ onSelectCreate, onSelectJoin }) => {
     <div className="welcome-screen">
       <div className="welcome-container">
         <div className="welcome-header">
-          <h1>👨‍👩‍👧‍👦 <span className="kids-red">Kids</span> Money Manager</h1>
+          <h1>👨‍👩‍👧‍👦 <span className="kids-green">Kids</span> Money Manager</h1>
           <p className="welcome-subtitle">ניהול כספי לילדים</p>
         </div>
         
@@ -229,7 +229,7 @@ const WelcomeScreen = ({ onSelectCreate, onSelectJoin }) => {
             🗑️ מחק הכל
           </button>
         </div>
-        <span className="version">גרסה 2.9.36</span>
+        <span className="version">גרסה 2.9.39</span>
       </footer>
     </div>
   );
