@@ -66,10 +66,8 @@ let serverReady = false;
 // MUST be defined BEFORE middleware to ensure fastest response
 // NO LOGGING - any delay will cause Railway to kill the container
 let healthCheckCount = 0;
-let lastHealthCheckTime = Date.now();
 app.get('/health', (req, res) => {
   healthCheckCount++;
-  lastHealthCheckTime = Date.now();
   // NO LOGGING HERE - respond immediately
   // Railway needs instant 200 OK response
   res.status(200).json({ 
@@ -92,7 +90,6 @@ app.get('/', (req, res) => {
 // NO LOGGING - respond immediately
 app.get('/api/health', (req, res) => {
   healthCheckCount++;
-  lastHealthCheckTime = Date.now();
   // NO LOGGING - respond immediately
   res.status(200).json({ 
     status: 'ok'
