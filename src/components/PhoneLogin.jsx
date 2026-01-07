@@ -116,16 +116,32 @@ const PhoneLogin = ({ onOTPSent }) => {
       console.log('[FRONTEND] Is Existing Family:', data.isExistingFamily);
       console.log('[FRONTEND] Email Sent:', data.emailSent);
       console.log('[FRONTEND] Email ID:', data.emailId || 'N/A');
+      console.log('[FRONTEND] OTP Code:', data.otpCode || 'NOT PROVIDED');
       console.log('[FRONTEND] ========================================\n');
 
       // Show success message from server (includes OTP)
-      const successMessage = data.message || `✅ קוד אימות נשלח בהצלחה למייל ${normalizedEmail}${data.otpCode ? `\n\nקוד האימות: ${data.otpCode}` : ''}`;
-      alert(successMessage);
+      // Build message with OTP - use data.otpCode if available, otherwise use data.message
+      let successMessage;
+      if (data.otpCode) {
+        // If OTP is in response, use it explicitly
+        successMessage = `✅ קוד אימות נשלח בהצלחה למייל ${normalizedEmail}\n\nקוד האימות: ${data.otpCode}`;
+      } else if (data.message) {
+        // Use server message (should already include OTP)
+        successMessage = data.message;
+      } else {
+        // Fallback
+        successMessage = `✅ קוד אימות נשלח בהצלחה למייל ${normalizedEmail}`;
+      }
+      
       console.log('[FRONTEND] ========================================');
-      console.log('[FRONTEND] 📢 SUCCESS MESSAGE SHOWN TO USER');
+      console.log('[FRONTEND] 📢 SUCCESS MESSAGE DATA');
       console.log('[FRONTEND] ========================================');
-      console.log('[FRONTEND] Message:', successMessage);
+      console.log('[FRONTEND] data.message:', data.message);
+      console.log('[FRONTEND] data.otpCode:', data.otpCode);
+      console.log('[FRONTEND] Final message:', successMessage);
       console.log('[FRONTEND] ========================================\n');
+      
+      alert(successMessage);
 
       console.log('[FRONTEND] Calling onOTPSent callback...');
       onOTPSent(normalizedEmail, data.isExistingFamily);
@@ -201,7 +217,7 @@ const PhoneLogin = ({ onOTPSent }) => {
         >
           🔍 בדיקת לוגים
         </button>
-        <span className="version">גרסה 2.9.29</span>
+        <span className="version">גרסה 2.9.30</span>
       </footer>
     </div>
   );
