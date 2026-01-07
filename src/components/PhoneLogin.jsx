@@ -18,32 +18,22 @@ const COUNTRY_CODES = [
   { code: '+966', name: 'ערב הסעודית', flag: '🇸🇦' }
 ];
 
-const PhoneLogin = ({ onOTPSent, countryCode: initialCountryCode }) => {
-  const [phoneNumber, setPhoneNumber] = useState('');
-  const [countryCode, setCountryCode] = useState(initialCountryCode || '+972');
+const PhoneLogin = ({ onOTPSent }) => {
+  const [email, setEmail] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
 
-  // Detect country code from device
-  useEffect(() => {
-    if (!initialCountryCode) {
-      try {
-        const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
-        if (timezone.includes('Asia/Jerusalem') || timezone.includes('Israel')) {
-          setCountryCode('+972');
-        }
-      } catch (e) {
-        // Fallback to default
-      }
-    }
-  }, [initialCountryCode]);
+  const validateEmail = (email) => {
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    return emailRegex.test(email);
+  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
     
-    if (!phoneNumber || !phoneNumber.match(/^\d+$/)) {
-      setError('מספר טלפון לא תקין');
+    if (!email || !validateEmail(email)) {
+      setError('כתובת מייל לא תקינה');
       return;
     }
 
@@ -53,7 +43,7 @@ const PhoneLogin = ({ onOTPSent, countryCode: initialCountryCode }) => {
       const apiUrl = import.meta.env.VITE_API_URL || 'https://kids-money-manager-production.up.railway.app/api';
       const url = `${apiUrl}/auth/send-otp`;
       console.log('📤 Sending OTP request to:', url);
-      console.log('📤 Request body:', { phoneNumber: phoneNumber.replace(/\D/g, ''), countryCode });
+      console.log('📤 Request body:', { email });
       
       const response = await fetch(url, {
         method: 'POST',
@@ -61,8 +51,7 @@ const PhoneLogin = ({ onOTPSent, countryCode: initialCountryCode }) => {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          phoneNumber: phoneNumber.replace(/\D/g, ''),
-          countryCode
+          email: email.trim().toLowerCase()
         })
       });
       
@@ -75,7 +64,7 @@ const PhoneLogin = ({ onOTPSent, countryCode: initialCountryCode }) => {
         throw new Error(data.error || 'שגיאה בשליחת קוד');
       }
 
-      onOTPSent(phoneNumber.replace(/\D/g, ''), countryCode, data.isExistingFamily);
+      onOTPSent(email.trim().toLowerCase(), data.isExistingFamily);
     } catch (error) {
       console.error('Error sending OTP:', error);
       setError(error.message || 'שגיאה בשליחת קוד אימות');
@@ -88,37 +77,24 @@ const PhoneLogin = ({ onOTPSent, countryCode: initialCountryCode }) => {
     <div className="phone-login">
       <div className="phone-login-container">
         <div className="phone-login-header">
-          <h1>📱 הכנס מספר טלפון</h1>
-          <p className="phone-login-subtitle">נשלח לך קוד אימות ב-SMS</p>
+          <h1>📧 הכנס כתובת מייל</h1>
+          <p className="phone-login-subtitle">נשלח לך קוד אימות במייל</p>
         </div>
 
         <form onSubmit={handleSubmit} className="phone-login-form">
           <div className="phone-input-group">
-            <select
-              className="country-code-select"
-              value={countryCode}
-              onChange={(e) => setCountryCode(e.target.value)}
-            >
-              {COUNTRY_CODES.map(country => (
-                <option key={country.code} value={country.code}>
-                  {country.flag} {country.code}
-                </option>
-              ))}
-            </select>
-            
             <input
-              type="tel"
+              type="email"
               className="phone-input"
-              value={phoneNumber}
+              value={email}
               onChange={(e) => {
-                const value = e.target.value.replace(/\D/g, '');
-                setPhoneNumber(value);
+                setEmail(e.target.value);
                 setError('');
               }}
-              placeholder="מספר טלפון"
+              placeholder="כתובת מייל"
               required
               autoFocus
-              maxLength="15"
+              inputMode="email"
             />
           </div>
 
@@ -127,7 +103,7 @@ const PhoneLogin = ({ onOTPSent, countryCode: initialCountryCode }) => {
           <button 
             type="submit" 
             className="phone-login-button"
-            disabled={isLoading || !phoneNumber}
+            disabled={isLoading || !email}
           >
             {isLoading ? 'שולח...' : 'שלח קוד אימות'}
           </button>

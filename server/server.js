@@ -4,6 +4,7 @@ import { MongoClient } from 'mongodb';
 import dotenv from 'dotenv';
 import crypto from 'crypto';
 import twilio from 'twilio';
+import { Resend } from 'resend';
 
 dotenv.config();
 
@@ -25,11 +26,16 @@ console.log(`Starting...\n`);
 const app = express();
 const PORT = process.env.PORT || 3001;
 
-// Twilio configuration (for SMS OTP)
+// Twilio configuration (for SMS OTP) - DEPRECATED, using email instead
 const TWILIO_ACCOUNT_SID = process.env.TWILIO_ACCOUNT_SID;
 const TWILIO_AUTH_TOKEN = process.env.TWILIO_AUTH_TOKEN;
 const TWILIO_PHONE_NUMBER = process.env.TWILIO_PHONE_NUMBER;
 let twilioClient = null;
+
+// Resend configuration (for Email OTP)
+const RESEND_API_KEY = process.env.RESEND_API_KEY;
+const RESEND_FROM_EMAIL = process.env.RESEND_FROM_EMAIL || 'noreply@kidsmoneymanager.app';
+let resendClient = null;
 
 // Log Twilio configuration on startup
 console.log(`\n=== Twilio Configuration ===`);
@@ -52,6 +58,28 @@ if (TWILIO_ACCOUNT_SID && TWILIO_AUTH_TOKEN && TWILIO_PHONE_NUMBER) {
   if (!TWILIO_ACCOUNT_SID) console.log(`[TWILIO]   Missing: TWILIO_ACCOUNT_SID`);
   if (!TWILIO_AUTH_TOKEN) console.log(`[TWILIO]   Missing: TWILIO_AUTH_TOKEN`);
   if (!TWILIO_PHONE_NUMBER) console.log(`[TWILIO]   Missing: TWILIO_PHONE_NUMBER`);
+}
+console.log(`===========================\n`);
+
+// Resend (Email) configuration
+console.log(`\n=== Resend (Email) Configuration ===`);
+console.log(`[RESEND] API Key: ${RESEND_API_KEY ? `${RESEND_API_KEY.substring(0, 10)}...${RESEND_API_KEY.substring(RESEND_API_KEY.length - 4)}` : 'NOT SET'}`);
+console.log(`[RESEND] From Email: ${RESEND_FROM_EMAIL}`);
+console.log(`[RESEND] Client Status: ${RESEND_API_KEY ? 'READY' : 'NOT CONFIGURED'}`);
+
+if (RESEND_API_KEY) {
+  try {
+    resendClient = new Resend(RESEND_API_KEY);
+    console.log(`[RESEND] ✅ Client initialized successfully`);
+    console.log(`[RESEND] From Email: ${RESEND_FROM_EMAIL}`);
+    console.log(`[RESEND] API Base URL: https://api.resend.com`);
+  } catch (error) {
+    console.error(`[RESEND] ❌ Failed to initialize: ${error.message}`);
+  }
+} else {
+  console.log(`[RESEND] ⚠️  Not configured - Email will not be sent`);
+  console.log(`[RESEND]   Missing: RESEND_API_KEY`);
+  console.log(`[RESEND]   Missing: RESEND_FROM_EMAIL (optional, defaults to noreply@kidsmoneymanager.app)`);
 }
 console.log(`===========================\n`);
 
@@ -164,7 +192,92 @@ function generateChildCode() {
   return Math.random().toString(36).substring(2, 8).toUpperCase(); // 6-character code
 }
 
-// Send SMS via Twilio or log to console
+// Send Email via Resend
+async function sendEmail(emailAddress, otpCode) {
+  const startTime = Date.now();
+  console.log(`\n[EMAIL] ===== Email Send Attempt =====`);
+  console.log(`[EMAIL] Timestamp: ${new Date().toISOString()}`);
+  console.log(`[EMAIL] To: ${emailAddress}`);
+  console.log(`[EMAIL] From: ${RESEND_FROM_EMAIL}`);
+  console.log(`[EMAIL] Resend Client: ${resendClient ? 'INITIALIZED' : 'NOT INITIALIZED'}`);
+  console.log(`[EMAIL] API Endpoint: https://api.resend.com/emails`);
+  
+  if (resendClient && RESEND_API_KEY) {
+    try {
+      const emailSubject = 'קוד אימות - Kids Money Manager';
+      const emailHtml = `
+        <!DOCTYPE html>
+        <html dir="rtl" lang="he">
+        <head>
+          <meta charset="UTF-8">
+          <meta name="viewport" content="width=device-width, initial-scale=1.0">
+          <title>קוד אימות</title>
+        </head>
+        <body style="font-family: Arial, sans-serif; direction: rtl; text-align: right; background-color: #f5f5f5; padding: 20px;">
+          <div style="max-width: 600px; margin: 0 auto; background-color: white; border-radius: 10px; padding: 30px; box-shadow: 0 2px 10px rgba(0,0,0,0.1);">
+            <h1 style="color: #4f46e5; margin-bottom: 20px;">קוד אימות</h1>
+            <p style="font-size: 16px; color: #333; margin-bottom: 30px;">
+              שלום,<br><br>
+              קיבלנו בקשה לאימות החשבון שלך. הקוד שלך הוא:
+            </p>
+            <div style="background-color: #f3f4f6; border-radius: 8px; padding: 20px; text-align: center; margin: 30px 0;">
+              <h2 style="color: #4f46e5; font-size: 32px; letter-spacing: 5px; margin: 0;">${otpCode}</h2>
+            </div>
+            <p style="font-size: 14px; color: #666; margin-top: 30px;">
+              קוד זה תקף ל-10 דקות בלבד.<br>
+              אם לא ביקשת קוד זה, תוכל להתעלם מהמייל הזה.
+            </p>
+            <hr style="border: none; border-top: 1px solid #e5e7eb; margin: 30px 0;">
+            <p style="font-size: 12px; color: #999; text-align: center;">
+              Kids Money Manager - ניהול כסף לילדים
+            </p>
+          </div>
+        </body>
+        </html>
+      `;
+      
+      const emailText = `קוד האימות שלך: ${otpCode}. קוד זה תקף ל-10 דקות.`;
+      
+      console.log(`[EMAIL] Sending email...`);
+      console.log(`[EMAIL] Subject: ${emailSubject}`);
+      console.log(`[EMAIL] To: ${emailAddress}`);
+      
+      const result = await resendClient.emails.send({
+        from: RESEND_FROM_EMAIL,
+        to: emailAddress,
+        subject: emailSubject,
+        html: emailHtml,
+        text: emailText
+      });
+      
+      const duration = Date.now() - startTime;
+      console.log(`[EMAIL] ✅ Email sent successfully!`);
+      console.log(`[EMAIL] Response Time: ${duration}ms`);
+      console.log(`[EMAIL] Email ID: ${result.id}`);
+      console.log(`[EMAIL] From: ${RESEND_FROM_EMAIL}`);
+      console.log(`[EMAIL] To: ${emailAddress}`);
+      console.log(`[EMAIL] ============================\n`);
+      
+      return { success: true, id: result.id, email: emailAddress };
+    } catch (error) {
+      const duration = Date.now() - startTime;
+      console.log(`[EMAIL] ❌ Email send failed!`);
+      console.log(`[EMAIL] Response Time: ${duration}ms`);
+      console.log(`[EMAIL] Error Message: ${error.message}`);
+      console.log(`[EMAIL] Full Error:`, JSON.stringify(error, null, 2));
+      console.log(`[EMAIL] ============================\n`);
+      
+      return { success: false, error: error.message, fullError: error };
+    }
+  } else {
+    console.log(`[EMAIL] ⚠️  Resend not configured - Email would be sent to ${emailAddress}`);
+    console.log(`[EMAIL] OTP Code: ${otpCode}`);
+    console.log(`[EMAIL] ============================\n`);
+    return { success: true, dev: true, email: emailAddress };
+  }
+}
+
+// Send SMS via Twilio or log to console (DEPRECATED - using email instead)
 async function sendSMS(phoneNumber, message) {
   const startTime = Date.now();
   console.log(`\n[SMS] ===== SMS Send Attempt =====`);
@@ -266,6 +379,13 @@ async function initializeData() {
 async function getFamilyByPhone(phoneNumber) {
   if (db) {
     return await db.collection('families').findOne({ phoneNumber });
+  }
+  return null;
+}
+
+async function getFamilyByEmail(email) {
+  if (db) {
+    return await db.collection('families').findOne({ email: email.toLowerCase() });
   }
   return null;
 }
@@ -754,14 +874,14 @@ app.post('/api/auth/send-otp', async (req, res) => {
 // Verify OTP and login/register
 app.post('/api/auth/verify-otp', async (req, res) => {
   try {
-    const { phoneNumber, countryCode = '+972', otpCode } = req.body;
+    const { email, otpCode } = req.body;
     
-    if (!phoneNumber || !otpCode) {
-      return res.status(400).json({ error: 'מספר טלפון וקוד אימות נדרשים' });
+    if (!email || !otpCode) {
+      return res.status(400).json({ error: 'כתובת מייל וקוד אימות נדרשים' });
     }
     
-    const fullPhoneNumber = `${countryCode}${phoneNumber}`;
-    const storedOTP = otpStore.get(fullPhoneNumber);
+    const normalizedEmail = email.trim().toLowerCase();
+    const storedOTP = otpStore.get(normalizedEmail);
     
     if (!storedOTP || storedOTP.expiresAt < Date.now()) {
       return res.status(400).json({ error: 'קוד אימות לא תקין או פג תוקף' });
@@ -772,20 +892,38 @@ app.post('/api/auth/verify-otp', async (req, res) => {
     }
     
     // OTP verified - get or create family
-    let family = await getFamilyByPhone(fullPhoneNumber);
+    let family = await getFamilyByEmail(normalizedEmail);
     
     if (!family) {
-      // Create new family
-      family = await createFamily(phoneNumber, countryCode);
+      // Create new family with email
+      const familyId = `family_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
+      family = {
+        _id: familyId,
+        email: normalizedEmail,
+        createdAt: new Date().toISOString(),
+        children: [],
+        categories: [
+          { _id: 'cat_1', name: 'משחקים', activeFor: [] },
+          { _id: 'cat_2', name: 'ממתקים', activeFor: [] },
+          { _id: 'cat_3', name: 'בגדים', activeFor: [] },
+          { _id: 'cat_4', name: 'בילויים', activeFor: [] },
+          { _id: 'cat_5', name: 'אחר', activeFor: [] }
+        ]
+      };
+      
+      if (db) {
+        await db.collection('families').insertOne(family);
+        console.log(`[CREATE-FAMILY] ✅ Family created with email: ${normalizedEmail}`);
+      }
     }
     
     // Remove OTP
-    otpStore.delete(fullPhoneNumber);
+    otpStore.delete(normalizedEmail);
     
     res.json({
       success: true,
       familyId: family._id,
-      phoneNumber: family.phoneNumber,
+      email: normalizedEmail,
       isNewFamily: !storedOTP.familyId
     });
   } catch (error) {

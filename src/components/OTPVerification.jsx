@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 
-const OTPVerification = ({ phoneNumber, countryCode, isExistingFamily, onVerified, onBack }) => {
+const OTPVerification = ({ email, isExistingFamily, onVerified, onBack }) => {
   const [otp, setOtp] = useState(['', '', '', '', '', '']);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
@@ -74,8 +74,7 @@ const OTPVerification = ({ phoneNumber, countryCode, isExistingFamily, onVerifie
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          phoneNumber,
-          countryCode,
+          email,
           otpCode
         })
       });
@@ -86,7 +85,7 @@ const OTPVerification = ({ phoneNumber, countryCode, isExistingFamily, onVerifie
         throw new Error(data.error || 'קוד אימות שגוי');
       }
 
-      onVerified(data.familyId, data.phoneNumber, data.isNewFamily);
+      onVerified(data.familyId, data.email, data.isNewFamily);
     } catch (error) {
       console.error('Error verifying OTP:', error);
       setError(error.message || 'קוד אימות שגוי');
@@ -114,8 +113,7 @@ const OTPVerification = ({ phoneNumber, countryCode, isExistingFamily, onVerifie
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          phoneNumber,
-          countryCode
+          email
         })
       });
       
@@ -140,7 +138,7 @@ const OTPVerification = ({ phoneNumber, countryCode, isExistingFamily, onVerifie
           </button>
           <h1>🔐 אימות קוד</h1>
           <p className="otp-subtitle">
-            נשלח קוד ל-{countryCode}{phoneNumber}
+            נשלח קוד ל-{email}
           </p>
         </div>
 

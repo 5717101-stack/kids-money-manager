@@ -8,21 +8,18 @@ import ChildView from './components/ChildView';
 const App = () => {
   const [screen, setScreen] = useState('welcome'); // 'welcome', 'phone', 'otp', 'dashboard'
   const [familyId, setFamilyId] = useState(null);
-  const [phoneNumber, setPhoneNumber] = useState('');
-  const [countryCode, setCountryCode] = useState('+972');
+  const [email, setEmail] = useState('');
   const [view, setView] = useState('parent'); // 'parent', 'child1', 'child2', etc.
   const [children, setChildren] = useState([]);
 
   useEffect(() => {
     // Check if already logged in
     const savedFamilyId = sessionStorage.getItem('familyId');
-    const savedPhoneNumber = sessionStorage.getItem('phoneNumber');
-    const savedCountryCode = sessionStorage.getItem('countryCode');
+    const savedEmail = sessionStorage.getItem('email');
     
     if (savedFamilyId) {
       setFamilyId(savedFamilyId);
-      setPhoneNumber(savedPhoneNumber || '');
-      setCountryCode(savedCountryCode || '+972');
+      setEmail(savedEmail || '');
       setScreen('dashboard');
       loadChildren(savedFamilyId);
     }
@@ -52,18 +49,16 @@ const App = () => {
     setScreen('phone');
   };
 
-  const handleOTPSent = (phone, country, isExistingFamily) => {
-    setPhoneNumber(phone);
-    setCountryCode(country);
+  const handleOTPSent = (emailAddress, isExistingFamily) => {
+    setEmail(emailAddress);
     setScreen('otp');
   };
 
-  const handleOTPVerified = (fId, phone, isNewFamily) => {
+  const handleOTPVerified = (fId, emailAddress, isNewFamily) => {
     setFamilyId(fId);
-    setPhoneNumber(phone);
+    setEmail(emailAddress);
     sessionStorage.setItem('familyId', fId);
-    sessionStorage.setItem('phoneNumber', phone);
-    sessionStorage.setItem('countryCode', countryCode);
+    sessionStorage.setItem('email', emailAddress);
     sessionStorage.setItem('parentLoggedIn', 'true');
     
     if (isNewFamily) {
@@ -81,11 +76,10 @@ const App = () => {
 
   const handleLogout = () => {
     sessionStorage.removeItem('familyId');
-    sessionStorage.removeItem('phoneNumber');
-    sessionStorage.removeItem('countryCode');
+    sessionStorage.removeItem('email');
     sessionStorage.removeItem('parentLoggedIn');
     setFamilyId(null);
-    setPhoneNumber('');
+    setEmail('');
     setChildren([]);
     setView('parent');
     setScreen('welcome');
