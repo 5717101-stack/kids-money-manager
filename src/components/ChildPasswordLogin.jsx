@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { getData, getChildPassword } from '../utils/api';
 
 const ChildPasswordLogin = ({ familyId, onChildVerified, onBack }) => {
   const [password, setPassword] = useState('');
@@ -22,7 +23,6 @@ const ChildPasswordLogin = ({ familyId, onChildVerified, onBack }) => {
     setIsLoading(true);
 
     try {
-      const apiUrl = import.meta.env.VITE_API_URL || 'https://kids-money-manager-server.onrender.com/api';
       const trimmedPassword = password.trim();
       
       console.log('[CHILD-PASSWORD] Verifying password:', {
@@ -30,79 +30,37 @@ const ChildPasswordLogin = ({ familyId, onChildVerified, onBack }) => {
         familyIdType: typeof familyId,
         familyIdLength: familyId?.length,
         passwordLength: trimmedPassword.length,
-        passwordPreview: trimmedPassword.substring(0, 2) + '***',
-        apiUrl
+        passwordPreview: trimmedPassword.substring(0, 2) + '***'
       });
       
-      // Ensure familyId is a string
-      const familyIdStr = String(familyId).trim();
+      // Get all children in the family
+      const familyData = await getData(familyId);
+      const children = Object.values(familyData.children || {});
       
-      const requestBody = {
-        familyId: familyIdStr,
-        password: trimmedPassword
-      };
+      console.log('[CHILD-PASSWORD] Found children:', children.length);
       
-      console.log('[CHILD-PASSWORD] Request body:', {
-        ...requestBody,
-        password: '***'
-      });
-      
-      const response = await fetch(`${apiUrl}/auth/verify-child-password`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(requestBody)
-      });
-      
-      console.log('[CHILD-PASSWORD] Response status:', response.status);
-      console.log('[CHILD-PASSWORD] Response headers:', Object.fromEntries(response.headers.entries()));
-
-      let data;
-      let responseText;
-      try {
-        responseText = await response.text();
-        console.log('[CHILD-PASSWORD] Response text (first 200 chars):', responseText.substring(0, 200));
-        
-        // Check if response is HTML (error page)
-        if (responseText.trim().startsWith('<!DOCTYPE') || responseText.trim().startsWith('<html')) {
-          console.error('[CHILD-PASSWORD] Server returned HTML instead of JSON - likely an error page');
-          throw new Error('השרת החזיר שגיאה. אנא נסה שוב מאוחר יותר או פנה לתמיכה.');
-        }
-        
-        // Try to parse as JSON
+      // Find child with matching password
+      let foundChild = null;
+      for (const child of children) {
         try {
-          data = JSON.parse(responseText);
-        } catch (parseError) {
-          // If it's not JSON and not HTML, it might be plain text error
-          console.error('[CHILD-PASSWORD] Failed to parse JSON:', parseError);
-          throw new Error(responseText || 'שגיאה בעת אימות הסיסמה');
+          const childPassword = await getChildPassword(familyId, child._id);
+          console.log(`[CHILD-PASSWORD] Checking child ${child._id} (${child.name})`);
+          
+          if (childPassword === trimmedPassword) {
+            foundChild = { ...child, _id: child._id };
+            console.log('[CHILD-PASSWORD] ✅ Password match found!', foundChild);
+            break;
+          }
+        } catch (err) {
+          console.warn(`[CHILD-PASSWORD] Error checking password for child ${child._id}:`, err);
         }
-      } catch (jsonError) {
-        // If response is not JSON, use the text as error
-        console.error('[CHILD-PASSWORD] Failed to parse response:', jsonError);
-        console.error('[CHILD-PASSWORD] Response text was:', responseText?.substring(0, 500));
-        
-        // If it's an HTML error page, provide a user-friendly message
-        if (responseText?.trim().startsWith('<!DOCTYPE') || responseText?.trim().startsWith('<html')) {
-          throw new Error('השרת החזיר שגיאה. אנא נסה שוב מאוחר יותר או פנה לתמיכה.');
-        }
-        
-        throw new Error(jsonError.message || responseText || 'שגיאה בעת אימות הסיסמה');
       }
-
-      if (!response.ok) {
-        // Better error handling for different error types
-        const errorMessage = data?.error || data?.message || data?.details || responseText || 'סיסמה שגויה';
-        console.error('[CHILD-PASSWORD] Password verification error:', {
-          status: response.status,
-          statusText: response.statusText,
-          error: errorMessage,
-          fullData: data,
-          responseText: responseText
-        });
-        throw new Error(errorMessage);
+      
+      if (!foundChild) {
+        throw new Error('סיסמה שגויה');
       }
+      
+      const data = { child: foundChild };
 
       if (data.child) {
         onChildVerified(data.child, familyId);
@@ -205,7 +163,7 @@ const ChildPasswordLogin = ({ familyId, onChildVerified, onBack }) => {
         </form>
       </div>
       <footer className="app-footer">
-        <span className="version">גרסה 3.0.3</span>
+        <span className="version">גרסה 3.0.4</span>
       </footer>
     </div>
   );
