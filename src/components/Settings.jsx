@@ -39,6 +39,7 @@ const Settings = ({ familyId, onClose }) => {
         return;
       }
       
+      console.log('[SETTINGS] Loading data for family:', familyId);
       const [categoriesData, childrenData] = await Promise.all([
         getCategories(familyId).catch(err => {
           console.error('Error loading categories:', err);
@@ -49,6 +50,15 @@ const Settings = ({ familyId, onClose }) => {
           return { children: {} };
         })
       ]);
+      
+      console.log('[SETTINGS] Categories loaded:', categoriesData?.length || 0);
+      console.log('[SETTINGS] Children data:', childrenData);
+      console.log('[SETTINGS] Children count:', Object.keys(childrenData?.children || {}).length);
+      if (childrenData?.children) {
+        console.log('[SETTINGS] Children IDs:', Object.keys(childrenData.children));
+        console.log('[SETTINGS] Children names:', Object.values(childrenData.children).map(c => c.name));
+      }
+      
       setCategories(Array.isArray(categoriesData) ? categoriesData : []);
       setAllData(childrenData && childrenData.children ? childrenData : { children: {} });
       

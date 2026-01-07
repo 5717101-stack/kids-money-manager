@@ -1339,14 +1339,31 @@ app.get('/api/families/:familyId/children/:childId/password', async (req, res) =
 
 // Get all children for a family
 app.get('/api/families/:familyId/children', async (req, res) => {
+  const timestamp = new Date().toISOString();
+  console.log(`\n[GET-CHILDREN] ========================================`);
+  console.log(`[GET-CHILDREN] 📥 Request received at ${timestamp}`);
+  console.log(`[GET-CHILDREN] ========================================`);
+  console.log(`[GET-CHILDREN] Family ID: ${req.params.familyId}`);
+  console.log(`[GET-CHILDREN] ========================================\n`);
+  
   try {
     const { familyId } = req.params;
+    console.log(`[GET-CHILDREN] Step 1: Getting family...`);
     const family = await getFamilyById(familyId);
     
     if (!family) {
+      console.error(`[GET-CHILDREN] ❌ Family not found: ${familyId}`);
+      process.stderr.write(`[GET-CHILDREN] ❌ Family not found: ${familyId}\n`);
       return res.status(404).json({ error: 'משפחה לא נמצאה' });
     }
     
+    console.log(`[GET-CHILDREN] ✅ Family found: ${familyId}`);
+    console.log(`[GET-CHILDREN]   Family has ${family.children?.length || 0} children`);
+    if (family.children && family.children.length > 0) {
+      console.log(`[GET-CHILDREN]   Children:`, family.children.map(c => ({ id: c._id, name: c.name })));
+    }
+    
+    console.log(`[GET-CHILDREN] Step 2: Mapping children...`);
     const children = (family.children || []).map(child => ({
       _id: child._id,
       name: child.name,
@@ -1360,12 +1377,31 @@ app.get('/api/families/:familyId/children', async (req, res) => {
       transactions: child.transactions || []
     }));
     
-    res.json({ children: children.reduce((acc, child) => {
+    console.log(`[GET-CHILDREN] Step 3: Converting to object...`);
+    const childrenObject = children.reduce((acc, child) => {
       acc[child._id] = child;
       return acc;
-    }, {}) });
+    }, {});
+    
+    console.log(`[GET-CHILDREN] ✅ Sending response`);
+    console.log(`[GET-CHILDREN]   Total children: ${Object.keys(childrenObject).length}`);
+    console.log(`[GET-CHILDREN]   Children IDs:`, Object.keys(childrenObject));
+    console.log(`[GET-CHILDREN] ========================================\n`);
+    
+    process.stderr.write(`[GET-CHILDREN] ✅ Response sent - ${Object.keys(childrenObject).length} children\n`);
+    
+    res.json({ children: childrenObject });
   } catch (error) {
-    console.error('Error fetching children:', error);
+    console.error(`[GET-CHILDREN] ========================================`);
+    console.error(`[GET-CHILDREN] ❌❌❌ ERROR ❌❌❌`);
+    console.error(`[GET-CHILDREN] ========================================`);
+    console.error(`[GET-CHILDREN] Error Name: ${error.name || 'Unknown'}`);
+    console.error(`[GET-CHILDREN] Error Message: ${error.message || 'No message'}`);
+    console.error(`[GET-CHILDREN] Error Stack: ${error.stack || 'No stack'}`);
+    console.error(`[GET-CHILDREN] ========================================\n`);
+    
+    process.stderr.write(`[GET-CHILDREN] ❌ ERROR: ${error.message}\n`);
+    
     res.status(500).json({ error: 'Failed to fetch children' });
   }
 });
