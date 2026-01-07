@@ -229,7 +229,7 @@ const WelcomeScreen = ({ onSelectCreate, onSelectJoin }) => {
             🗑️ מחק הכל
           </button>
         </div>
-        <span className="version">גרסה 2.9.34</span>
+        <span className="version">גרסה 2.9.35</span>
       </footer>
     </div>
   );
