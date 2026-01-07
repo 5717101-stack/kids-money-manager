@@ -552,13 +552,35 @@ setInterval(async () => {
 // Log test endpoint - for testing logs from frontend
 app.post('/api/test-logs', (req, res) => {
   const timestamp = new Date().toISOString();
-  const clientIP = req.ip || req.connection.remoteAddress;
+  const clientIP = req.ip || req.connection.remoteAddress || req.headers['x-forwarded-for'] || 'unknown';
+  const userAgent = req.get('user-agent') || 'N/A';
+  const referer = req.get('referer') || 'N/A';
+  
+  // Log with multiple lines to make it very visible in Railway logs
+  console.log(`\n`);
   console.log(`[TEST-LOGS] ========================================`);
-  console.log(`[TEST-LOGS] Button clicked - ${timestamp}`);
+  console.log(`[TEST-LOGS] 🎯 TEST LOG BUTTON CLICKED 🎯`);
+  console.log(`[TEST-LOGS] ========================================`);
+  console.log(`[TEST-LOGS] Timestamp: ${timestamp}`);
   console.log(`[TEST-LOGS] Client IP: ${clientIP}`);
-  console.log(`[TEST-LOGS] User Agent: ${req.get('user-agent') || 'N/A'}`);
+  console.log(`[TEST-LOGS] User Agent: ${userAgent}`);
+  console.log(`[TEST-LOGS] Referer: ${referer}`);
+  console.log(`[TEST-LOGS] Request Method: ${req.method}`);
+  console.log(`[TEST-LOGS] Request Path: ${req.path}`);
+  console.log(`[TEST-LOGS] Request Headers:`, JSON.stringify(req.headers, null, 2));
+  console.log(`[TEST-LOGS] Request Body:`, JSON.stringify(req.body, null, 2));
   console.log(`[TEST-LOGS] ========================================`);
-  res.status(200).json({ success: true, message: 'Log entry created', timestamp });
+  console.log(`[TEST-LOGS] ✅ Log entry created successfully`);
+  console.log(`[TEST-LOGS] ========================================`);
+  console.log(`\n`);
+  
+  res.status(200).json({ 
+    success: true, 
+    message: 'Log entry created', 
+    timestamp,
+    clientIP,
+    userAgent
+  });
 });
 
 app.post('/api/auth/send-otp', async (req, res) => {

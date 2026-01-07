@@ -3,13 +3,38 @@ import React from 'react';
 const WelcomeScreen = ({ onSelectCreate, onSelectJoin }) => {
   const handleTestLogs = async () => {
     try {
-      const apiUrl = import.meta.env.VITE_API_URL || 'https://kids-money-manager-production.up.railway.app/api';
-      await fetch(`${apiUrl}/test-logs`, {
+      // Use the same logic as api.js
+      const PRODUCTION_API = 'https://kids-money-manager-production.up.railway.app/api';
+      let apiUrl;
+      
+      if (typeof window !== 'undefined' && window.Capacitor?.isNativePlatform()) {
+        apiUrl = PRODUCTION_API;
+      } else if (import.meta.env.VITE_API_URL) {
+        apiUrl = import.meta.env.VITE_API_URL;
+      } else if (import.meta.env.DEV) {
+        apiUrl = 'http://localhost:3001/api';
+      } else {
+        apiUrl = PRODUCTION_API;
+      }
+      
+      console.log('[TEST-LOGS] Sending request to:', `${apiUrl}/test-logs`);
+      
+      const response = await fetch(`${apiUrl}/test-logs`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' }
       });
+      
+      if (response.ok) {
+        const data = await response.json();
+        console.log('[TEST-LOGS] Success:', data);
+        alert('✅ לוג נשלח בהצלחה! בדוק את ה-Logs ב-Railway.');
+      } else {
+        console.error('[TEST-LOGS] Error response:', response.status, response.statusText);
+        alert(`❌ שגיאה בשליחת הלוג: ${response.status} ${response.statusText}`);
+      }
     } catch (error) {
-      console.error('Error sending test log:', error);
+      console.error('[TEST-LOGS] Error:', error);
+      alert(`❌ שגיאה בשליחת הלוג: ${error.message}`);
     }
   };
 
