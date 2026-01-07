@@ -31,12 +31,29 @@ const TWILIO_AUTH_TOKEN = process.env.TWILIO_AUTH_TOKEN;
 const TWILIO_PHONE_NUMBER = process.env.TWILIO_PHONE_NUMBER;
 let twilioClient = null;
 
+// Log Twilio configuration on startup
+console.log(`\n=== Twilio Configuration ===`);
+console.log(`[TWILIO] Account SID: ${TWILIO_ACCOUNT_SID ? `${TWILIO_ACCOUNT_SID.substring(0, 10)}...${TWILIO_ACCOUNT_SID.substring(TWILIO_ACCOUNT_SID.length - 4)}` : 'NOT SET'}`);
+console.log(`[TWILIO] Auth Token: ${TWILIO_AUTH_TOKEN ? `${TWILIO_AUTH_TOKEN.substring(0, 10)}...${TWILIO_AUTH_TOKEN.substring(TWILIO_AUTH_TOKEN.length - 4)}` : 'NOT SET'}`);
+console.log(`[TWILIO] Phone Number: ${TWILIO_PHONE_NUMBER || 'NOT SET'}`);
+console.log(`[TWILIO] Client Status: ${(TWILIO_ACCOUNT_SID && TWILIO_AUTH_TOKEN && TWILIO_PHONE_NUMBER) ? 'READY' : 'NOT CONFIGURED'}`);
+
 if (TWILIO_ACCOUNT_SID && TWILIO_AUTH_TOKEN && TWILIO_PHONE_NUMBER) {
-  twilioClient = twilio(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN);
-  console.log(`[TWILIO] Initialized (from: ${TWILIO_PHONE_NUMBER})`);
+  try {
+    twilioClient = twilio(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN);
+    console.log(`[TWILIO] ✅ Client initialized successfully`);
+    console.log(`[TWILIO] From Number: ${TWILIO_PHONE_NUMBER}`);
+    console.log(`[TWILIO] API Base URL: https://api.twilio.com`);
+  } catch (error) {
+    console.error(`[TWILIO] ❌ Failed to initialize: ${error.message}`);
+  }
 } else {
   console.log(`[TWILIO] ⚠️  Not configured - SMS will not be sent`);
+  if (!TWILIO_ACCOUNT_SID) console.log(`[TWILIO]   Missing: TWILIO_ACCOUNT_SID`);
+  if (!TWILIO_AUTH_TOKEN) console.log(`[TWILIO]   Missing: TWILIO_AUTH_TOKEN`);
+  if (!TWILIO_PHONE_NUMBER) console.log(`[TWILIO]   Missing: TWILIO_PHONE_NUMBER`);
 }
+console.log(`===========================\n`);
 
 // CRITICAL: Health check MUST be defined BEFORE any middleware
 // Railway checks this immediately and if it's slow, container stops
@@ -130,23 +147,64 @@ function generateChildCode() {
 
 // Send SMS via Twilio or log to console
 async function sendSMS(phoneNumber, message) {
+  const startTime = Date.now();
+  console.log(`\n[SMS] ===== SMS Send Attempt =====`);
+  console.log(`[SMS] Timestamp: ${new Date().toISOString()}`);
+  console.log(`[SMS] To: ${phoneNumber}`);
+  console.log(`[SMS] From: ${TWILIO_PHONE_NUMBER || 'NOT SET'}`);
+  console.log(`[SMS] Message Length: ${message.length} characters`);
+  console.log(`[SMS] Message Preview: ${message.substring(0, 50)}...`);
+  console.log(`[SMS] Twilio Client: ${twilioClient ? 'INITIALIZED' : 'NOT INITIALIZED'}`);
+  console.log(`[SMS] API Endpoint: https://api.twilio.com/2010-04-01/Accounts/${TWILIO_ACCOUNT_SID?.substring(0, 10)}.../Messages.json`);
+  
   if (twilioClient && TWILIO_PHONE_NUMBER) {
     try {
-      const result = await twilioClient.messages.create({
+      const requestPayload = {
         body: message,
         from: TWILIO_PHONE_NUMBER,
         to: phoneNumber
-      });
-      return { success: true, sid: result.sid, status: result.status };
+      };
+      console.log(`[SMS] Request Payload:`, JSON.stringify(requestPayload, null, 2));
+      console.log(`[SMS] Sending request to Twilio API...`);
+      
+      const result = await twilioClient.messages.create(requestPayload);
+      
+      const duration = Date.now() - startTime;
+      console.log(`[SMS] ✅ SMS sent successfully!`);
+      console.log(`[SMS] Response Time: ${duration}ms`);
+      console.log(`[SMS] Message SID: ${result.sid}`);
+      console.log(`[SMS] Status: ${result.status}`);
+      console.log(`[SMS] Account SID: ${result.accountSid}`);
+      console.log(`[SMS] From: ${result.from}`);
+      console.log(`[SMS] To: ${result.to}`);
+      console.log(`[SMS] Date Created: ${result.dateCreated}`);
+      console.log(`[SMS] Date Sent: ${result.dateSent || 'Pending'}`);
+      console.log(`[SMS] Price: ${result.price || 'N/A'}`);
+      console.log(`[SMS] Price Unit: ${result.priceUnit || 'N/A'}`);
+      console.log(`[SMS] ============================\n`);
+      
+      return { success: true, sid: result.sid, status: result.status, result: result };
     } catch (error) {
-      const errorMsg = `Twilio error: ${error.message} (code: ${error.code})`;
+      const duration = Date.now() - startTime;
+      console.log(`[SMS] ❌ SMS send failed!`);
+      console.log(`[SMS] Response Time: ${duration}ms`);
+      console.log(`[SMS] Error Code: ${error.code}`);
+      console.log(`[SMS] Error Message: ${error.message}`);
+      console.log(`[SMS] Error Status: ${error.status || 'N/A'}`);
+      console.log(`[SMS] Error More Info: ${error.moreInfo || 'N/A'}`);
+      console.log(`[SMS] Full Error:`, JSON.stringify(error, null, 2));
+      
       if (error.code === 21608 || error.code === 21614) {
         console.error(`[SMS] ⚠️  Phone number not verified. Add ${phoneNumber} in Twilio Console → Verified Caller IDs`);
       }
-      return { success: false, error: error.message, code: error.code, status: error.status };
+      console.log(`[SMS] ============================\n`);
+      
+      return { success: false, error: error.message, code: error.code, status: error.status, fullError: error };
     }
   } else {
     console.log(`[SMS] ⚠️  Twilio not configured - SMS would be sent to ${phoneNumber}`);
+    console.log(`[SMS] Message: ${message}`);
+    console.log(`[SMS] ============================\n`);
     return { success: true, dev: true };
   }
 }
@@ -201,10 +259,18 @@ async function getFamilyById(familyId) {
 }
 
 async function createFamily(phoneNumber, countryCode = '+972') {
+  console.log(`\n[CREATE-FAMILY] ===== Creating New Family =====`);
+  console.log(`[CREATE-FAMILY] Phone Number: ${phoneNumber}`);
+  console.log(`[CREATE-FAMILY] Country Code: ${countryCode}`);
+  const fullPhoneNumber = `${countryCode}${phoneNumber}`;
+  console.log(`[CREATE-FAMILY] Full Phone Number: ${fullPhoneNumber}`);
+  
   const familyId = `family_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
+  console.log(`[CREATE-FAMILY] Family ID: ${familyId}`);
+  
   const family = {
     _id: familyId,
-    phoneNumber: `${countryCode}${phoneNumber}`,
+    phoneNumber: fullPhoneNumber,
     countryCode,
     createdAt: new Date().toISOString(),
     children: [],
@@ -219,15 +285,27 @@ async function createFamily(phoneNumber, countryCode = '+972') {
   
   if (db) {
     await db.collection('families').insertOne(family);
+    console.log(`[CREATE-FAMILY] ✅ Family saved to database`);
+  } else {
+    console.log(`[CREATE-FAMILY] ⚠️  Using in-memory storage (no DB)`);
   }
   
+  console.log(`[CREATE-FAMILY] ============================\n`);
   return family;
 }
 
 async function addChildToFamily(familyId, childName) {
+  console.log(`\n[ADD-CHILD] ===== Adding Child to Family =====`);
+  console.log(`[ADD-CHILD] Family ID: ${familyId}`);
+  console.log(`[ADD-CHILD] Child Name: ${childName}`);
+  
   const childId = `child_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
   const childCode = generateChildCode();
   const childPassword = generateChildCode(); // 6-character password
+  
+  console.log(`[ADD-CHILD] Child ID: ${childId}`);
+  console.log(`[ADD-CHILD] Join Code: ${childCode}`);
+  console.log(`[ADD-CHILD] Password: ${childPassword}`);
   
   const child = {
     _id: childId,
@@ -251,6 +329,7 @@ async function addChildToFamily(familyId, childName) {
     familyId,
     expiresAt: Date.now() + (30 * 24 * 60 * 60 * 1000)
   });
+  console.log(`[ADD-CHILD] Child code stored (expires in 30 days)`);
   
   if (db) {
     await db.collection('families').updateOne(
@@ -260,6 +339,7 @@ async function addChildToFamily(familyId, childName) {
         $push: { 'categories.$[].activeFor': childId }
       }
     );
+    console.log(`[ADD-CHILD] ✅ Child saved to database`);
     
     // Update categories to include new child
     const family = await getFamilyById(familyId);
@@ -273,9 +353,13 @@ async function addChildToFamily(familyId, childName) {
         { _id: familyId },
         { $set: { categories: family.categories } }
       );
+      console.log(`[ADD-CHILD] Categories updated for child`);
     }
+  } else {
+    console.log(`[ADD-CHILD] ⚠️  Using in-memory storage (no DB)`);
   }
   
+  console.log(`[ADD-CHILD] ============================\n`);
   return { child, childCode, childPassword };
 }
 
