@@ -114,7 +114,7 @@ const PhoneLogin = ({ onOTPSent }) => {
           className="test-logs-button"
           onClick={async () => {
             try {
-              const apiUrl = import.meta.env.VITE_API_URL || 'https://kids-money-manager-production.up.railway.app/api';
+              const apiUrl = import.meta.env.VITE_API_URL || 'https://web-production-4e378.up.railway.app/api';
               await fetch(`${apiUrl}/test-logs`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' }
