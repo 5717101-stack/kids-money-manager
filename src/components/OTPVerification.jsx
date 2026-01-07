@@ -207,7 +207,7 @@ const OTPVerification = ({ email, isExistingFamily, onVerified, onBack }) => {
         >
           🔍 בדיקת לוגים
         </button>
-        <span className="version">גרסה 2.9.26</span>
+        <span className="version">גרסה 2.9.27</span>
       </footer>
     </div>
   );

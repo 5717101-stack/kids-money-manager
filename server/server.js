@@ -93,20 +93,19 @@ console.log(`===========================\n`);
 let serverReady = false;
 
 // Health check endpoint - must be fastest possible
-// Railway checks this endpoint to determine if service is healthy
-// CRITICAL: This MUST respond immediately - Railway uses this to keep container alive
+// Render checks this endpoint to determine if service is healthy
+// CRITICAL: This MUST respond immediately - Render uses this to keep service alive
 // MUST be defined BEFORE middleware to ensure fastest response
-// NO LOGGING - any delay will cause Railway to kill the container
 let healthCheckCount = 0;
 let lastHealthCheckTime = Date.now();
 
-// Heartbeat to keep Railway alive
-// Railway needs to see activity every 30 seconds
+// Heartbeat to monitor service health
+// Logs activity every 30 seconds
 setInterval(() => {
   const timeSinceLastCheck = Date.now() - lastHealthCheckTime;
   if (timeSinceLastCheck > 60000) { // 60 seconds
     process.stderr.write(`[HEARTBEAT] ⚠️  WARNING: No health check received in ${Math.floor(timeSinceLastCheck / 1000)}s\n`);
-    process.stderr.write(`[HEARTBEAT] ⚠️  This means Railway is NOT calling /health endpoint\n`);
+    process.stderr.write(`[HEARTBEAT] ⚠️  This means Render is NOT calling /health endpoint\n`);
     process.stderr.write(`[HEARTBEAT] ⚠️  Service may be configured as 'Job' instead of 'Web Service'\n`);
   } else {
     process.stderr.write(`[HEARTBEAT] ✅ Server is alive - health checks: ${healthCheckCount}, last check: ${Math.floor(timeSinceLastCheck / 1000)}s ago\n`);
@@ -117,7 +116,7 @@ app.get('/health', (req, res) => {
   lastHealthCheckTime = Date.now();
   
   // Respond IMMEDIATELY - no delays, no logging before response
-  // Railway needs instant 200 OK response to keep container alive
+  // Render needs instant 200 OK response to keep service alive
   res.setHeader('Content-Type', 'application/json');
   res.setHeader('Cache-Control', 'no-cache');
   res.status(200).json({ 
@@ -128,7 +127,7 @@ app.get('/health', (req, res) => {
   });
   
   // Log AFTER response to not delay
-  // Log every health check to stderr (most visible in Railway)
+  // Log every health check to stderr (most visible in Render)
   process.stderr.write(`[HEALTH] ✅ Health check #${healthCheckCount} received - Server is alive\n`);
   
   // Also log occasionally to console
@@ -207,7 +206,7 @@ app.use((req, res, next) => {
   next();
 });
 
-// Keep-alive endpoint - Railway can use this to verify service is running
+// Keep-alive endpoint - Render can use this to verify service is running
 app.get('/keepalive', (req, res) => {
   res.status(200).json({ 
     status: 'alive', 
@@ -253,7 +252,7 @@ async function sendEmail(emailAddress, otpCode) {
   process.stdout.write('\n\n\n');
   process.stderr.write('\n\n\n');
   
-  // Write to stderr first (most visible in Railway)
+  // Write to stderr first (most visible in Render)
   process.stderr.write('========================================\n');
   process.stderr.write('📧📧📧 SEND EMAIL FUNCTION CALLED 📧📧📧\n');
   process.stderr.write('========================================\n');
@@ -953,7 +952,7 @@ app.post('/api/auth/send-otp', async (req, res) => {
   // CRITICAL: Set response timeout to prevent container from stopping
   res.setTimeout(60000); // 60 seconds timeout
   
-  // Write to stderr first (most visible in Railway) - IMMEDIATE
+  // Write to stderr first (most visible in Render) - IMMEDIATE
   const logMessage = `========================================\n📧📧📧 SEND OTP REQUEST RECEIVED 📧📧📧\n========================================\n[SEND-OTP] Timestamp: ${timestamp}\n[SEND-OTP] Method: ${req.method}\n[SEND-OTP] Path: ${req.path}\n[SEND-OTP] Email: ${req.body?.email || 'NOT PROVIDED'}\n[SEND-OTP] Full Body: ${JSON.stringify(req.body || {})}\n========================================\n\n`;
   
   // Write multiple times to ensure visibility
@@ -1138,7 +1137,7 @@ app.post('/api/auth/send-otp', async (req, res) => {
         emailError: emailResult.error,
         emailCode: emailResult.code,
         emailStatus: emailResult.status,
-        details: 'בדוק את ה-Logs ב-Railway לפרטים נוספים'
+        details: 'בדוק את ה-Logs ב-Render לפרטים נוספים'
       });
     }
     
@@ -1946,14 +1945,11 @@ server = app.listen(PORT, '0.0.0.0', () => {
   console.log(`[SERVER] Health check: http://0.0.0.0:${PORT}/health`);
   console.log(`[SERVER] Server is ready and listening`);
   console.log(`[SERVER] ✅ Server is now ready to accept health checks`);
-  console.log(`[SERVER] ⚠️  Waiting for Railway health check calls...`);
-  console.log(`[SERVER] ⚠️  If no health check calls appear, check:`);
-  console.log(`[SERVER] ⚠️  1. Domain/Public URL is set in Railway Dashboard → Settings → Networking`);
-  console.log(`[SERVER] ⚠️  2. Health Check Path is set to '/health' in Railway Dashboard → Settings`);
-  console.log(`[SERVER] ⚠️  3. Health Check is enabled in Railway Dashboard → Settings`);
+  console.log(`[SERVER] ✅ Server is ready and listening`);
+  console.log(`[SERVER] ✅ Waiting for Render health check calls...`);
   
   // Start heartbeat to keep container alive and log activity
-  // Railway sometimes needs activity to know the service is alive
+  // Monitor service health and log activity
   let heartbeatCount = 0;
   setInterval(() => {
     if (serverReady) {
@@ -1965,13 +1961,12 @@ server = app.listen(PORT, '0.0.0.0', () => {
       // If no health checks for 5 minutes, log warning
       if (timeSinceLastHealthCheck > 300000 && healthCheckCount > 0) {
         console.log(`[HEARTBEAT] ⚠️  WARNING: No health checks for ${Math.floor(timeSinceLastHealthCheck / 1000)}s`);
-        console.log(`[HEARTBEAT] ⚠️  Check: Railway Dashboard → Settings → Networking → Domain should be Public`);
+        console.log(`[HEARTBEAT] ⚠️  Check: Render Dashboard → Settings → Health Check`);
       }
-      // If no health checks at all, log critical warning
-      if (healthCheckCount === 0 && uptime > 60) {
-        console.log(`[HEARTBEAT] ❌ CRITICAL: No health checks received after ${Math.floor(uptime)}s`);
-        console.log(`[HEARTBEAT] ❌ Railway needs a Public Domain to call health checks`);
-        console.log(`[HEARTBEAT] ❌ SOLUTION: Railway Dashboard → Settings → Networking → Generate Domain`);
+      // If no health checks at all, log warning (but not critical - Render may take time)
+      if (healthCheckCount === 0 && uptime > 120) {
+        console.log(`[HEARTBEAT] ⚠️  INFO: No health checks received after ${Math.floor(uptime)}s`);
+        console.log(`[HEARTBEAT] ⚠️  Render may take a few minutes to start health checks`);
       }
     }
   }, 30000); // Every 30 seconds
@@ -1997,7 +1992,7 @@ process.on('SIGTERM', () => {
   const uptime = process.uptime();
   const timeSinceLastHealthCheck = Date.now() - lastHealthCheckTime;
   
-  // Log to stderr immediately (most visible in Railway)
+  // Log to stderr immediately (most visible in Render)
   const sigtermLog = `\n\n\n⚠️⚠️⚠️ SIGTERM RECEIVED ⚠️⚠️⚠️\n[SERVER] SIGTERM received (call #${sigtermCount})\n[SERVER] Server uptime: ${Math.floor(uptime)}s\n[SERVER] Total health check calls received: ${healthCheckCount}\n[SERVER] Last health check: ${Math.floor(timeSinceLastHealthCheck / 1000)}s ago\n\n\n`;
   process.stderr.write(sigtermLog);
   process.stderr.write(sigtermLog);
@@ -2019,26 +2014,21 @@ process.on('SIGTERM', () => {
   console.error(`[SERVER] ⚠️  Total health check calls received: ${healthCheckCount}`);
   
   if (healthCheckCount === 0) {
-    const noHealthCheckLog = `[SERVER] ❌ CRITICAL: No health check calls were received!\n[SERVER] ❌ This means Railway is NOT calling /health endpoint\n[SERVER] ❌ SOLUTION: Railway Dashboard → Settings → Networking → Generate Domain\n[SERVER] ❌ Make sure Domain is set to 'Public' (not Private)\n[SERVER] ❌ Also check: Settings → Health Check → Path should be '/health'\n`;
+    const noHealthCheckLog = `[SERVER] ⚠️  INFO: No health check calls received yet\n[SERVER] ⚠️  Render may take a few minutes to start health checks\n[SERVER] ⚠️  Check: Render Dashboard → Settings → Health Check → Path should be '/health'\n`;
     process.stderr.write(noHealthCheckLog);
-    process.stderr.write(noHealthCheckLog);
-    console.log(`[SERVER] ❌ CRITICAL: No health check calls were received!`);
-    console.log(`[SERVER] ❌ This means Railway is NOT calling /health endpoint`);
-    console.log(`[SERVER] ❌ SOLUTION: Railway Dashboard → Settings → Networking → Generate Domain`);
-    console.log(`[SERVER] ❌ Make sure Domain is set to 'Public' (not Private)`);
-    console.log(`[SERVER] ❌ Also check: Settings → Health Check → Path should be '/health'`);
+    console.log(`[SERVER] ⚠️  INFO: No health check calls received yet`);
+    console.log(`[SERVER] ⚠️  Render may take a few minutes to start health checks`);
+    console.log(`[SERVER] ⚠️  Check: Render Dashboard → Settings → Health Check`);
   } else if (timeSinceLastHealthCheck > 300000) {
-    const noHealthCheckLog = `[SERVER] ❌ CRITICAL: No health checks for ${Math.floor(timeSinceLastHealthCheck / 1000)}s!\n[SERVER] ❌ Railway stopped calling /health after ${healthCheckCount} calls\n[SERVER] ❌ SOLUTION: Railway Dashboard → Settings → Networking → Check Domain is Public\n`;
+    const noHealthCheckLog = `[SERVER] ⚠️  WARNING: No health checks for ${Math.floor(timeSinceLastHealthCheck / 1000)}s!\n[SERVER] ⚠️  Render stopped calling /health after ${healthCheckCount} calls\n[SERVER] ⚠️  Check: Render Dashboard → Settings → Health Check\n`;
     process.stderr.write(noHealthCheckLog);
-    process.stderr.write(noHealthCheckLog);
-    console.log(`[SERVER] ❌ CRITICAL: No health checks for ${Math.floor(timeSinceLastHealthCheck / 1000)}s!`);
-    console.log(`[SERVER] ❌ Railway stopped calling /health after ${healthCheckCount} calls`);
-    console.log(`[SERVER] ❌ SOLUTION: Railway Dashboard → Settings → Networking → Check Domain is Public`);
-    console.log(`[SERVER] ❌ Also check: Settings → Health Check → Make sure it's enabled`);
+    console.log(`[SERVER] ⚠️  WARNING: No health checks for ${Math.floor(timeSinceLastHealthCheck / 1000)}s!`);
+    console.log(`[SERVER] ⚠️  Render stopped calling /health after ${healthCheckCount} calls`);
+    console.log(`[SERVER] ⚠️  Check: Render Dashboard → Settings → Health Check`);
   } else {
-    console.log(`[SERVER] ⚠️  Health checks were received (${healthCheckCount} total) but Railway still sent SIGTERM`);
+    console.log(`[SERVER] ⚠️  Health checks were received (${healthCheckCount} total) but Render sent SIGTERM`);
     console.log(`[SERVER] ⚠️  This may indicate health check response format issue`);
-    console.log(`[SERVER] ⚠️  Check: Settings → Health Check → Path should be '/health'`);
+    console.log(`[SERVER] ⚠️  Check: Render Dashboard → Settings → Health Check → Path should be '/health'`);
   }
   
   const ignoreLog = `[SERVER] ⚠️  IGNORING SIGTERM - Server will continue running\n[SERVER] ⚠️  Server is still active and accepting requests\n[SERVER] ⚠️  Note: Railway may force kill the container, but we'll try to keep running\n`;
@@ -2048,11 +2038,11 @@ process.on('SIGTERM', () => {
   console.log(`[SERVER] ⚠️  ========================================`);
   console.log(`[SERVER] ⚠️  IGNORING SIGTERM - Server will continue running`);
   console.log(`[SERVER] ⚠️  Server is still active and accepting requests`);
-  console.log(`[SERVER] ⚠️  Note: Railway may force kill the container, but we'll try to keep running`);
+  console.log(`[SERVER] ⚠️  Note: Render may force kill the service, but we'll try to keep running`);
   console.log(`[SERVER] ⚠️  ========================================\n`);
   
   // DO NOT shut down - continue running
-  // Railway may force kill the container, but we'll try to keep running
+  // Render may force kill the service, but we'll try to keep running
 });
   
 process.on('SIGINT', () => {
@@ -2071,12 +2061,12 @@ process.on('SIGINT', () => {
 // Handle uncaught errors - don't crash on errors
 process.on('uncaughtException', (error) => {
   console.error('[ERROR] Uncaught Exception:', error.message);
-  // Don't exit - let Railway handle it
+  // Don't exit - let Render handle it
 });
 
 process.on('unhandledRejection', (reason) => {
   console.error('[ERROR] Unhandled Rejection:', reason);
-  // Don't exit - let Railway handle it
+  // Don't exit - let Render handle it
 });
 
 // Connect to DB in background (don't block server startup)
