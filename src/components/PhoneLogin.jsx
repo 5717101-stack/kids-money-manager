@@ -40,7 +40,7 @@ const PhoneLogin = ({ onOTPSent }) => {
     setIsLoading(true);
 
     try {
-      const apiUrl = import.meta.env.VITE_API_URL || 'https://kids-money-manager-production.up.railway.app/api';
+      const apiUrl = import.meta.env.VITE_API_URL || 'https://web-production-4e378.up.railway.app/api';
       const url = `${apiUrl}/auth/send-otp`;
       console.log('📤 Sending OTP request to:', url);
       console.log('📤 Request body:', { email });
