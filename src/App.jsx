@@ -253,7 +253,7 @@ const App = () => {
             >
               🔍 בדיקת לוגים
             </button>
-            <span className="version">גרסה 2.9.36</span>
+            <span className="version">גרסה 2.9.37</span>
           </footer>
         </>
       )}

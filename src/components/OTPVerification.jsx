@@ -205,7 +205,7 @@ const OTPVerification = ({ phoneNumber, isExistingFamily, onVerified, onBack }) 
         >
           🔍 בדיקת לוגים
         </button>
-        <span className="version">גרסה 2.9.36</span>
+        <span className="version">גרסה 2.9.37</span>
       </footer>
     </div>
   );
