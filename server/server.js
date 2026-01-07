@@ -113,7 +113,16 @@ app.use(express.json({ limit: '10mb' }));
 app.use((req, res, next) => {
   // Only log API requests, not health checks
   if (req.path.startsWith('/api/') && req.path !== '/api/health') {
-    console.log(`[${new Date().toISOString()}] ${req.method} ${req.path}`);
+    const timestamp = new Date().toISOString();
+    console.log(`[${timestamp}] ${req.method} ${req.path}`);
+    console.error(`[${timestamp}] ${req.method} ${req.path}`);
+    
+    // Special logging for test-logs endpoint
+    if (req.path === '/api/test-logs') {
+      console.log(`[MIDDLEWARE] 🎯 TEST-LOGS REQUEST DETECTED! 🎯`);
+      console.error(`[MIDDLEWARE] 🎯 TEST-LOGS REQUEST DETECTED! 🎯`);
+      process.stdout.write(`\n[MIDDLEWARE] TEST-LOGS REQUEST!\n`);
+    }
   }
   next();
 });
@@ -556,58 +565,71 @@ app.post('/api/test-logs', (req, res) => {
   const userAgent = req.get('user-agent') || 'N/A';
   const referer = req.get('referer') || 'N/A';
   
-  // Use process.stdout.write for immediate output (bypasses buffering)
-  // Also use console.error which is unbuffered and always shows in Railway
-  process.stdout.write('\n\n');
-  console.error('\n\n');
+  // Force immediate output - use multiple methods
+  process.stdout.write('\n\n\n');
+  process.stderr.write('\n\n\n');
   
-  // Log with multiple methods to ensure visibility
-  console.error('========================================');
+  // Write directly to stderr (unbuffered, always visible)
+  process.stderr.write('========================================\n');
+  process.stderr.write('🎯🎯🎯 TEST LOG BUTTON CLICKED 🎯🎯🎯\n');
+  process.stderr.write('========================================\n');
+  
+  // Also use console methods
+  console.error('\n\n========================================');
   console.error('🎯🎯🎯 TEST LOG BUTTON CLICKED 🎯🎯🎯');
-  console.error('========================================');
-  console.log('========================================');
+  console.error('========================================\n');
+  
+  console.log('\n\n========================================');
   console.log('🎯🎯🎯 TEST LOG BUTTON CLICKED 🎯🎯🎯');
-  console.log('========================================');
+  console.log('========================================\n');
   
-  console.error(`[TEST-LOGS] Timestamp: ${timestamp}`);
-  console.log(`[TEST-LOGS] Timestamp: ${timestamp}`);
+  // Log all details
+  const logData = {
+    timestamp,
+    clientIP,
+    userAgent: userAgent.substring(0, 100), // Truncate for readability
+    referer,
+    method: req.method,
+    path: req.path,
+    body: req.body
+  };
   
-  console.error(`[TEST-LOGS] Client IP: ${clientIP}`);
-  console.log(`[TEST-LOGS] Client IP: ${clientIP}`);
+  // Write to stderr (most reliable for Railway)
+  process.stderr.write(`[TEST-LOGS] Timestamp: ${timestamp}\n`);
+  process.stderr.write(`[TEST-LOGS] Client IP: ${clientIP}\n`);
+  process.stderr.write(`[TEST-LOGS] User Agent: ${userAgent.substring(0, 100)}\n`);
+  process.stderr.write(`[TEST-LOGS] Referer: ${referer}\n`);
+  process.stderr.write(`[TEST-LOGS] Request Method: ${req.method}\n`);
+  process.stderr.write(`[TEST-LOGS] Request Path: ${req.path}\n`);
+  process.stderr.write(`[TEST-LOGS] Request Body: ${JSON.stringify(req.body)}\n`);
   
-  console.error(`[TEST-LOGS] User Agent: ${userAgent}`);
-  console.log(`[TEST-LOGS] User Agent: ${userAgent}`);
+  // Also use console
+  console.error('[TEST-LOGS] Full data:', JSON.stringify(logData, null, 2));
+  console.log('[TEST-LOGS] Full data:', JSON.stringify(logData, null, 2));
   
-  console.error(`[TEST-LOGS] Referer: ${referer}`);
-  console.log(`[TEST-LOGS] Referer: ${referer}`);
+  // Success message
+  process.stderr.write('\n========================================\n');
+  process.stderr.write('✅✅✅ LOG ENTRY CREATED SUCCESSFULLY ✅✅✅\n');
+  process.stderr.write('========================================\n\n\n');
   
-  console.error(`[TEST-LOGS] Request Method: ${req.method}`);
-  console.log(`[TEST-LOGS] Request Method: ${req.method}`);
-  
-  console.error(`[TEST-LOGS] Request Path: ${req.path}`);
-  console.log(`[TEST-LOGS] Request Path: ${req.path}`);
-  
-  console.error(`[TEST-LOGS] Request Body:`, JSON.stringify(req.body, null, 2));
-  console.log(`[TEST-LOGS] Request Body:`, JSON.stringify(req.body, null, 2));
-  
-  // Force flush
-  process.stdout.write('\n');
-  console.error('========================================');
+  console.error('\n========================================');
   console.error('✅✅✅ LOG ENTRY CREATED SUCCESSFULLY ✅✅✅');
-  console.error('========================================');
-  console.log('========================================');
-  console.log('✅✅✅ LOG ENTRY CREATED SUCCESSFULLY ✅✅✅');
-  console.log('========================================');
+  console.error('========================================\n\n');
   
-  process.stdout.write('\n\n');
-  console.error('\n\n');
+  console.log('\n========================================');
+  console.log('✅✅✅ LOG ENTRY CREATED SUCCESSFULLY ✅✅✅');
+  console.log('========================================\n\n');
+  
+  // Force flush all streams
+  if (process.stdout.isTTY) process.stdout.write('');
+  if (process.stderr.isTTY) process.stderr.write('');
   
   res.status(200).json({ 
     success: true, 
     message: 'Log entry created', 
     timestamp,
     clientIP,
-    userAgent
+    userAgent: userAgent.substring(0, 100)
   });
 });
 
