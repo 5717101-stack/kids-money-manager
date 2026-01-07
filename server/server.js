@@ -1881,6 +1881,82 @@ app.put('/api/families/:familyId/children/:childId/profile-image', async (req, r
 });
 
 // Update weekly allowance
+// Savings Goal endpoints
+app.get('/api/families/:familyId/children/:childId/savings-goal', async (req, res) => {
+  try {
+    const { familyId, childId } = req.params;
+    const family = await db.collection('families').findOne({ _id: familyId });
+    
+    if (!family) {
+      return res.status(404).json({ error: 'Family not found' });
+    }
+    
+    const child = family.children?.find(c => c._id === childId);
+    if (!child) {
+      return res.status(404).json({ error: 'Child not found' });
+    }
+    
+    res.json({ savingsGoal: child.savingsGoal || null });
+  } catch (error) {
+    console.error('Error getting savings goal:', error);
+    res.status(500).json({ error: 'Failed to get savings goal' });
+  }
+});
+
+app.put('/api/families/:familyId/children/:childId/savings-goal', async (req, res) => {
+  try {
+    const { familyId, childId } = req.params;
+    const { name, targetAmount } = req.body;
+    
+    if (!name || !targetAmount || targetAmount <= 0) {
+      return res.status(400).json({ error: 'Name and targetAmount (positive number) are required' });
+    }
+    
+    const family = await db.collection('families').findOne({ _id: familyId });
+    if (!family) {
+      return res.status(404).json({ error: 'Family not found' });
+    }
+    
+    const childIndex = family.children?.findIndex(c => c._id === childId);
+    if (childIndex === -1) {
+      return res.status(404).json({ error: 'Child not found' });
+    }
+    
+    const savingsGoal = {
+      name: name.trim(),
+      targetAmount: parseFloat(targetAmount),
+      createdAt: family.children[childIndex].savingsGoal?.createdAt || new Date().toISOString(),
+      updatedAt: new Date().toISOString()
+    };
+    
+    await db.collection('families').updateOne(
+      { _id: familyId, 'children._id': childId },
+      { $set: { 'children.$.savingsGoal': savingsGoal } }
+    );
+    
+    res.json({ success: true, savingsGoal });
+  } catch (error) {
+    console.error('Error updating savings goal:', error);
+    res.status(500).json({ error: 'Failed to update savings goal' });
+  }
+});
+
+app.delete('/api/families/:familyId/children/:childId/savings-goal', async (req, res) => {
+  try {
+    const { familyId, childId } = req.params;
+    
+    await db.collection('families').updateOne(
+      { _id: familyId, 'children._id': childId },
+      { $unset: { 'children.$.savingsGoal': '' } }
+    );
+    
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Error deleting savings goal:', error);
+    res.status(500).json({ error: 'Failed to delete savings goal' });
+  }
+});
+
 app.put('/api/families/:familyId/children/:childId/weekly-allowance', async (req, res) => {
   try {
     const { familyId, childId } = req.params;
