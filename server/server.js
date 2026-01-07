@@ -607,18 +607,26 @@ async function addChildToFamily(familyId, childName) {
   console.log(`[ADD-CHILD] Child code stored (expires in 30 days)`);
   
   if (db) {
+    // First, verify the family exists and get it
+    const family = await getFamilyById(familyId);
+    if (!family) {
+      console.error(`[ADD-CHILD] ❌ Family not found: ${familyId}`);
+      throw new Error('משפחה לא נמצאה');
+    }
+    
+    console.log(`[ADD-CHILD] Family found, current children count: ${family.children?.length || 0}`);
+    
+    // Add child to family
     await db.collection('families').updateOne(
       { _id: familyId },
       { 
-        $push: { children: child },
-        $push: { 'categories.$[].activeFor': childId }
+        $push: { children: child }
       }
     );
     console.log(`[ADD-CHILD] ✅ Child saved to database`);
     
     // Update categories to include new child
-    const family = await getFamilyById(familyId);
-    if (family) {
+    if (family.categories && family.categories.length > 0) {
       for (const category of family.categories) {
         if (!category.activeFor.includes(childId)) {
           category.activeFor.push(childId);
@@ -629,6 +637,18 @@ async function addChildToFamily(familyId, childName) {
         { $set: { categories: family.categories } }
       );
       console.log(`[ADD-CHILD] Categories updated for child`);
+    }
+    
+    // Verify the child was added
+    const updatedFamily = await getFamilyById(familyId);
+    console.log(`[ADD-CHILD] Verification: Family now has ${updatedFamily?.children?.length || 0} children`);
+    if (updatedFamily?.children) {
+      const addedChild = updatedFamily.children.find(c => c._id === childId);
+      if (addedChild) {
+        console.log(`[ADD-CHILD] ✅ Child verified in database: ${addedChild.name} (${addedChild._id})`);
+      } else {
+        console.error(`[ADD-CHILD] ❌ Child not found in database after insertion!`);
+      }
     }
   } else {
     console.log(`[ADD-CHILD] ⚠️  Using in-memory storage (no DB)`);

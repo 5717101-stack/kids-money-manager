@@ -121,25 +121,102 @@ const PhoneLogin = ({ onOTPSent }) => {
       console.log('[FRONTEND] OTP Code:', data.otpCode || 'NOT PROVIDED');
       console.log('[FRONTEND] ========================================\n');
 
-      // Show success message with OTP
-      let successMessage;
+      // Show success message with OTP in a modal instead of alert
       if (data.otpCode) {
-        successMessage = `✅ קוד אימות נשלח בהצלחה לטלפון ${fullPhoneNumber}\n\nקוד האימות: ${data.otpCode}`;
-      } else if (data.message) {
-        successMessage = data.message;
+        // Create a modal for OTP display with copy functionality
+        const modal = document.createElement('div');
+        modal.className = 'otp-modal-overlay';
+        modal.style.cssText = `
+          position: fixed;
+          top: 0;
+          left: 0;
+          right: 0;
+          bottom: 0;
+          background: rgba(0, 0, 0, 0.5);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          z-index: 10000;
+        `;
+        
+        const modalContent = document.createElement('div');
+        modalContent.style.cssText = `
+          background: white;
+          padding: 30px;
+          border-radius: 16px;
+          max-width: 400px;
+          width: 90%;
+          text-align: center;
+          box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2);
+        `;
+        
+        modalContent.innerHTML = `
+          <h2 style="margin: 0 0 20px 0; color: #333; font-size: 24px;">✅ קוד אימות נשלח</h2>
+          <p style="margin: 0 0 20px 0; color: #666; font-size: 16px;">קוד האימות נשלח לטלפון ${fullPhoneNumber}</p>
+          <div style="display: flex; align-items: center; justify-content: center; gap: 10px; margin: 20px 0;">
+            <div id="otp-display" style="
+              font-size: 32px;
+              font-weight: bold;
+              letter-spacing: 8px;
+              color: #3b82f6;
+              padding: 15px 20px;
+              background: #f0f9ff;
+              border-radius: 8px;
+              border: 2px solid #3b82f6;
+              font-family: monospace;
+            ">${data.otpCode}</div>
+            <button id="copy-otp-btn" style="
+              padding: 12px 20px;
+              background: #3b82f6;
+              color: white;
+              border: none;
+              border-radius: 8px;
+              cursor: pointer;
+              font-size: 16px;
+              font-weight: 600;
+            ">📋 העתק</button>
+          </div>
+          <button id="close-otp-modal" style="
+            padding: 12px 30px;
+            background: #10b981;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 16px;
+            font-weight: 600;
+            margin-top: 10px;
+          ">סגור</button>
+        `;
+        
+        modal.appendChild(modalContent);
+        document.body.appendChild(modal);
+        
+        const copyBtn = modalContent.querySelector('#copy-otp-btn');
+        copyBtn.addEventListener('click', () => {
+          navigator.clipboard.writeText(data.otpCode);
+          const originalText = copyBtn.textContent;
+          copyBtn.textContent = '✅ הועתק!';
+          setTimeout(() => {
+            copyBtn.textContent = originalText;
+          }, 2000);
+        });
+        
+        const closeBtn = modalContent.querySelector('#close-otp-modal');
+        closeBtn.addEventListener('click', () => {
+          document.body.removeChild(modal);
+        });
+        
+        modal.addEventListener('click', (e) => {
+          if (e.target === modal) {
+            document.body.removeChild(modal);
+          }
+        });
       } else {
-        successMessage = `✅ קוד אימות נשלח בהצלחה לטלפון ${fullPhoneNumber}`;
+        // Fallback to alert if no OTP code
+        const successMessage = data.message || `✅ קוד אימות נשלח בהצלחה לטלפון ${fullPhoneNumber}`;
+        alert(successMessage);
       }
-      
-      console.log('[FRONTEND] ========================================');
-      console.log('[FRONTEND] 📢 SUCCESS MESSAGE DATA');
-      console.log('[FRONTEND] ========================================');
-      console.log('[FRONTEND] data.message:', data.message);
-      console.log('[FRONTEND] data.otpCode:', data.otpCode);
-      console.log('[FRONTEND] Final message:', successMessage);
-      console.log('[FRONTEND] ========================================\n');
-      
-      alert(successMessage);
 
       console.log('[FRONTEND] Calling onOTPSent callback...');
       onOTPSent(fullPhoneNumber, data.isExistingFamily);

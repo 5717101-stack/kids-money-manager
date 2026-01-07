@@ -825,11 +825,45 @@ const Settings = ({ familyId, onClose }) => {
             </div>
             <div className="password-modal-content">
               <p className="password-label">סיסמה:</p>
-              <div className="password-display">{childPasswordModal.password}</div>
+              <div className="password-display-container">
+                <div className="password-display" id="password-display">{childPasswordModal.password}</div>
+                <button 
+                  className="copy-button"
+                  onClick={() => {
+                    navigator.clipboard.writeText(childPasswordModal.password);
+                    const btn = document.querySelector('.copy-button');
+                    const originalText = btn.textContent;
+                    btn.textContent = '✅ הועתק!';
+                    setTimeout(() => {
+                      btn.textContent = originalText;
+                    }, 2000);
+                  }}
+                  title="העתק סיסמה"
+                >
+                  📋 העתק
+                </button>
+              </div>
               {childPasswordModal.joinCode && (
                 <>
                   <p className="password-label">קוד הצטרפות:</p>
-                  <div className="password-display">{childPasswordModal.joinCode}</div>
+                  <div className="password-display-container">
+                    <div className="password-display" id="joincode-display">{childPasswordModal.joinCode}</div>
+                    <button 
+                      className="copy-button"
+                      onClick={() => {
+                        navigator.clipboard.writeText(childPasswordModal.joinCode);
+                        const btn = document.querySelectorAll('.copy-button')[1];
+                        const originalText = btn.textContent;
+                        btn.textContent = '✅ הועתק!';
+                        setTimeout(() => {
+                          btn.textContent = originalText;
+                        }, 2000);
+                      }}
+                      title="העתק קוד הצטרפות"
+                    >
+                      📋 העתק
+                    </button>
+                  </div>
                   <p className="password-note">
                     שמור את הקוד הזה! הילד יכול להשתמש בו כדי להצטרף למשפחה ממכשיר אחר.
                   </p>
