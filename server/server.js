@@ -102,16 +102,9 @@ let lastHealthCheckTime = Date.now();
 app.get('/health', (req, res) => {
   healthCheckCount++;
   lastHealthCheckTime = Date.now();
-  // NO LOGGING HERE - respond immediately
-  // Railway needs instant 200 OK response
-  // But log to stderr occasionally to show it's working
-  if (healthCheckCount % 5 === 0) {
-    process.stderr.write(`[HEALTH] Health check #${healthCheckCount} - Server is alive\n`);
-  }
-  // Log every health check to stderr (but after response to not delay)
-  process.stderr.write(`[HEALTH] ✅ Health check #${healthCheckCount} received\n`);
   
-  // Respond immediately with proper headers
+  // Respond IMMEDIATELY - no delays, no logging before response
+  // Railway needs instant 200 OK response to keep container alive
   res.setHeader('Content-Type', 'application/json');
   res.setHeader('Cache-Control', 'no-cache');
   res.status(200).json({ 
@@ -120,6 +113,15 @@ app.get('/health', (req, res) => {
     healthCheckCount: healthCheckCount,
     uptime: process.uptime()
   });
+  
+  // Log AFTER response to not delay
+  // Log every health check to stderr (most visible in Railway)
+  process.stderr.write(`[HEALTH] ✅ Health check #${healthCheckCount} received - Server is alive\n`);
+  
+  // Also log occasionally to console
+  if (healthCheckCount % 10 === 0) {
+    console.log(`[HEALTH] Health check #${healthCheckCount} - Server is alive`);
+  }
 });
 
 // Also add root endpoint that responds immediately
