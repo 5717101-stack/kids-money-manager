@@ -30,46 +30,111 @@ const PhoneLogin = ({ onOTPSent }) => {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    const clickTime = new Date().toISOString();
+    
+    console.log('========================================');
+    console.log('[FRONTEND] 🎯 SEND OTP BUTTON CLICKED 🎯');
+    console.log('[FRONTEND] ========================================');
+    console.log('[FRONTEND] Timestamp:', clickTime);
+    console.log('[FRONTEND] Email entered:', email);
+    console.log('[FRONTEND] ========================================\n');
+    
     setError('');
     
     if (!email || !validateEmail(email)) {
+      console.error('[FRONTEND] ❌ Email validation failed');
+      console.error('[FRONTEND] Email:', email);
+      console.error('[FRONTEND] Valid format:', validateEmail(email));
       setError('כתובת מייל לא תקינה');
       return;
     }
 
+    console.log('[FRONTEND] ✅ Email validation passed');
+    console.log('[FRONTEND] Setting loading state to true...');
     setIsLoading(true);
 
     try {
       const apiUrl = import.meta.env.VITE_API_URL || 'https://web-production-4e378.up.railway.app/api';
       const url = `${apiUrl}/auth/send-otp`;
-      console.log('📤 Sending OTP request to:', url);
-      console.log('📤 Request body:', { email });
+      const normalizedEmail = email.trim().toLowerCase();
+      const requestBody = { email: normalizedEmail };
+      
+      console.log('[FRONTEND] ========================================');
+      console.log('[FRONTEND] 📤 Preparing to send OTP request...');
+      console.log('[FRONTEND] ========================================');
+      console.log('[FRONTEND] API URL:', apiUrl);
+      console.log('[FRONTEND] Full URL:', url);
+      console.log('[FRONTEND] Method: POST');
+      console.log('[FRONTEND] Headers:', { 'Content-Type': 'application/json' });
+      console.log('[FRONTEND] Request Body (JSON):', JSON.stringify(requestBody, null, 2));
+      console.log('[FRONTEND] Normalized Email:', normalizedEmail);
+      console.log('[FRONTEND] ========================================\n');
+      
+      const requestStartTime = Date.now();
+      console.log('[FRONTEND] 🚀 Calling fetch()...');
+      console.log('[FRONTEND] Request start time:', new Date().toISOString());
       
       const response = await fetch(url, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({
-          email: email.trim().toLowerCase()
-        })
+        body: JSON.stringify(requestBody)
       });
       
-      console.log('📥 Response status:', response.status);
-      console.log('📥 Response ok:', response.ok);
+      const requestDuration = Date.now() - requestStartTime;
+      console.log('[FRONTEND] ========================================');
+      console.log('[FRONTEND] 📥 Response received!');
+      console.log('[FRONTEND] ========================================');
+      console.log('[FRONTEND] Response Time:', requestDuration + 'ms');
+      console.log('[FRONTEND] Response Status:', response.status);
+      console.log('[FRONTEND] Response Status Text:', response.statusText);
+      console.log('[FRONTEND] Response OK:', response.ok);
+      console.log('[FRONTEND] Response Headers:', Object.fromEntries(response.headers.entries()));
+      console.log('[FRONTEND] ========================================\n');
 
+      console.log('[FRONTEND] 📋 Parsing response JSON...');
       const data = await response.json();
+      console.log('[FRONTEND] Response Data (JSON):', JSON.stringify(data, null, 2));
 
       if (!response.ok) {
+        console.error('[FRONTEND] ========================================');
+        console.error('[FRONTEND] ❌❌❌ REQUEST FAILED ❌❌❌');
+        console.error('[FRONTEND] ========================================');
+        console.error('[FRONTEND] Status:', response.status);
+        console.error('[FRONTEND] Error:', data.error || 'Unknown error');
+        console.error('[FRONTEND] Full Error Data:', JSON.stringify(data, null, 2));
+        console.error('[FRONTEND] ========================================\n');
         throw new Error(data.error || 'שגיאה בשליחת קוד');
       }
 
-      onOTPSent(email.trim().toLowerCase(), data.isExistingFamily);
+      console.log('[FRONTEND] ========================================');
+      console.log('[FRONTEND] ✅✅✅ REQUEST SUCCESSFUL ✅✅✅');
+      console.log('[FRONTEND] ========================================');
+      console.log('[FRONTEND] Success:', data.success);
+      console.log('[FRONTEND] Message:', data.message);
+      console.log('[FRONTEND] Is Existing Family:', data.isExistingFamily);
+      console.log('[FRONTEND] Email Sent:', data.emailSent);
+      console.log('[FRONTEND] Email ID:', data.emailId || 'N/A');
+      console.log('[FRONTEND] ========================================\n');
+
+      console.log('[FRONTEND] Calling onOTPSent callback...');
+      onOTPSent(normalizedEmail, data.isExistingFamily);
+      console.log('[FRONTEND] ✅ onOTPSent called successfully');
     } catch (error) {
-      console.error('Error sending OTP:', error);
+      console.error('[FRONTEND] ========================================');
+      console.error('[FRONTEND] ❌❌❌ EXCEPTION CAUGHT ❌❌❌');
+      console.error('[FRONTEND] ========================================');
+      console.error('[FRONTEND] Error Name:', error.name);
+      console.error('[FRONTEND] Error Message:', error.message);
+      console.error('[FRONTEND] Error Stack:', error.stack);
+      console.error('[FRONTEND] Full Error:', error);
+      console.error('[FRONTEND] ========================================\n');
       setError(error.message || 'שגיאה בשליחת קוד אימות');
     } finally {
+      console.log('[FRONTEND] Setting loading state to false...');
       setIsLoading(false);
+      console.log('[FRONTEND] ========================================\n');
     }
   };
 
@@ -127,7 +192,7 @@ const PhoneLogin = ({ onOTPSent }) => {
         >
           🔍 בדיקת לוגים
         </button>
-        <span className="version">גרסה 2.9.22</span>
+        <span className="version">גרסה 2.9.23</span>
       </footer>
     </div>
   );
