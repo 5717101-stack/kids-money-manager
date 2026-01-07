@@ -1416,6 +1416,12 @@ body {
   gap: 12px;
 }
 
+.test-logs-button,
+.users-table-button,
+.delete-all-button {
+  pointer-events: auto;
+}
+
 .test-logs-button {
   font-size: 11px;
   color: var(--text-secondary);
@@ -1424,7 +1430,6 @@ body {
   border-radius: 4px;
   padding: 4px 8px;
   cursor: pointer;
-  pointer-events: auto;
   opacity: 0.6;
   transition: opacity 0.2s;
 }
