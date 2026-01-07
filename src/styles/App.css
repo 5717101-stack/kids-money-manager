@@ -1602,6 +1602,8 @@ body {
   font-weight: 600;
   text-align: center;
   animation: shake 0.4s ease-out;
+  margin-bottom: 16px;
+  margin-top: -8px;
 }
 
 @keyframes shake {
@@ -1810,7 +1812,13 @@ body {
   margin-bottom: 24px;
 }
 
-.country-code-select {
+.country-code-selector {
+  position: relative;
+  min-width: 140px;
+}
+
+.country-code-button {
+  width: 100%;
   padding: 18px 16px;
   border: 2px solid var(--border);
   border-radius: var(--radius-lg);
@@ -1819,12 +1827,61 @@ body {
   font-weight: 600;
   color: var(--text-primary);
   cursor: pointer;
-  min-width: 120px;
   transition: all 0.3s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  box-shadow: var(--shadow-sm);
 }
 
-.country-code-select:hover {
+.country-code-button:hover {
   border-color: var(--primary);
+  background: var(--primary-light);
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-md);
+}
+
+.country-list {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  left: 0;
+  background: var(--bg-card);
+  border: 2px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-xl);
+  max-height: 300px;
+  overflow-y: auto;
+  z-index: 1000;
+  padding: 8px;
+}
+
+.country-item {
+  width: 100%;
+  padding: 12px 16px;
+  border: none;
+  background: transparent;
+  font-size: 15px;
+  font-weight: 500;
+  color: var(--text-primary);
+  cursor: pointer;
+  transition: all 0.2s ease;
+  border-radius: var(--radius-sm);
+  text-align: right;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.country-item:hover {
+  background: var(--primary-light);
+  color: var(--primary);
+}
+
+.country-item:active {
+  background: var(--primary);
+  color: var(--text-light);
 }
 
 .phone-input {
