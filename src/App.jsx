@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next';
 import WelcomeScreen from './components/WelcomeScreen';
 import PhoneLogin from './components/PhoneLogin';
 import OTPVerification from './components/OTPVerification';
-import ParentDashboard from './components/ParentDashboard';
+import ParentDashboard from './components/ParentDashboardNew';
 import ChildView from './components/ChildView';
 import ChildPasswordLogin from './components/ChildPasswordLogin';
 import JoinParentScreen from './components/JoinParentScreen';
