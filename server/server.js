@@ -1360,38 +1360,14 @@ let sigtermCount = 0;
 process.on('SIGTERM', () => {
   sigtermCount++;
   const uptime = process.uptime();
-  const timeSinceLastHealthCheck = Date.now() - lastHealthCheckTime;
   
   console.log(`\n[SERVER] ⚠️  ========================================`);
   console.log(`[SERVER] ⚠️  SIGTERM received (call #${sigtermCount})`);
   console.log(`[SERVER] ⚠️  Server has been running for ${Math.floor(uptime)} seconds`);
-  console.log(`[SERVER] ⚠️  Server ready status: ${serverReady ? 'YES' : 'NO'}`);
-  console.log(`[SERVER] ⚠️  Port (process.env.PORT): ${process.env.PORT || 'NOT SET'}`);
-  console.log(`[SERVER] ⚠️  Port (actual): ${PORT}`);
-  console.log(`[SERVER] ⚠️  Server listening: ${server && server.listening ? 'YES' : 'NO'}`);
-  console.log(`[SERVER] ⚠️  Health check URL: http://0.0.0.0:${PORT}/health`);
-  console.log(`[SERVER] ⚠️  Total health check calls received: ${healthCheckCount}`);
-  console.log(`[SERVER] ⚠️  Last health check: ${Math.floor(timeSinceLastHealthCheck / 1000)}s ago`);
-  
-  if (healthCheckCount === 0) {
-    console.log(`[SERVER] ❌ CRITICAL: No health check calls were received!`);
-    console.log(`[SERVER] ❌ This means Railway is NOT calling /health endpoint`);
-    console.log(`[SERVER] ❌ Service is DEFINITELY configured as 'Job' instead of 'Web Service'`);
-    console.log(`[SERVER] ❌ SOLUTION: Railway Dashboard → Settings → Service Type → Change to 'Web Service'`);
-  } else if (timeSinceLastHealthCheck > 300000) {
-    console.log(`[SERVER] ❌ CRITICAL: No health checks for ${Math.floor(timeSinceLastHealthCheck / 1000)}s!`);
-    console.log(`[SERVER] ❌ Railway stopped calling /health after ${healthCheckCount} calls`);
-    console.log(`[SERVER] ❌ Service is likely configured as 'Job' - it runs once and stops`);
-    console.log(`[SERVER] ❌ SOLUTION: Railway Dashboard → Settings → Service Type → Change to 'Web Service'`);
-  } else {
-    console.log(`[SERVER] ⚠️  Health checks were received (${healthCheckCount} total) but Railway still sent SIGTERM`);
-    console.log(`[SERVER] ⚠️  This may indicate health check response format issue`);
-  }
-  
+  console.log(`[SERVER] ⚠️  Health checks received: ${healthCheckCount}`);
   console.log(`[SERVER] ⚠️  ========================================`);
   console.log(`[SERVER] ⚠️  IGNORING SIGTERM - Server will continue running`);
   console.log(`[SERVER] ⚠️  Server is still active and accepting requests`);
-  console.log(`[SERVER] ⚠️  Note: Railway may force kill the container, but we'll try to keep running`);
   console.log(`[SERVER] ⚠️  ========================================\n`);
   
   // DO NOT shut down - continue running
