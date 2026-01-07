@@ -29,10 +29,16 @@ sed -i '' "s/\"version\": \"$CURRENT_VERSION\"/\"version\": \"$NEW_VERSION\"/" p
 sed -i '' "s/\"version\": \"$CURRENT_VERSION\"/\"version\": \"$NEW_VERSION\"/" server/package.json
 
 # עדכן גרסה בכל קבצי ה-React - מציגים גרסה מלאה
-sed -i '' "s/גרסה [0-9]\+\.[0-9]\+\(\.\?[0-9]*\)\?/גרסה ${NEW_VERSION}/g" src/App.jsx
-sed -i '' "s/גרסה [0-9]\+\.[0-9]\+\(\.\?[0-9]*\)\?/גרסה ${NEW_VERSION}/g" src/components/WelcomeScreen.jsx
-sed -i '' "s/גרסה [0-9]\+\.[0-9]\+\(\.\?[0-9]*\)\?/גרסה ${NEW_VERSION}/g" src/components/PhoneLogin.jsx
-sed -i '' "s/גרסה [0-9]\+\.[0-9]\+\(\.\?[0-9]*\)\?/גרסה ${NEW_VERSION}/g" src/components/OTPVerification.jsx
+# משתמש ב-pattern יותר גמיש שיתפוס כל מספר גרסה
+sed -i '' "s/גרסה [0-9]\+\.[0-9]\+\.[0-9]\+/גרסה ${NEW_VERSION}/g" src/App.jsx
+sed -i '' "s/גרסה [0-9]\+\.[0-9]\+\.[0-9]\+/גרסה ${NEW_VERSION}/g" src/components/WelcomeScreen.jsx
+sed -i '' "s/גרסה [0-9]\+\.[0-9]\+\.[0-9]\+/גרסה ${NEW_VERSION}/g" src/components/PhoneLogin.jsx
+sed -i '' "s/גרסה [0-9]\+\.[0-9]\+\.[0-9]\+/גרסה ${NEW_VERSION}/g" src/components/OTPVerification.jsx
+# גם תופס גרסאות בלי patch (2.9 -> 2.9.13)
+sed -i '' "s/גרסה [0-9]\+\.[0-9]\+[^0-9]/גרסה ${NEW_VERSION}/g" src/App.jsx
+sed -i '' "s/גרסה [0-9]\+\.[0-9]\+[^0-9]/גרסה ${NEW_VERSION}/g" src/components/WelcomeScreen.jsx
+sed -i '' "s/גרסה [0-9]\+\.[0-9]\+[^0-9]/גרסה ${NEW_VERSION}/g" src/components/PhoneLogin.jsx
+sed -i '' "s/גרסה [0-9]\+\.[0-9]\+[^0-9]/גרסה ${NEW_VERSION}/g" src/components/OTPVerification.jsx
 
 # עדכן גרסה ב-server.js - כל המופעים
 sed -i '' "s/version: '[0-9]\+\.[0-9]\+\.[0-9]\+'/version: '${NEW_VERSION}'/g" server/server.js
