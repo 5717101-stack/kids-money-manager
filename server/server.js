@@ -46,22 +46,14 @@ let serverReady = false;
 // Health check endpoint - must be fastest possible
 // Railway checks this endpoint to determine if service is healthy
 // CRITICAL: This MUST respond immediately - Railway uses this to keep container alive
+// MUST be defined BEFORE middleware to ensure fastest response
 app.get('/health', (req, res) => {
-  // Log health check request for debugging
-  const startTime = Date.now();
-  const clientIP = req.ip || req.headers['x-forwarded-for'] || req.connection.remoteAddress || 'unknown';
-  
-  // Respond immediately - Railway needs instant 200 OK response
+  // Respond immediately - no logging, no processing, no async
+  // Railway needs instant 200 OK response
   res.status(200).json({ 
-    status: 'ok', 
-    timestamp: Date.now(),
-    uptime: process.uptime(),
-    version: VERSION,
-    serverReady: serverReady
+    status: 'ok',
+    timestamp: Date.now()
   });
-  
-  const duration = Date.now() - startTime;
-  console.log(`[HEALTH] ✅ Health check responded in ${duration}ms from ${clientIP}`);
 });
 
 // Also add root endpoint that responds immediately
