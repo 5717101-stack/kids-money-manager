@@ -2154,6 +2154,51 @@ process.on('SIGINT', () => {
 });
 
 // Handle uncaught errors - don't crash on errors
+// Admin endpoint - Get all users
+app.get('/api/admin/all-users', async (req, res) => {
+  const timestamp = new Date().toISOString();
+  console.log(`\n[GET-ALL-USERS] ========================================`);
+  console.log(`[GET-ALL-USERS] 📊 GET ALL USERS REQUEST`);
+  console.log(`[GET-ALL-USERS] ========================================`);
+  console.log(`[GET-ALL-USERS] Timestamp: ${timestamp}`);
+  console.log(`[GET-ALL-USERS] Method: ${req.method}`);
+  console.log(`[GET-ALL-USERS] Path: ${req.path}`);
+  console.log(`[GET-ALL-USERS] ========================================\n`);
+  
+  try {
+    if (!db) {
+      console.error(`[GET-ALL-USERS] ❌ No database connection`);
+      return res.status(500).json({ error: 'אין חיבור למסד הנתונים' });
+    }
+    
+    console.log(`[GET-ALL-USERS] Fetching all families...`);
+    const families = await db.collection('families').find({}).toArray();
+    console.log(`[GET-ALL-USERS] ✅ Found ${families.length} families`);
+    
+    // Format the response
+    const formattedFamilies = families.map(family => ({
+      _id: family._id,
+      phoneNumber: family.phoneNumber || 'לא זמין',
+      createdAt: family.createdAt || null,
+      lastLoginAt: family.lastLoginAt || null,
+      children: family.children || {}
+    }));
+    
+    console.log(`[GET-ALL-USERS] ✅ Returning ${formattedFamilies.length} families`);
+    res.json({ 
+      success: true,
+      families: formattedFamilies,
+      totalFamilies: formattedFamilies.length
+    });
+  } catch (error) {
+    console.error(`[GET-ALL-USERS] ❌ Error:`, error);
+    res.status(500).json({ 
+      error: 'שגיאה בטעינת המשתמשים',
+      details: error.message 
+    });
+  }
+});
+
 // Admin endpoint - Delete all users and data
 app.delete('/api/admin/delete-all-users', async (req, res) => {
   const timestamp = new Date().toISOString();

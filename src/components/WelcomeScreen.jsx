@@ -1,8 +1,10 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import UsersTable from './UsersTable';
 
 const WelcomeScreen = ({ onSelectCreate, onSelectJoinAsParent, onSelectJoinAsChild }) => {
   const { t } = useTranslation();
+  const [showUsersTable, setShowUsersTable] = useState(false);
   const handleDeleteAllUsers = async () => {
     // First confirmation
     const firstConfirm = window.confirm(
@@ -216,7 +218,25 @@ const WelcomeScreen = ({ onSelectCreate, onSelectJoinAsParent, onSelectJoinAsChi
         </div>
       </div>
       <footer className="app-footer">
-        <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
+        <div style={{ display: 'flex', gap: '12px', alignItems: 'center', flexWrap: 'wrap' }}>
+          <button 
+            className="users-table-button"
+            onClick={() => setShowUsersTable(true)}
+            title="הצג טבלת משתמשים"
+            style={{
+              padding: '8px 16px',
+              backgroundColor: '#3b82f6',
+              color: 'white',
+              border: 'none',
+              borderRadius: '8px',
+              cursor: 'pointer',
+              fontSize: '14px',
+              fontWeight: '600',
+              transition: 'all 0.2s ease'
+            }}
+          >
+            📊 טבלת משתמשים
+          </button>
           <button 
             className="test-logs-button"
             onClick={handleTestLogs}
@@ -245,6 +265,10 @@ const WelcomeScreen = ({ onSelectCreate, onSelectJoinAsParent, onSelectJoinAsChi
         </div>
         <span className="version">{t('common.version')} 3.0.12</span>
       </footer>
+      
+      {showUsersTable && (
+        <UsersTable onClose={() => setShowUsersTable(false)} />
+      )}
     </div>
   );
 };
