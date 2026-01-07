@@ -363,19 +363,24 @@ async function sendEmail(emailAddress, otpCode) {
       console.log(`[EMAIL] Subject: ${emailSubject}`);
       console.log(`[EMAIL] ========================================\n`);
       
-      process.stderr.write(`[EMAIL] ========================================\n`);
-      process.stderr.write(`[EMAIL] ✅✅✅ EMAIL SENT SUCCESSFULLY ✅✅✅\n`);
-      process.stderr.write(`[EMAIL] ========================================\n`);
-      process.stderr.write(`[EMAIL] Email ID: ${result.id}\n`);
-      process.stderr.write(`[EMAIL] From: ${RESEND_FROM_EMAIL}\n`);
-      process.stderr.write(`[EMAIL] To: ${emailAddress}\n`);
-      process.stderr.write(`[EMAIL] Subject: ${emailSubject}\n`);
-      process.stderr.write(`[EMAIL] Response Time: ${apiDuration}ms\n`);
-      process.stderr.write(`[EMAIL] Total Time: ${totalDuration}ms\n`);
-      process.stderr.write(`[EMAIL] Full Response: ${JSON.stringify(result)}\n`);
-      process.stderr.write(`[EMAIL] ========================================\n\n`);
+      const emailSuccessLog = `[EMAIL] ========================================\n[EMAIL] ✅✅✅ EMAIL SENT SUCCESSFULLY ✅✅✅\n[EMAIL] ========================================\n[EMAIL] Email ID: ${result.id}\n[EMAIL] From: ${RESEND_FROM_EMAIL}\n[EMAIL] To: ${emailAddress}\n[EMAIL] Subject: ${emailSubject}\n[EMAIL] Response Time: ${apiDuration}ms\n[EMAIL] Total Time: ${totalDuration}ms\n[EMAIL] Full Response: ${JSON.stringify(result)}\n[EMAIL] ========================================\n\n`;
       
-      console.error(`[EMAIL] ✅ Email sent successfully! ID: ${result.id}\n`);
+      // Write multiple times to ensure visibility
+      process.stderr.write(emailSuccessLog);
+      process.stderr.write(emailSuccessLog); // Write twice
+      process.stdout.write(emailSuccessLog);
+      
+      console.error('\n[EMAIL] ========================================');
+      console.error('[EMAIL] ✅✅✅ EMAIL SENT SUCCESSFULLY ✅✅✅');
+      console.error('[EMAIL] ========================================');
+      console.error(`[EMAIL] Email ID: ${result.id}`);
+      console.error(`[EMAIL] From: ${RESEND_FROM_EMAIL}`);
+      console.error(`[EMAIL] To: ${emailAddress}`);
+      console.error(`[EMAIL] Subject: ${emailSubject}`);
+      console.error(`[EMAIL] Response Time: ${apiDuration}ms`);
+      console.error(`[EMAIL] Total Time: ${totalDuration}ms`);
+      console.error(`[EMAIL] Full Response:`, result);
+      console.error('[EMAIL] ========================================\n\n');
       
       return { success: true, id: result.id, email: emailAddress, result: result };
     } catch (error) {
@@ -907,20 +912,28 @@ app.post('/api/auth/send-otp', async (req, res) => {
   const requestStart = Date.now();
   const timestamp = new Date().toISOString();
   
-  // Force immediate output
+  // Force immediate output - MULTIPLE METHODS
   process.stdout.write('\n\n\n');
   process.stderr.write('\n\n\n');
   
-  // Write to stderr first (most visible in Railway)
-  process.stderr.write('========================================\n');
-  process.stderr.write('📧📧📧 SEND OTP REQUEST RECEIVED 📧📧📧\n');
-  process.stderr.write('========================================\n');
-  process.stderr.write(`[SEND-OTP] Timestamp: ${timestamp}\n`);
-  process.stderr.write(`[SEND-OTP] Method: ${req.method}\n`);
-  process.stderr.write(`[SEND-OTP] Path: ${req.path}\n`);
-  process.stderr.write(`[SEND-OTP] Email: ${req.body.email || 'NOT PROVIDED'}\n`);
-  process.stderr.write(`[SEND-OTP] Full Body: ${JSON.stringify(req.body)}\n`);
-  process.stderr.write('========================================\n\n');
+  // Write to stderr first (most visible in Railway) - IMMEDIATE
+  const logMessage = `========================================\n📧📧📧 SEND OTP REQUEST RECEIVED 📧📧📧\n========================================\n[SEND-OTP] Timestamp: ${timestamp}\n[SEND-OTP] Method: ${req.method}\n[SEND-OTP] Path: ${req.path}\n[SEND-OTP] Email: ${req.body?.email || 'NOT PROVIDED'}\n[SEND-OTP] Full Body: ${JSON.stringify(req.body || {})}\n========================================\n\n`;
+  
+  // Write multiple times to ensure visibility
+  process.stderr.write(logMessage);
+  process.stderr.write(logMessage); // Write twice
+  process.stdout.write(logMessage);
+  
+  // Also use console methods
+  console.error('\n\n========================================');
+  console.error('📧📧📧 SEND OTP REQUEST RECEIVED 📧📧📧');
+  console.error('========================================');
+  console.error(`[SEND-OTP] Timestamp: ${timestamp}`);
+  console.error(`[SEND-OTP] Method: ${req.method}`);
+  console.error(`[SEND-OTP] Path: ${req.path}`);
+  console.error(`[SEND-OTP] Email: ${req.body?.email || 'NOT PROVIDED'}`);
+  console.error(`[SEND-OTP] Full Body:`, req.body);
+  console.error('========================================\n\n');
   
   console.log(`\n[SEND-OTP] ========================================`);
   console.log(`[SEND-OTP] 🚀 Request received at ${timestamp}`);
@@ -1092,14 +1105,21 @@ app.post('/api/auth/send-otp', async (req, res) => {
     console.log(`[SEND-OTP] Success Message: ${successMessage}`);
     console.log(`[SEND-OTP] ========================================\n`);
     
-    process.stderr.write(`[SEND-OTP] ========================================\n`);
-    process.stderr.write(`[SEND-OTP] ✅✅✅ EMAIL SENT SUCCESSFULLY ✅✅✅\n`);
-    process.stderr.write(`[SEND-OTP] ========================================\n`);
-    process.stderr.write(`[SEND-OTP] Email ID: ${emailResult.id}\n`);
-    process.stderr.write(`[SEND-OTP] To: ${normalizedEmail}\n`);
-    process.stderr.write(`[SEND-OTP] Total time: ${duration}ms\n`);
-    process.stderr.write(`[SEND-OTP] Success Message: ${successMessage}\n`);
-    process.stderr.write(`[SEND-OTP] ========================================\n\n`);
+    const successLog = `[SEND-OTP] ========================================\n[SEND-OTP] ✅✅✅ EMAIL SENT SUCCESSFULLY ✅✅✅\n[SEND-OTP] ========================================\n[SEND-OTP] Email ID: ${emailResult.id}\n[SEND-OTP] To: ${normalizedEmail}\n[SEND-OTP] Total time: ${duration}ms\n[SEND-OTP] Success Message: ${successMessage}\n[SEND-OTP] ========================================\n\n`;
+    
+    // Write multiple times to ensure visibility
+    process.stderr.write(successLog);
+    process.stderr.write(successLog); // Write twice
+    process.stdout.write(successLog);
+    
+    console.error('\n[SEND-OTP] ========================================');
+    console.error('[SEND-OTP] ✅✅✅ EMAIL SENT SUCCESSFULLY ✅✅✅');
+    console.error('[SEND-OTP] ========================================');
+    console.error(`[SEND-OTP] Email ID: ${emailResult.id}`);
+    console.error(`[SEND-OTP] To: ${normalizedEmail}`);
+    console.error(`[SEND-OTP] Total time: ${duration}ms`);
+    console.error(`[SEND-OTP] Success Message: ${successMessage}`);
+    console.error('[SEND-OTP] ========================================\n\n');
     
     console.log(`[SEND-OTP] ========================================`);
     console.log(`[SEND-OTP] Step 8: Sending response to client...`);
