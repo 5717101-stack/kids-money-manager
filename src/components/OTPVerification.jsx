@@ -103,7 +103,8 @@ const OTPVerification = ({ email, isExistingFamily, onVerified, onBack }) => {
     setOtp(['', '', '', '', '', '']);
 
     try {
-      const apiUrl = import.meta.env.VITE_API_URL || 'https://web-production-4e378.up.railway.app/api';
+      // TODO: Update with your Render service URL after deployment
+      const apiUrl = import.meta.env.VITE_API_URL || 'https://YOUR-SERVICE-NAME.onrender.com/api';
       const url = `${apiUrl}/auth/send-otp`;
       console.log('📤 Resending OTP request to:', url);
       
@@ -192,7 +193,8 @@ const OTPVerification = ({ email, isExistingFamily, onVerified, onBack }) => {
           className="test-logs-button"
           onClick={async () => {
             try {
-              const apiUrl = import.meta.env.VITE_API_URL || 'https://web-production-4e378.up.railway.app/api';
+              // TODO: Update with your Render service URL after deployment
+      const apiUrl = import.meta.env.VITE_API_URL || 'https://YOUR-SERVICE-NAME.onrender.com/api';
               await fetch(`${apiUrl}/test-logs`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' }
@@ -205,7 +207,7 @@ const OTPVerification = ({ email, isExistingFamily, onVerified, onBack }) => {
         >
           🔍 בדיקת לוגים
         </button>
-        <span className="version">גרסה 2.9.25</span>
+        <span className="version">גרסה 2.9.26</span>
       </footer>
     </div>
   );

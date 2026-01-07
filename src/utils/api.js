@@ -1,11 +1,14 @@
 // Get API URL - check if we're in production, development, or mobile app
 const getApiUrl = () => {
-  // Production API URL
-  const PRODUCTION_API = 'https://web-production-4e378.up.railway.app/api';
+  // Production API URL (Render)
+  // TODO: Update this with your Render service URL after deployment
+  // Format: https://YOUR-SERVICE-NAME.onrender.com/api
+  const PRODUCTION_API = import.meta.env.VITE_API_URL || 'https://YOUR-SERVICE-NAME.onrender.com/api';
   
   // If we're in a mobile app (Capacitor)
   if (typeof window !== 'undefined' && window.Capacitor?.isNativePlatform()) {
-    return PRODUCTION_API;
+    // Use VITE_API_URL if set, otherwise use PRODUCTION_API
+    return import.meta.env.VITE_API_URL || PRODUCTION_API;
   }
   
   // In production (Vercel), use the environment variable
@@ -20,7 +23,7 @@ const getApiUrl = () => {
   
   // Fallback
   console.warn('VITE_API_URL not set! Please configure it in Vercel environment variables.');
-  return 'http://localhost:3001/api';
+  return PRODUCTION_API;
 };
 
 const API_BASE_URL = getApiUrl();
@@ -55,7 +58,7 @@ async function apiCall(endpoint, options = {}) {
     if (error.message === 'Failed to fetch' || error.name === 'TypeError') {
       throw new Error(
         `לא ניתן להתחבר לשרת. בדוק:\n` +
-        `1. שהשרת רץ ב-Railway\n` +
+        `1. שהשרת רץ ב-Render\n` +
         `2. ש-VITE_API_URL מוגדר ב-Vercel: ${API_BASE_URL}\n` +
         `3. שהכתובת נכונה ומסתיימת ב-/api`
       );

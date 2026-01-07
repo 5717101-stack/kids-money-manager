@@ -9,7 +9,8 @@ const WelcomeScreen = ({ onSelectCreate, onSelectJoin }) => {
     
     try {
       // Use the same logic as api.js
-      const PRODUCTION_API = 'https://web-production-4e378.up.railway.app/api';
+      // TODO: Update with your Render service URL after deployment
+      const PRODUCTION_API = import.meta.env.VITE_API_URL || 'https://YOUR-SERVICE-NAME.onrender.com/api';
       let apiUrl;
       
       console.log('[TEST-LOGS] Checking environment...');
@@ -119,7 +120,7 @@ const WelcomeScreen = ({ onSelectCreate, onSelectJoin }) => {
         >
           🔍 בדיקת לוגים
         </button>
-        <span className="version">גרסה 2.9.25</span>
+        <span className="version">גרסה 2.9.26</span>
       </footer>
     </div>
   );

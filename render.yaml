@@ -1,16 +1,18 @@
 services:
   - type: web
-    name: kids-money-manager-api
+    name: kids-money-manager-server
     env: node
-    plan: free
-    buildCommand: npm install
-    startCommand: npm start
+    buildCommand: cd server && npm install
+    startCommand: cd server && npm start
     envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        generateValue: true
       - key: MONGODB_URI
         sync: false
-      - key: PORT
-        value: 3001
-    rootDir: server
-
-
-
+      - key: RESEND_API_KEY
+        sync: false
+      - key: RESEND_FROM_EMAIL
+        sync: false
+    healthCheckPath: /health
