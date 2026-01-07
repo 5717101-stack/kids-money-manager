@@ -67,19 +67,23 @@ console.log(`[RESEND] API Key: ${RESEND_API_KEY ? `${RESEND_API_KEY.substring(0,
 console.log(`[RESEND] From Email: ${RESEND_FROM_EMAIL}`);
 console.log(`[RESEND] Client Status: ${RESEND_API_KEY ? 'READY' : 'NOT CONFIGURED'}`);
 
-if (RESEND_API_KEY) {
-  try {
+// Initialize Resend only if API key is available (lazy initialization)
+// This prevents build-time errors when RESEND_API_KEY is not set
+try {
+  if (RESEND_API_KEY) {
     resendClient = new Resend(RESEND_API_KEY);
     console.log(`[RESEND] ✅ Client initialized successfully`);
     console.log(`[RESEND] From Email: ${RESEND_FROM_EMAIL}`);
     console.log(`[RESEND] API Base URL: https://api.resend.com`);
-  } catch (error) {
-    console.error(`[RESEND] ❌ Failed to initialize: ${error.message}`);
+  } else {
+    console.log(`[RESEND] ⚠️  Not configured - Email will not be sent`);
+    console.log(`[RESEND]   Missing: RESEND_API_KEY`);
+    console.log(`[RESEND]   Missing: RESEND_FROM_EMAIL (optional, defaults to noreply@kidsmoneymanager.app)`);
   }
-} else {
+} catch (error) {
+  // Silently handle initialization errors during build time
   console.log(`[RESEND] ⚠️  Not configured - Email will not be sent`);
-  console.log(`[RESEND]   Missing: RESEND_API_KEY`);
-  console.log(`[RESEND]   Missing: RESEND_FROM_EMAIL (optional, defaults to noreply@kidsmoneymanager.app)`);
+  console.log(`[RESEND]   Error: ${error.message}`);
 }
 console.log(`===========================\n`);
 
