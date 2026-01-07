@@ -50,28 +50,11 @@
 	<key>NSAppTransportSecurity</key>
 	<dict>
 		<key>NSAllowsArbitraryLoads</key>
-		<false/>
-		<key>NSExceptionDomains</key>
-		<dict>
-			<key>kids-money-manager-server.onrender.com</key>
-			<dict>
-				<key>NSIncludesSubdomains</key>
-				<true/>
-				<key>NSTemporaryExceptionAllowsInsecureHTTPLoads</key>
-				<false/>
-				<key>NSExceptionRequiresForwardSecrecy</key>
-				<false/>
-			</dict>
-			<key>kids-money-manager-production.up.railway.app</key>
-			<dict>
-				<key>NSIncludesSubdomains</key>
-				<true/>
-				<key>NSTemporaryExceptionAllowsInsecureHTTPLoads</key>
-				<false/>
-				<key>NSExceptionRequiresForwardSecrecy</key>
-				<false/>
-			</dict>
-		</dict>
+		<true/>
+		<key>NSAllowsArbitraryLoadsInWebContent</key>
+		<true/>
+		<key>NSAllowsLocalNetworking</key>
+		<true/>
 	</dict>
 </dict>
 </plist>

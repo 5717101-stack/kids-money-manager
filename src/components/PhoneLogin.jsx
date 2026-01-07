@@ -85,10 +85,14 @@ const PhoneLogin = ({ onOTPSent }) => {
       
       let response;
       try {
+        // Add mode: 'cors' and credentials for iOS
         response = await fetch(url, {
           method: 'POST',
+          mode: 'cors',
+          credentials: 'omit',
           headers: {
             'Content-Type': 'application/json',
+            'Accept': 'application/json',
           },
           body: JSON.stringify(requestBody),
           signal: controller.signal
@@ -100,12 +104,16 @@ const PhoneLogin = ({ onOTPSent }) => {
           name: fetchError.name,
           message: fetchError.message,
           stack: fetchError.stack,
-          url: url
+          url: url,
+          isNative: typeof window !== 'undefined' && window.Capacitor?.isNativePlatform()
         });
         
         // Handle specific iOS/WebView errors
         if (fetchError.name === 'TypeError' && (fetchError.message === 'Load failed' || fetchError.message.includes('Failed to fetch'))) {
-          throw new Error('שגיאת רשת: לא ניתן להתחבר לשרת. בדוק את חיבור האינטרנט או נסה שוב מאוחר יותר.');
+          const errorMsg = typeof window !== 'undefined' && window.Capacitor?.isNativePlatform() 
+            ? 'שגיאת רשת ב-iOS: לא ניתן להתחבר לשרת. ודא שהשרת רץ ונגיש.'
+            : 'שגיאת רשת: לא ניתן להתחבר לשרת. בדוק את חיבור האינטרנט או נסה שוב מאוחר יותר.';
+          throw new Error(errorMsg);
         }
         if (fetchError.name === 'AbortError') {
           throw new Error('הבקשה בוטלה: השרת לא הגיב בזמן. נסה שוב.');
