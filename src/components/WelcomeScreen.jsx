@@ -78,7 +78,7 @@ const WelcomeScreen = ({ onSelectCreate, onSelectJoin }) => {
         >
           🔍 בדיקת לוגים
         </button>
-        <span className="version">גרסה 2.9.18</span>
+        <span className="version">גרסה 2.9.19</span>
       </footer>
     </div>
   );
