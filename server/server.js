@@ -66,8 +66,10 @@ let serverReady = false;
 // MUST be defined BEFORE middleware to ensure fastest response
 // NO LOGGING - any delay will cause Railway to kill the container
 let healthCheckCount = 0;
+let lastHealthCheckTime = Date.now();
 app.get('/health', (req, res) => {
   healthCheckCount++;
+  lastHealthCheckTime = Date.now();
   // NO LOGGING HERE - respond immediately
   // Railway needs instant 200 OK response
   res.status(200).json({ 
@@ -90,6 +92,7 @@ app.get('/', (req, res) => {
 // NO LOGGING - respond immediately
 app.get('/api/health', (req, res) => {
   healthCheckCount++;
+  lastHealthCheckTime = Date.now();
   // NO LOGGING - respond immediately
   res.status(200).json({ 
     status: 'ok'
@@ -1327,15 +1330,24 @@ server = app.listen(PORT, '0.0.0.0', () => {
   console.log(`[SERVER] Version ${VERSION} - Started on port ${PORT}`);
   console.log(`[SERVER] Health check: http://0.0.0.0:${PORT}/health`);
   console.log(`[SERVER] Server is ready and listening`);
-  console.log(`[SERVER] ✅ Server is ready to accept requests`);
+  console.log(`[SERVER] ✅ Server is now ready to accept health checks`);
+  console.log(`[SERVER] ⚠️  Waiting for Railway health check calls...`);
+  console.log(`[SERVER] ⚠️  If no health check calls appear, service may be configured as 'Job' instead of 'Web Service'`);
   
   // Start heartbeat to keep container alive and log activity
+  // Railway sometimes needs activity to know the service is alive
   let heartbeatCount = 0;
   setInterval(() => {
     if (serverReady) {
       heartbeatCount++;
       const uptime = process.uptime();
-      console.log(`[HEARTBEAT] Server is alive - uptime: ${Math.floor(uptime)}s, heartbeat: ${heartbeatCount}, health checks: ${healthCheckCount}`);
+      const timeSinceLastHealthCheck = Date.now() - lastHealthCheckTime;
+      console.log(`[HEARTBEAT] Server is alive - uptime: ${Math.floor(uptime)}s, heartbeat: ${heartbeatCount}, health checks received: ${healthCheckCount}, last check: ${Math.floor(timeSinceLastHealthCheck / 1000)}s ago`);
+      
+      // If no health checks for 5 minutes, log warning
+      if (timeSinceLastHealthCheck > 300000 && healthCheckCount > 0) {
+        console.log(`[HEARTBEAT] ⚠️  WARNING: No health checks for ${Math.floor(timeSinceLastHealthCheck / 1000)}s - Railway may be configured as Job`);
+      }
     }
   }, 30000); // Every 30 seconds
 });
@@ -1346,7 +1358,8 @@ server.on('error', (error) => {
 
 server.on('listening', () => {
   console.log(`[SERVER] Version ${VERSION} - Listening on http://0.0.0.0:${PORT}`);
-  console.log(`[SERVER] Health check endpoint available at /health`);
+  console.log(`[SERVER] Health check endpoint is ready at /health`);
+  console.log(`[SERVER] ✅ Health check is now available`);
 });
 
 // Handle shutdown gracefully
@@ -1357,14 +1370,38 @@ let sigtermCount = 0;
 process.on('SIGTERM', () => {
   sigtermCount++;
   const uptime = process.uptime();
+  const timeSinceLastHealthCheck = Date.now() - lastHealthCheckTime;
   
   console.log(`\n[SERVER] ⚠️  ========================================`);
   console.log(`[SERVER] ⚠️  SIGTERM received (call #${sigtermCount})`);
   console.log(`[SERVER] ⚠️  Server has been running for ${Math.floor(uptime)} seconds`);
-  console.log(`[SERVER] ⚠️  Health checks received: ${healthCheckCount}`);
+  console.log(`[SERVER] ⚠️  Server ready status: ${serverReady ? 'YES' : 'NO'}`);
+  console.log(`[SERVER] ⚠️  Port (process.env.PORT): ${process.env.PORT || 'NOT SET'}`);
+  console.log(`[SERVER] ⚠️  Port (actual): ${PORT}`);
+  console.log(`[SERVER] ⚠️  Server listening: ${server && server.listening ? 'YES' : 'NO'}`);
+  console.log(`[SERVER] ⚠️  Health check URL: http://0.0.0.0:${PORT}/health`);
+  console.log(`[SERVER] ⚠️  Total health check calls received: ${healthCheckCount}`);
+  console.log(`[SERVER] ⚠️  Last health check: ${Math.floor(timeSinceLastHealthCheck / 1000)}s ago`);
+  
+  if (healthCheckCount === 0) {
+    console.log(`[SERVER] ❌ CRITICAL: No health check calls were received!`);
+    console.log(`[SERVER] ❌ This means Railway is NOT calling /health endpoint`);
+    console.log(`[SERVER] ❌ Service is DEFINITELY configured as 'Job' instead of 'Web Service'`);
+    console.log(`[SERVER] ❌ SOLUTION: Railway Dashboard → Settings → Service Type → Change to 'Web Service'`);
+  } else if (timeSinceLastHealthCheck > 300000) {
+    console.log(`[SERVER] ❌ CRITICAL: No health checks for ${Math.floor(timeSinceLastHealthCheck / 1000)}s!`);
+    console.log(`[SERVER] ❌ Railway stopped calling /health after ${healthCheckCount} calls`);
+    console.log(`[SERVER] ❌ Service is likely configured as 'Job' - it runs once and stops`);
+    console.log(`[SERVER] ❌ SOLUTION: Railway Dashboard → Settings → Service Type → Change to 'Web Service'`);
+  } else {
+    console.log(`[SERVER] ⚠️  Health checks were received (${healthCheckCount} total) but Railway still sent SIGTERM`);
+    console.log(`[SERVER] ⚠️  This may indicate health check response format issue`);
+  }
+  
   console.log(`[SERVER] ⚠️  ========================================`);
   console.log(`[SERVER] ⚠️  IGNORING SIGTERM - Server will continue running`);
   console.log(`[SERVER] ⚠️  Server is still active and accepting requests`);
+  console.log(`[SERVER] ⚠️  Note: Railway may force kill the container, but we'll try to keep running`);
   console.log(`[SERVER] ⚠️  ========================================\n`);
   
   // DO NOT shut down - continue running

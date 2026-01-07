@@ -151,7 +151,7 @@ const PhoneLogin = ({ onOTPSent, countryCode: initialCountryCode }) => {
         >
           🔍 בדיקת לוגים
         </button>
-        <span className="version">גרסה 2.9.17</span>
+        <span className="version">גרסה 2.9.18</span>
       </footer>
     </div>
   );

@@ -137,6 +137,15 @@ body {
   color: var(--text-primary);
 }
 
+.dashboard-header h1 .kids-red {
+  color: #ef4444 !important;
+  font-weight: 700;
+}
+
+.dashboard-header h1 span.kids-red {
+  color: #ef4444 !important;
+}
+
 .header-buttons {
   display: flex;
   gap: 12px;
