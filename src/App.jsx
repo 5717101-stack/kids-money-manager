@@ -1,19 +1,31 @@
 import React, { useState, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import WelcomeScreen from './components/WelcomeScreen';
 import PhoneLogin from './components/PhoneLogin';
 import OTPVerification from './components/OTPVerification';
 import ParentDashboard from './components/ParentDashboard';
 import ChildView from './components/ChildView';
 import ChildPasswordLogin from './components/ChildPasswordLogin';
+import JoinParentScreen from './components/JoinParentScreen';
+import JoinChildScreen from './components/JoinChildScreen';
+import LanguageToggle from './components/LanguageToggle';
 
 const App = () => {
-  const [screen, setScreen] = useState('welcome'); // 'welcome', 'phone', 'otp', 'child-password', 'dashboard', 'child-view'
+  const { i18n } = useTranslation();
+  const [screen, setScreen] = useState('welcome'); // 'welcome', 'phone', 'otp', 'child-password', 'parent-invite', 'child-invite', 'dashboard', 'child-view'
   const [familyId, setFamilyId] = useState(null);
   const [phoneNumber, setPhoneNumber] = useState('');
   const [view, setView] = useState('parent'); // 'parent', 'child1', 'child2', etc.
   const [children, setChildren] = useState([]);
   const [currentChild, setCurrentChild] = useState(null); // For child-only view
   const [isChildView, setIsChildView] = useState(false); // Track if we're in child-only mode
+
+  // Update document direction based on language
+  useEffect(() => {
+    const dir = i18n.language === 'he' ? 'rtl' : 'ltr';
+    document.documentElement.dir = dir;
+    document.documentElement.lang = i18n.language;
+  }, [i18n.language]);
 
   useEffect(() => {
     // Check if already logged in
@@ -59,8 +71,12 @@ const App = () => {
     setScreen('phone');
   };
 
-  const handleWelcomeJoin = () => {
-    setScreen('phone');
+  const handleWelcomeJoinAsParent = () => {
+    setScreen('parent-invite');
+  };
+
+  const handleWelcomeJoinAsChild = () => {
+    setScreen('child-invite');
   };
 
   const handleOTPSent = (phoneNum, isExistingFamily) => {
@@ -132,10 +148,14 @@ const App = () => {
 
   return (
     <div className="app">
+      <div style={{ position: 'fixed', top: '16px', right: '16px', zIndex: 1000 }}>
+        <LanguageToggle />
+      </div>
       {screen === 'welcome' && (
         <WelcomeScreen 
           onSelectCreate={handleWelcomeCreate}
-          onSelectJoin={handleWelcomeJoin}
+          onSelectJoinAsParent={handleWelcomeJoinAsParent}
+          onSelectJoinAsChild={handleWelcomeJoinAsChild}
         />
       )}
 
@@ -159,6 +179,29 @@ const App = () => {
           familyId={familyId}
           onChildVerified={handleChildPasswordVerified}
           onBack={handleBack}
+        />
+      )}
+
+      {screen === 'parent-invite' && (
+        <JoinParentScreen
+          onVerified={(fId) => {
+            setFamilyId(fId);
+            setScreen('dashboard');
+            loadChildren(fId);
+          }}
+          onBack={() => setScreen('welcome')}
+        />
+      )}
+
+      {screen === 'child-invite' && (
+        <JoinChildScreen
+          onVerified={(fId, childId, child) => {
+            setFamilyId(fId);
+            setCurrentChild(child);
+            setIsChildView(true);
+            setScreen('child-view');
+          }}
+          onBack={() => setScreen('welcome')}
         />
       )}
 
@@ -187,7 +230,7 @@ const App = () => {
           </main>
           
           <footer className="app-footer">
-            <span className="version">גרסה 2.9.39</span>
+            <span className="version">גרסה 2.9.40</span>
           </footer>
         </>
       )}
@@ -253,7 +296,7 @@ const App = () => {
             >
               🔍 בדיקת לוגים
             </button>
-            <span className="version">גרסה 2.9.39</span>
+            <span className="version">גרסה 2.9.40</span>
           </footer>
         </>
       )}

@@ -4,6 +4,25 @@
   box-sizing: border-box;
 }
 
+/* RTL/LTR Support */
+[dir="rtl"] {
+  direction: rtl;
+  text-align: right;
+}
+
+[dir="ltr"] {
+  direction: ltr;
+  text-align: left;
+}
+
+html[dir="rtl"] body {
+  direction: rtl;
+}
+
+html[dir="ltr"] body {
+  direction: ltr;
+}
+
 :root {
   /* Clean Color Palette */
   --primary: #4f46e5;
