@@ -1330,24 +1330,15 @@ server = app.listen(PORT, '0.0.0.0', () => {
   console.log(`[SERVER] Version ${VERSION} - Started on port ${PORT}`);
   console.log(`[SERVER] Health check: http://0.0.0.0:${PORT}/health`);
   console.log(`[SERVER] Server is ready and listening`);
-  console.log(`[SERVER] ✅ Server is now ready to accept health checks`);
-  console.log(`[SERVER] ⚠️  Waiting for Railway health check calls...`);
-  console.log(`[SERVER] ⚠️  If no health check calls appear, service may be configured as 'Job' instead of 'Web Service'`);
+  console.log(`[SERVER] ✅ Server is ready to accept requests`);
   
   // Start heartbeat to keep container alive and log activity
-  // Railway sometimes needs activity to know the service is alive
   let heartbeatCount = 0;
   setInterval(() => {
     if (serverReady) {
       heartbeatCount++;
       const uptime = process.uptime();
-      const timeSinceLastHealthCheck = Date.now() - lastHealthCheckTime;
-      console.log(`[HEARTBEAT] Server is alive - uptime: ${Math.floor(uptime)}s, heartbeat: ${heartbeatCount}, health checks received: ${healthCheckCount}, last check: ${Math.floor(timeSinceLastHealthCheck / 1000)}s ago`);
-      
-      // If no health checks for 5 minutes, log warning
-      if (timeSinceLastHealthCheck > 300000 && healthCheckCount > 0) {
-        console.log(`[HEARTBEAT] ⚠️  WARNING: No health checks for ${Math.floor(timeSinceLastHealthCheck / 1000)}s - Railway may be configured as Job`);
-      }
+      console.log(`[HEARTBEAT] Server is alive - uptime: ${Math.floor(uptime)}s, heartbeat: ${heartbeatCount}, health checks: ${healthCheckCount}`);
     }
   }, 30000); // Every 30 seconds
 });
@@ -1358,8 +1349,7 @@ server.on('error', (error) => {
 
 server.on('listening', () => {
   console.log(`[SERVER] Version ${VERSION} - Listening on http://0.0.0.0:${PORT}`);
-  console.log(`[SERVER] Health check endpoint is ready at /health`);
-  console.log(`[SERVER] ✅ Health check is now available`);
+  console.log(`[SERVER] Health check endpoint available at /health`);
 });
 
 // Handle shutdown gracefully
