@@ -14,24 +14,94 @@ const JoinChildScreen = ({ onVerified, onBack }) => {
 
     try {
       const apiUrl = import.meta.env.VITE_API_URL || 'https://kids-money-manager-server.onrender.com/api';
-      const response = await fetch(`${apiUrl}/families/join-child`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ childCode })
-      });
+      const code = childCode.trim();
+      
+      if (!code) {
+        setError('אנא הכנס קוד גישה');
+        setLoading(false);
+        return;
+      }
 
-      if (response.ok) {
-        const data = await response.json();
+      console.log('[JOIN-CHILD] Attempting to join with code:', code.substring(0, 2) + '***');
+      
+      // The joinCode is 6 characters and identifies both family and child
+      // We need an endpoint that can search by this code
+      // For now, let's try a search endpoint or use admin endpoint to find the child
+      
+      // Try endpoint: /children/search-by-code or /families/search-child
+      let response;
+      let data;
+      
+      try {
+        // Try search endpoint
+        response = await fetch(`${apiUrl}/children/search-by-code`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ joinCode: code.toUpperCase() })
+        });
+        
+        if (response.ok) {
+          const responseText = await response.text();
+          if (responseText.trim().startsWith('<!DOCTYPE') || responseText.trim().startsWith('<html')) {
+            throw new Error('השרת החזיר שגיאה');
+          }
+          data = JSON.parse(responseText);
+        } else {
+          throw new Error('Endpoint not found');
+        }
+      } catch (firstError) {
+        console.log('[JOIN-CHILD] First endpoint failed, trying alternative...');
+        
+        // Alternative: Try /families/search-child-by-code
+        try {
+          response = await fetch(`${apiUrl}/families/search-child-by-code`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ code: code.toUpperCase() })
+          });
+          
+          if (response.ok) {
+            const responseText = await response.text();
+            if (responseText.trim().startsWith('<!DOCTYPE') || responseText.trim().startsWith('<html')) {
+              throw new Error('השרת החזיר שגיאה');
+            }
+            data = JSON.parse(responseText);
+          } else {
+            throw new Error('Endpoint not found');
+          }
+        } catch (secondError) {
+          console.error('[JOIN-CHILD] Both endpoints failed');
+          // Show helpful message - this feature requires backend support
+          setError('תכונה זו דורשת תמיכה בשרת. אנא פנה להורה לקבלת קוד גישה או השתמש בסיסמת הילד דרך "הצטרפות לחשבון משפחתי קיים".');
+          setLoading(false);
+          return;
+        }
+      }
+
+      if (data && data.familyId && data.childId) {
+        console.log('[JOIN-CHILD] ✅ Successfully found child:', data.childId);
         sessionStorage.setItem('familyId', data.familyId);
         sessionStorage.setItem('childId', data.childId);
         sessionStorage.setItem('isChildView', 'true');
-        onVerified(data.familyId, data.childId, data.child);
+        onVerified(data.familyId, data.childId, data.child || { _id: data.childId });
       } else {
-        const errorData = await response.json();
-        setError(errorData.error || t('auth.invalidCode'));
+        setError(data?.error || 'קוד גישה לא נמצא');
       }
     } catch (err) {
-      setError(err.message || t('auth.invalidCode'));
+      console.error('[JOIN-CHILD] Error:', err);
+      
+      // Better error handling
+      let errorMessage = err.message || t('auth.invalidCode');
+      
+      if (err.message.includes('404') || err.message.includes('Not Found')) {
+        errorMessage = 'קוד גישה לא נמצא. אנא ודא שהקוד נכון או פנה להורה.';
+      } else if (err.message.includes('JSON') || err.message.includes('DOCTYPE')) {
+        errorMessage = 'שגיאת שרת. אנא נסה שוב מאוחר יותר.';
+      } else if (err.message.includes('השרת החזיר שגיאה')) {
+        errorMessage = 'השרת החזיר שגיאה. אנא נסה שוב מאוחר יותר.';
+      }
+      
+      setError(errorMessage);
     } finally {
       setLoading(false);
     }
