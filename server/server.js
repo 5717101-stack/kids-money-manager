@@ -1255,6 +1255,7 @@ server.on('error', (error) => {
 server.on('listening', () => {
   console.log(`[SERVER] Version ${VERSION} - Listening on http://0.0.0.0:${PORT}`);
   console.log(`[SERVER] Health check endpoint is ready at /health`);
+  console.log(`[SERVER] ✅ Health check is now available`);
 });
 
 // Handle shutdown gracefully
