@@ -141,21 +141,41 @@ app.use(cors({
 
 app.use(express.json({ limit: '10mb' }));
 
-// Logging middleware - only log important requests
+// Logging middleware - LOG EVERYTHING for send-otp
 app.use((req, res, next) => {
-  // Only log API requests, not health checks
-  if (req.path.startsWith('/api/') && req.path !== '/api/health') {
-    const timestamp = new Date().toISOString();
-    console.log(`[${timestamp}] ${req.method} ${req.path}`);
-    console.error(`[${timestamp}] ${req.method} ${req.path}`);
+  const timestamp = new Date().toISOString();
+  const clientIP = req.ip || req.connection.remoteAddress || req.headers['x-forwarded-for'] || 'unknown';
+  
+  // Special logging for send-otp endpoint - LOG IMMEDIATELY
+  if (req.path === '/api/auth/send-otp') {
+    process.stderr.write('\n\n========================================\n');
+    process.stderr.write('🔔🔔🔔 INCOMING REQUEST DETECTED 🔔🔔🔔\n');
+    process.stderr.write('========================================\n');
+    process.stderr.write(`[MIDDLEWARE] Timestamp: ${timestamp}\n`);
+    process.stderr.write(`[MIDDLEWARE] Method: ${req.method}\n`);
+    process.stderr.write(`[MIDDLEWARE] Path: ${req.path}\n`);
+    process.stderr.write(`[MIDDLEWARE] Client IP: ${clientIP}\n`);
+    process.stderr.write(`[MIDDLEWARE] Headers: ${JSON.stringify(req.headers)}\n`);
+    process.stderr.write(`[MIDDLEWARE] Body: ${JSON.stringify(req.body)}\n`);
+    process.stderr.write('========================================\n\n');
     
-    // Special logging for test-logs endpoint
-    if (req.path === '/api/test-logs') {
-      console.log(`[MIDDLEWARE] 🎯 TEST-LOGS REQUEST DETECTED! 🎯`);
-      console.error(`[MIDDLEWARE] 🎯 TEST-LOGS REQUEST DETECTED! 🎯`);
-      process.stdout.write(`\n[MIDDLEWARE] TEST-LOGS REQUEST!\n`);
-    }
+    console.log(`\n[MIDDLEWARE] ========================================`);
+    console.log(`[MIDDLEWARE] 🔔 INCOMING REQUEST DETECTED 🔔`);
+    console.log(`[MIDDLEWARE] ========================================`);
+    console.log(`[MIDDLEWARE] Timestamp: ${timestamp}`);
+    console.log(`[MIDDLEWARE] Method: ${req.method}`);
+    console.log(`[MIDDLEWARE] Path: ${req.path}`);
+    console.log(`[MIDDLEWARE] Client IP: ${clientIP}`);
+    console.log(`[MIDDLEWARE] Headers:`, req.headers);
+    console.log(`[MIDDLEWARE] Body:`, req.body);
+    console.log(`[MIDDLEWARE] ========================================\n`);
   }
+  
+  // Log other API requests (not health checks)
+  if (req.path.startsWith('/api/') && req.path !== '/api/health' && req.path !== '/api/auth/send-otp') {
+    console.log(`[${timestamp}] ${req.method} ${req.path}`);
+  }
+  
   next();
 });
 
