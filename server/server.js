@@ -104,8 +104,14 @@ app.get('/health', (req, res) => {
   lastHealthCheckTime = Date.now();
   // NO LOGGING HERE - respond immediately
   // Railway needs instant 200 OK response
+  // But log to stderr occasionally (every 10th check) to show it's working
+  if (healthCheckCount % 10 === 0) {
+    process.stderr.write(`[HEALTH] Health check #${healthCheckCount} - Server is alive\n`);
+  }
   res.status(200).json({ 
-    status: 'ok'
+    status: 'ok',
+    timestamp: new Date().toISOString(),
+    healthCheckCount: healthCheckCount
   });
 });
 
@@ -910,6 +916,7 @@ app.post('/api/test-logs', (req, res) => {
 
 app.post('/api/auth/send-otp', async (req, res) => {
   // CRITICAL: Log IMMEDIATELY at the very start, before anything else
+  // Also send response immediately to prevent container from stopping
   const requestStart = Date.now();
   const timestamp = new Date().toISOString();
   
@@ -920,6 +927,9 @@ app.post('/api/auth/send-otp', async (req, res) => {
   process.stderr.write(immediateLog);
   process.stdout.write(immediateLog);
   process.stdout.write(immediateLog);
+  
+  // CRITICAL: Set response timeout to prevent container from stopping
+  res.setTimeout(60000); // 60 seconds timeout
   
   // Write to stderr first (most visible in Railway) - IMMEDIATE
   const logMessage = `========================================\n📧📧📧 SEND OTP REQUEST RECEIVED 📧📧📧\n========================================\n[SEND-OTP] Timestamp: ${timestamp}\n[SEND-OTP] Method: ${req.method}\n[SEND-OTP] Path: ${req.path}\n[SEND-OTP] Email: ${req.body?.email || 'NOT PROVIDED'}\n[SEND-OTP] Full Body: ${JSON.stringify(req.body || {})}\n========================================\n\n`;
