@@ -97,14 +97,12 @@ const App = () => {
       {screen === 'phone' && (
         <PhoneLogin 
           onOTPSent={handleOTPSent}
-          countryCode={countryCode}
         />
       )}
 
       {screen === 'otp' && (
         <OTPVerification 
-          phoneNumber={phoneNumber}
-          countryCode={countryCode}
+          email={email}
           isExistingFamily={false}
           onVerified={handleOTPVerified}
           onBack={handleBack}
