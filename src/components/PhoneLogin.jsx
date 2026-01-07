@@ -317,7 +317,7 @@ const PhoneLogin = ({ onOTPSent }) => {
         >
           🔍 בדיקת לוגים
         </button>
-        <span className="version">גרסה 3.0.0</span>
+        <span className="version">גרסה 3.0.1</span>
       </footer>
     </div>
   );
