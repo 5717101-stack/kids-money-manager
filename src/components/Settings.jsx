@@ -13,7 +13,7 @@ const CHILD_NAMES = {
   child2: 'ג\'וּן'
 };
 
-const Settings = ({ familyId, onClose, onLogout, activeTab: externalActiveTab, hideTabs = false, inSidebar = false }) => {
+const Settings = ({ familyId, onClose, onLogout, activeTab: externalActiveTab, hideTabs = false, inSidebar = false, asPage = false }) => {
   const { t, i18n } = useTranslation();
   const [internalActiveTab, setInternalActiveTab] = useState('categories'); // 'categories', 'profileImages', 'allowances', 'children', 'parents'
   const activeTab = externalActiveTab !== undefined ? externalActiveTab : internalActiveTab;
