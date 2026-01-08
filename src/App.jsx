@@ -216,7 +216,7 @@ const App = () => {
       {screen === 'otp' && (
         <OTPVerification 
           phoneNumber={phoneNumber}
-          isExistingFamily={false}
+          isExistingFamily={!isCreatingFamily}
           onVerified={handleOTPVerified}
           onBack={handleBack}
         />
