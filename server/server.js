@@ -1563,6 +1563,55 @@ app.get('/api/families/:familyId/children/:childId', async (req, res) => {
   }
 });
 
+// Update child (name and phone number)
+app.put('/api/families/:familyId/children/:childId', async (req, res) => {
+  try {
+    const { familyId, childId } = req.params;
+    const { name, phoneNumber } = req.body;
+    
+    if (!name || !phoneNumber) {
+      return res.status(400).json({ error: 'שם ומספר טלפון נדרשים' });
+    }
+    
+    const family = await getFamilyById(familyId);
+    if (!family) {
+      return res.status(404).json({ error: 'משפחה לא נמצאה' });
+    }
+    
+    const childIndex = family.children?.findIndex(c => c._id === childId);
+    if (childIndex === -1) {
+      return res.status(404).json({ error: 'ילד לא נמצא' });
+    }
+    
+    const normalizedPhone = phoneNumber.trim();
+    const currentChild = family.children[childIndex];
+    
+    // Check if phone number is already in use by another child
+    if (currentChild.phoneNumber !== normalizedPhone) {
+      const existingChild = family.children.find(c => c._id !== childId && c.phoneNumber === normalizedPhone);
+      if (existingChild) {
+        return res.status(400).json({ error: 'מספר טלפון זה כבר בשימוש על ידי ילד אחר' });
+      }
+    }
+    
+    // Update child in database
+    await db.collection('families').updateOne(
+      { _id: familyId, 'children._id': childId },
+      { 
+        $set: { 
+          'children.$.name': name.trim(),
+          'children.$.phoneNumber': normalizedPhone
+        }
+      }
+    );
+    
+    res.json({ success: true, message: 'ילד עודכן בהצלחה' });
+  } catch (error) {
+    console.error('Error updating child:', error);
+    res.status(500).json({ error: 'שגיאה בעדכון ילד' });
+  }
+});
+
 // Get transactions for a child
 app.get('/api/families/:familyId/children/:childId/transactions', async (req, res) => {
   try {

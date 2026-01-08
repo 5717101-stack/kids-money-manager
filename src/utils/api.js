@@ -137,6 +137,18 @@ export const getChild = async (familyId, childId) => {
   };
 };
 
+// Update child (name and phone number)
+export const updateChild = async (familyId, childId, name, phoneNumber) => {
+  if (!familyId || !childId || !name || !phoneNumber) {
+    throw new Error('Family ID, Child ID, name, and phone number are required');
+  }
+  const response = await apiCall(`/families/${familyId}/children/${childId}`, {
+    method: 'PUT',
+    body: JSON.stringify({ name: name.trim(), phoneNumber: phoneNumber.trim() })
+  });
+  return response;
+};
+
 // Add transaction (deposit or expense)
 export const addTransaction = async (familyId, childId, type, amount, description, category = null) => {
   if (!familyId || !childId) {

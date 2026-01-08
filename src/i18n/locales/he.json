@@ -62,12 +62,16 @@
       "childPhone": "מספר טלפון לילד",
       "viewPhone": "צפה בטלפון",
       "noPhoneNumber": "לילד זה אין מספר טלפון מוגדר",
-      "phoneModal": {
-        "title": "מספר טלפון ל{name}",
-        "phoneNumber": "מספר טלפון",
-        "copyPhone": "העתק מספר טלפון",
-        "note": "הילד יכול להשתמש במספר הטלפון הזה כדי להתחבר לדף שלו."
-      },
+    "phoneModal": {
+      "title": "מספר טלפון ל{name}",
+      "phoneNumber": "מספר טלפון",
+      "copyPhone": "העתק מספר טלפון",
+      "note": "הילד יכול להשתמש במספר הטלפון הזה כדי להתחבר לדף שלו."
+    },
+    "editChildModal": {
+      "title": "ערוך ילד"
+    },
+    "updateChildError": "שגיאה בעדכון ילד",
       "invalidResponse": "תגובה לא תקינה מהשרת",
       "createChildError": "שגיאה ביצירת ילד",
       "passwordError": "שגיאה בקבלת סיסמה",

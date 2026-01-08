@@ -29,6 +29,10 @@ const Settings = ({ familyId, onClose }) => {
   const [newChildPhone, setNewChildPhone] = useState('');
   const [creatingChild, setCreatingChild] = useState(false);
   const [childPhoneModal, setChildPhoneModal] = useState(null); // { childId, childName, phoneNumber }
+  const [editingChild, setEditingChild] = useState(null); // { childId, childName, phoneNumber }
+  const [editChildName, setEditChildName] = useState('');
+  const [editChildPhone, setEditChildPhone] = useState('');
+  const [updatingChild, setUpdatingChild] = useState(false);
 
   useEffect(() => {
     loadData();
@@ -727,8 +731,9 @@ const Settings = ({ familyId, onClose }) => {
                     <button
                       className="edit-child-button"
                       onClick={() => {
-                        // TODO: Implement edit child functionality
-                        alert(t('parent.settings.editChild', { defaultValue: 'עריכת ילד - תכונה בקרוב' }));
+                        setEditingChild({ childId, childName: child.name, phoneNumber: child.phoneNumber || '' });
+                        setEditChildName(child.name);
+                        setEditChildPhone(child.phoneNumber || '');
                       }}
                     >
                       {t('common.edit', { defaultValue: 'ערוך' })}
