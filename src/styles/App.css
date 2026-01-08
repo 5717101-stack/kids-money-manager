@@ -24,39 +24,39 @@ html[dir="ltr"] body {
 }
 
 :root {
-  /* Clean Color Palette */
-  --primary: #4f46e5;
-  --primary-hover: #4338ca;
-  --primary-light: #e0e7ff;
-  --secondary: #7c3aed;
-  --success: #10b981;
-  --success-light: #d1fae5;
-  --danger: #ef4444;
-  --danger-light: #fee2e2;
-  --warning: #f59e0b;
-  --info: #06b6d4;
+  /* FinTech Color Palette - Revolut/Apple Card inspired */
+  --primary: #6366F1;
+  --primary-hover: #4F46E5;
+  --primary-light: #EEF2FF;
+  --secondary: #8B5CF6;
+  --success: #10B981;
+  --success-light: #D1FAE5;
+  --danger: #EF4444;
+  --danger-light: #FEE2E2;
+  --warning: #F59E0B;
+  --info: #06B6D4;
   
-  /* Neutral Colors */
-  --bg: #f8fafc;
-  --bg-card: #ffffff;
-  --bg-hover: #f1f5f9;
-  --border: #e2e8f0;
-  --border-hover: #cbd5e1;
+  /* Neutral Colors - FinTech aesthetic */
+  --bg: #F9FAFB;
+  --bg-card: #FFFFFF;
+  --bg-hover: #F3F4F6;
+  --border: #E5E7EB;
+  --border-hover: #D1D5DB;
   
   /* Text Colors */
-  --text-primary: #0f172a;
-  --text-secondary: #64748b;
-  --text-tertiary: #94a3b8;
-  --text-light: #ffffff;
+  --text-primary: #111827;
+  --text-secondary: #6B7280;
+  --text-tertiary: #9CA3AF;
+  --text-light: #FFFFFF;
   
-  /* Shadows */
+  /* Shadows - Soft, modern FinTech shadows */
   --shadow-xs: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
-  --shadow-sm: 0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px 0 rgba(0, 0, 0, 0.06);
-  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
-  --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
-  --shadow-xl: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+  --shadow-sm: 0 1px 3px 0 rgba(0, 0, 0, 0.08), 0 1px 2px 0 rgba(0, 0, 0, 0.04);
+  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.08), 0 2px 4px -1px rgba(0, 0, 0, 0.04);
+  --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.08), 0 4px 6px -2px rgba(0, 0, 0, 0.04);
+  --shadow-xl: 0 20px 25px -5px rgba(0, 0, 0, 0.08), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
   
-  /* Border Radius */
+  /* Border Radius - Modern FinTech rounded corners */
   --radius-sm: 8px;
   --radius-md: 12px;
   --radius-lg: 16px;
@@ -80,7 +80,7 @@ html[dir="ltr"] body {
 }
 
 body {
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
     'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
     'Arial', 'Noto Sans Hebrew', sans-serif;
   -webkit-font-smoothing: antialiased;
@@ -97,6 +97,17 @@ body {
   color: var(--text-primary);
   line-height: 1.6;
   font-size: var(--mobile-font-size-base);
+  font-weight: 400;
+}
+
+/* Typography hierarchy */
+h1, h2, h3, h4, h5, h6 {
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+strong, b {
+  font-weight: 700;
 }
 
 .app {
@@ -111,7 +122,7 @@ body {
   margin-bottom: 24px;
   background: var(--bg-card);
   padding: 16px;
-  border-radius: var(--radius-lg);
+  border-radius: 16px;
   box-shadow: var(--shadow-sm);
   flex-wrap: wrap;
   justify-content: center;
@@ -120,11 +131,12 @@ body {
 
 .main-nav button {
   padding: 12px 24px;
+  min-height: 44px;
   font-size: 15px;
   font-weight: 600;
   border: none;
   background: var(--bg);
-  border-radius: var(--radius-md);
+  border-radius: 12px;
   cursor: pointer;
   transition: all 0.2s ease;
   color: var(--text-primary);
@@ -157,7 +169,7 @@ body {
 /* Parent Dashboard */
 .parent-dashboard {
   background: var(--bg-card);
-  border-radius: var(--radius-lg);
+  border-radius: 16px;
   padding: 32px;
   box-shadow: var(--shadow-sm);
   border: 1px solid var(--border);
@@ -203,11 +215,12 @@ body {
 
 .settings-button,
 .reset-button {
-  padding: 10px 20px;
-  font-size: 14px;
+  padding: 14px 24px;
+  min-height: 48px;
+  font-size: 16px;
   font-weight: 600;
   border: none;
-  border-radius: var(--radius-md);
+  border-radius: 12px;
   cursor: pointer;
   transition: all 0.2s ease;
   display: flex;
@@ -253,7 +266,7 @@ body {
 
 .balance-card {
   background: var(--bg-card);
-  border-radius: var(--radius-lg);
+  border-radius: 16px;
   padding: 24px;
   text-align: center;
   box-shadow: var(--shadow-sm);
@@ -319,10 +332,11 @@ body {
   flex: 1;
   min-width: 180px;
   padding: 16px 24px;
+  min-height: 52px;
   font-size: 16px;
   font-weight: 600;
   border: 1px solid var(--border);
-  border-radius: var(--radius-md);
+  border-radius: 12px;
   cursor: pointer;
   transition: all 0.2s ease;
   background: var(--bg-card);
@@ -345,7 +359,7 @@ body {
 /* Balance Display */
 .balance-display {
   background: linear-gradient(135deg, var(--bg-card) 0%, var(--bg) 100%);
-  border-radius: var(--radius-xl);
+  border-radius: 20px;
   padding: 40px;
   margin-bottom: 32px;
   box-shadow: var(--shadow-lg);
@@ -378,7 +392,7 @@ body {
 /* Total Balance Section */
 .total-balance-section {
   background: linear-gradient(135deg, var(--primary-light) 0%, var(--bg-card) 100%);
-  border-radius: var(--radius-lg);
+  border-radius: 16px;
   padding: 32px 24px;
   margin-bottom: 28px;
   text-align: center;
@@ -430,7 +444,7 @@ body {
 
 .balance-split-item {
   background: var(--bg-card);
-  border-radius: var(--radius-lg);
+  border-radius: 16px;
   padding: 24px;
   border: 2px solid var(--border);
   box-shadow: var(--shadow-sm);
@@ -601,7 +615,7 @@ body {
   margin-top: 20px;
   padding: 8px;
   background: var(--bg);
-  border-radius: var(--radius-lg);
+  border-radius: 16px;
   border: 2px solid var(--border);
   transition: all 0.2s ease;
 }
@@ -642,7 +656,7 @@ body {
 /* Transaction Form */
 .transaction-form-container {
   background: var(--bg-card);
-  border-radius: var(--radius-lg);
+  border-radius: 16px;
   padding: 32px;
   margin-bottom: 32px;
   box-shadow: var(--shadow-sm);
@@ -716,16 +730,16 @@ body {
 .form-group input[type="number"],
 .form-group input[type="tel"],
 .form-group select {
-  padding: 14px 16px;
-  border: 2px solid var(--border);
-  border-radius: var(--radius-md);
+  padding: 14px 18px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
   font-size: var(--mobile-font-size-base);
   transition: all 0.2s ease;
   background: var(--bg-card);
-  min-height: var(--mobile-input-height);
+  min-height: 52px;
   -webkit-appearance: none; /* Remove iOS default styling */
   appearance: none;
-  font-weight: 600;
+  font-weight: 400;
 }
 
 .form-group input[type="number"] {
@@ -739,8 +753,7 @@ body {
 .form-group select:focus {
   outline: none;
   border-color: var(--primary);
-  box-shadow: 0 0 0 4px var(--primary-light);
-  transform: scale(1.02);
+  box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.1);
 }
 
 .form-group input[type="number"]:focus {
@@ -755,7 +768,7 @@ body {
   direction: rtl;
   padding: 8px;
   background: var(--bg);
-  border-radius: var(--radius-lg);
+  border-radius: 16px;
   border: 2px solid var(--border);
   transition: all 0.2s ease;
 }
@@ -772,12 +785,13 @@ body {
 
 .submit-button {
   padding: 14px 28px;
+  min-height: 48px;
   font-size: 16px;
   font-weight: 600;
   border: none;
-  border-radius: var(--radius-md);
+  border-radius: 12px;
   cursor: pointer;
-  background: var(--success);
+  background: var(--primary);
   color: var(--text-light);
   box-shadow: var(--shadow-sm);
   transition: all 0.2s ease;
@@ -785,7 +799,7 @@ body {
 }
 
 .submit-button:hover:not(:disabled) {
-  background: #059669;
+  background: var(--primary-hover);
   transform: translateY(-1px);
   box-shadow: var(--shadow-md);
 }
@@ -798,7 +812,7 @@ body {
 /* Transaction List */
 .transaction-list {
   background: var(--bg-card);
-  border-radius: var(--radius-lg);
+  border-radius: 16px;
   padding: 32px;
   box-shadow: var(--shadow-sm);
   border: 1px solid var(--border);
@@ -886,7 +900,7 @@ body {
 /* ========== CHILD VIEW (OLD - KEEP FOR COMPATIBILITY) ========== */
 .child-view-old {
   background: var(--bg-card);
-  border-radius: var(--radius-lg);
+  border-radius: 16px;
   padding: 32px;
   box-shadow: var(--shadow-sm);
   border: 1px solid var(--border);
@@ -939,7 +953,7 @@ body {
 
 .chart-container {
   background: var(--bg-card);
-  border-radius: var(--radius-lg);
+  border-radius: 16px;
   padding: 24px;
   box-shadow: var(--shadow-sm);
   border: 1px solid var(--border);
@@ -991,7 +1005,7 @@ body {
 
 .modal-content {
   background: var(--bg-card);
-  border-radius: var(--radius-xl);
+  border-radius: 20px;
   box-shadow: var(--shadow-xl);
   max-height: calc(100vh - 32px - var(--safe-area-inset-top) - var(--safe-area-inset-bottom));
   max-width: calc(100vw - 32px - var(--safe-area-inset-left) - var(--safe-area-inset-right));
@@ -1005,6 +1019,8 @@ body {
   max-width: 100%;
   width: 100%;
   padding: var(--mobile-padding);
+  background: var(--bg-card);
+  border-radius: 16px;
   box-shadow: var(--shadow-sm);
   border: 1px solid var(--border);
   max-height: calc(100vh - 32px - var(--safe-area-inset-top) - var(--safe-area-inset-bottom));
@@ -1378,7 +1394,7 @@ body {
   direction: rtl;
   padding: 8px;
   background: var(--bg);
-  border-radius: var(--radius-lg);
+  border-radius: 16px;
   border: 2px solid var(--border);
   transition: all 0.2s ease;
 }
@@ -1468,7 +1484,7 @@ body {
   font-weight: 600;
   color: var(--text-primary);
   background: var(--bg-card);
-  border-radius: var(--radius-lg);
+  border-radius: 16px;
   box-shadow: var(--shadow-sm);
 }
 
@@ -1909,7 +1925,7 @@ body {
     max-height: calc(100vh - 64px - var(--safe-area-inset-top) - var(--safe-area-inset-bottom));
     margin: calc(16px + var(--safe-area-inset-top)) auto calc(16px + var(--safe-area-inset-bottom));
     padding: var(--mobile-padding);
-    border-radius: var(--radius-lg);
+    border-radius: 16px;
   }
   
   /* Optimize cards for iPhone */
@@ -2024,7 +2040,7 @@ body {
   width: 100%;
   max-width: 420px;
   background: var(--bg-card);
-  border-radius: var(--radius-xl);
+  border-radius: 20px;
   padding: 40px 32px;
   box-shadow: var(--shadow-xl);
   border: 1px solid var(--border);
@@ -2150,7 +2166,7 @@ body {
 
   .login-container {
     padding: 32px 24px;
-    border-radius: var(--radius-lg);
+    border-radius: 16px;
   }
 
   .login-container h1 {
@@ -2203,7 +2219,7 @@ body {
 
 .welcome-container {
   background: var(--bg-card);
-  border-radius: var(--radius-xl);
+  border-radius: 20px;
   padding: 60px 40px;
   box-shadow: var(--shadow-xl);
   text-align: center;
@@ -2255,7 +2271,7 @@ body {
   gap: 16px;
   padding: 24px;
   border: 2px solid var(--border);
-  border-radius: var(--radius-lg);
+  border-radius: 16px;
   background: var(--bg-card);
   cursor: pointer;
   transition: all 0.3s ease;
@@ -2317,7 +2333,7 @@ body {
 
 .phone-login-container {
   background: var(--bg-card);
-  border-radius: var(--radius-xl);
+  border-radius: 20px;
   padding: 40px;
   box-shadow: var(--shadow-xl);
   text-align: center;
@@ -2356,7 +2372,7 @@ body {
   width: 100%;
   padding: 18px 16px;
   border: 2px solid var(--border);
-  border-radius: var(--radius-lg);
+  border-radius: 16px;
   background: var(--bg-card);
   font-size: 16px;
   font-weight: 600;
@@ -2384,7 +2400,7 @@ body {
   left: 0;
   background: var(--bg-card);
   border: 2px solid var(--border);
-  border-radius: var(--radius-lg);
+  border-radius: 16px;
   box-shadow: var(--shadow-xl);
   max-height: 300px;
   overflow-y: auto;
@@ -2423,7 +2439,7 @@ body {
   flex: 1;
   padding: 18px 20px;
   border: 2px solid var(--border);
-  border-radius: var(--radius-lg);
+  border-radius: 16px;
   font-size: 18px;
   font-weight: 600;
   color: var(--text-primary);
@@ -2443,7 +2459,7 @@ body {
   font-size: 20px;
   font-weight: 700;
   border: none;
-  border-radius: var(--radius-lg);
+  border-radius: 16px;
   cursor: pointer;
   background: linear-gradient(90deg, #22c55e 0%, #16a34a 100%);
   color: var(--text-light);
@@ -2477,7 +2493,7 @@ body {
 
 .otp-container {
   background: var(--bg-card);
-  border-radius: var(--radius-xl);
+  border-radius: 20px;
   padding: 40px;
   box-shadow: var(--shadow-xl);
   text-align: center;
@@ -2538,7 +2554,7 @@ body {
   width: 55px;
   height: 65px;
   border: 2px solid var(--border);
-  border-radius: var(--radius-lg);
+  border-radius: 16px;
   font-size: 28px;
   font-weight: 700;
   text-align: center;
@@ -2561,7 +2577,7 @@ body {
   font-size: 20px;
   font-weight: 700;
   border: none;
-  border-radius: var(--radius-lg);
+  border-radius: 16px;
   cursor: pointer;
   background: linear-gradient(90deg, var(--primary) 0%, var(--secondary) 100%);
   color: var(--text-light);
@@ -2630,7 +2646,7 @@ body {
     padding: var(--mobile-padding-large);
     max-width: 100%;
     margin: 0;
-    border-radius: var(--radius-lg);
+    border-radius: 16px;
   }
 
   .welcome-header h1,
@@ -2729,7 +2745,7 @@ body {
 
 .password-modal {
   background: var(--bg-card);
-  border-radius: var(--radius-xl);
+  border-radius: 20px;
   padding: 32px;
   max-width: 500px;
   width: 100%;
@@ -2774,7 +2790,7 @@ body {
   gap: 12px;
   background: var(--bg);
   padding: 16px;
-  border-radius: var(--radius-lg);
+  border-radius: 16px;
   border: 2px solid var(--border);
 }
 
@@ -2875,7 +2891,7 @@ body {
   padding: 20px;
   background: var(--bg-card);
   border: 2px solid var(--border);
-  border-radius: var(--radius-lg);
+  border-radius: 16px;
   transition: all 0.2s ease;
 }
 
@@ -2932,7 +2948,7 @@ body {
 .add-child-section {
   padding: 24px;
   background: var(--bg);
-  border-radius: var(--radius-lg);
+  border-radius: 16px;
   border: 2px dashed var(--border);
 }
 
@@ -2996,7 +3012,7 @@ body {
 .join-child-section {
   padding: 24px;
   background: var(--primary-light);
-  border-radius: var(--radius-lg);
+  border-radius: 16px;
   border: 2px solid var(--primary);
   text-align: center;
 }
@@ -3042,7 +3058,7 @@ body {
 
 .child-password-container {
   background: var(--bg-card);
-  border-radius: var(--radius-xl);
+  border-radius: 20px;
   padding: var(--mobile-padding-large);
   box-shadow: var(--shadow-xl);
   text-align: center;
@@ -3332,11 +3348,12 @@ body {
 }
 
 .child-card {
-  background: rgba(255, 255, 255, 0.95);
+  background: var(--bg-card);
   border-radius: 16px;
   padding: 20px;
   min-width: 280px;
-  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+  box-shadow: var(--shadow-sm);
+  border: 1px solid var(--border);
   transition: transform 0.2s;
 }
 
@@ -3662,7 +3679,7 @@ body {
   margin-bottom: 32px;
   padding: 24px;
   background: var(--bg-card);
-  border-radius: var(--radius-xl);
+  border-radius: 20px;
   box-shadow: var(--shadow-md);
 }
 
@@ -3737,7 +3754,7 @@ body {
   text-align: center;
   padding: 40px 24px;
   background: linear-gradient(135deg, var(--primary-light) 0%, var(--bg-card) 100%);
-  border-radius: var(--radius-xl);
+  border-radius: 20px;
   margin-bottom: 32px;
   box-shadow: var(--shadow-lg);
   border: 2px solid var(--border);
@@ -3780,7 +3797,7 @@ body {
 /* Savings Goal Tracker */
 .savings-goal-section {
   background: var(--bg-card);
-  border-radius: var(--radius-xl);
+  border-radius: 20px;
   padding: 32px;
   margin-bottom: 32px;
   box-shadow: var(--shadow-md);
@@ -3902,7 +3919,7 @@ body {
 /* Expenses Chart Section */
 .expenses-chart-section {
   background: var(--bg-card);
-  border-radius: var(--radius-xl);
+  border-radius: 20px;
   padding: 32px;
   margin-bottom: 32px;
   box-shadow: var(--shadow-md);
@@ -3971,7 +3988,7 @@ body {
 /* My History */
 .child-history-section {
   background: var(--bg-card);
-  border-radius: var(--radius-xl);
+  border-radius: 20px;
   padding: 32px;
   box-shadow: var(--shadow-md);
   border: 2px solid var(--border);
@@ -4157,7 +4174,7 @@ body {
   margin-bottom: var(--mobile-padding);
   padding: var(--mobile-padding);
   background: var(--bg-card);
-  border-radius: var(--radius-lg);
+  border-radius: 16px;
   box-shadow: var(--shadow-sm);
   border: 2px solid var(--border);
 }
@@ -4194,7 +4211,7 @@ body {
 
 .total-balance-card {
   background: linear-gradient(135deg, var(--primary-light) 0%, var(--bg-card) 100%);
-  border-radius: var(--radius-xl);
+  border-radius: 20px;
   padding: 32px;
   margin-bottom: 32px;
   text-align: center;
@@ -4241,13 +4258,13 @@ body {
   color: var(--text-secondary);
   font-size: 16px;
   background: var(--bg-card);
-  border-radius: var(--radius-lg);
+  border-radius: 16px;
   border: 2px dashed var(--border);
 }
 
 .child-card {
   background: var(--bg-card);
-  border-radius: var(--radius-lg);
+  border-radius: 16px;
   padding: 24px;
   box-shadow: var(--shadow-md);
   border: 2px solid var(--border);
@@ -4361,7 +4378,7 @@ body {
   padding: 24px;
   background: var(--bg-card);
   border: 2px solid var(--border);
-  border-radius: var(--radius-lg);
+  border-radius: 16px;
   cursor: pointer;
   transition: all 0.2s ease;
   display: flex;
@@ -4409,7 +4426,7 @@ body {
 
 .recent-activity-section {
   background: var(--bg-card);
-  border-radius: var(--radius-xl);
+  border-radius: 20px;
   padding: 32px;
   box-shadow: var(--shadow-md);
   border: 2px solid var(--border);
