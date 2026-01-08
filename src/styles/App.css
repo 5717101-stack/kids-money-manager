@@ -1583,6 +1583,89 @@ body {
 }
 
 .users-table-wrapper {
+  max-height: 60vh;
+  overflow-y: auto;
+}
+
+.users-table {
+  width: 100%;
+  border-collapse: collapse;
+  background: white;
+}
+
+.users-table th {
+  background: #f3f4f6;
+  padding: 12px;
+  text-align: right;
+  font-weight: 600;
+  border-bottom: 2px solid #e5e7eb;
+  position: sticky;
+  top: 0;
+  z-index: 10;
+}
+
+.users-table td {
+  padding: 12px;
+  border-bottom: 1px solid #e5e7eb;
+  text-align: right;
+}
+
+.users-table tbody tr:hover {
+  background: #f9fafb;
+}
+
+.users-table tbody tr.selected {
+  background: #fef2f2;
+}
+
+.user-type-badge {
+  display: inline-block;
+  padding: 4px 12px;
+  border-radius: 12px;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.user-type-badge.parent {
+  background: #dbeafe;
+  color: #1e40af;
+}
+
+.user-type-badge.child {
+  background: #fce7f3;
+  color: #9f1239;
+}
+
+.delete-button {
+  background: #ef4444 !important;
+  color: white !important;
+  border: none !important;
+}
+
+.delete-button:hover {
+  background: #dc2626 !important;
+}
+
+.delete-button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed !important;
+}
+
+.refresh-button {
+  background: #3b82f6;
+  color: white;
+  border: none;
+  padding: 8px 16px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 14px;
+}
+
+.refresh-button:hover {
+  background: #2563eb;
+}
+
+.users-table-wrapper {
   flex: 1;
   overflow: auto;
   padding: 0;

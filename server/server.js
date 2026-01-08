@@ -2481,6 +2481,122 @@ app.get('/api/admin/all-users', async (req, res) => {
   }
 });
 
+// Admin endpoint - Delete a single family
+app.delete('/api/admin/families/:familyId', async (req, res) => {
+  const timestamp = new Date().toISOString();
+  console.log(`\n[DELETE-FAMILY] ========================================`);
+  console.log(`[DELETE-FAMILY] ⚠️ DELETE FAMILY REQUEST`);
+  console.log(`[DELETE-FAMILY] ========================================`);
+  console.log(`[DELETE-FAMILY] Timestamp: ${timestamp}`);
+  console.log(`[DELETE-FAMILY] Family ID: ${req.params.familyId}`);
+  console.log(`[DELETE-FAMILY] ========================================\n`);
+  
+  try {
+    if (!db) {
+      console.error(`[DELETE-FAMILY] ❌ No database connection`);
+      return res.status(500).json({ error: 'אין חיבור למסד הנתונים' });
+    }
+    
+    const { familyId } = req.params;
+    const family = await getFamilyById(familyId);
+    
+    if (!family) {
+      console.error(`[DELETE-FAMILY] ❌ Family not found: ${familyId}`);
+      return res.status(404).json({ error: 'משפחה לא נמצאה' });
+    }
+    
+    console.log(`[DELETE-FAMILY] Deleting family: ${familyId} (${family.phoneNumber || 'no phone'})`);
+    const deleteResult = await db.collection('families').deleteOne({ _id: familyId });
+    
+    if (deleteResult.deletedCount === 0) {
+      console.error(`[DELETE-FAMILY] ❌ Failed to delete family`);
+      return res.status(500).json({ error: 'שגיאה במחיקת המשפחה' });
+    }
+    
+    console.log(`[DELETE-FAMILY] ✅ Family deleted successfully`);
+    res.json({
+      success: true,
+      message: 'משפחה נמחקה בהצלחה',
+      deletedCount: deleteResult.deletedCount
+    });
+  } catch (error) {
+    console.error(`[DELETE-FAMILY] ❌ Error:`, error);
+    res.status(500).json({ 
+      error: 'שגיאה במחיקת המשפחה',
+      details: error.message 
+    });
+  }
+});
+
+// Admin endpoint - Delete a single child
+app.delete('/api/admin/families/:familyId/children/:childId', async (req, res) => {
+  const timestamp = new Date().toISOString();
+  console.log(`\n[DELETE-CHILD] ========================================`);
+  console.log(`[DELETE-CHILD] ⚠️ DELETE CHILD REQUEST`);
+  console.log(`[DELETE-CHILD] ========================================`);
+  console.log(`[DELETE-CHILD] Timestamp: ${timestamp}`);
+  console.log(`[DELETE-CHILD] Family ID: ${req.params.familyId}`);
+  console.log(`[DELETE-CHILD] Child ID: ${req.params.childId}`);
+  console.log(`[DELETE-CHILD] ========================================\n`);
+  
+  try {
+    if (!db) {
+      console.error(`[DELETE-CHILD] ❌ No database connection`);
+      return res.status(500).json({ error: 'אין חיבור למסד הנתונים' });
+    }
+    
+    const { familyId, childId } = req.params;
+    const family = await getFamilyById(familyId);
+    
+    if (!family) {
+      console.error(`[DELETE-CHILD] ❌ Family not found: ${familyId}`);
+      return res.status(404).json({ error: 'משפחה לא נמצאה' });
+    }
+    
+    const child = family.children?.find(c => c._id === childId);
+    if (!child) {
+      console.error(`[DELETE-CHILD] ❌ Child not found: ${childId}`);
+      return res.status(404).json({ error: 'ילד לא נמצא' });
+    }
+    
+    console.log(`[DELETE-CHILD] Deleting child: ${childId} (${child.name || 'no name'})`);
+    
+    // Remove child from family
+    family.children = family.children.filter(c => c._id !== childId);
+    
+    // Remove child from all categories' activeFor arrays
+    if (family.categories) {
+      family.categories.forEach(category => {
+        if (category.activeFor) {
+          category.activeFor = category.activeFor.filter(id => id !== childId);
+        }
+      });
+    }
+    
+    await db.collection('families').updateOne(
+      { _id: familyId },
+      { 
+        $set: { 
+          children: family.children,
+          categories: family.categories
+        }
+      }
+    );
+    
+    console.log(`[DELETE-CHILD] ✅ Child deleted successfully`);
+    res.json({
+      success: true,
+      message: 'ילד נמחק בהצלחה'
+    });
+  } catch (error) {
+    console.error(`[DELETE-CHILD] ❌ Error:`, error);
+    res.status(500).json({ 
+      error: 'שגיאה במחיקת הילד',
+      details: error.message 
+    });
+  }
+});
+
 // Admin endpoint - Delete all users and data
 app.delete('/api/admin/delete-all-users', async (req, res) => {
   const timestamp = new Date().toISOString();

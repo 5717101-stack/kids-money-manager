@@ -400,3 +400,20 @@ export const deleteSavingsGoal = async (familyId, childId) => {
   });
   return response;
 };
+
+// Admin functions
+export const getAllUsers = async () => {
+  return await apiCall('/admin/all-users');
+};
+
+export const deleteFamily = async (familyId) => {
+  return await apiCall(`/admin/families/${familyId}`, {
+    method: 'DELETE'
+  });
+};
+
+export const deleteChild = async (familyId, childId) => {
+  return await apiCall(`/admin/families/${familyId}/children/${childId}`, {
+    method: 'DELETE'
+  });
+};
