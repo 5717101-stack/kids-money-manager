@@ -1073,35 +1073,29 @@ app.post('/api/auth/send-otp', async (req, res) => {
     console.log(`[SEND-OTP] ========================================`);
     console.log(`[SEND-OTP] Step 3: Checking if phone number exists (family or child)...`);
     
-    // First check if phone number belongs to a child (try both formats)
+    // First check if phone number belongs to a child (normalize all children's phones for comparison)
     let child = null;
     let existingFamily = null;
     
     if (db) {
-      // Find child by phone number (try normalized format first)
-      let familyWithChild = await db.collection('families').findOne({
-        'children.phoneNumber': normalizedPhone
-      });
-      
-      // If not found, try without country code (for backward compatibility)
-      if (!familyWithChild && normalizedPhone.startsWith('+972')) {
-        const withoutCode = '0' + normalizedPhone.substring(4);
-        familyWithChild = await db.collection('families').findOne({
-          'children.phoneNumber': withoutCode
-        });
-      }
-      
-      if (familyWithChild) {
-        // Find child with matching phone (try both formats)
-        child = familyWithChild.children.find(c => 
-          c.phoneNumber === normalizedPhone || 
-          (normalizedPhone.startsWith('+972') && c.phoneNumber === '0' + normalizedPhone.substring(4)) ||
-          (normalizedPhone.startsWith('0') && c.phoneNumber === '+972' + normalizedPhone.substring(1))
-        );
-        if (child) {
-          existingFamily = familyWithChild;
-          console.log(`[SEND-OTP]   ✅ Found child: ${child.name} (${child._id}) in family ${existingFamily._id}`);
-          process.stderr.write(`[SEND-OTP] ✅ Found child: ${child.name} in family ${existingFamily._id}\n`);
+      // Search through all families and normalize children's phone numbers for comparison
+      const allFamilies = await db.collection('families').find({}).toArray();
+      for (const fam of allFamilies) {
+        if (fam.children && Array.isArray(fam.children)) {
+          for (const ch of fam.children) {
+            if (ch.phoneNumber) {
+              const childPhoneNormalized = normalizePhoneNumber(ch.phoneNumber);
+              if (childPhoneNormalized === normalizedPhone) {
+                child = ch;
+                existingFamily = fam;
+                console.log(`[SEND-OTP]   ✅ Found child: ${child.name} (${child._id}) in family ${existingFamily._id}`);
+                console.log(`[SEND-OTP]   Child phone (raw): ${ch.phoneNumber}, normalized: ${childPhoneNormalized}`);
+                process.stderr.write(`[SEND-OTP] ✅ Found child: ${child.name} in family ${existingFamily._id}\n`);
+                break;
+              }
+            }
+          }
+          if (child) break;
         }
       }
     }
@@ -1277,31 +1271,25 @@ app.post('/api/auth/verify-otp', async (req, res) => {
       }
     }
     
-    // If not found from OTP store, check database directly
+    // If not found from OTP store, check database directly (normalize all children's phones for comparison)
     if (!child && db) {
-      // First check if it's a child's phone number (try both formats)
-      let familyWithChild = await db.collection('families').findOne({
-        'children.phoneNumber': normalizedPhone
-      });
-      
-      // If not found, try without country code (for backward compatibility)
-      if (!familyWithChild && normalizedPhone.startsWith('+972')) {
-        const withoutCode = '0' + normalizedPhone.substring(4);
-        familyWithChild = await db.collection('families').findOne({
-          'children.phoneNumber': withoutCode
-        });
-      }
-      
-      if (familyWithChild) {
-        // Find child with matching phone (try both formats)
-        child = familyWithChild.children.find(c => 
-          c.phoneNumber === normalizedPhone || 
-          (normalizedPhone.startsWith('+972') && c.phoneNumber === '0' + normalizedPhone.substring(4)) ||
-          (normalizedPhone.startsWith('0') && c.phoneNumber === '+972' + normalizedPhone.substring(1))
-        );
-        if (child) {
-          family = familyWithChild;
-          console.log(`[VERIFY-OTP] ✅ Found child from database: ${child.name} (${child._id}) in family ${family._id}`);
+      // Search through all families and normalize children's phone numbers for comparison
+      const allFamilies = await db.collection('families').find({}).toArray();
+      for (const fam of allFamilies) {
+        if (fam.children && Array.isArray(fam.children)) {
+          for (const ch of fam.children) {
+            if (ch.phoneNumber) {
+              const childPhoneNormalized = normalizePhoneNumber(ch.phoneNumber);
+              if (childPhoneNormalized === normalizedPhone) {
+                child = ch;
+                family = fam;
+                console.log(`[VERIFY-OTP] ✅ Found child from database: ${child.name} (${child._id}) in family ${family._id}`);
+                console.log(`[VERIFY-OTP] Child phone (raw): ${ch.phoneNumber}, normalized: ${childPhoneNormalized}`);
+                break;
+              }
+            }
+          }
+          if (child) break;
         }
       }
     }
