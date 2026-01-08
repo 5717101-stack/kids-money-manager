@@ -5076,8 +5076,16 @@ strong, b {
   transform: translateX(-100%);
 }
 
+[dir="rtl"] .sidebar.sidebar-open {
+  transform: translateX(0) !important;
+}
+
+[dir="ltr"] .sidebar.sidebar-open {
+  transform: translateX(0) !important;
+}
+
 .sidebar-open {
-  transform: translateX(0);
+  transform: translateX(0) !important;
 }
 
 /* Sidebar Header */
