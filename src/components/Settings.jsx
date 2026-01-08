@@ -912,6 +912,7 @@ const Settings = ({ familyId, onClose }) => {
           </div>
         </div>
       )}
+      </div>
     </div>
   );
 };
