@@ -1073,6 +1073,110 @@ const Settings = ({ familyId, onClose, onLogout }) => {
           </div>
         </div>
       )}
+
+        {activeTab === 'parents' && (
+          <div className="parents-section">
+            <h2>{t('parent.settings.parents.title', { defaultValue: 'ניהול הורים' })}</h2>
+            
+            {familyInfo && familyInfo.parents && familyInfo.parents.length > 0 ? (
+              <div className="parents-list">
+                {familyInfo.parents.map((parent, index) => (
+                  <div key={index} className="parent-item">
+                    {editingParent === index ? (
+                      <div className="parent-edit">
+                        <div className="form-group">
+                          <label>{t('parent.settings.parents.name', { defaultValue: 'שם' })}:</label>
+                          <input
+                            type="text"
+                            value={editParentName}
+                            onChange={(e) => setEditParentName(e.target.value)}
+                            placeholder={t('parent.settings.parents.namePlaceholder', { defaultValue: 'שם ההורה' })}
+                            className="parent-input"
+                          />
+                        </div>
+                        <div className="form-group">
+                          <label>{t('parent.settings.parents.phone', { defaultValue: 'טלפון' })}:</label>
+                          <input
+                            type="tel"
+                            value={editParentPhone}
+                            onChange={(e) => setEditParentPhone(e.target.value)}
+                            placeholder={t('parent.settings.parents.phonePlaceholder', { defaultValue: 'מספר טלפון' })}
+                            className="parent-input"
+                          />
+                        </div>
+                        <div className="parent-actions">
+                          <button
+                            className="save-button"
+                            onClick={async () => {
+                              try {
+                                setUpdatingParent(true);
+                                await updateParentInfo(familyId, editParentName, editParentPhone, parent.isMain);
+                                await loadData();
+                                setEditingParent(null);
+                                setEditParentName('');
+                                setEditParentPhone('');
+                                alert(t('parent.settings.parents.updateSuccess', { defaultValue: 'פרטי ההורה עודכנו בהצלחה!' }));
+                              } catch (error) {
+                                alert(t('parent.settings.parents.updateError', { defaultValue: 'שגיאה בעדכון פרטי ההורה' }) + ': ' + error.message);
+                              } finally {
+                                setUpdatingParent(false);
+                              }
+                            }}
+                            disabled={updatingParent}
+                          >
+                            {updatingParent 
+                              ? t('common.saving', { defaultValue: 'שומר...' })
+                              : t('common.save', { defaultValue: 'שמור' })
+                            }
+                          </button>
+                          <button
+                            className="cancel-button"
+                            onClick={() => {
+                              setEditingParent(null);
+                              setEditParentName('');
+                              setEditParentPhone('');
+                            }}
+                          >
+                            {t('common.cancel', { defaultValue: 'ביטול' })}
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="parent-display">
+                        <div className="parent-info">
+                          <div className="parent-name">
+                            <strong>{parent.name || 'הורה1'}</strong>
+                            {parent.isMain && (
+                              <span className="main-parent-badge">
+                                {t('parent.settings.parents.mainParent', { defaultValue: 'הורה ראשי' })}
+                              </span>
+                            )}
+                          </div>
+                          <div className="parent-phone">{parent.phoneNumber || 'לא זמין'}</div>
+                        </div>
+                        <button
+                          className="edit-button"
+                          onClick={() => {
+                            setEditingParent(index);
+                            setEditParentName(parent.name || 'הורה1');
+                            setEditParentPhone(parent.phoneNumber || '');
+                          }}
+                        >
+                          {t('common.edit', { defaultValue: 'ערוך' })}
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="no-parents-message">
+                {t('parent.settings.parents.noParents', { defaultValue: 'אין הורים רשומים' })}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
     </div>
   </div>
   );
