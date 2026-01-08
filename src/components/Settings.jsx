@@ -384,7 +384,7 @@ const Settings = ({ familyId, onClose, onLogout }) => {
   return (
     <div className="modal-overlay" onClick={onClose} dir={i18n.language === 'he' ? 'rtl' : 'ltr'}>
       <div className="modal-content settings-container" onClick={(e) => e.stopPropagation()} dir={i18n.language === 'he' ? 'rtl' : 'ltr'}>
-        <div className="settings-header">
+      <div className="settings-header">
           <h1>{t('parent.settings.title', { defaultValue: 'הגדרות' })}</h1>
           <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
             {onLogout && (
@@ -407,9 +407,9 @@ const Settings = ({ familyId, onClose, onLogout }) => {
                 🚪 {t('common.logout', { defaultValue: 'התנתק' })}
               </button>
             )}
-            <button className="close-button" onClick={onClose}>✕</button>
+        <button className="close-button" onClick={onClose}>✕</button>
           </div>
-        </div>
+      </div>
 
       <div className="settings-tabs">
         <button
@@ -648,8 +648,8 @@ const Settings = ({ familyId, onClose, onLogout }) => {
                         onClick={() => {
                           const newDay = state.day === 0 ? 1 : state.day;
                           updateState({ type: 'weekly', day: newDay });
-                          setTimeout(saveChanges, 0);
-                        }}
+                        setTimeout(saveChanges, 0);
+                      }}
                       >
                         {t('parent.settings.allowance.weekly', { defaultValue: 'שבועי' })}
                       </button>
@@ -762,7 +762,7 @@ const Settings = ({ familyId, onClose, onLogout }) => {
                     </div>
                   </div>
                   <div className="child-actions">
-                    <button
+                  <button
                       className="edit-child-button"
                       onClick={() => {
                         setEditingChild({ childId, childName: child.name, phoneNumber: child.phoneNumber || '' });
@@ -784,7 +784,7 @@ const Settings = ({ familyId, onClose, onLogout }) => {
                       }}
                     >
                       {t('parent.settings.viewPhone', { defaultValue: 'צפה בטלפון' })}
-                    </button>
+                  </button>
                   </div>
                 </div>
               ))}
@@ -1048,10 +1048,10 @@ const Settings = ({ familyId, onClose, onLogout }) => {
                   />
                 </div>
                 <div className="password-modal-footer" style={{ marginTop: '20px', display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
-                  <button
+                    <button 
                     type="button"
                     className="password-close-button"
-                    onClick={() => {
+                      onClick={() => {
                       setEditingChild(null);
                       setEditChildName('');
                       setEditChildPhone('');
@@ -1066,13 +1066,13 @@ const Settings = ({ familyId, onClose, onLogout }) => {
                     disabled={updatingChild || !editChildName.trim() || !editChildPhone.trim()}
                   >
                     {updatingChild ? t('common.saving', { defaultValue: 'שומר...' }) : t('common.save', { defaultValue: 'שמור' })}
-                  </button>
-                </div>
+                    </button>
+                  </div>
               </form>
             </div>
           </div>
         </div>
-      )}
+        )}
 
         {activeTab === 'parents' && (
           <div className="parents-section">
@@ -1093,7 +1093,7 @@ const Settings = ({ familyId, onClose, onLogout }) => {
                             placeholder={t('parent.settings.parents.namePlaceholder', { defaultValue: 'שם ההורה' })}
                             className="parent-input"
                           />
-                        </div>
+            </div>
                         <div className="form-group">
                           <label>{t('parent.settings.parents.phone', { defaultValue: 'טלפון' })}:</label>
                           <input
@@ -1138,9 +1138,9 @@ const Settings = ({ familyId, onClose, onLogout }) => {
                             }}
                           >
                             {t('common.cancel', { defaultValue: 'ביטול' })}
-                          </button>
-                        </div>
-                      </div>
+              </button>
+            </div>
+          </div>
                     ) : (
                       <div className="parent-display">
                         <div className="parent-info">
@@ -1164,8 +1164,8 @@ const Settings = ({ familyId, onClose, onLogout }) => {
                         >
                           {t('common.edit', { defaultValue: 'ערוך' })}
                         </button>
-                      </div>
-                    )}
+        </div>
+      )}
                   </div>
                 ))}
               </div>
@@ -1178,7 +1178,7 @@ const Settings = ({ familyId, onClose, onLogout }) => {
         )}
       </div>
     </div>
-  </div>
+    </div>
   );
 };
 
