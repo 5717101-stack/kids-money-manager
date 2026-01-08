@@ -5190,6 +5190,7 @@ strong, b {
   flex: 1;
   overflow-y: auto;
   padding: 16px;
+  min-height: 0; /* Allow flex shrinking */
 }
 
 .sidebar-settings-content .settings-container {
@@ -5198,6 +5199,20 @@ strong, b {
   box-shadow: none;
   border: none;
   max-height: none;
+  background: transparent;
+}
+
+.sidebar-settings-content .settings-content {
+  padding: 0;
+}
+
+/* Hide all tab content except active one in sidebar */
+.sidebar-settings-content .settings-content > * {
+  display: none;
+}
+
+.sidebar-settings-content .settings-content > *:only-child {
+  display: block;
 }
 
 /* Sidebar Footer */

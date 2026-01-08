@@ -13,7 +13,7 @@ const CHILD_NAMES = {
   child2: 'ג\'וּן'
 };
 
-const Settings = ({ familyId, onClose, onLogout, activeTab: externalActiveTab, hideTabs = false }) => {
+const Settings = ({ familyId, onClose, onLogout, activeTab: externalActiveTab, hideTabs = false, inSidebar = false }) => {
   const { t, i18n } = useTranslation();
   const [internalActiveTab, setInternalActiveTab] = useState('categories'); // 'categories', 'profileImages', 'allowances', 'children', 'parents'
   const activeTab = externalActiveTab !== undefined ? externalActiveTab : internalActiveTab;
@@ -367,6 +367,9 @@ const Settings = ({ familyId, onClose, onLogout, activeTab: externalActiveTab, h
   };
 
   if (loading) {
+    if (inSidebar) {
+      return <div className="loading">{t('common.loading', { defaultValue: 'טוען...' })}</div>;
+    }
     return (
       <div className="modal-overlay" onClick={onClose} dir={i18n.language === 'he' ? 'rtl' : 'ltr'}>
         <div className="modal-content settings-container" onClick={(e) => e.stopPropagation()} dir={i18n.language === 'he' ? 'rtl' : 'ltr'}>
@@ -386,10 +389,10 @@ const Settings = ({ familyId, onClose, onLogout, activeTab: externalActiveTab, h
     t('days.saturday', { defaultValue: 'שבת' })
   ];
 
-  return (
-    <div className="modal-overlay" onClick={onClose} dir={i18n.language === 'he' ? 'rtl' : 'ltr'}>
-      <div className="modal-content settings-container" onClick={(e) => e.stopPropagation()} dir={i18n.language === 'he' ? 'rtl' : 'ltr'}>
-      <div className="settings-header">
+  const content = (
+    <div dir={i18n.language === 'he' ? 'rtl' : 'ltr'}>
+      {!inSidebar && (
+        <div className="settings-header">
           <h1>{t('parent.settings.title', { defaultValue: 'הגדרות' })}</h1>
           <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
             {onLogout && (
@@ -414,7 +417,8 @@ const Settings = ({ familyId, onClose, onLogout, activeTab: externalActiveTab, h
             )}
         <button className="close-button" onClick={onClose}>✕</button>
           </div>
-      </div>
+        </div>
+      )}
 
       {!hideTabs && (
         <div className="settings-tabs">
@@ -1270,6 +1274,17 @@ const Settings = ({ familyId, onClose, onLogout, activeTab: externalActiveTab, h
             )}
           </div>
         )}
+      </div>
+  );
+
+  if (inSidebar) {
+    return content;
+  }
+
+  return (
+    <div className="modal-overlay" onClick={onClose} dir={i18n.language === 'he' ? 'rtl' : 'ltr'}>
+      <div className="modal-content settings-container" onClick={(e) => e.stopPropagation()} dir={i18n.language === 'he' ? 'rtl' : 'ltr'}>
+        {content}
       </div>
     </div>
   );

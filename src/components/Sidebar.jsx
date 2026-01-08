@@ -80,16 +80,19 @@ const Sidebar = ({ isOpen, onClose, familyId, onLogout, onChildrenUpdated }) => 
             ))}
           </nav>
 
-          <div className="sidebar-settings-content">
-            <Settings
-              familyId={familyId}
-              onClose={onClose}
-              onLogout={onLogout}
-              onChildrenUpdated={onChildrenUpdated}
-              activeTab={activeTab}
-              hideTabs={true}
-            />
-          </div>
+          {activeTab && (
+            <div className="sidebar-settings-content">
+              <Settings
+                familyId={familyId}
+                onClose={onClose}
+                onLogout={onLogout}
+                onChildrenUpdated={onChildrenUpdated}
+                activeTab={activeTab}
+                hideTabs={true}
+                inSidebar={true}
+              />
+            </div>
+          )}
         </div>
 
         <div className="sidebar-footer">
