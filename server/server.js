@@ -1084,11 +1084,13 @@ app.post('/api/auth/send-otp', async (req, res) => {
     if (db) {
       // Search through all families and normalize children's phone numbers for comparison
       const allFamilies = await db.collection('families').find({}).toArray();
+      console.log(`[SEND-OTP] Searching through ${allFamilies.length} families for child with phone: ${normalizedPhone}`);
       for (const fam of allFamilies) {
         if (fam.children && Array.isArray(fam.children)) {
           for (const ch of fam.children) {
             if (ch.phoneNumber) {
               const childPhoneNormalized = normalizePhoneNumber(ch.phoneNumber);
+              console.log(`[SEND-OTP]   Checking child ${ch.name}: raw="${ch.phoneNumber}", normalized="${childPhoneNormalized}" vs search="${normalizedPhone}"`);
               if (childPhoneNormalized === normalizedPhone) {
                 child = ch;
                 existingFamily = fam;
@@ -1101,6 +1103,9 @@ app.post('/api/auth/send-otp', async (req, res) => {
           }
           if (child) break;
         }
+      }
+      if (!child) {
+        console.log(`[SEND-OTP]   ℹ️  No child found with phone: ${normalizedPhone}`);
       }
     }
     
