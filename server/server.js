@@ -1244,8 +1244,18 @@ app.post('/api/auth/verify-otp', async (req, res) => {
       return res.status(400).json({ error: 'מספר טלפון וקוד אימות נדרשים' });
     }
     
-    const normalizedPhone = phoneNumber.trim();
-    const storedOTP = otpStore.get(normalizedPhone);
+    // Normalize phone number to ensure consistent format (same as in send-otp)
+    const normalizedPhone = normalizePhoneNumber(phoneNumber.trim());
+    let storedOTP = otpStore.get(normalizedPhone);
+    
+    // Also try non-normalized version (for backward compatibility with old OTPs)
+    if (!storedOTP) {
+      const nonNormalized = phoneNumber.trim();
+      storedOTP = otpStore.get(nonNormalized);
+      if (storedOTP) {
+        console.log(`[VERIFY-OTP] Found OTP with non-normalized phone, using normalized: ${normalizedPhone}`);
+      }
+    }
     
     if (!storedOTP || storedOTP.expiresAt < Date.now()) {
       return res.status(400).json({ error: 'קוד אימות לא תקין או פג תוקף' });
