@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
-const COUNTRY_CODES = [
+const COUNTRY_CODES_HE = [
   { code: '+972', name: 'ישראל', flag: '🇮🇱' },
   { code: '+1', name: 'ארה"ב/קנדה', flag: '🇺🇸' },
   { code: '+44', name: 'בריטניה', flag: '🇬🇧' },
@@ -17,6 +17,24 @@ const COUNTRY_CODES = [
   { code: '+27', name: 'דרום אפריקה', flag: '🇿🇦' },
   { code: '+971', name: 'איחוד האמירויות', flag: '🇦🇪' },
   { code: '+966', name: 'ערב הסעודית', flag: '🇸🇦' }
+];
+
+const COUNTRY_CODES_EN = [
+  { code: '+972', name: 'Israel', flag: '🇮🇱' },
+  { code: '+1', name: 'USA/Canada', flag: '🇺🇸' },
+  { code: '+44', name: 'United Kingdom', flag: '🇬🇧' },
+  { code: '+33', name: 'France', flag: '🇫🇷' },
+  { code: '+49', name: 'Germany', flag: '🇩🇪' },
+  { code: '+39', name: 'Italy', flag: '🇮🇹' },
+  { code: '+34', name: 'Spain', flag: '🇪🇸' },
+  { code: '+7', name: 'Russia', flag: '🇷🇺' },
+  { code: '+86', name: 'China', flag: '🇨🇳' },
+  { code: '+81', name: 'Japan', flag: '🇯🇵' },
+  { code: '+91', name: 'India', flag: '🇮🇳' },
+  { code: '+61', name: 'Australia', flag: '🇦🇺' },
+  { code: '+27', name: 'South Africa', flag: '🇿🇦' },
+  { code: '+971', name: 'UAE', flag: '🇦🇪' },
+  { code: '+966', name: 'Saudi Arabia', flag: '🇸🇦' }
 ];
 
 const PhoneLogin = ({ onOTPSent }) => {
