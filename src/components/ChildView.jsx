@@ -21,7 +21,6 @@ const ChildView = ({ childId, familyId }) => {
   useEffect(() => {
     loadChildData();
     loadSavingsGoal();
-    loadExpensesByCategory();
     // Refresh every 5 seconds to show updated balance (but not expenses chart)
     const interval = setInterval(() => {
       loadChildData();
@@ -31,10 +30,13 @@ const ChildView = ({ childId, familyId }) => {
     return () => clearInterval(interval);
   }, [childId, familyId]);
 
-  // Load expenses when period changes
+  // Load expenses when period changes or on initial load
   useEffect(() => {
-    loadExpensesByCategory();
-  }, [expensesPeriod]);
+    if (familyId && childId) {
+      loadExpensesByCategory();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [expensesPeriod, familyId, childId]);
 
   const loadChildData = async () => {
     if (!familyId || !childId) return;
