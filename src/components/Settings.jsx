@@ -436,6 +436,12 @@ const Settings = ({ familyId, onClose, onLogout }) => {
         >
           {t('parent.settings.tabs.children', { defaultValue: 'ילדים' })}
         </button>
+        <button
+          className={activeTab === 'parents' ? 'active' : ''}
+          onClick={() => setActiveTab('parents')}
+        >
+          {t('parent.settings.tabs.parents', { defaultValue: 'הורים' })}
+        </button>
       </div>
 
       <div className="settings-content">
