@@ -285,5 +285,14 @@
     "thursday": "חמישי",
     "friday": "שישי",
     "saturday": "שבת"
+  },
+  "sidebar": {
+    "title": "הגדרות",
+    "profile": "פרופיל",
+    "categories": "קטגוריות",
+    "allowances": "דמי כיס",
+    "children": "ילדים",
+    "parents": "הורים",
+    "confirmLogout": "האם אתה בטוח שברצונך להתנתק?"
   }
 }

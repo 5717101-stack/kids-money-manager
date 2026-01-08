@@ -293,5 +293,14 @@
     "thursday": "Thursday",
     "friday": "Friday",
     "saturday": "Saturday"
+  },
+  "sidebar": {
+    "title": "Settings",
+    "profile": "Profile",
+    "categories": "Categories",
+    "allowances": "Allowances",
+    "children": "Children",
+    "parents": "Parents",
+    "confirmLogout": "Are you sure you want to logout?"
   }
 }

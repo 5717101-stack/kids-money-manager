@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { getData, getCategories, getChildTransactions, addTransaction } from '../utils/api';
 import LanguageToggle from './LanguageToggle';
-import Settings from './Settings';
+import Sidebar from './Sidebar';
 import QuickActionModal from './QuickActionModal';
 
 const ParentDashboard = ({ familyId, onChildrenUpdated, onLogout }) => {
@@ -10,7 +10,7 @@ const ParentDashboard = ({ familyId, onChildrenUpdated, onLogout }) => {
   const [allData, setAllData] = useState({ children: {} });
   const [categories, setCategories] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [showSettings, setShowSettings] = useState(false);
+  const [showSidebar, setShowSidebar] = useState(false);
   const [showQuickAction, setShowQuickAction] = useState(false);
   const [quickActionType, setQuickActionType] = useState('deposit'); // 'deposit' or 'expense'
   const [recentTransactions, setRecentTransactions] = useState([]);
@@ -109,11 +109,16 @@ const ParentDashboard = ({ familyId, onChildrenUpdated, onLogout }) => {
           </h1>
         </div>
         <button 
-          className="settings-button-new" 
-          onClick={() => setShowSettings(true)}
+          className="hamburger-menu-button" 
+          onClick={() => setShowSidebar(true)}
           title={t('common.settings', { defaultValue: 'הגדרות' })}
+          aria-label={t('common.settings', { defaultValue: 'הגדרות' })}
         >
-          ⚙️
+          <span className="hamburger-icon">
+            <span></span>
+            <span></span>
+            <span></span>
+          </span>
         </button>
       </div>
 
@@ -231,20 +236,20 @@ const ParentDashboard = ({ familyId, onChildrenUpdated, onLogout }) => {
         )}
       </div>
 
-      {/* Modals */}
-      {showSettings && (
-        <Settings 
-          familyId={familyId}
-          onClose={async () => {
-            setShowSettings(false);
-            await loadData();
-            if (onChildrenUpdated) {
-              await onChildrenUpdated();
-            }
-          }}
-          onLogout={onLogout}
-        />
-      )}
+      {/* Sidebar */}
+      <Sidebar
+        isOpen={showSidebar}
+        onClose={async () => {
+          setShowSidebar(false);
+          await loadData();
+          if (onChildrenUpdated) {
+            await onChildrenUpdated();
+          }
+        }}
+        familyId={familyId}
+        onLogout={onLogout}
+        onChildrenUpdated={onChildrenUpdated}
+      />
 
       {showQuickAction && (
         <QuickActionModal

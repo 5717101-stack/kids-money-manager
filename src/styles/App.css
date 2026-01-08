@@ -4981,3 +4981,248 @@ strong, b {
   flex-direction: row-reverse;
 }
 
+/* ============================================
+   Sidebar Navigation (Drawer)
+   ============================================ */
+
+/* Hamburger Menu Button */
+.hamburger-menu-button {
+  background: transparent;
+  border: none;
+  padding: 8px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
+  transition: all 0.2s ease;
+}
+
+.hamburger-menu-button:hover {
+  background: var(--bg-hover);
+}
+
+.hamburger-icon {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  width: 24px;
+  height: 18px;
+  position: relative;
+}
+
+.hamburger-icon span {
+  display: block;
+  width: 100%;
+  height: 2px;
+  background: var(--text-primary);
+  border-radius: 2px;
+  transition: all 0.3s ease;
+}
+
+/* RTL/LTR adjustments for hamburger */
+[dir="rtl"] .hamburger-menu-button {
+  margin-left: 12px;
+}
+
+[dir="ltr"] .hamburger-menu-button {
+  margin-right: 12px;
+}
+
+/* Sidebar Backdrop */
+.sidebar-backdrop {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+  z-index: 9998;
+  opacity: 1;
+  transition: opacity 0.3s ease;
+  backdrop-filter: blur(4px);
+}
+
+/* Sidebar Container */
+.sidebar {
+  position: fixed;
+  top: 0;
+  bottom: 0;
+  width: 320px;
+  max-width: 85vw;
+  background: var(--bg-card);
+  box-shadow: -4px 0 24px rgba(0, 0, 0, 0.15);
+  z-index: 9999;
+  display: flex;
+  flex-direction: column;
+  transform: translateX(100%);
+  transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  border-left: 1px solid var(--border);
+}
+
+[dir="rtl"] .sidebar {
+  right: 0;
+  border-left: 1px solid var(--border);
+  border-right: none;
+  transform: translateX(100%);
+}
+
+[dir="ltr"] .sidebar {
+  left: 0;
+  border-right: 1px solid var(--border);
+  border-left: none;
+  transform: translateX(-100%);
+}
+
+.sidebar-open {
+  transform: translateX(0);
+}
+
+/* Sidebar Header */
+.sidebar-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 20px 24px;
+  border-bottom: 1px solid var(--border);
+  min-height: 64px;
+}
+
+.sidebar-close-button {
+  background: transparent;
+  border: none;
+  font-size: 24px;
+  color: var(--text-secondary);
+  cursor: pointer;
+  padding: 8px;
+  width: 40px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 12px;
+  transition: all 0.2s ease;
+}
+
+.sidebar-close-button:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.sidebar-title {
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin: 0;
+}
+
+/* Sidebar Content */
+.sidebar-content {
+  flex: 1;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  display: flex;
+  flex-direction: column;
+}
+
+.sidebar-nav {
+  display: flex;
+  flex-direction: column;
+  padding: 16px;
+  gap: 8px;
+  border-bottom: 1px solid var(--border);
+}
+
+.sidebar-nav-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 16px;
+  background: transparent;
+  border: none;
+  border-radius: 12px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  text-align: right;
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text-primary);
+  min-height: 48px;
+}
+
+[dir="ltr"] .sidebar-nav-item {
+  text-align: left;
+}
+
+.sidebar-nav-item:hover {
+  background: var(--bg-hover);
+}
+
+.sidebar-nav-item.active {
+  background: var(--primary-light);
+  color: var(--primary);
+}
+
+.sidebar-nav-icon {
+  font-size: 20px;
+  width: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.sidebar-nav-label {
+  flex: 1;
+}
+
+/* Sidebar Settings Content */
+.sidebar-settings-content {
+  flex: 1;
+  overflow-y: auto;
+  padding: 16px;
+}
+
+.sidebar-settings-content .settings-container {
+  max-width: 100%;
+  padding: 0;
+  box-shadow: none;
+  border: none;
+  max-height: none;
+}
+
+/* Sidebar Footer */
+.sidebar-footer {
+  padding: 16px;
+  border-top: 1px solid var(--border);
+}
+
+.sidebar-logout-button {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 16px;
+  background: var(--danger);
+  color: var(--text-light);
+  border: none;
+  border-radius: 12px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  font-size: 16px;
+  font-weight: 600;
+  min-height: 48px;
+}
+
+.sidebar-logout-button:hover {
+  background: #DC2626;
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-md);
+}
+
+/* Hide old settings button */
+.settings-button-new {
+  display: none;
+}
+

@@ -13,9 +13,11 @@ const CHILD_NAMES = {
   child2: 'ג\'וּן'
 };
 
-const Settings = ({ familyId, onClose, onLogout }) => {
+const Settings = ({ familyId, onClose, onLogout, activeTab: externalActiveTab, hideTabs = false }) => {
   const { t, i18n } = useTranslation();
-  const [activeTab, setActiveTab] = useState('categories'); // 'categories', 'profileImages', 'allowances', 'children', 'parents'
+  const [internalActiveTab, setInternalActiveTab] = useState('categories'); // 'categories', 'profileImages', 'allowances', 'children', 'parents'
+  const activeTab = externalActiveTab !== undefined ? externalActiveTab : internalActiveTab;
+  const setActiveTab = externalActiveTab !== undefined ? () => {} : setInternalActiveTab;
   const [categories, setCategories] = useState([]);
   const [newCategoryName, setNewCategoryName] = useState('');
   const [editingCategory, setEditingCategory] = useState(null);
@@ -414,38 +416,40 @@ const Settings = ({ familyId, onClose, onLogout }) => {
           </div>
       </div>
 
-      <div className="settings-tabs">
-        <button
-          className={activeTab === 'categories' ? 'active' : ''}
-          onClick={() => setActiveTab('categories')}
-        >
-          {t('parent.settings.tabs.categories', { defaultValue: 'קטגוריות הוצאות' })}
-        </button>
-        <button
-          className={activeTab === 'profileImages' ? 'active' : ''}
-          onClick={() => setActiveTab('profileImages')}
-        >
-          {t('parent.settings.tabs.profileImages', { defaultValue: 'תמונות פרופיל' })}
-        </button>
-        <button
-          className={activeTab === 'allowances' ? 'active' : ''}
-          onClick={() => setActiveTab('allowances')}
-        >
-          {t('parent.settings.tabs.allowances', { defaultValue: 'דמי כיס' })}
-        </button>
-        <button
-          className={activeTab === 'children' ? 'active' : ''}
-          onClick={() => setActiveTab('children')}
-        >
-          {t('parent.settings.tabs.children', { defaultValue: 'ילדים' })}
-        </button>
-        <button
-          className={activeTab === 'parents' ? 'active' : ''}
-          onClick={() => setActiveTab('parents')}
-        >
-          {t('parent.settings.tabs.parents', { defaultValue: 'הורים' })}
-        </button>
-      </div>
+      {!hideTabs && (
+        <div className="settings-tabs">
+          <button
+            className={activeTab === 'categories' ? 'active' : ''}
+            onClick={() => setActiveTab('categories')}
+          >
+            {t('parent.settings.tabs.categories', { defaultValue: 'קטגוריות הוצאות' })}
+          </button>
+          <button
+            className={activeTab === 'profileImages' ? 'active' : ''}
+            onClick={() => setActiveTab('profileImages')}
+          >
+            {t('parent.settings.tabs.profileImages', { defaultValue: 'תמונות פרופיל' })}
+          </button>
+          <button
+            className={activeTab === 'allowances' ? 'active' : ''}
+            onClick={() => setActiveTab('allowances')}
+          >
+            {t('parent.settings.tabs.allowances', { defaultValue: 'דמי כיס' })}
+          </button>
+          <button
+            className={activeTab === 'children' ? 'active' : ''}
+            onClick={() => setActiveTab('children')}
+          >
+            {t('parent.settings.tabs.children', { defaultValue: 'ילדים' })}
+          </button>
+          <button
+            className={activeTab === 'parents' ? 'active' : ''}
+            onClick={() => setActiveTab('parents')}
+          >
+            {t('parent.settings.tabs.parents', { defaultValue: 'הורים' })}
+          </button>
+        </div>
+      )}
 
       <div className="settings-content">
         {activeTab === 'categories' && (
