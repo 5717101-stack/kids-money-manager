@@ -581,14 +581,24 @@ async function addChildToFamily(familyId, childName, phoneNumber) {
   console.log(`[ADD-CHILD] Child ID: ${childId}`);
   console.log(`[ADD-CHILD] Phone Number: ${normalizedPhone}`);
   
-  // Check if phone number already exists for another child
+  // Check if phone number already exists (as parent or child)
   if (db) {
-    const existingFamily = await db.collection('families').findOne({
+    // Check if phone number belongs to a parent
+    const existingFamilyByPhone = await db.collection('families').findOne({
+      phoneNumber: normalizedPhone
+    });
+    if (existingFamilyByPhone) {
+      console.error(`[ADD-CHILD] ❌ Phone number already in use by a parent: ${normalizedPhone}`);
+      throw new Error('מספר טלפון זה כבר בשימוש על ידי הורה');
+    }
+    
+    // Check if phone number belongs to another child
+    const existingFamilyWithChild = await db.collection('families').findOne({
       'children.phoneNumber': normalizedPhone
     });
-    if (existingFamily) {
-      console.error(`[ADD-CHILD] ❌ Phone number already in use: ${normalizedPhone}`);
-      throw new Error('מספר טלפון זה כבר בשימוש');
+    if (existingFamilyWithChild) {
+      console.error(`[ADD-CHILD] ❌ Phone number already in use by a child: ${normalizedPhone}`);
+      throw new Error('מספר טלפון זה כבר בשימוש על ידי ילד אחר');
     }
   }
   
@@ -1194,7 +1204,7 @@ app.post('/api/auth/verify-otp', async (req, res) => {
     let child = null;
     let family = null;
     
-    // If OTP store indicates this is a child, use that information
+    // First, check if OTP store indicates this is a child
     if (storedOTP.isChild && storedOTP.childId && storedOTP.familyId) {
       console.log(`[VERIFY-OTP] ℹ️  OTP store indicates this is a child: ${storedOTP.childId} in family ${storedOTP.familyId}`);
       family = await getFamilyById(storedOTP.familyId);
@@ -1206,31 +1216,43 @@ app.post('/api/auth/verify-otp', async (req, res) => {
       }
     }
     
-    // If not found from OTP store, check database
-    if (!child) {
-      if (db) {
-        // Find child by phone number
-        const familyWithChild = await db.collection('families').findOne({
-          'children.phoneNumber': normalizedPhone
-        });
-        
-        if (familyWithChild) {
-          child = familyWithChild.children.find(c => c.phoneNumber === normalizedPhone);
-          if (child) {
-            family = familyWithChild;
-            console.log(`[VERIFY-OTP] ✅ Found child from database: ${child.name} (${child._id}) in family ${family._id}`);
-          }
+    // If not found from OTP store, check database directly
+    if (!child && db) {
+      // First check if it's a child's phone number
+      const familyWithChild = await db.collection('families').findOne({
+        'children.phoneNumber': normalizedPhone
+      });
+      
+      if (familyWithChild) {
+        child = familyWithChild.children.find(c => c.phoneNumber === normalizedPhone);
+        if (child) {
+          family = familyWithChild;
+          console.log(`[VERIFY-OTP] ✅ Found child from database: ${child.name} (${child._id}) in family ${family._id}`);
         }
       }
     }
     
-    // If not a child, check if it's a family phone number
+    // If not a child, check if it's a parent's phone number
     if (!child) {
-      family = await getFamilyByPhone(normalizedPhone);
+      // Check if storedOTP has familyId (from send-otp)
+      if (storedOTP.familyId) {
+        family = await getFamilyById(storedOTP.familyId);
+        if (family) {
+          console.log(`[VERIFY-OTP] ✅ Found family from OTP store: ${family._id}`);
+        }
+      }
       
+      // If not found from OTP store, check database
       if (!family) {
-        // Only create new family if it's not a child and not an existing family
-        // This prevents creating a new family when a child's phone number is used
+        family = await getFamilyByPhone(normalizedPhone);
+        if (family) {
+          console.log(`[VERIFY-OTP] ✅ Found family from database: ${family._id}`);
+        }
+      }
+      
+      // Only create new family if it's not a child and not an existing family
+      if (!family) {
+        console.log(`[VERIFY-OTP] ℹ️  No existing family or child found - creating new family`);
         const familyId = `family_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
         family = {
           _id: familyId,
@@ -1651,16 +1673,44 @@ app.put('/api/families/:familyId/children/:childId', async (req, res) => {
     const currentChild = family.children[childIndex];
     console.log(`[UPDATE-CHILD-SERVER] Current child phone: "${currentChild.phoneNumber}", New phone: "${normalizedPhone}"`);
     
-    // Check if phone number is already in use by another child
+    // Check if phone number is already in use (as parent or child)
     if (currentChild.phoneNumber !== normalizedPhone) {
       console.log(`[UPDATE-CHILD-SERVER] Step 3: Checking for duplicate phone number...`);
+      
+      // Check if phone number belongs to a parent
+      if (db) {
+        const existingFamilyByPhone = await db.collection('families').findOne({
+          phoneNumber: normalizedPhone
+        });
+        if (existingFamilyByPhone) {
+          console.error(`[UPDATE-CHILD-SERVER] ❌ Phone number already in use by a parent: ${normalizedPhone}`);
+          process.stderr.write(`[UPDATE-CHILD-SERVER] ❌ Phone number already in use by parent\n`);
+          return res.status(400).json({ error: 'מספר טלפון זה כבר בשימוש על ידי הורה' });
+        }
+      }
+      
+      // Check if phone number belongs to another child in the same family
       const existingChild = family.children.find(c => c._id !== childId && c.phoneNumber === normalizedPhone);
       if (existingChild) {
-        console.error(`[UPDATE-CHILD-SERVER] ❌ Phone number already in use by another child: ${normalizedPhone}`);
-        process.stderr.write(`[UPDATE-CHILD-SERVER] ❌ Phone number already in use\n`);
+        console.error(`[UPDATE-CHILD-SERVER] ❌ Phone number already in use by another child in same family: ${normalizedPhone}`);
+        process.stderr.write(`[UPDATE-CHILD-SERVER] ❌ Phone number already in use by child\n`);
         return res.status(400).json({ error: 'מספר טלפון זה כבר בשימוש על ידי ילד אחר' });
       }
-      console.log(`[UPDATE-CHILD-SERVER] ✅ Phone number not in use by another child`);
+      
+      // Check if phone number belongs to a child in another family
+      if (db) {
+        const existingFamilyWithChild = await db.collection('families').findOne({
+          _id: { $ne: familyId },
+          'children.phoneNumber': normalizedPhone
+        });
+        if (existingFamilyWithChild) {
+          console.error(`[UPDATE-CHILD-SERVER] ❌ Phone number already in use by a child in another family: ${normalizedPhone}`);
+          process.stderr.write(`[UPDATE-CHILD-SERVER] ❌ Phone number already in use by child in another family\n`);
+          return res.status(400).json({ error: 'מספר טלפון זה כבר בשימוש על ידי ילד אחר' });
+        }
+      }
+      
+      console.log(`[UPDATE-CHILD-SERVER] ✅ Phone number not in use`);
     }
     
     console.log(`[UPDATE-CHILD-SERVER] Step 4: Updating child in database...`);
@@ -2691,4 +2741,5 @@ process.on('unhandledRejection', (reason) => {
 setTimeout(() => {
   connectDB();
 }, 100);
+
 
