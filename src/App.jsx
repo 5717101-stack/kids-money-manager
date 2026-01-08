@@ -116,10 +116,13 @@ const App = () => {
     sessionStorage.setItem('familyId', fId);
     sessionStorage.setItem('phoneNumber', phoneNum);
     
-    // If user was creating a family (even if number already exists), treat them as parent
-    // OR if coming from main login, always show parent dashboard
-    if (isNewFamily || isCreatingFamily || screen === 'main-login') {
-      // New family OR existing family but user came from "Create" or "Main Login" - show parent dashboard
+    // Priority order:
+    // 1. If user was creating a family (even if number already exists), treat them as parent
+    // 2. If coming from main login, always show parent dashboard
+    // 3. If it's a new family, show parent dashboard
+    // 4. Otherwise (existing family from "Join"), show child password login
+    if (isCreatingFamily || screen === 'main-login' || isNewFamily) {
+      // User came from "Create Family" OR "Main Login" OR it's a new family - show parent dashboard
       sessionStorage.setItem('parentLoggedIn', 'true');
       sessionStorage.removeItem('isChildView');
       sessionStorage.removeItem('childId');
@@ -275,7 +278,7 @@ const App = () => {
           </main>
           
           <footer className="app-footer">
-            <span className="version">{t('common.version', { defaultValue: 'גרסה' })} 3.2.5</span>
+            <span className="version">{t('common.version', { defaultValue: 'גרסה' })} 3.2.6</span>
           </footer>
         </>
       )}
