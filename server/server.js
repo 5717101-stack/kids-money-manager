@@ -539,43 +539,38 @@ async function getFamilyByPhone(phoneNumber) {
   if (!phoneNumber) return null;
   
   const normalized = normalizePhoneNumber(phoneNumber);
+  console.log(`[GET-FAMILY-BY-PHONE] Searching for phone: ${phoneNumber}, normalized: ${normalized}`);
   
-  // Try exact match first (main parent)
   if (db) {
-    let family = await db.collection('families').findOne({ phoneNumber });
-    if (family) return family;
-    
-    // Try normalized version (main parent)
-    if (normalized !== phoneNumber) {
-      family = await db.collection('families').findOne({ phoneNumber: normalized });
-      if (family) return family;
-    }
-    
-    // Try without country code (for backward compatibility)
-    if (phoneNumber.startsWith('+972')) {
-      const withoutCode = '0' + phoneNumber.substring(4);
-      family = await db.collection('families').findOne({ phoneNumber: withoutCode });
-      if (family) return family;
-    }
-    
-    // If not found as main parent, check additional parents
+    // Get all families and normalize all phone numbers for comparison
     const allFamilies = await db.collection('families').find({}).toArray();
+    
     for (const fam of allFamilies) {
-      if (fam.additionalParents && Array.isArray(fam.additionalParents)) {
-        const foundParent = fam.additionalParents.find(p => {
-          const parentPhoneNormalized = normalizePhoneNumber(p.phoneNumber);
-          return parentPhoneNormalized === normalized || 
-                 parentPhoneNormalized === phoneNumber ||
-                 p.phoneNumber === normalized ||
-                 p.phoneNumber === phoneNumber;
-        });
-        if (foundParent) {
-          console.log(`[GET-FAMILY-BY-PHONE] Found family ${fam._id} via additional parent ${foundParent.name}`);
+      // Check main parent phone (normalize for comparison)
+      if (fam.phoneNumber) {
+        const mainPhoneNormalized = normalizePhoneNumber(fam.phoneNumber);
+        if (mainPhoneNormalized === normalized) {
+          console.log(`[GET-FAMILY-BY-PHONE] Found family ${fam._id} via main parent`);
           return fam;
+        }
+      }
+      
+      // Check additional parents (normalize all for comparison)
+      if (fam.additionalParents && Array.isArray(fam.additionalParents)) {
+        for (const parent of fam.additionalParents) {
+          if (parent.phoneNumber) {
+            const parentPhoneNormalized = normalizePhoneNumber(parent.phoneNumber);
+            if (parentPhoneNormalized === normalized) {
+              console.log(`[GET-FAMILY-BY-PHONE] Found family ${fam._id} via additional parent ${parent.name}`);
+              return fam;
+            }
+          }
         }
       }
     }
   }
+  
+  console.log(`[GET-FAMILY-BY-PHONE] No family found for phone: ${normalized}`);
   return null;
 }
 
@@ -1347,11 +1342,16 @@ app.post('/api/auth/verify-otp', async (req, res) => {
         family = await getFamilyByPhone(normalizedPhone);
         if (family) {
           console.log(`[VERIFY-OTP] ✅ Found family from database: ${family._id}`);
-          // Check if this is an additional parent
+          // Check if this is an additional parent (normalize for comparison)
           if (family.additionalParents && Array.isArray(family.additionalParents)) {
-            const additionalParent = family.additionalParents.find(p => normalizePhoneNumber(p.phoneNumber) === normalizedPhone);
-            if (additionalParent) {
-              console.log(`[VERIFY-OTP] ℹ️  This is an additional parent: ${additionalParent.name}`);
+            for (const parent of family.additionalParents) {
+              if (parent.phoneNumber) {
+                const parentPhoneNormalized = normalizePhoneNumber(parent.phoneNumber);
+                if (parentPhoneNormalized === normalizedPhone) {
+                  console.log(`[VERIFY-OTP] ℹ️  This is an additional parent: ${parent.name}`);
+                  break;
+                }
+              }
             }
           }
         }
@@ -1383,13 +1383,18 @@ app.post('/api/auth/verify-otp', async (req, res) => {
       }
     }
     
-    // Check if this is an additional parent
+    // Check if this is an additional parent (normalize all for comparison)
     let isAdditionalParent = false;
     if (family && !child && family.additionalParents && Array.isArray(family.additionalParents)) {
-      const additionalParent = family.additionalParents.find(p => normalizePhoneNumber(p.phoneNumber) === normalizedPhone);
-      isAdditionalParent = !!additionalParent;
-      if (isAdditionalParent) {
-        console.log(`[VERIFY-OTP] ✅ User is an additional parent: ${additionalParent.name}`);
+      for (const parent of family.additionalParents) {
+        if (parent.phoneNumber) {
+          const parentPhoneNormalized = normalizePhoneNumber(parent.phoneNumber);
+          if (parentPhoneNormalized === normalizedPhone) {
+            isAdditionalParent = true;
+            console.log(`[VERIFY-OTP] ✅ User is an additional parent: ${parent.name}`);
+            break;
+          }
+        }
       }
     }
     
@@ -2692,25 +2697,36 @@ app.post('/api/families/:familyId/parent', async (req, res) => {
     }
 
     const normalizedPhone = normalizePhoneNumber(phoneNumber.trim());
+    console.log(`[ADD-PARENT] Normalized phone: ${normalizedPhone}`);
     
-    // Check if phone is already in use by the main parent
-    if (family.phoneNumber === normalizedPhone) {
+    // Check if phone is already in use by the main parent (normalize both for comparison)
+    const mainParentPhoneNormalized = normalizePhoneNumber(family.phoneNumber);
+    if (mainParentPhoneNormalized === normalizedPhone) {
+      console.log(`[ADD-PARENT] ❌ Phone already in use by main parent: ${normalizedPhone}`);
       return res.status(400).json({ error: 'מספר טלפון זה כבר שייך להורה הראשי' });
     }
 
-    // Check if phone is already in use by another additional parent
+    // Check if phone is already in use by another additional parent (normalize all for comparison)
     const additionalParents = family.additionalParents || [];
-    if (additionalParents.some(p => p.phoneNumber === normalizedPhone)) {
-      return res.status(400).json({ error: 'מספר טלפון זה כבר קיים במשפחה' });
+    for (const parent of additionalParents) {
+      if (parent.phoneNumber) {
+        const parentPhoneNormalized = normalizePhoneNumber(parent.phoneNumber);
+        if (parentPhoneNormalized === normalizedPhone) {
+          console.log(`[ADD-PARENT] ❌ Phone already in use by additional parent: ${normalizedPhone}`);
+          return res.status(400).json({ error: 'מספר טלפון זה כבר קיים במשפחה' });
+        }
+      }
     }
 
     // Check if phone is already in use by another family (as main parent or additional parent)
+    // getFamilyByPhone already normalizes and checks both main and additional parents
     const existingFamily = await getFamilyByPhone(normalizedPhone);
     if (existingFamily && existingFamily._id !== familyId) {
+      console.log(`[ADD-PARENT] ❌ Phone already in use by another family: ${normalizedPhone} (family: ${existingFamily._id})`);
       return res.status(400).json({ error: 'מספר טלפון זה כבר בשימוש במשפחה אחרת' });
     }
     
-    // Also check if phone is already in use by a child in any family
+    // Also check if phone is already in use by a child in any family (normalize all for comparison)
     const allFamilies = await db.collection('families').find({}).toArray();
     for (const fam of allFamilies) {
       if (fam.children && Array.isArray(fam.children)) {
@@ -2718,6 +2734,7 @@ app.post('/api/families/:familyId/parent', async (req, res) => {
           if (ch.phoneNumber) {
             const childPhoneNormalized = normalizePhoneNumber(ch.phoneNumber);
             if (childPhoneNormalized === normalizedPhone) {
+              console.log(`[ADD-PARENT] ❌ Phone already in use by a child: ${normalizedPhone} (family: ${fam._id}, child: ${ch._id})`);
               return res.status(400).json({ error: 'מספר טלפון זה כבר בשימוש על ידי ילד' });
             }
           }
