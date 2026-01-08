@@ -908,6 +908,104 @@ const Settings = ({ familyId, onClose }) => {
           </div>
         </div>
       )}
+
+      {editingChild && (
+        <div className="password-modal-overlay" onClick={() => {
+          setEditingChild(null);
+          setEditChildName('');
+          setEditChildPhone('');
+        }}>
+          <div className="password-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="password-modal-header">
+              <h2>{t('parent.settings.editChildModal.title', { defaultValue: 'ערוך ילד' })}</h2>
+              <button className="close-button" onClick={() => {
+                setEditingChild(null);
+                setEditChildName('');
+                setEditChildPhone('');
+              }}>×</button>
+            </div>
+            <div className="password-modal-content">
+              <form
+                onSubmit={async (e) => {
+                  e.preventDefault();
+                  if (!editChildName.trim()) {
+                    alert(t('parent.settings.enterChildName', { defaultValue: 'אנא הכנס שם ילד' }));
+                    return;
+                  }
+                  if (!editChildPhone.trim()) {
+                    alert(t('parent.settings.enterChildPhone', { defaultValue: 'אנא הכנס מספר טלפון לילד' }));
+                    return;
+                  }
+                  
+                  setUpdatingChild(true);
+                  try {
+                    await updateChild(familyId, editingChild.childId, editChildName.trim(), editChildPhone.trim());
+                    await loadData();
+                    setEditingChild(null);
+                    setEditChildName('');
+                    setEditChildPhone('');
+                    if (onClose) {
+                      setTimeout(() => {
+                        onClose();
+                      }, 500);
+                    }
+                  } catch (error) {
+                    console.error('Error updating child:', error);
+                    alert(t('parent.settings.updateChildError', { defaultValue: 'שגיאה בעדכון ילד' }) + ': ' + error.message);
+                  } finally {
+                    setUpdatingChild(false);
+                  }
+                }}
+              >
+                <div className="form-group">
+                  <label>{t('parent.settings.childName', { defaultValue: 'שם הילד' })}:</label>
+                  <input
+                    type="text"
+                    value={editChildName}
+                    onChange={(e) => setEditChildName(e.target.value)}
+                    placeholder={t('parent.settings.childName', { defaultValue: 'שם הילד' })}
+                    className="child-name-input"
+                    required
+                  />
+                </div>
+                <div className="form-group">
+                  <label>{t('parent.settings.childPhone', { defaultValue: 'מספר טלפון לילד' })}:</label>
+                  <input
+                    type="tel"
+                    value={editChildPhone}
+                    onChange={(e) => setEditChildPhone(e.target.value)}
+                    placeholder={t('parent.settings.childPhone', { defaultValue: 'מספר טלפון לילד' })}
+                    className="child-name-input"
+                    inputMode="numeric"
+                    required
+                  />
+                </div>
+                <div className="password-modal-footer" style={{ marginTop: '20px', display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
+                  <button
+                    type="button"
+                    className="password-close-button"
+                    onClick={() => {
+                      setEditingChild(null);
+                      setEditChildName('');
+                      setEditChildPhone('');
+                    }}
+                    disabled={updatingChild}
+                  >
+                    {t('common.cancel', { defaultValue: 'ביטול' })}
+                  </button>
+                  <button
+                    type="submit"
+                    className="child-password-button"
+                    disabled={updatingChild || !editChildName.trim() || !editChildPhone.trim()}
+                  >
+                    {updatingChild ? t('common.saving', { defaultValue: 'שומר...' }) : t('common.save', { defaultValue: 'שמור' })}
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        </div>
+      )}
       </div>
     </div>
   );
