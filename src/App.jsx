@@ -12,7 +12,7 @@ import JoinChildScreen from './components/JoinChildScreen';
 import LanguageToggle from './components/LanguageToggle';
 
 const App = () => {
-  const { i18n } = useTranslation();
+  const { t, i18n } = useTranslation();
   const [screen, setScreen] = useState('main-login'); // 'main-login', 'welcome', 'phone', 'otp', 'child-password', 'parent-invite', 'child-invite', 'dashboard', 'child-view'
   const [familyId, setFamilyId] = useState(null);
   const [phoneNumber, setPhoneNumber] = useState('');
