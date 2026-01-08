@@ -239,7 +239,7 @@ const App = () => {
           </main>
           
           <footer className="app-footer">
-            <span className="version">{t('common.version', { defaultValue: 'גרסה' })} 3.2.0</span>
+            <span className="version">{t('common.version', { defaultValue: 'גרסה' })} 3.2.1</span>
           </footer>
         </>
       )}

@@ -255,25 +255,33 @@ const PhoneLogin = ({ onOTPSent }) => {
           }, 2000);
         });
         
+        const closeModal = () => {
+          if (modal.parentNode) {
+            document.body.removeChild(modal);
+          }
+          // Call onOTPSent after modal is closed
+          console.log('[FRONTEND] Modal closed, calling onOTPSent callback...');
+          onOTPSent(fullPhoneNumber, data.isExistingFamily);
+          console.log('[FRONTEND] ✅ onOTPSent called successfully');
+        };
+        
         const closeBtn = modalContent.querySelector('#close-otp-modal');
-        closeBtn.addEventListener('click', () => {
-          document.body.removeChild(modal);
-        });
+        closeBtn.addEventListener('click', closeModal);
         
         modal.addEventListener('click', (e) => {
           if (e.target === modal) {
-            document.body.removeChild(modal);
+            closeModal();
           }
         });
       } else {
         // Fallback to alert if no OTP code
         const successMessage = data.message || `✅ קוד אימות נשלח בהצלחה לטלפון ${fullPhoneNumber}`;
         alert(successMessage);
+        // Call onOTPSent after alert is closed
+        console.log('[FRONTEND] Alert closed, calling onOTPSent callback...');
+        onOTPSent(fullPhoneNumber, data.isExistingFamily);
+        console.log('[FRONTEND] ✅ onOTPSent called successfully');
       }
-
-      console.log('[FRONTEND] Calling onOTPSent callback...');
-      onOTPSent(fullPhoneNumber, data.isExistingFamily);
-      console.log('[FRONTEND] ✅ onOTPSent called successfully');
     } catch (error) {
       console.error('[FRONTEND] ========================================');
       console.error('[FRONTEND] ❌❌❌ EXCEPTION CAUGHT ❌❌❌');
@@ -370,7 +378,7 @@ const PhoneLogin = ({ onOTPSent }) => {
         >
           🔍 בדיקת לוגים
         </button>
-        <span className="version">{t('common.version', { defaultValue: 'גרסה' })} 3.2.0</span>
+        <span className="version">{t('common.version', { defaultValue: 'גרסה' })} 3.2.1</span>
       </footer>
     </div>
   );
