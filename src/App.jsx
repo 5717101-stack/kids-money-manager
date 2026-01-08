@@ -203,8 +203,28 @@ const App = () => {
 
   return (
     <div className="app">
-      <div style={{ position: 'fixed', top: '16px', right: '16px', zIndex: 1000 }}>
+      <div style={{ position: 'fixed', top: '16px', right: '16px', zIndex: 1000, display: 'flex', gap: '8px', alignItems: 'center' }}>
         <LanguageToggle />
+        {(screen === 'main-login' || screen === 'welcome' || screen === 'phone' || screen === 'otp' || screen === 'child-password' || screen === 'parent-invite' || screen === 'child-invite') && (
+          <button
+            className="logout-button"
+            onClick={handleLogout}
+            title={t('common.logout', { defaultValue: 'התנתק' })}
+            style={{
+              padding: '8px 16px',
+              backgroundColor: '#ef4444',
+              color: 'white',
+              border: 'none',
+              borderRadius: '8px',
+              cursor: 'pointer',
+              fontSize: '14px',
+              fontWeight: '600',
+              transition: 'all 0.2s ease'
+            }}
+          >
+            🚪 {t('common.logout', { defaultValue: 'התנתק' })}
+          </button>
+        )}
       </div>
       {screen === 'main-login' && (
         <MainLogin 
@@ -330,7 +350,7 @@ const App = () => {
 
           <main className="main-content">
             {view === 'parent' && (
-              <ParentDashboard familyId={familyId} onChildrenUpdated={loadChildren} />
+              <ParentDashboard familyId={familyId} onChildrenUpdated={loadChildren} onLogout={handleLogout} />
             )}
             {children.map(child => (
               view === child._id && (

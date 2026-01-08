@@ -9,7 +9,7 @@ const CHILD_COLORS = {
   child2: '#ec4899'  // ורוד
 };
 
-const ParentDashboard = ({ familyId, onChildrenUpdated }) => {
+const ParentDashboard = ({ familyId, onChildrenUpdated, onLogout }) => {
   const [selectedChild, setSelectedChild] = useState(null);
   const [childData, setChildData] = useState(null);
   const [transactions, setTransactions] = useState([]);
