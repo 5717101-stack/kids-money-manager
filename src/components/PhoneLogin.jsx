@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 
 const COUNTRY_CODES = [
   { code: '+972', name: 'ישראל', flag: '🇮🇱' },
@@ -19,6 +20,7 @@ const COUNTRY_CODES = [
 ];
 
 const PhoneLogin = ({ onOTPSent }) => {
+  const { t } = useTranslation();
   const [selectedCountry, setSelectedCountry] = useState(COUNTRY_CODES[0]);
   const [phoneNumber, setPhoneNumber] = useState('');
   const [isLoading, setIsLoading] = useState(false);
