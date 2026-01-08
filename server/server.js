@@ -1301,7 +1301,7 @@ app.post('/api/families/:familyId/children', async (req, res) => {
     console.log(`[CREATE-CHILD-ENDPOINT]   Duration: ${duration}ms`);
     console.log(`[CREATE-CHILD-ENDPOINT] ========================================\n`);
     
-    process.stderr.write(`[CREATE-CHILD-ENDPOINT] ✅ Success - Child created: ${child._id}, Name: ${child.name}\n`);
+    process.stderr.write(`[CREATE-CHILD-ENDPOINT] ✅ Success - Child created: ${child._id}, Name: ${child.name}, Phone: ${savedPhone}\n`);
     
     res.json(responseBody);
   } catch (error) {

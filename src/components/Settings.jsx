@@ -734,18 +734,17 @@ const Settings = ({ familyId, onClose }) => {
                       {t('common.edit', { defaultValue: 'ערוך' })}
                     </button>
                     <button
-                      className="recover-password-button"
-                      onClick={async () => {
-                        if (!familyId) return;
-                        try {
-                          const password = await getChildPassword(familyId, childId);
-                          setChildPasswordModal({ childId, childName: child.name, password });
-                        } catch (error) {
-                          alert(t('parent.settings.passwordError', { defaultValue: 'שגיאה בקבלת סיסמה' }) + ': ' + error.message);
+                      className="view-phone-button"
+                      onClick={() => {
+                        const childPhone = child.phoneNumber || '';
+                        if (childPhone) {
+                          setChildPhoneModal({ childId, childName: child.name, phoneNumber: childPhone });
+                        } else {
+                          alert(t('parent.settings.noPhoneNumber', { defaultValue: 'לילד זה אין מספר טלפון מוגדר' }));
                         }
                       }}
                     >
-                      {t('parent.settings.refreshCode', { defaultValue: 'רענן קוד' })}
+                      {t('parent.settings.viewPhone', { defaultValue: 'צפה בטלפון' })}
                     </button>
                   </div>
                 </div>
