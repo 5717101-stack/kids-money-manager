@@ -38,7 +38,7 @@ async function apiCall(endpoint, options = {}) {
   try {
     let response;
     try {
-      response = await fetch(url, {
+      const fetchOptions = {
         method: options.method || 'GET',
         mode: 'cors',
         credentials: 'omit',
@@ -47,10 +47,24 @@ async function apiCall(endpoint, options = {}) {
           'Accept': 'application/json',
           ...options.headers
         },
-        body: options.body ? JSON.stringify(options.body) : undefined,
         signal: controller.signal,
         ...options
+      };
+      
+      // Set body after spreading options to ensure it's not overridden
+      if (options.body) {
+        fetchOptions.body = typeof options.body === 'string' ? options.body : JSON.stringify(options.body);
+      }
+      
+      console.log('[API] Fetch options:', {
+        method: fetchOptions.method,
+        url: url,
+        hasBody: !!fetchOptions.body,
+        bodyType: typeof fetchOptions.body,
+        bodyPreview: fetchOptions.body ? (typeof fetchOptions.body === 'string' ? fetchOptions.body.substring(0, 100) : JSON.stringify(fetchOptions.body).substring(0, 100)) : 'none'
       });
+      
+      response = await fetch(url, fetchOptions);
       clearTimeout(timeoutId);
     } catch (fetchError) {
       clearTimeout(timeoutId);
