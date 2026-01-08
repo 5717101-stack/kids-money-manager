@@ -309,10 +309,6 @@ const App = () => {
           <main className="main-content">
             <ChildView childId={currentChild._id} familyId={familyId} />
           </main>
-          
-          <footer className="app-footer">
-            <span className="version">{t('common.version', { defaultValue: 'גרסה' })} 3.4.4</span>
-          </footer>
         </>
       )}
 
@@ -377,7 +373,6 @@ const App = () => {
             >
               🔍 בדיקת לוגים
             </button>
-            <span className="version">{t('common.version', { defaultValue: 'גרסה' })} 3.4.4</span>
           </footer>
         </>
       )}
