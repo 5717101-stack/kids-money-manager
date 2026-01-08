@@ -87,8 +87,30 @@
 ### 1. **משפחה ↔ ילדים**
 - **קשר**: **1-to-Many** (משפחה אחת יכולה להכיל מספר ילדים)
 - **אופן אחסון**: הילדים מאוחסנים כ-**מערך** (`children[]`) בתוך מסמך המשפחה
-- **חיפוש**: `db.collection('families').findOne({ 'children._id': childId })`
-- **עדכון**: `db.collection('families').updateOne({ _id: familyId, 'children._id': childId }, { $set: { 'children.$.field': value } })`
+- **המזהה המקשר**: 
+  - **`familyId`** (מזהה המשפחה) - `family._id`
+  - **`childId`** (מזהה הילד) - `child._id`
+  - הקשר הוא **מבני** - הילד נמצא בתוך המשפחה, אז אין צורך במזהה מקשר נפרד
+  - כדי למצוא ילד ספציפי, משתמשים בשני המזהים יחד: `familyId` + `childId`
+- **חיפוש**: 
+  ```javascript
+  // מציאת משפחה שמכילה ילד מסוים
+  const family = await db.collection('families').findOne({ 
+    'children._id': childId 
+  });
+  
+  // מציאת ילד ספציפי במשפחה
+  const family = await getFamilyById(familyId);
+  const child = family.children.find(c => c._id === childId);
+  ```
+- **עדכון**: 
+  ```javascript
+  // עדכון ילד ספציפי במשפחה
+  await db.collection('families').updateOne(
+    { _id: familyId, 'children._id': childId }, 
+    { $set: { 'children.$.field': value } }
+  );
+  ```
 
 ### 2. **ילד ↔ עסקאות**
 - **קשר**: **1-to-Many** (ילד אחד יכול להכיל מספר עסקאות)
