@@ -1072,18 +1072,31 @@ app.post('/api/auth/send-otp', async (req, res) => {
     console.log(`[SEND-OTP] ========================================`);
     console.log(`[SEND-OTP] Step 3: Checking if phone number exists (family or child)...`);
     
-    // First check if phone number belongs to a child
+    // First check if phone number belongs to a child (try both formats)
     let child = null;
     let existingFamily = null;
     
     if (db) {
-      // Find child by phone number
-      const familyWithChild = await db.collection('families').findOne({
+      // Find child by phone number (try normalized format first)
+      let familyWithChild = await db.collection('families').findOne({
         'children.phoneNumber': normalizedPhone
       });
       
+      // If not found, try without country code (for backward compatibility)
+      if (!familyWithChild && normalizedPhone.startsWith('+972')) {
+        const withoutCode = '0' + normalizedPhone.substring(4);
+        familyWithChild = await db.collection('families').findOne({
+          'children.phoneNumber': withoutCode
+        });
+      }
+      
       if (familyWithChild) {
-        child = familyWithChild.children.find(c => c.phoneNumber === normalizedPhone);
+        // Find child with matching phone (try both formats)
+        child = familyWithChild.children.find(c => 
+          c.phoneNumber === normalizedPhone || 
+          (normalizedPhone.startsWith('+972') && c.phoneNumber === '0' + normalizedPhone.substring(4)) ||
+          (normalizedPhone.startsWith('0') && c.phoneNumber === '+972' + normalizedPhone.substring(1))
+        );
         if (child) {
           existingFamily = familyWithChild;
           console.log(`[SEND-OTP]   ✅ Found child: ${child.name} (${child._id}) in family ${existingFamily._id}`);
