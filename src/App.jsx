@@ -205,7 +205,7 @@ const App = () => {
     <div className="app">
       <div style={{ position: 'fixed', top: '16px', right: '16px', zIndex: 1000, display: 'flex', gap: '8px', alignItems: 'center' }}>
         <LanguageToggle />
-        {(screen === 'main-login' || screen === 'welcome' || screen === 'phone' || screen === 'otp' || screen === 'child-password' || screen === 'parent-invite' || screen === 'child-invite') && (
+        {(screen === 'welcome' || screen === 'phone' || screen === 'otp' || screen === 'child-password' || screen === 'parent-invite' || screen === 'child-invite') && (
           <button
             className="logout-button"
             onClick={handleLogout}
