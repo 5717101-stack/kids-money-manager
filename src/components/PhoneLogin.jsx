@@ -20,7 +20,8 @@ const COUNTRY_CODES = [
 ];
 
 const PhoneLogin = ({ onOTPSent }) => {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
+  const COUNTRY_CODES = i18n.language === 'he' ? COUNTRY_CODES_HE : COUNTRY_CODES_EN;
   const [selectedCountry, setSelectedCountry] = useState(COUNTRY_CODES[0]);
   const [phoneNumber, setPhoneNumber] = useState('');
   const [isLoading, setIsLoading] = useState(false);
@@ -51,7 +52,7 @@ const PhoneLogin = ({ onOTPSent }) => {
     if (!phoneNumber || !validatePhoneNumber(phoneNumber)) {
       console.error('[FRONTEND] ❌ Phone validation failed');
       console.error('[FRONTEND] Phone:', phoneNumber);
-      setError('מספר טלפון לא תקין');
+      setError(t('auth.phoneLogin.invalidPhone', { defaultValue: 'מספר טלפון לא תקין' }));
       return;
     }
 
@@ -130,12 +131,12 @@ const PhoneLogin = ({ onOTPSent }) => {
         // Handle specific iOS/WebView errors
         if (fetchError.name === 'TypeError' && (fetchError.message === 'Load failed' || fetchError.message.includes('Failed to fetch'))) {
           const errorMsg = typeof window !== 'undefined' && window.Capacitor?.isNativePlatform() 
-            ? 'שגיאת רשת ב-iOS: לא ניתן להתחבר לשרת. ודא שהשרת רץ ונגיש.'
-            : 'שגיאת רשת: לא ניתן להתחבר לשרת. בדוק את חיבור האינטרנט או נסה שוב מאוחר יותר.';
+            ? t('auth.phoneLogin.networkErrorIOS', { defaultValue: 'שגיאת רשת ב-iOS: לא ניתן להתחבר לשרת. ודא שהשרת רץ ונגיש.' })
+            : t('auth.phoneLogin.networkError', { defaultValue: 'שגיאת רשת: לא ניתן להתחבר לשרת. בדוק את חיבור האינטרנט או נסה שוב מאוחר יותר.' });
           throw new Error(errorMsg);
         }
         if (fetchError.name === 'AbortError') {
-          throw new Error('הבקשה בוטלה: השרת לא הגיב בזמן. נסה שוב.');
+          throw new Error(t('auth.phoneLogin.timeoutError', { defaultValue: 'הבקשה בוטלה: השרת לא הגיב בזמן. נסה שוב.' }));
         }
         throw fetchError;
       }
@@ -161,7 +162,7 @@ const PhoneLogin = ({ onOTPSent }) => {
         console.error('[FRONTEND] Status:', response.status);
         console.error('[FRONTEND] Error:', data.error || 'Unknown error');
         console.error('[FRONTEND] ========================================\n');
-        throw new Error(data.error || 'שגיאה בשליחת קוד');
+        throw new Error(data.error || t('auth.phoneLogin.sendError', { defaultValue: 'שגיאה בשליחת קוד אימות' }));
       }
 
       console.log('[FRONTEND] ========================================');
@@ -227,7 +228,7 @@ const PhoneLogin = ({ onOTPSent }) => {
               cursor: pointer;
               font-size: 16px;
               font-weight: 600;
-            ">📋 העתק</button>
+            ">📋 ${t('auth.phoneLogin.copy', { defaultValue: 'העתק' })}</button>
           </div>
           <button id="close-otp-modal" style="
             padding: 12px 30px;
@@ -239,7 +240,7 @@ const PhoneLogin = ({ onOTPSent }) => {
             font-size: 16px;
             font-weight: 600;
             margin-top: 10px;
-          ">סגור</button>
+          ">${t('auth.phoneLogin.close', { defaultValue: 'סגור' })}</button>
         `;
         
         modal.appendChild(modalContent);
@@ -249,7 +250,7 @@ const PhoneLogin = ({ onOTPSent }) => {
         copyBtn.addEventListener('click', () => {
           navigator.clipboard.writeText(data.otpCode);
           const originalText = copyBtn.textContent;
-          copyBtn.textContent = '✅ הועתק!';
+          copyBtn.textContent = '✅ ' + t('auth.phoneLogin.copied', { defaultValue: 'הועתק!' });
           setTimeout(() => {
             copyBtn.textContent = originalText;
           }, 2000);
@@ -275,7 +276,7 @@ const PhoneLogin = ({ onOTPSent }) => {
         });
       } else {
         // Fallback to alert if no OTP code
-        const successMessage = data.message || `✅ קוד אימות נשלח בהצלחה לטלפון ${fullPhoneNumber}`;
+        const successMessage = data.message || t('auth.phoneLogin.otpSentSuccess', { phone: fullPhoneNumber, defaultValue: `✅ קוד אימות נשלח בהצלחה לטלפון ${fullPhoneNumber}` });
         alert(successMessage);
         // Call onOTPSent after alert is closed
         console.log('[FRONTEND] Alert closed, calling onOTPSent callback...');
@@ -290,7 +291,7 @@ const PhoneLogin = ({ onOTPSent }) => {
       console.error('[FRONTEND] Error Message:', error.message);
       console.error('[FRONTEND] Error Stack:', error.stack);
       console.error('[FRONTEND] ========================================\n');
-      setError(error.message || 'שגיאה בשליחת קוד אימות');
+      setError(error.message || t('auth.phoneLogin.sendError', { defaultValue: 'שגיאה בשליחת קוד אימות' }));
     } finally {
       console.log('[FRONTEND] Setting loading state to false...');
       setIsLoading(false);
@@ -302,8 +303,8 @@ const PhoneLogin = ({ onOTPSent }) => {
     <div className="phone-login">
       <div className="phone-login-container">
         <div className="phone-login-header">
-          <h1>📱 הכנס מספר טלפון</h1>
-          <p className="phone-login-subtitle">נשלח לך קוד אימות ב-SMS</p>
+          <h1>📱 {t('auth.phoneLogin.title', { defaultValue: 'הכנס מספר טלפון' })}</h1>
+          <p className="phone-login-subtitle">{t('auth.phoneLogin.subtitle', { defaultValue: 'נשלח לך קוד אימות ב-SMS' })}</p>
         </div>
 
         <form onSubmit={handleSubmit} className="phone-login-form">
@@ -316,7 +317,7 @@ const PhoneLogin = ({ onOTPSent }) => {
                 setPhoneNumber(e.target.value);
                 setError('');
               }}
-              placeholder="מספר טלפון"
+              placeholder={t('auth.phoneLogin.phonePlaceholder', { defaultValue: 'מספר טלפון' })}
               required
               autoFocus
               inputMode="numeric"
@@ -356,7 +357,9 @@ const PhoneLogin = ({ onOTPSent }) => {
             className="phone-login-button"
             disabled={isLoading || !phoneNumber}
           >
-            {isLoading ? 'שולח...' : 'שלח קוד אימות'}
+            {isLoading 
+              ? t('auth.phoneLogin.sending', { defaultValue: 'שולח...' })
+              : t('auth.phoneLogin.sendCode', { defaultValue: 'שלח קוד אימות' })}
           </button>
         </form>
       </div>
@@ -378,7 +381,7 @@ const PhoneLogin = ({ onOTPSent }) => {
         >
           🔍 בדיקת לוגים
         </button>
-        <span className="version">{t('common.version', { defaultValue: 'גרסה' })} 3.2.3</span>
+        <span className="version">{t('common.version', { defaultValue: 'גרסה' })} 3.2.4</span>
       </footer>
     </div>
   );

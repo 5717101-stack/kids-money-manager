@@ -79,7 +79,7 @@ const Settings = ({ familyId, onClose }) => {
       console.error('Error loading settings data:', error);
       // Don't show alert if it's just a network error - let user retry
       if (!error.message?.includes('Failed to fetch')) {
-        alert('שגיאה בטעינת הנתונים: ' + (error.message || 'Unknown error'));
+        alert(t('parent.settings.alerts.loadDataError', { defaultValue: 'שגיאה בטעינת הנתונים' }) + ': ' + (error.message || 'Unknown error'));
       }
     } finally {
       setLoading(false);
@@ -89,7 +89,7 @@ const Settings = ({ familyId, onClose }) => {
   const handleAddCategory = async (e) => {
     e.preventDefault();
     if (!newCategoryName.trim()) {
-      alert('אנא הכנס שם קטגוריה');
+      alert(t('parent.settings.alerts.enterCategoryName', { defaultValue: 'אנא הכנס שם קטגוריה' }));
       return;
     }
 
@@ -100,7 +100,7 @@ const Settings = ({ familyId, onClose }) => {
       setCategories([...categories, category]);
       setNewCategoryName('');
     } catch (error) {
-      alert('שגיאה בהוספת קטגוריה: ' + error.message);
+      alert(t('parent.settings.alerts.addCategoryError', { defaultValue: 'שגיאה בהוספת קטגוריה' }) + ': ' + error.message);
     }
   };
 
@@ -113,12 +113,12 @@ const Settings = ({ familyId, onClose }) => {
       ));
       setEditingCategory(null);
     } catch (error) {
-      alert('שגיאה בעדכון קטגוריה: ' + error.message);
+      alert(t('parent.settings.alerts.updateCategoryError', { defaultValue: 'שגיאה בעדכון קטגוריה' }) + ': ' + error.message);
     }
   };
 
   const handleDeleteCategory = async (categoryId) => {
-    if (!window.confirm('האם אתה בטוח שברצונך למחוק את הקטגוריה?')) {
+    if (!window.confirm(t('parent.settings.alerts.deleteCategoryConfirm', { defaultValue: 'האם אתה בטוח שברצונך למחוק את הקטגוריה?' }))) {
       return;
     }
 
@@ -127,7 +127,7 @@ const Settings = ({ familyId, onClose }) => {
       await deleteCategory(familyId, categoryId);
       setCategories(categories.filter(cat => cat._id !== categoryId));
     } catch (error) {
-      alert('שגיאה במחיקת קטגוריה: ' + error.message);
+      alert(t('parent.settings.alerts.deleteCategoryError', { defaultValue: 'שגיאה במחיקת קטגוריה' }) + ': ' + error.message);
     }
   };
 
@@ -139,10 +139,10 @@ const Settings = ({ familyId, onClose }) => {
         setUploadingImages(prev => ({ ...prev, [childId]: true }));
         await updateProfileImage(familyId, childId, null);
         await loadData();
-        alert('תמונת הפרופיל הוסרה בהצלחה!');
+        alert(t('parent.settings.alerts.removeImageSuccess', { defaultValue: 'תמונת הפרופיל הוסרה בהצלחה!' }));
       } catch (error) {
         console.error('Error removing profile image:', error);
-        alert('שגיאה בהסרת תמונת הפרופיל: ' + (error.message || 'Unknown error'));
+        alert(t('parent.settings.alerts.removeImageError', { defaultValue: 'שגיאה בהסרת תמונת הפרופיל' }) + ': ' + (error.message || 'Unknown error'));
       } finally {
         setUploadingImages(prev => ({ ...prev, [childId]: false }));
       }
@@ -157,7 +157,7 @@ const Settings = ({ familyId, onClose }) => {
 
     // Validate file type
     if (!file.type.startsWith('image/')) {
-      alert('אנא בחר קובץ תמונה בלבד');
+      alert(t('parent.settings.alerts.invalidFileType', { defaultValue: 'אנא בחר קובץ תמונה בלבד' }));
       // Reset input
       const input = fileInputRefs.current?.[childId];
       if (input) {
@@ -173,7 +173,7 @@ const Settings = ({ familyId, onClose }) => {
     // Validate file size (max 10MB)
     const maxSize = 10 * 1024 * 1024; // 10MB
     if (file.size > maxSize) {
-      alert('גודל הקובץ גדול מדי. אנא בחר תמונה קטנה מ-10MB');
+      alert(t('parent.settings.alerts.fileTooLarge', { defaultValue: 'גודל הקובץ גדול מדי. אנא בחר תמונה קטנה מ-10MB' }));
       // Reset input
       const input = fileInputRefs.current?.[childId];
       if (input) {
@@ -253,7 +253,7 @@ const Settings = ({ familyId, onClose }) => {
         console.log('Image still too large, trying lower quality...');
         const compressedImage = await compressImage(file, 1280, 1280, 0.6);
         if (compressedImage.length > 5 * 1024 * 1024) {
-          throw new Error('התמונה גדולה מדי גם לאחר דחיסה. אנא בחר תמונה קטנה יותר.');
+          throw new Error(t('parent.settings.alerts.imageTooLargeAfterCompression', { defaultValue: 'התמונה גדולה מדי גם לאחר דחיסה. אנא בחר תמונה קטנה יותר.' }));
         }
         base64Image = compressedImage;
         console.log('Re-compressed image size:', base64Image.length, 'bytes');
@@ -265,7 +265,7 @@ const Settings = ({ familyId, onClose }) => {
       // Add timeout to prevent hanging
       const uploadPromise = updateProfileImage(familyId, childId, base64Image);
       const timeoutPromise = new Promise((_, reject) => 
-        setTimeout(() => reject(new Error('העלאה ארכה יותר מדי זמן. נסה שוב.')), 60000)
+        setTimeout(() => reject(new Error(t('parent.settings.alerts.uploadTimeout', { defaultValue: 'העלאה ארכה יותר מדי זמן. נסה שוב.' }))), 60000)
       );
       
       const result = await Promise.race([uploadPromise, timeoutPromise]);
@@ -299,7 +299,7 @@ const Settings = ({ familyId, onClose }) => {
         // Don't show error to user, just log it
       }
       
-      alert('תמונת הפרופיל עודכנה בהצלחה!');
+      alert(t('parent.settings.alerts.updateImageSuccess', { defaultValue: 'תמונת הפרופיל עודכנה בהצלחה!' }));
     } catch (error) {
       console.error('Error updating profile image:', error);
       console.error('Error details:', {
@@ -308,7 +308,7 @@ const Settings = ({ familyId, onClose }) => {
         name: error.name
       });
       const errorMessage = error.message || 'Unknown error';
-      alert('שגיאה בעדכון תמונת הפרופיל: ' + errorMessage);
+      alert(t('parent.settings.alerts.updateImageError', { defaultValue: 'שגיאה בעדכון תמונת הפרופיל' }) + ': ' + errorMessage);
       // Reset input on error
       const input = fileInputRefs.current?.[childId];
       if (input) {
@@ -328,9 +328,9 @@ const Settings = ({ familyId, onClose }) => {
     try {
       await updateWeeklyAllowance(familyId, childId, allowance, allowanceType, allowanceDay, allowanceTime);
       await loadData();
-      alert('דמי הכיס עודכנו בהצלחה!');
+      alert(t('parent.settings.alerts.updateAllowanceSuccess', { defaultValue: 'דמי הכיס עודכנו בהצלחה!' }));
     } catch (error) {
-      alert('שגיאה בעדכון דמי הכיס: ' + error.message);
+      alert(t('parent.settings.alerts.updateAllowanceError', { defaultValue: 'שגיאה בעדכון דמי הכיס' }) + ': ' + error.message);
     }
   };
 
@@ -377,25 +377,25 @@ const Settings = ({ familyId, onClose }) => {
           className={activeTab === 'categories' ? 'active' : ''}
           onClick={() => setActiveTab('categories')}
         >
-          קטגוריות הוצאות
+          {t('parent.settings.tabs.categories', { defaultValue: 'קטגוריות הוצאות' })}
         </button>
         <button
           className={activeTab === 'profileImages' ? 'active' : ''}
           onClick={() => setActiveTab('profileImages')}
         >
-          תמונות פרופיל
+          {t('parent.settings.tabs.profileImages', { defaultValue: 'תמונות פרופיל' })}
         </button>
         <button
           className={activeTab === 'allowances' ? 'active' : ''}
           onClick={() => setActiveTab('allowances')}
         >
-          דמי כיס
+          {t('parent.settings.tabs.allowances', { defaultValue: 'דמי כיס' })}
         </button>
         <button
           className={activeTab === 'children' ? 'active' : ''}
           onClick={() => setActiveTab('children')}
         >
-          ילדים
+          {t('parent.settings.tabs.children', { defaultValue: 'ילדים' })}
         </button>
       </div>
 
@@ -524,14 +524,16 @@ const Settings = ({ familyId, onClose }) => {
                         disabled={uploadingImages[childId]}
                         style={{ display: 'none' }}
                       />
-                      {uploadingImages[childId] ? 'מעלה...' : 'העלה תמונה'}
+                      {uploadingImages[childId] 
+                        ? t('parent.settings.profileImages.uploading', { defaultValue: 'מעלה...' })
+                        : t('parent.settings.profileImages.upload', { defaultValue: 'העלה תמונה' })}
                     </label>
                     {profileImage && (
                       <button
                         className="remove-image-button"
                         onClick={() => handleImageUpload(childId, null)}
                       >
-                        הסר תמונה
+                        {t('parent.settings.profileImages.remove', { defaultValue: 'הסר תמונה' })}
                       </button>
                     )}
                   </div>
@@ -851,11 +853,11 @@ const Settings = ({ familyId, onClose }) => {
         <div className="password-modal-overlay" onClick={() => setChildPasswordModal(null)}>
           <div className="password-modal" onClick={(e) => e.stopPropagation()}>
             <div className="password-modal-header">
-              <h2>סיסמה ל{childPasswordModal.childName}</h2>
+              <h2>{t('parent.settings.passwordModal.title', { name: childPasswordModal.childName, defaultValue: 'סיסמה ל{name}' })}</h2>
               <button className="close-button" onClick={() => setChildPasswordModal(null)}>×</button>
             </div>
             <div className="password-modal-content">
-              <p className="password-label">סיסמה:</p>
+              <p className="password-label">{t('parent.settings.passwordModal.password', { defaultValue: 'סיסמה' })}:</p>
               <div className="password-display-container">
                 <div className="password-display" id="password-display">{childPasswordModal.password}</div>
                 <button 
@@ -864,19 +866,19 @@ const Settings = ({ familyId, onClose }) => {
                     navigator.clipboard.writeText(childPasswordModal.password);
                     const btn = document.querySelector('.copy-button');
                     const originalText = btn.textContent;
-                    btn.textContent = '✅ הועתק!';
+                    btn.textContent = '✅ ' + t('parent.settings.passwordModal.copied', { defaultValue: 'הועתק!' });
                     setTimeout(() => {
                       btn.textContent = originalText;
                     }, 2000);
                   }}
-                  title="העתק סיסמה"
+                  title={t('parent.settings.passwordModal.copyPassword', { defaultValue: 'העתק סיסמה' })}
                 >
-                  📋 העתק
+                  📋 {t('parent.settings.passwordModal.copy', { defaultValue: 'העתק' })}
                 </button>
               </div>
               {childPasswordModal.joinCode && (
                 <>
-                  <p className="password-label">קוד הצטרפות:</p>
+                  <p className="password-label">{t('parent.settings.passwordModal.joinCode', { defaultValue: 'קוד הצטרפות' })}:</p>
                   <div className="password-display-container">
                     <div className="password-display" id="joincode-display">{childPasswordModal.joinCode}</div>
                     <button 
@@ -890,23 +892,23 @@ const Settings = ({ familyId, onClose }) => {
                           btn.textContent = originalText;
                         }, 2000);
                       }}
-                      title="העתק קוד הצטרפות"
+                      title={t('parent.settings.passwordModal.copyJoinCode', { defaultValue: 'העתק קוד הצטרפות' })}
                     >
-                      📋 העתק
+                      📋 {t('parent.settings.passwordModal.copy', { defaultValue: 'העתק' })}
                     </button>
                   </div>
                   <p className="password-note">
-                    שמור את הקוד הזה! הילד יכול להשתמש בו כדי להצטרף למשפחה ממכשיר אחר.
+                    {t('parent.settings.passwordModal.joinCodeNote', { defaultValue: 'שמור את הקוד הזה! הילד יכול להשתמש בו כדי להצטרף למשפחה ממכשיר אחר.' })}
                   </p>
                 </>
               )}
               <p className="password-note">
-                שמור את הסיסמה הזו! היא תצטרך אם הילד ישכח אותה או יחליף מכשיר.
+                {t('parent.settings.passwordModal.note', { defaultValue: 'שמור את הסיסמה הזו! היא תצטרך אם הילד ישכח אותה או יחליף מכשיר.' })}
               </p>
             </div>
             <div className="password-modal-footer">
               <button className="password-close-button" onClick={() => setChildPasswordModal(null)}>
-                סגור
+                {t('parent.settings.passwordModal.close', { defaultValue: 'סגור' })}
               </button>
             </div>
           </div>

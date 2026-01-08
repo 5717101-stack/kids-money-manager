@@ -62,7 +62,7 @@ const OTPVerification = ({ phoneNumber, isExistingFamily, onVerified, onBack }) 
     const otpCode = otp.join('');
     
     if (otpCode.length !== 6) {
-      setError('אנא הכנס קוד מלא');
+      setError(t('auth.otpVerification.enterFullCode', { defaultValue: 'אנא הכנס קוד מלא' }));
       return;
     }
 
@@ -118,8 +118,8 @@ const OTPVerification = ({ phoneNumber, isExistingFamily, onVerified, onBack }) 
         // Handle specific iOS/WebView errors
         if (fetchError.name === 'TypeError' && (fetchError.message === 'Load failed' || fetchError.message.includes('Failed to fetch'))) {
           const errorMsg = typeof window !== 'undefined' && window.Capacitor?.isNativePlatform() 
-            ? 'שגיאת רשת ב-iOS: לא ניתן להתחבר לשרת. ודא שהשרת רץ ונגיש.'
-            : 'שגיאת רשת: לא ניתן להתחבר לשרת. בדוק את חיבור האינטרנט או נסה שוב מאוחר יותר.';
+            ? t('auth.otpVerification.networkErrorIOS', { defaultValue: 'שגיאת רשת ב-iOS: לא ניתן להתחבר לשרת. ודא שהשרת רץ ונגיש.' })
+            : t('auth.otpVerification.networkError', { defaultValue: 'שגיאת רשת: לא ניתן להתחבר לשרת. בדוק את חיבור האינטרנט או נסה שוב מאוחר יותר.' });
           throw new Error(errorMsg);
         }
         if (fetchError.name === 'AbortError') {
@@ -131,13 +131,13 @@ const OTPVerification = ({ phoneNumber, isExistingFamily, onVerified, onBack }) 
       const data = await response.json();
 
       if (!response.ok) {
-        throw new Error(data.error || 'קוד אימות שגוי');
+        throw new Error(data.error || t('auth.otpVerification.invalidCode', { defaultValue: 'קוד אימות שגוי' }));
       }
 
       onVerified(data.familyId, data.phoneNumber, data.isNewFamily);
     } catch (error) {
       console.error('Error verifying OTP:', error);
-      setError(error.message || 'קוד אימות שגוי');
+      setError(error.message || t('auth.otpVerification.verifyError', { defaultValue: 'שגיאה באימות קוד' }));
       setOtp(['', '', '', '', '', '']);
       inputRefs.current[0]?.focus();
     } finally {
@@ -198,7 +198,7 @@ const OTPVerification = ({ phoneNumber, isExistingFamily, onVerified, onBack }) 
         
         // Handle specific iOS/WebView errors
         if (fetchError.name === 'TypeError' && (fetchError.message === 'Load failed' || fetchError.message.includes('Failed to fetch'))) {
-          throw new Error('שגיאת רשת: לא ניתן להתחבר לשרת. בדוק את חיבור האינטרנט או נסה שוב מאוחר יותר.');
+          throw new Error(t('auth.otpVerification.networkError', { defaultValue: 'שגיאת רשת: לא ניתן להתחבר לשרת. בדוק את חיבור האינטרנט או נסה שוב מאוחר יותר.' }));
         }
         if (fetchError.name === 'AbortError') {
           throw new Error('הבקשה בוטלה: השרת לא הגיב בזמן. נסה שוב.');
@@ -211,10 +211,10 @@ const OTPVerification = ({ phoneNumber, isExistingFamily, onVerified, onBack }) 
       const data = await response.json();
 
       if (!response.ok) {
-        throw new Error(data.error || 'שגיאה בשליחת קוד');
+        throw new Error(data.error || t('auth.otpVerification.resendError', { defaultValue: 'שגיאה בשליחת קוד מחדש' }));
       }
     } catch (error) {
-      setError(error.message || 'שגיאה בשליחת קוד מחדש');
+      setError(error.message || t('auth.otpVerification.resendError', { defaultValue: 'שגיאה בשליחת קוד מחדש' }));
     }
   };
 
@@ -223,11 +223,11 @@ const OTPVerification = ({ phoneNumber, isExistingFamily, onVerified, onBack }) 
       <div className="otp-container">
         <div className="otp-header">
           <button className="back-button" onClick={onBack}>
-            ← חזור
+            {t('auth.otpVerification.back', { defaultValue: '← חזור' })}
           </button>
-          <h1>🔐 אימות קוד</h1>
+          <h1>🔐 {t('auth.otpVerification.title', { defaultValue: 'אימות קוד' })}</h1>
           <p className="otp-subtitle">
-            נשלח קוד ל-{phoneNumber}
+            {t('auth.otpVerification.subtitle', { phone: phoneNumber, defaultValue: 'נשלח קוד ל-{phone}' })}
           </p>
         </div>
 
@@ -256,7 +256,9 @@ const OTPVerification = ({ phoneNumber, isExistingFamily, onVerified, onBack }) 
             className="otp-button otp-button-green"
             disabled={isLoading || otp.join('').length !== 6}
           >
-            {isLoading ? 'מאמת...' : 'אימות'}
+            {isLoading 
+              ? t('auth.otpVerification.verifying', { defaultValue: 'מאמת...' })
+              : t('auth.otpVerification.verify', { defaultValue: 'אימות' })}
           </button>
 
           <div className="resend-section">
@@ -266,11 +268,11 @@ const OTPVerification = ({ phoneNumber, isExistingFamily, onVerified, onBack }) 
                 className="resend-button"
                 onClick={handleResend}
               >
-                שלח קוד מחדש
+                {t('auth.otpVerification.resend', { defaultValue: 'שלח קוד מחדש' })}
               </button>
             ) : (
               <p className="resend-timer">
-                ניתן לשלוח קוד מחדש בעוד {resendTimer} שניות
+                {t('auth.otpVerification.resendIn', { seconds: resendTimer, defaultValue: 'ניתן לשלוח קוד מחדש בעוד {seconds} שניות' })}
               </p>
             )}
           </div>
@@ -300,7 +302,7 @@ const OTPVerification = ({ phoneNumber, isExistingFamily, onVerified, onBack }) 
         >
           🔍 בדיקת לוגים
         </button>
-        <span className="version">{t('common.version', { defaultValue: 'גרסה' })} 3.2.3</span>
+        <span className="version">{t('common.version', { defaultValue: 'גרסה' })} 3.2.4</span>
       </footer>
     </div>
   );

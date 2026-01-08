@@ -13,12 +13,12 @@ const ChildPasswordLogin = ({ familyId, onChildVerified, onBack }) => {
     setError('');
 
     if (!password || password.length < 4) {
-      setError('אנא הכנס סיסמה תקינה');
+      setError(t('auth.childPassword.enterValidPassword', { defaultValue: 'אנא הכנס סיסמה תקינה' }));
       return;
     }
 
     if (!familyId) {
-      setError('שגיאה: לא נמצא מספר משפחה. אנא נסה להתחבר מחדש.');
+      setError(t('auth.childPassword.familyIdNotFound', { defaultValue: 'שגיאה: לא נמצא מספר משפחה. אנא נסה להתחבר מחדש.' }));
       return;
     }
 
@@ -59,7 +59,7 @@ const ChildPasswordLogin = ({ familyId, onChildVerified, onBack }) => {
       }
       
       if (!foundChild) {
-        throw new Error('סיסמה שגויה');
+        throw new Error(t('auth.childPassword.wrongPassword', { defaultValue: 'סיסמה שגויה' }));
       }
       
       const data = { child: foundChild };
@@ -67,7 +67,7 @@ const ChildPasswordLogin = ({ familyId, onChildVerified, onBack }) => {
       if (data.child) {
         onChildVerified(data.child, familyId);
       } else {
-        throw new Error('ילד לא נמצא');
+        throw new Error(t('auth.childPassword.childNotFound', { defaultValue: 'ילד לא נמצא' }));
       }
     } catch (error) {
       console.error('[CHILD-PASSWORD] Error verifying child password:', error);
@@ -76,31 +76,31 @@ const ChildPasswordLogin = ({ familyId, onChildVerified, onBack }) => {
       console.error('[CHILD-PASSWORD] Error stack:', error.stack);
       
       // Translate common error messages to Hebrew
-      let errorMessage = error.message || 'סיסמה שגויה';
+      let errorMessage = error.message || t('auth.childPassword.wrongPassword', { defaultValue: 'סיסמה שגויה' });
       
       // Handle network errors
       if (error.name === 'TypeError' && error.message.includes('fetch')) {
-        errorMessage = 'שגיאת רשת. אנא בדוק את החיבור לאינטרנט ונסה שוב.';
+        errorMessage = t('auth.childPassword.networkError', { defaultValue: 'שגיאת רשת. אנא בדוק את החיבור לאינטרנט ונסה שוב.' });
       }
       // Handle JSON parse errors (HTML response)
       else if (error.message.includes('Unexpected token') || error.message.includes('JSON') || error.message.includes('DOCTYPE')) {
-        errorMessage = 'השרת החזיר שגיאה. אנא נסה שוב מאוחר יותר או פנה לתמיכה.';
+        errorMessage = t('auth.childPassword.serverError', { defaultValue: 'השרת החזיר שגיאה. אנא נסה שוב מאוחר יותר או פנה לתמיכה.' });
       }
       // Handle pattern validation errors
       else if (errorMessage.includes('pattern') || errorMessage.includes('expected pattern') || errorMessage.includes('validation')) {
-        errorMessage = 'סיסמה לא תקינה. אנא בדוק שהסיסמה נכונה והעתקת אותה במלואה (ללא רווחים מיותרים).';
+        errorMessage = t('auth.childPassword.invalidPasswordFormat', { defaultValue: 'סיסמה לא תקינה. אנא בדוק שהסיסמה נכונה והעתקת אותה במלואה (ללא רווחים מיותרים).' });
       }
       // Handle not found errors
       else if (errorMessage.includes('not found') || errorMessage.includes('לא נמצא') || errorMessage.includes('NotFound')) {
-        errorMessage = 'ילד לא נמצא במשפחה זו.';
+        errorMessage = t('auth.childPassword.childNotFoundInFamily', { defaultValue: 'ילד לא נמצא במשפחה זו.' });
       }
       // Handle incorrect password
       else if (errorMessage.includes('incorrect') || errorMessage.includes('שגויה') || errorMessage.includes('Invalid')) {
-        errorMessage = 'סיסמה שגויה. אנא נסה שוב.';
+        errorMessage = t('auth.childPassword.wrongPasswordTryAgain', { defaultValue: 'סיסמה שגויה. אנא נסה שוב.' });
       }
       // Handle ObjectId validation errors
       else if (errorMessage.includes('ObjectId') || errorMessage.includes('Cast to ObjectId')) {
-        errorMessage = 'שגיאה: מספר משפחה לא תקין. אנא נסה להתחבר מחדש.';
+        errorMessage = t('auth.childPassword.invalidFamilyId', { defaultValue: 'שגיאה: מספר משפחה לא תקין. אנא נסה להתחבר מחדש.' });
       }
       
       setError(errorMessage);
@@ -114,11 +114,11 @@ const ChildPasswordLogin = ({ familyId, onChildVerified, onBack }) => {
       <div className="child-password-container">
         <div className="child-password-header">
           <button className="back-button" onClick={onBack}>
-            ← חזור
+            {t('auth.childPassword.back', { defaultValue: '← חזור' })}
           </button>
-          <h1>🔐 הכנס סיסמה</h1>
+          <h1>🔐 {t('auth.childPassword.title', { defaultValue: 'הכנס סיסמה' })}</h1>
           <p className="child-password-subtitle">
-            הכנס את הסיסמה שלך כדי להתחבר לחשבון
+            {t('auth.childPassword.subtitle', { defaultValue: 'הכנס את הסיסמה שלך כדי להתחבר לחשבון' })}
           </p>
           <p style={{ 
             fontSize: '14px', 
@@ -129,15 +129,15 @@ const ChildPasswordLogin = ({ familyId, onChildVerified, onBack }) => {
             borderRadius: '8px',
             textAlign: 'center'
           }}>
-            💡 <strong>איפה למצוא את הסיסמה?</strong><br/>
-            ההורה שלך יכול לראות את הסיסמה שלך בהגדרות<br/>
-            (⚙️ הגדרות → בחר אותך → 🔑 שחזר סיסמה)
+            💡 <strong>{t('auth.childPassword.whereToFind', { defaultValue: 'איפה למצוא את הסיסמה?' })}</strong><br/>
+            {t('auth.childPassword.parentCanSee', { defaultValue: 'ההורה שלך יכול לראות את הסיסמה שלך בהגדרות' })}<br/>
+            ({t('auth.childPassword.parentInstructions', { defaultValue: '⚙️ הגדרות → בחר אותך → 🔑 שחזר סיסמה' })})
           </p>
         </div>
 
         <form onSubmit={handleSubmit} className="child-password-form">
           <div className="form-group">
-            <label htmlFor="password">סיסמה:</label>
+            <label htmlFor="password">{t('auth.childPassword.passwordLabel', { defaultValue: 'סיסמה' })}:</label>
             <input
               type="password"
               id="password"
@@ -147,7 +147,7 @@ const ChildPasswordLogin = ({ familyId, onChildVerified, onBack }) => {
                 setPassword(e.target.value);
                 setError('');
               }}
-              placeholder="הכנס סיסמה"
+              placeholder={t('auth.childPassword.passwordPlaceholder', { defaultValue: 'הכנס סיסמה' })}
               required
               autoFocus
             />
@@ -160,12 +160,14 @@ const ChildPasswordLogin = ({ familyId, onChildVerified, onBack }) => {
             className="child-password-button"
             disabled={isLoading || !password}
           >
-            {isLoading ? 'מאמת...' : 'התחבר'}
+            {isLoading 
+              ? t('auth.childPassword.verifying', { defaultValue: 'מאמת...' })
+              : t('auth.childPassword.login', { defaultValue: 'התחבר' })}
           </button>
         </form>
       </div>
       <footer className="app-footer">
-        <span className="version">{t('common.version', { defaultValue: 'גרסה' })} 3.2.3</span>
+        <span className="version">{t('common.version', { defaultValue: 'גרסה' })} 3.2.4</span>
       </footer>
     </div>
   );

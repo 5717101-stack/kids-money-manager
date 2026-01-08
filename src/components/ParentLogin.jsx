@@ -1,8 +1,10 @@
 import React, { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 
 const PARENT_PASSWORD = '2016';
 
 const ParentLogin = ({ onLogin }) => {
+  const { t } = useTranslation();
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
 
@@ -15,7 +17,7 @@ const ParentLogin = ({ onLogin }) => {
       sessionStorage.setItem('parentLoggedIn', 'true');
       onLogin();
     } else {
-      setError('סיסמה שגויה. אנא נסה שוב.');
+      setError(t('parentLogin.wrongPassword', { defaultValue: 'סיסמה שגויה. אנא נסה שוב.' }));
       setPassword('');
     }
   };
@@ -23,12 +25,12 @@ const ParentLogin = ({ onLogin }) => {
   return (
     <div className="parent-login">
       <div className="login-container">
-        <h1>🔒 גישה לממשק הורה</h1>
-        <p className="login-subtitle">אנא הכנס סיסמה כדי לגשת לממשק ההורה</p>
+        <h1>🔒 {t('parentLogin.title', { defaultValue: 'גישה לממשק הורה' })}</h1>
+        <p className="login-subtitle">{t('parentLogin.subtitle', { defaultValue: 'אנא הכנס סיסמה כדי לגשת לממשק ההורה' })}</p>
         
         <form onSubmit={handleSubmit} className="login-form">
           <div className="form-group">
-            <label htmlFor="password">סיסמה:</label>
+            <label htmlFor="password">{t('parentLogin.passwordLabel', { defaultValue: 'סיסמה' })}:</label>
             <input
               type="password"
               id="password"
@@ -37,7 +39,7 @@ const ParentLogin = ({ onLogin }) => {
                 setPassword(e.target.value);
                 setError('');
               }}
-              placeholder="הכנס סיסמה"
+              placeholder={t('parentLogin.passwordPlaceholder', { defaultValue: 'הכנס סיסמה' })}
               required
               autoFocus
             />
@@ -46,7 +48,7 @@ const ParentLogin = ({ onLogin }) => {
           {error && <div className="error-message">{error}</div>}
 
           <button type="submit" className="login-button">
-            התחבר
+            {t('parentLogin.login', { defaultValue: 'התחבר' })}
           </button>
         </form>
       </div>
