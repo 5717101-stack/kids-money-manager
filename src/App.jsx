@@ -311,7 +311,7 @@ const App = () => {
           </main>
           
           <footer className="app-footer">
-            <span className="version">{t('common.version', { defaultValue: 'גרסה' })} 3.4.1</span>
+            <span className="version">{t('common.version', { defaultValue: 'גרסה' })} 3.4.2</span>
           </footer>
         </>
       )}
@@ -377,7 +377,7 @@ const App = () => {
             >
               🔍 בדיקת לוגים
             </button>
-            <span className="version">{t('common.version', { defaultValue: 'גרסה' })} 3.4.1</span>
+            <span className="version">{t('common.version', { defaultValue: 'גרסה' })} 3.4.2</span>
           </footer>
         </>
       )}
