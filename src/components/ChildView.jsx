@@ -22,14 +22,19 @@ const ChildView = ({ childId, familyId }) => {
     loadChildData();
     loadSavingsGoal();
     loadExpensesByCategory();
-    // Refresh every 5 seconds to show updated balance
+    // Refresh every 5 seconds to show updated balance (but not expenses chart)
     const interval = setInterval(() => {
       loadChildData();
       loadSavingsGoal();
-      loadExpensesByCategory();
+      // Don't reload expenses chart automatically - only when period changes
     }, 5000);
     return () => clearInterval(interval);
-  }, [childId, familyId, expensesPeriod]);
+  }, [childId, familyId]);
+
+  // Load expenses when period changes
+  useEffect(() => {
+    loadExpensesByCategory();
+  }, [expensesPeriod]);
 
   const loadChildData = async () => {
     if (!familyId || !childId) return;
