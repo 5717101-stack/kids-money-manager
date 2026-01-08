@@ -1093,7 +1093,7 @@ const Settings = ({ familyId, onClose, onLogout }) => {
                             placeholder={t('parent.settings.parents.namePlaceholder', { defaultValue: 'שם ההורה' })}
                             className="parent-input"
                           />
-            </div>
+                        </div>
                         <div className="form-group">
                           <label>{t('parent.settings.parents.phone', { defaultValue: 'טלפון' })}:</label>
                           <input
@@ -1138,9 +1138,9 @@ const Settings = ({ familyId, onClose, onLogout }) => {
                             }}
                           >
                             {t('common.cancel', { defaultValue: 'ביטול' })}
-              </button>
-            </div>
-          </div>
+                          </button>
+                        </div>
+                      </div>
                     ) : (
                       <div className="parent-display">
                         <div className="parent-info">
@@ -1163,9 +1163,10 @@ const Settings = ({ familyId, onClose, onLogout }) => {
                           }}
                         >
                           {t('common.edit', { defaultValue: 'ערוך' })}
-                        </button>
-        </div>
-      )}
+                          </button>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 ))}
               </div>
@@ -1178,7 +1179,7 @@ const Settings = ({ familyId, onClose, onLogout }) => {
         )}
       </div>
     </div>
-    </div>
+  </div>
   );
 };
 
