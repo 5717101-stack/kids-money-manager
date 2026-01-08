@@ -2,9 +2,9 @@ import React, { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import Settings from './Settings';
 
-const Sidebar = ({ isOpen, onClose, familyId, onLogout, onChildrenUpdated }) => {
+const Sidebar = ({ isOpen, onClose, familyId, onLogout, onChildrenUpdated, onMenuItemClick }) => {
   const { t, i18n } = useTranslation();
-  const [activeTab, setActiveTab] = useState('categories');
+  const [activeTab, setActiveTab] = useState(null);
 
   const menuItems = [
     {
@@ -72,27 +72,19 @@ const Sidebar = ({ isOpen, onClose, familyId, onLogout, onChildrenUpdated }) => 
               <button
                 key={item.id}
                 className={`sidebar-nav-item ${activeTab === item.id ? 'active' : ''}`}
-                onClick={() => setActiveTab(item.id)}
+                onClick={() => {
+                  if (onMenuItemClick) {
+                    onMenuItemClick(item.id);
+                  } else {
+                    setActiveTab(item.id);
+                  }
+                }}
               >
                 <span className="sidebar-nav-icon">{item.icon}</span>
                 <span className="sidebar-nav-label">{item.label}</span>
               </button>
             ))}
           </nav>
-
-          {activeTab && (
-            <div className="sidebar-settings-content">
-              <Settings
-                familyId={familyId}
-                onClose={onClose}
-                onLogout={onLogout}
-                onChildrenUpdated={onChildrenUpdated}
-                activeTab={activeTab}
-                hideTabs={true}
-                inSidebar={true}
-              />
-            </div>
-          )}
         </div>
 
         <div className="sidebar-footer">

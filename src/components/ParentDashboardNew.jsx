@@ -11,6 +11,8 @@ const ParentDashboard = ({ familyId, onChildrenUpdated, onLogout }) => {
   const [categories, setCategories] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showSidebar, setShowSidebar] = useState(false);
+  const [showSettings, setShowSettings] = useState(false);
+  const [settingsTab, setSettingsTab] = useState('categories');
   const [showQuickAction, setShowQuickAction] = useState(false);
   const [quickActionType, setQuickActionType] = useState('deposit'); // 'deposit' or 'expense'
   const [recentTransactions, setRecentTransactions] = useState([]);
@@ -246,10 +248,31 @@ const ParentDashboard = ({ familyId, onChildrenUpdated, onLogout }) => {
             await onChildrenUpdated();
           }
         }}
+        onMenuItemClick={(tab) => {
+          setShowSidebar(false);
+          setSettingsTab(tab);
+          setShowSettings(true);
+        }}
         familyId={familyId}
         onLogout={onLogout}
         onChildrenUpdated={onChildrenUpdated}
       />
+
+      {/* Settings Modal */}
+      {showSettings && (
+        <Settings 
+          familyId={familyId}
+          onClose={async () => {
+            setShowSettings(false);
+            await loadData();
+            if (onChildrenUpdated) {
+              await onChildrenUpdated();
+            }
+          }}
+          onLogout={onLogout}
+          activeTab={settingsTab}
+        />
+      )}
 
       {showQuickAction && (
         <QuickActionModal
