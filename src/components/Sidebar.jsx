@@ -8,6 +8,11 @@ const Sidebar = ({ isOpen, onClose, familyId, onLogout, onChildrenUpdated, onMen
 
   const menuItems = [
     {
+      id: 'dashboard',
+      label: t('sidebar.dashboard', { defaultValue: 'ממשק הורים' }),
+      icon: '🏠'
+    },
+    {
       id: 'profileImages',
       label: t('sidebar.profile', { defaultValue: 'פרופיל' }),
       icon: '👤'

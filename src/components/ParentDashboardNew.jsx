@@ -12,8 +12,7 @@ const ParentDashboard = ({ familyId, onChildrenUpdated, onLogout }) => {
   const [categories, setCategories] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showSidebar, setShowSidebar] = useState(false);
-  const [showSettings, setShowSettings] = useState(false);
-  const [settingsTab, setSettingsTab] = useState('categories');
+  const [currentView, setCurrentView] = useState('dashboard'); // 'dashboard', 'categories', 'profileImages', 'allowances', 'children', 'parents'
   const [showQuickAction, setShowQuickAction] = useState(false);
   const [quickActionType, setQuickActionType] = useState('deposit'); // 'deposit' or 'expense'
   const [recentTransactions, setRecentTransactions] = useState([]);
@@ -101,6 +100,26 @@ const ParentDashboard = ({ familyId, onChildrenUpdated, onLogout }) => {
     );
   }
 
+  // Get page title based on current view
+  const getPageTitle = () => {
+    switch (currentView) {
+      case 'dashboard':
+        return t('parent.dashboard.title', { defaultValue: 'ממשק הורים' });
+      case 'categories':
+        return t('parent.settings.categories.title', { defaultValue: 'קטגוריות' });
+      case 'profileImages':
+        return t('parent.settings.profileImages.title', { defaultValue: 'תמונות פרופיל' });
+      case 'allowances':
+        return t('parent.settings.allowance.title', { defaultValue: 'דמי כיס' });
+      case 'children':
+        return t('parent.settings.manageChildren', { defaultValue: 'ניהול ילדים' });
+      case 'parents':
+        return t('parent.settings.parents.title', { defaultValue: 'ניהול הורים' });
+      default:
+        return t('parent.dashboard.title', { defaultValue: 'ממשק הורים' });
+    }
+  };
+
   return (
     <div className="parent-dashboard-new" dir={i18n.language === 'he' ? 'rtl' : 'ltr'}>
       {/* Header */}
@@ -108,7 +127,7 @@ const ParentDashboard = ({ familyId, onChildrenUpdated, onLogout }) => {
         <div className="header-left">
           <LanguageToggle />
           <h1 className="family-name">
-            {familyPhoneNumber || t('parent.dashboard.familyName', { defaultValue: 'משפחה' })}
+            {getPageTitle()}
           </h1>
         </div>
         <button 
@@ -124,6 +143,10 @@ const ParentDashboard = ({ familyId, onChildrenUpdated, onLogout }) => {
           </span>
         </button>
       </div>
+
+      {/* Content based on current view */}
+      {currentView === 'dashboard' && (
+        <>
 
       {/* Total Family Balance Card */}
       <div className="total-balance-card">
@@ -238,6 +261,8 @@ const ParentDashboard = ({ familyId, onChildrenUpdated, onLogout }) => {
           </div>
         )}
       </div>
+        </>
+      )}
 
       {/* Sidebar */}
       <Sidebar
@@ -251,27 +276,29 @@ const ParentDashboard = ({ familyId, onChildrenUpdated, onLogout }) => {
         }}
         onMenuItemClick={(tab) => {
           setShowSidebar(false);
-          setSettingsTab(tab);
-          setShowSettings(true);
+          setCurrentView(tab);
         }}
         familyId={familyId}
         onLogout={onLogout}
         onChildrenUpdated={onChildrenUpdated}
       />
 
-      {/* Settings Modal */}
-      {showSettings && (
+      {/* Settings Content (not modal) */}
+      {currentView !== 'dashboard' && (
         <Settings 
           familyId={familyId}
           onClose={async () => {
-            setShowSettings(false);
+            setCurrentView('dashboard');
             await loadData();
             if (onChildrenUpdated) {
               await onChildrenUpdated();
             }
           }}
           onLogout={onLogout}
-          activeTab={settingsTab}
+          activeTab={currentView}
+          hideTabs={true}
+          inSidebar={false}
+          asPage={true}
         />
       )}
 

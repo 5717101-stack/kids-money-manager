@@ -5249,3 +5249,18 @@ strong, b {
   display: none;
 }
 
+
+
+/* Settings Page Container (Full Page, Not Modal) */
+.settings-page-container {
+  width: 100%;
+  padding: 20px;
+  background: var(--bg);
+  min-height: calc(100vh - 80px);
+  overflow-y: auto;
+}
+
+.settings-page-container .settings-content {
+  max-width: 1200px;
+  margin: 0 auto;
+}
