@@ -61,6 +61,22 @@ html[dir="ltr"] body {
   --radius-md: 12px;
   --radius-lg: 16px;
   --radius-xl: 20px;
+  
+  /* Safe Area Insets for iPhone (notch/Dynamic Island support) */
+  --safe-area-inset-top: env(safe-area-inset-top, 0px);
+  --safe-area-inset-right: env(safe-area-inset-right, 0px);
+  --safe-area-inset-bottom: env(safe-area-inset-bottom, 0px);
+  --safe-area-inset-left: env(safe-area-inset-left, 0px);
+  
+  /* Mobile-specific spacing for iPhone 17 */
+  --mobile-padding: 16px;
+  --mobile-padding-small: 12px;
+  --mobile-padding-large: 24px;
+  --mobile-font-size-base: 16px;
+  --mobile-font-size-small: 14px;
+  --mobile-font-size-large: 18px;
+  --mobile-button-height: 50px;
+  --mobile-input-height: 50px;
 }
 
 body {
@@ -72,9 +88,15 @@ body {
   direction: rtl;
   background: var(--bg);
   min-height: 100vh;
-  padding: 20px;
+  min-height: -webkit-fill-available; /* iOS Safari fix */
+  padding: 0;
+  padding-top: calc(20px + var(--safe-area-inset-top));
+  padding-right: calc(var(--mobile-padding) + var(--safe-area-inset-right));
+  padding-bottom: calc(20px + var(--safe-area-inset-bottom));
+  padding-left: calc(var(--mobile-padding) + var(--safe-area-inset-left));
   color: var(--text-primary);
   line-height: 1.6;
+  font-size: var(--mobile-font-size-base);
 }
 
 .app {
@@ -692,15 +714,18 @@ body {
 
 .form-group input[type="text"],
 .form-group input[type="number"],
+.form-group input[type="tel"],
 .form-group select {
-  padding: 16px 20px;
+  padding: 14px 16px;
   border: 2px solid var(--border);
   border-radius: var(--radius-md);
-  font-size: 18px;
+  font-size: var(--mobile-font-size-base);
   transition: all 0.2s ease;
   background: var(--bg-card);
+  min-height: var(--mobile-input-height);
+  -webkit-appearance: none; /* Remove iOS default styling */
+  appearance: none;
   font-weight: 600;
-  min-height: 56px;
 }
 
 .form-group input[type="number"] {
@@ -870,11 +895,14 @@ body {
 
 /* ========== CHILD VIEW (NEW DESIGN) ========== */
 .child-view {
-  padding: 24px;
-  max-width: 1200px;
-  margin: 0 auto;
+  padding: var(--mobile-padding);
+  padding-top: calc(var(--mobile-padding) + var(--safe-area-inset-top));
+  padding-bottom: calc(var(--mobile-padding) + var(--safe-area-inset-bottom));
+  max-width: 100%;
+  margin: 0;
   background: var(--bg);
   min-height: 100vh;
+  min-height: -webkit-fill-available; /* iOS Safari fix */
 }
 
 .child-header {
@@ -954,39 +982,52 @@ body {
   align-items: center;
   justify-content: center;
   z-index: 10000;
-  padding: 20px;
+  padding: var(--mobile-padding);
+  padding-top: calc(var(--mobile-padding) + var(--safe-area-inset-top));
+  padding-right: calc(var(--mobile-padding) + var(--safe-area-inset-right));
+  padding-bottom: calc(var(--mobile-padding) + var(--safe-area-inset-bottom));
+  padding-left: calc(var(--mobile-padding) + var(--safe-area-inset-left));
 }
 
 .modal-content {
   background: var(--bg-card);
   border-radius: var(--radius-xl);
   box-shadow: var(--shadow-xl);
-  max-height: 90vh;
+  max-height: calc(100vh - 32px - var(--safe-area-inset-top) - var(--safe-area-inset-bottom));
+  max-width: calc(100vw - 32px - var(--safe-area-inset-left) - var(--safe-area-inset-right));
   overflow-y: auto;
   position: relative;
+  width: 100%;
+  -webkit-overflow-scrolling: touch; /* Smooth scrolling on iOS */
 }
 
 .settings-container {
-  max-width: 900px;
+  max-width: 100%;
   width: 100%;
-  padding: 32px;
+  padding: var(--mobile-padding);
   box-shadow: var(--shadow-sm);
   border: 1px solid var(--border);
+  max-height: calc(100vh - 32px - var(--safe-area-inset-top) - var(--safe-area-inset-bottom));
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch; /* Smooth scrolling on iOS */
 }
 
 .settings-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 32px;
-  padding-bottom: 24px;
+  margin-bottom: var(--mobile-padding);
+  padding-bottom: var(--mobile-padding-small);
   border-bottom: 1px solid var(--border);
+  flex-wrap: wrap;
+  gap: 12px;
 }
 
 .settings-header h1 {
-  font-size: 28px;
+  font-size: 24px;
   font-weight: 700;
   color: var(--text-primary);
+  margin: 0;
 }
 
 .close-button {
@@ -1791,38 +1832,145 @@ body {
   }
 }
 
-/* Responsive Design */
+/* Responsive Design - iPhone 17 Optimized */
 @media (max-width: 768px) {
   body {
-    padding: 12px;
+    padding: var(--mobile-padding-small);
+    padding-top: calc(var(--mobile-padding-small) + var(--safe-area-inset-top));
+    padding-right: calc(var(--mobile-padding-small) + var(--safe-area-inset-right));
+    padding-bottom: calc(var(--mobile-padding-small) + var(--safe-area-inset-bottom));
+    padding-left: calc(var(--mobile-padding-small) + var(--safe-area-inset-left));
+    font-size: var(--mobile-font-size-base);
+  }
+
+  .app {
+    max-width: 100%;
   }
 
   .parent-dashboard,
   .child-view,
   .settings-container {
-    padding: 20px;
+    padding: var(--mobile-padding);
+    border-radius: var(--radius-md);
+    margin-bottom: var(--mobile-padding);
   }
 
   .dashboard-header {
     flex-direction: column;
-    gap: 16px;
+    gap: 12px;
     align-items: flex-start;
+    padding-bottom: var(--mobile-padding);
+    margin-bottom: var(--mobile-padding);
   }
 
   .balance-overview {
     grid-template-columns: 1fr;
+    gap: var(--mobile-padding);
   }
 
   .charts-section {
     grid-template-columns: 1fr;
+    gap: var(--mobile-padding);
   }
 
   .child-buttons {
     flex-direction: column;
+    gap: 12px;
   }
 
   .child-buttons button {
     width: 100%;
+    min-height: var(--mobile-button-height);
+    font-size: var(--mobile-font-size-base);
+  }
+  
+  /* Optimize buttons for iPhone */
+  button {
+    min-height: var(--mobile-button-height);
+    font-size: var(--mobile-font-size-base);
+    padding: 14px 20px;
+    touch-action: manipulation; /* Prevents double-tap zoom on iOS */
+  }
+  
+  /* Optimize inputs for iPhone */
+  input[type="text"],
+  input[type="tel"],
+  input[type="number"],
+  input[type="password"] {
+    min-height: var(--mobile-input-height);
+    font-size: var(--mobile-font-size-base); /* Prevents zoom on iOS */
+    padding: 14px 16px;
+    border-radius: var(--radius-md);
+  }
+  
+  /* Optimize modals for iPhone */
+  .modal-content {
+    max-width: calc(100vw - 32px);
+    max-height: calc(100vh - 64px - var(--safe-area-inset-top) - var(--safe-area-inset-bottom));
+    margin: calc(16px + var(--safe-area-inset-top)) auto calc(16px + var(--safe-area-inset-bottom));
+    padding: var(--mobile-padding);
+    border-radius: var(--radius-lg);
+  }
+  
+  /* Optimize cards for iPhone */
+  .balance-card,
+  .child-card,
+  .transaction-item {
+    padding: var(--mobile-padding);
+    margin-bottom: var(--mobile-padding-small);
+    border-radius: var(--radius-md);
+  }
+  
+  /* Optimize headers for iPhone */
+  h1 {
+    font-size: 24px;
+    margin-bottom: var(--mobile-padding);
+  }
+  
+  h2 {
+    font-size: 20px;
+    margin-bottom: var(--mobile-padding-small);
+  }
+  
+  h3 {
+    font-size: 18px;
+    margin-bottom: var(--mobile-padding-small);
+  }
+}
+
+/* iPhone 17 Specific - Smaller screens (iPhone 15/15 Pro) */
+@media (max-width: 430px) {
+  body {
+    padding: var(--mobile-padding-small);
+    padding-top: calc(var(--mobile-padding-small) + var(--safe-area-inset-top));
+    padding-right: calc(var(--mobile-padding-small) + var(--safe-area-inset-right));
+    padding-bottom: calc(var(--mobile-padding-small) + var(--safe-area-inset-bottom));
+    padding-left: calc(var(--mobile-padding-small) + var(--safe-area-inset-left));
+  }
+  
+  .parent-dashboard,
+  .child-view,
+  .settings-container {
+    padding: var(--mobile-padding-small);
+  }
+  
+  h1 {
+    font-size: 22px;
+  }
+  
+  h2 {
+    font-size: 18px;
+  }
+  
+  .big-balance-value {
+    font-size: 42px;
+  }
+}
+
+/* iPhone 17 Specific - Larger screens (iPhone 15 Pro Max/Plus) */
+@media (min-width: 431px) and (max-width: 768px) {
+  .big-balance-value {
+    font-size: 52px;
   }
 }
 
@@ -2462,26 +2610,103 @@ body {
   font-size: 14px;
 }
 
-/* Responsive for auth screens */
+/* Responsive for auth screens - iPhone 17 Optimized */
 @media (max-width: 768px) {
+  .welcome-screen,
+  .phone-login,
+  .otp-verification {
+    padding: var(--mobile-padding);
+    padding-top: calc(var(--mobile-padding) + var(--safe-area-inset-top));
+    padding-bottom: calc(var(--mobile-padding) + var(--safe-area-inset-bottom));
+    min-height: 100vh;
+    min-height: -webkit-fill-available; /* iOS Safari fix */
+  }
+  
   .welcome-container,
   .phone-login-container,
   .otp-container {
-    padding: 30px 20px;
+    padding: var(--mobile-padding-large);
+    max-width: 100%;
+    margin: 0;
+    border-radius: var(--radius-lg);
+  }
+
+  .welcome-header h1,
+  .phone-login-header h1,
+  .otp-header h1 {
+    font-size: 28px;
+    margin-bottom: var(--mobile-padding-small);
   }
 
   .phone-input-group {
     flex-direction: column;
+    gap: 12px;
+  }
+  
+  .phone-input {
+    min-height: var(--mobile-input-height);
+    font-size: var(--mobile-font-size-base);
+    padding: 14px 16px;
+  }
+  
+  .country-code-selector {
+    width: 100%;
+  }
+  
+  .country-code-button {
+    width: 100%;
+    min-height: var(--mobile-input-height);
+    font-size: var(--mobile-font-size-base);
+    padding: 14px 16px;
   }
 
   .otp-inputs {
-    gap: 8px;
+    gap: 10px;
+    justify-content: center;
   }
 
   .otp-input {
+    width: 50px;
+    height: 60px;
+    font-size: 24px;
+    min-height: var(--mobile-input-height);
+  }
+  
+  .login-button,
+  .send-code-button,
+  .verify-button {
+    min-height: var(--mobile-button-height);
+    font-size: var(--mobile-font-size-base);
+    padding: 14px 20px;
+  }
+}
+
+/* iPhone 17 Specific - Smaller screens (iPhone 15/15 Pro) */
+@media (max-width: 430px) {
+  .welcome-container,
+  .phone-login-container,
+  .otp-container {
+    padding: var(--mobile-padding);
+  }
+  
+  .welcome-header h1,
+  .phone-login-header h1,
+  .otp-header h1 {
+    font-size: 24px;
+  }
+  
+  .otp-input {
     width: 45px;
     height: 55px;
-    font-size: 24px;
+  }
+}
+
+/* iPhone 17 Specific - Larger screens (iPhone 15 Pro Max/Plus) */
+@media (min-width: 431px) and (max-width: 768px) {
+  .welcome-container,
+  .phone-login-container,
+  .otp-container {
+    padding: var(--mobile-padding-large);
   }
 }
 
@@ -2746,11 +2971,13 @@ body {
   color: white;
   border: none;
   border-radius: var(--radius-md);
-  font-size: 16px;
+  font-size: var(--mobile-font-size-base);
   font-weight: 600;
   cursor: pointer;
   transition: all 0.2s ease;
   white-space: nowrap;
+  min-height: var(--mobile-button-height);
+  touch-action: manipulation; /* Prevents double-tap zoom on iOS */
 }
 
 .add-child-button:hover:not(:disabled) {
@@ -2804,17 +3031,20 @@ body {
   justify-content: center;
   align-items: center;
   min-height: 100vh;
+  min-height: -webkit-fill-available; /* iOS Safari fix */
   background: linear-gradient(135deg, var(--primary-light) 0%, var(--bg) 100%);
-  padding: 20px;
+  padding: var(--mobile-padding);
+  padding-top: calc(var(--mobile-padding) + var(--safe-area-inset-top));
+  padding-bottom: calc(var(--mobile-padding) + var(--safe-area-inset-bottom));
 }
 
 .child-password-container {
   background: var(--bg-card);
   border-radius: var(--radius-xl);
-  padding: 40px;
+  padding: var(--mobile-padding-large);
   box-shadow: var(--shadow-xl);
   text-align: center;
-  max-width: 450px;
+  max-width: 100%;
   width: 100%;
   border: 2px solid var(--border);
 }
@@ -3908,19 +4138,22 @@ body {
 
 /* ========== PARENT DASHBOARD NEW ========== */
 .parent-dashboard-new {
-  padding: 24px;
-  max-width: 1400px;
-  margin: 0 auto;
+  padding: var(--mobile-padding);
+  padding-top: calc(var(--mobile-padding) + var(--safe-area-inset-top));
+  padding-bottom: calc(var(--mobile-padding) + var(--safe-area-inset-bottom));
+  max-width: 100%;
+  margin: 0;
   background: var(--bg);
   min-height: 100vh;
+  min-height: -webkit-fill-available; /* iOS Safari fix */
 }
 
 .dashboard-header-new {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 24px;
-  padding: 20px;
+  margin-bottom: var(--mobile-padding);
+  padding: var(--mobile-padding);
   background: var(--bg-card);
   border-radius: var(--radius-lg);
   box-shadow: var(--shadow-sm);
@@ -4338,36 +4571,84 @@ body {
   flex-direction: row-reverse;
 }
 
-/* Mobile Responsive */
+/* Mobile Responsive - iPhone 17 Optimized */
 @media (max-width: 768px) {
+  .parent-dashboard-new {
+    padding: var(--mobile-padding);
+    padding-top: calc(var(--mobile-padding) + var(--safe-area-inset-top));
+    padding-bottom: calc(var(--mobile-padding) + var(--safe-area-inset-bottom));
+  }
+  
+  .dashboard-header-new {
+    padding: var(--mobile-padding);
+    margin-bottom: var(--mobile-padding);
+    flex-wrap: wrap;
+    gap: 12px;
+  }
+  
+  .family-name {
+    font-size: 20px;
+  }
+  
+  .total-balance-card {
+    padding: var(--mobile-padding-large);
+    margin-bottom: var(--mobile-padding);
+  }
+  
+  .total-balance-value {
+    font-size: 42px;
+  }
+  
   .big-balance-value {
     font-size: 48px;
   }
 
   .children-cards-container {
     grid-template-columns: 1fr;
+    gap: var(--mobile-padding);
+  }
+  
+  .child-card {
+    padding: var(--mobile-padding);
   }
 
   .quick-actions-section {
     flex-direction: column;
+    gap: 12px;
   }
 
   .quick-action-button {
     min-width: 100%;
+    min-height: var(--mobile-button-height);
+    font-size: var(--mobile-font-size-base);
+    padding: 14px 20px;
   }
 
-  .savings-goal-header {
+  .savings-goal-section,
+  .expenses-chart-section,
+  .child-history-section {
+    padding: var(--mobile-padding);
+    margin-bottom: var(--mobile-padding);
+  }
+  
+  .savings-goal-header,
+  .expenses-chart-header {
     flex-direction: column;
     align-items: flex-start;
+    gap: 12px;
   }
 
   .goal-actions {
     width: 100%;
     justify-content: stretch;
+    gap: 8px;
   }
 
   .goal-actions button {
     flex: 1;
+    min-height: var(--mobile-button-height);
+    font-size: var(--mobile-font-size-small);
+    padding: 12px 16px;
   }
 
   .child-profile-image-large {
@@ -4382,11 +4663,75 @@ body {
   }
 
   .big-balance-display {
-    padding: 24px 16px;
+    padding: var(--mobile-padding-large) var(--mobile-padding);
+    margin-bottom: var(--mobile-padding);
   }
 
   .balance-breakdown {
     flex-direction: column;
     gap: 8px;
+  }
+  
+  .period-toggle {
+    width: 100%;
+  }
+  
+  .period-button {
+    flex: 1;
+    min-height: var(--mobile-button-height);
+    font-size: var(--mobile-font-size-small);
+  }
+  
+  .chart-container {
+    padding: var(--mobile-padding);
+  }
+  
+  .chart-wrapper {
+    min-height: 300px;
+  }
+  
+  .transactions-list-simple {
+    gap: 10px;
+  }
+  
+  .transaction-item-simple {
+    padding: var(--mobile-padding-small);
+  }
+}
+
+/* iPhone 17 Specific - Smaller screens (iPhone 15/15 Pro) */
+@media (max-width: 430px) {
+  .total-balance-value,
+  .big-balance-value {
+    font-size: 36px;
+  }
+  
+  .child-profile-image-large,
+  .child-profile-placeholder-large {
+    width: 80px;
+    height: 80px;
+  }
+  
+  .child-profile-placeholder-large {
+    font-size: 32px;
+  }
+  
+  .big-balance-display {
+    padding: var(--mobile-padding) var(--mobile-padding-small);
+  }
+  
+  .chart-wrapper {
+    min-height: 250px;
+  }
+}
+
+/* iPhone 17 Specific - Larger screens (iPhone 15 Pro Max/Plus) */
+@media (min-width: 431px) and (max-width: 768px) {
+  .total-balance-value {
+    font-size: 48px;
+  }
+  
+  .big-balance-value {
+    font-size: 52px;
   }
 }
