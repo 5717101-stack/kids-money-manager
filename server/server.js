@@ -512,9 +512,46 @@ async function initializeData() {
 }
 
 // Helper functions
+// Normalize phone number - ensure it has country code
+function normalizePhoneNumber(phoneNumber, defaultCountryCode = '+972') {
+  if (!phoneNumber) return phoneNumber;
+  const trimmed = phoneNumber.trim();
+  
+  // If already starts with +, return as is
+  if (trimmed.startsWith('+')) {
+    return trimmed;
+  }
+  
+  // If starts with 0, replace with country code
+  if (trimmed.startsWith('0')) {
+    return defaultCountryCode + trimmed.substring(1);
+  }
+  
+  // Otherwise, add country code
+  return defaultCountryCode + trimmed;
+}
+
 async function getFamilyByPhone(phoneNumber) {
+  if (!phoneNumber) return null;
+  
+  // Try exact match first
   if (db) {
-    return await db.collection('families').findOne({ phoneNumber });
+    let family = await db.collection('families').findOne({ phoneNumber });
+    if (family) return family;
+    
+    // Try normalized version
+    const normalized = normalizePhoneNumber(phoneNumber);
+    if (normalized !== phoneNumber) {
+      family = await db.collection('families').findOne({ phoneNumber: normalized });
+      if (family) return family;
+    }
+    
+    // Try without country code (for backward compatibility)
+    if (phoneNumber.startsWith('+972')) {
+      const withoutCode = '0' + phoneNumber.substring(4);
+      family = await db.collection('families').findOne({ phoneNumber: withoutCode });
+      if (family) return family;
+    }
   }
   return null;
 }
@@ -573,29 +610,36 @@ async function addChildToFamily(familyId, childName, phoneNumber) {
   console.log(`\n[ADD-CHILD] ===== Adding Child to Family =====`);
   console.log(`[ADD-CHILD] Family ID: ${familyId}`);
   console.log(`[ADD-CHILD] Child Name: ${childName}`);
-  console.log(`[ADD-CHILD] Child Phone: ${phoneNumber}`);
+  console.log(`[ADD-CHILD] Child Phone (raw): ${phoneNumber}`);
   
   const childId = `child_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
-  const normalizedPhone = phoneNumber.trim();
+  const normalizedPhone = normalizePhoneNumber(phoneNumber.trim());
   
   console.log(`[ADD-CHILD] Child ID: ${childId}`);
-  console.log(`[ADD-CHILD] Phone Number: ${normalizedPhone}`);
+  console.log(`[ADD-CHILD] Phone Number (normalized): ${normalizedPhone}`);
   
   // Check if phone number already exists (as parent or child)
   if (db) {
-    // Check if phone number belongs to a parent
-    const existingFamilyByPhone = await db.collection('families').findOne({
-      phoneNumber: normalizedPhone
-    });
+    // Check if phone number belongs to a parent (try both formats)
+    const existingFamilyByPhone = await getFamilyByPhone(normalizedPhone);
     if (existingFamilyByPhone) {
       console.error(`[ADD-CHILD] ❌ Phone number already in use by a parent: ${normalizedPhone}`);
       throw new Error('מספר טלפון זה כבר בשימוש על ידי הורה');
     }
     
-    // Check if phone number belongs to another child
-    const existingFamilyWithChild = await db.collection('families').findOne({
+    // Check if phone number belongs to another child (try both formats)
+    let existingFamilyWithChild = await db.collection('families').findOne({
       'children.phoneNumber': normalizedPhone
     });
+    if (!existingFamilyWithChild) {
+      // Try without country code
+      if (normalizedPhone.startsWith('+972')) {
+        const withoutCode = '0' + normalizedPhone.substring(4);
+        existingFamilyWithChild = await db.collection('families').findOne({
+          'children.phoneNumber': withoutCode
+        });
+      }
+    }
     if (existingFamilyWithChild) {
       console.error(`[ADD-CHILD] ❌ Phone number already in use by a child: ${normalizedPhone}`);
       throw new Error('מספר טלפון זה כבר בשימוש על ידי ילד אחר');
@@ -1001,12 +1045,15 @@ app.post('/api/auth/send-otp', async (req, res) => {
       return res.status(400).json({ error: 'מספר טלפון לא תקין' });
     }
     
-    const normalizedPhone = phoneNumber.trim();
+    // Normalize phone number to ensure consistent format
+    const normalizedPhone = normalizePhoneNumber(phoneNumber.trim());
     console.log(`[SEND-OTP] ✅ Phone validated`);
+    console.log(`[SEND-OTP]   Raw phone: ${phoneNumber.trim()}`);
     console.log(`[SEND-OTP]   Normalized phone: ${normalizedPhone}`);
     console.log(`[SEND-OTP] ========================================\n`);
     
     process.stderr.write(`[SEND-OTP] ✅ Phone validated\n`);
+    process.stderr.write(`[SEND-OTP] Raw phone: ${phoneNumber.trim()}\n`);
     process.stderr.write(`[SEND-OTP] Normalized phone: ${normalizedPhone}\n`);
     
     console.log(`[SEND-OTP] ========================================`);
@@ -1218,13 +1265,26 @@ app.post('/api/auth/verify-otp', async (req, res) => {
     
     // If not found from OTP store, check database directly
     if (!child && db) {
-      // First check if it's a child's phone number
-      const familyWithChild = await db.collection('families').findOne({
+      // First check if it's a child's phone number (try both formats)
+      let familyWithChild = await db.collection('families').findOne({
         'children.phoneNumber': normalizedPhone
       });
       
+      // If not found, try without country code (for backward compatibility)
+      if (!familyWithChild && normalizedPhone.startsWith('+972')) {
+        const withoutCode = '0' + normalizedPhone.substring(4);
+        familyWithChild = await db.collection('families').findOne({
+          'children.phoneNumber': withoutCode
+        });
+      }
+      
       if (familyWithChild) {
-        child = familyWithChild.children.find(c => c.phoneNumber === normalizedPhone);
+        // Find child with matching phone (try both formats)
+        child = familyWithChild.children.find(c => 
+          c.phoneNumber === normalizedPhone || 
+          (normalizedPhone.startsWith('+972') && c.phoneNumber === '0' + normalizedPhone.substring(4)) ||
+          (normalizedPhone.startsWith('0') && c.phoneNumber === '+972' + normalizedPhone.substring(1))
+        );
         if (child) {
           family = familyWithChild;
           console.log(`[VERIFY-OTP] ✅ Found child from database: ${child.name} (${child._id}) in family ${family._id}`);
@@ -1256,7 +1316,7 @@ app.post('/api/auth/verify-otp', async (req, res) => {
         const familyId = `family_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
         family = {
           _id: familyId,
-          phoneNumber: normalizedPhone,
+          phoneNumber: normalizedPhone, // Store normalized phone number
           createdAt: new Date().toISOString(),
           children: [],
           categories: [
@@ -1669,19 +1729,19 @@ app.put('/api/families/:familyId/children/:childId', async (req, res) => {
     }
     console.log(`[UPDATE-CHILD-SERVER] ✅ Child found at index: ${childIndex}`);
     
-    const normalizedPhone = phoneNumber.trim();
+    const normalizedPhone = normalizePhoneNumber(phoneNumber.trim());
     const currentChild = family.children[childIndex];
-    console.log(`[UPDATE-CHILD-SERVER] Current child phone: "${currentChild.phoneNumber}", New phone: "${normalizedPhone}"`);
+    console.log(`[UPDATE-CHILD-SERVER] Current child phone: "${currentChild.phoneNumber}", New phone (raw): "${phoneNumber.trim()}", New phone (normalized): "${normalizedPhone}"`);
     
     // Check if phone number is already in use (as parent or child)
-    if (currentChild.phoneNumber !== normalizedPhone) {
+    // Compare normalized versions
+    const currentNormalized = normalizePhoneNumber(currentChild.phoneNumber || '');
+    if (currentNormalized !== normalizedPhone) {
       console.log(`[UPDATE-CHILD-SERVER] Step 3: Checking for duplicate phone number...`);
       
-      // Check if phone number belongs to a parent
+      // Check if phone number belongs to a parent (try both formats)
       if (db) {
-        const existingFamilyByPhone = await db.collection('families').findOne({
-          phoneNumber: normalizedPhone
-        });
+        const existingFamilyByPhone = await getFamilyByPhone(normalizedPhone);
         if (existingFamilyByPhone) {
           console.error(`[UPDATE-CHILD-SERVER] ❌ Phone number already in use by a parent: ${normalizedPhone}`);
           process.stderr.write(`[UPDATE-CHILD-SERVER] ❌ Phone number already in use by parent\n`);
@@ -1689,20 +1749,31 @@ app.put('/api/families/:familyId/children/:childId', async (req, res) => {
         }
       }
       
-      // Check if phone number belongs to another child in the same family
-      const existingChild = family.children.find(c => c._id !== childId && c.phoneNumber === normalizedPhone);
+      // Check if phone number belongs to another child in the same family (compare normalized)
+      const existingChild = family.children.find(c => {
+        if (c._id === childId) return false;
+        const childNormalized = normalizePhoneNumber(c.phoneNumber || '');
+        return childNormalized === normalizedPhone;
+      });
       if (existingChild) {
         console.error(`[UPDATE-CHILD-SERVER] ❌ Phone number already in use by another child in same family: ${normalizedPhone}`);
         process.stderr.write(`[UPDATE-CHILD-SERVER] ❌ Phone number already in use by child\n`);
         return res.status(400).json({ error: 'מספר טלפון זה כבר בשימוש על ידי ילד אחר' });
       }
       
-      // Check if phone number belongs to a child in another family
+      // Check if phone number belongs to a child in another family (try both formats)
       if (db) {
-        const existingFamilyWithChild = await db.collection('families').findOne({
+        let existingFamilyWithChild = await db.collection('families').findOne({
           _id: { $ne: familyId },
           'children.phoneNumber': normalizedPhone
         });
+        if (!existingFamilyWithChild && normalizedPhone.startsWith('+972')) {
+          const withoutCode = '0' + normalizedPhone.substring(4);
+          existingFamilyWithChild = await db.collection('families').findOne({
+            _id: { $ne: familyId },
+            'children.phoneNumber': withoutCode
+          });
+        }
         if (existingFamilyWithChild) {
           console.error(`[UPDATE-CHILD-SERVER] ❌ Phone number already in use by a child in another family: ${normalizedPhone}`);
           process.stderr.write(`[UPDATE-CHILD-SERVER] ❌ Phone number already in use by child in another family\n`);
