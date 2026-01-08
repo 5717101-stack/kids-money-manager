@@ -1184,7 +1184,6 @@ const Settings = ({ familyId, onClose, onLogout }) => {
         )}
       </div>
     </div>
-  </div>
   );
 };
 
