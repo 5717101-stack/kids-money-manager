@@ -1163,8 +1163,7 @@ const Settings = ({ familyId, onClose, onLogout }) => {
                           }}
                         >
                           {t('common.edit', { defaultValue: 'ערוך' })}
-                          </button>
-                        </div>
+                        </button>
                       </div>
                     )}
                   </div>
