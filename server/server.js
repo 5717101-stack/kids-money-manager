@@ -569,22 +569,33 @@ async function createFamily(phoneNumber, countryCode = '+972') {
   return family;
 }
 
-async function addChildToFamily(familyId, childName) {
+async function addChildToFamily(familyId, childName, phoneNumber) {
   console.log(`\n[ADD-CHILD] ===== Adding Child to Family =====`);
   console.log(`[ADD-CHILD] Family ID: ${familyId}`);
   console.log(`[ADD-CHILD] Child Name: ${childName}`);
+  console.log(`[ADD-CHILD] Child Phone: ${phoneNumber}`);
   
   const childId = `child_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
-  const childCode = generateChildCode();
-  const childPassword = generateChildCode(); // 6-character password
+  const normalizedPhone = phoneNumber.trim();
   
   console.log(`[ADD-CHILD] Child ID: ${childId}`);
-  console.log(`[ADD-CHILD] Join Code: ${childCode}`);
-  console.log(`[ADD-CHILD] Password: ${childPassword}`);
+  console.log(`[ADD-CHILD] Phone Number: ${normalizedPhone}`);
+  
+  // Check if phone number already exists for another child
+  if (db) {
+    const existingFamily = await db.collection('families').findOne({
+      'children.phoneNumber': normalizedPhone
+    });
+    if (existingFamily) {
+      console.error(`[ADD-CHILD] ❌ Phone number already in use: ${normalizedPhone}`);
+      throw new Error('מספר טלפון זה כבר בשימוש');
+    }
+  }
   
   const child = {
     _id: childId,
     name: childName,
+    phoneNumber: normalizedPhone,
     balance: 0,
     cashBoxBalance: 0,
     profileImage: null,
@@ -593,18 +604,8 @@ async function addChildToFamily(familyId, childName) {
     allowanceDay: 1,
     allowanceTime: '08:00',
     transactions: [],
-    joinCode: childCode,
-    password: childPassword,
     createdAt: new Date().toISOString()
   };
-  
-  // Store child code for 30 days
-  childCodesStore.set(childCode, {
-    childId,
-    familyId,
-    expiresAt: Date.now() + (30 * 24 * 60 * 60 * 1000)
-  });
-  console.log(`[ADD-CHILD] Child code stored (expires in 30 days)`);
   
   if (db) {
     // First, verify the family exists and get it
@@ -655,7 +656,7 @@ async function addChildToFamily(familyId, childName) {
   }
   
   console.log(`[ADD-CHILD] ============================\n`);
-  return { child, childCode, childPassword };
+  return { child, phoneNumber: normalizedPhone };
 }
 
 async function joinChildByCode(familyId, childCode) {
@@ -1165,29 +1166,50 @@ app.post('/api/auth/verify-otp', async (req, res) => {
       return res.status(400).json({ error: 'קוד אימות שגוי' });
     }
     
-    // OTP verified - get or create family
-    let family = await getFamilyByPhone(normalizedPhone);
+    // Check if phone number belongs to a child first
+    let child = null;
+    let family = null;
     
-    if (!family) {
-      // Create new family with phone number
-      const familyId = `family_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
-      family = {
-        _id: familyId,
-        phoneNumber: normalizedPhone,
-        createdAt: new Date().toISOString(),
-        children: [],
-        categories: [
-          { _id: 'cat_1', name: 'משחקים', activeFor: [] },
-          { _id: 'cat_2', name: 'ממתקים', activeFor: [] },
-          { _id: 'cat_3', name: 'בגדים', activeFor: [] },
-          { _id: 'cat_4', name: 'בילויים', activeFor: [] },
-          { _id: 'cat_5', name: 'אחר', activeFor: [] }
-        ]
-      };
+    if (db) {
+      // Find child by phone number
+      const familyWithChild = await db.collection('families').findOne({
+        'children.phoneNumber': normalizedPhone
+      });
       
-      if (db) {
-        await db.collection('families').insertOne(family);
-        console.log(`[CREATE-FAMILY] ✅ Family created with phone: ${normalizedPhone}`);
+      if (familyWithChild) {
+        child = familyWithChild.children.find(c => c.phoneNumber === normalizedPhone);
+        if (child) {
+          family = familyWithChild;
+          console.log(`[VERIFY-OTP] ✅ Found child: ${child.name} (${child._id}) in family ${family._id}`);
+        }
+      }
+    }
+    
+    // If not a child, check if it's a family phone number
+    if (!child) {
+      family = await getFamilyByPhone(normalizedPhone);
+      
+      if (!family) {
+        // Create new family with phone number
+        const familyId = `family_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
+        family = {
+          _id: familyId,
+          phoneNumber: normalizedPhone,
+          createdAt: new Date().toISOString(),
+          children: [],
+          categories: [
+            { _id: 'cat_1', name: 'משחקים', activeFor: [] },
+            { _id: 'cat_2', name: 'ממתקים', activeFor: [] },
+            { _id: 'cat_3', name: 'בגדים', activeFor: [] },
+            { _id: 'cat_4', name: 'בילויים', activeFor: [] },
+            { _id: 'cat_5', name: 'אחר', activeFor: [] }
+          ]
+        };
+        
+        if (db) {
+          await db.collection('families').insertOne(family);
+          console.log(`[CREATE-FAMILY] ✅ Family created with phone: ${normalizedPhone}`);
+        }
       }
     }
     
@@ -1198,7 +1220,9 @@ app.post('/api/auth/verify-otp', async (req, res) => {
       success: true,
       familyId: family._id,
       phoneNumber: normalizedPhone,
-      isNewFamily: !storedOTP.familyId
+      isNewFamily: !storedOTP.familyId && !child,
+      isChild: !!child,
+      childId: child ? child._id : null
     });
   } catch (error) {
     console.error('Error verifying OTP:', error);

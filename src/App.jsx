@@ -110,13 +110,26 @@ const App = () => {
     }
   };
 
-  const handleOTPVerified = (fId, phoneNum, isNewFamily) => {
+  const handleOTPVerified = (fId, phoneNum, isNewFamily, isChild, childId) => {
     setFamilyId(fId);
     setPhoneNumber(phoneNum);
     sessionStorage.setItem('familyId', fId);
     sessionStorage.setItem('phoneNumber', phoneNum);
     
-    // Priority order:
+    // If this is a child login (phone number belongs to a child)
+    if (isChild && childId) {
+      sessionStorage.setItem('childId', childId);
+      sessionStorage.setItem('isChildView', 'true');
+      sessionStorage.removeItem('parentLoggedIn');
+      setIsChildView(true);
+      setCurrentChild({ _id: childId });
+      setScreen('child-view');
+      loadChildData(fId, childId);
+      setIsCreatingFamily(false);
+      return;
+    }
+    
+    // Priority order for parent login:
     // 1. If user was creating a family (even if number already exists), treat them as parent
     // 2. If coming from main login, always show parent dashboard
     // 3. If it's a new family, show parent dashboard
@@ -278,7 +291,7 @@ const App = () => {
           </main>
           
           <footer className="app-footer">
-            <span className="version">{t('common.version', { defaultValue: 'גרסה' })} 3.2.6</span>
+            <span className="version">{t('common.version', { defaultValue: 'גרסה' })} 3.3.0</span>
           </footer>
         </>
       )}

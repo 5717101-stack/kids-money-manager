@@ -15,9 +15,9 @@ const MainLogin = ({ onLoginSuccess, onShowWelcome }) => {
     setShowOTP(true);
   };
 
-  const handleOTPVerified = (fId, phoneNum, isNewFamily) => {
-    // Pass to parent component - always treat as parent login
-    onLoginSuccess(fId, phoneNum, true); // true = isNewFamily, always show parent dashboard
+  const handleOTPVerified = (fId, phoneNum, isNewFamily, isChild, childId) => {
+    // Pass to parent component with child info if applicable
+    onLoginSuccess(fId, phoneNum, isNewFamily, isChild, childId);
   };
 
   const handleBackFromOTP = () => {

@@ -58,6 +58,16 @@
       "editChild": "Edit Child - Coming Soon",
       "refreshCode": "Refresh Code",
       "enterChildName": "Please enter child name",
+      "enterChildPhone": "Please enter child phone number",
+      "childPhone": "Child Phone Number",
+      "viewPhone": "View Phone",
+      "noPhoneNumber": "This child has no phone number set",
+      "phoneModal": {
+        "title": "Phone Number for {name}",
+        "phoneNumber": "Phone Number",
+        "copyPhone": "Copy Phone Number",
+        "note": "The child can use this phone number to log in to their page."
+      },
       "invalidResponse": "Invalid response from server",
       "createChildError": "Error creating child",
       "passwordError": "Error getting password",

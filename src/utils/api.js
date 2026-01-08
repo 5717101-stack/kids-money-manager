@@ -285,13 +285,13 @@ export const payWeeklyAllowance = async (familyId, childId) => {
 };
 
 // Create child
-export const createChild = async (familyId, name) => {
-  if (!familyId || !name) {
-    throw new Error('Family ID and name are required');
+export const createChild = async (familyId, name, phoneNumber) => {
+  if (!familyId || !name || !phoneNumber) {
+    throw new Error('Family ID, name, and phone number are required');
   }
   const response = await apiCall(`/families/${familyId}/children`, {
     method: 'POST',
-    body: JSON.stringify({ name })
+    body: JSON.stringify({ name, phoneNumber })
   });
   return response;
 };

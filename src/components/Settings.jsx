@@ -26,8 +26,9 @@ const Settings = ({ familyId, onClose }) => {
   const fileInputRefs = useRef({});
   const [showChildJoin, setShowChildJoin] = useState(false);
   const [newChildName, setNewChildName] = useState('');
+  const [newChildPhone, setNewChildPhone] = useState('');
   const [creatingChild, setCreatingChild] = useState(false);
-  const [childPasswordModal, setChildPasswordModal] = useState(null); // { childId, childName, password }
+  const [childPhoneModal, setChildPhoneModal] = useState(null); // { childId, childName, phoneNumber }
 
   useEffect(() => {
     loadData();
@@ -768,10 +769,16 @@ const Settings = ({ familyId, onClose }) => {
                     return;
                   }
                   
+                  if (!newChildPhone.trim()) {
+                    console.error('[CREATE-CHILD] ❌ Missing child phone number');
+                    alert(t('parent.settings.enterChildPhone', { defaultValue: 'אנא הכנס מספר טלפון לילד' }));
+                    return;
+                  }
+                  
                   setCreatingChild(true);
                   try {
                     console.log('[CREATE-CHILD] Calling createChild API...');
-                    const result = await createChild(familyId, newChildName.trim());
+                    const result = await createChild(familyId, newChildName.trim(), newChildPhone.trim());
                     console.log('[CREATE-CHILD] ✅ API call successful');
                     console.log('[CREATE-CHILD] Result:', JSON.stringify(result, null, 2));
                     
@@ -779,13 +786,13 @@ const Settings = ({ familyId, onClose }) => {
                       throw new Error(t('parent.settings.invalidResponse', { defaultValue: 'תגובה לא תקינה מהשרת' }));
                     }
                     
-                    setChildPasswordModal({
+                    setChildPhoneModal({
                       childId: result.child._id,
                       childName: result.child.name,
-                      password: result.password,
-                      joinCode: result.joinCode
+                      phoneNumber: result.phoneNumber
                     });
                     setNewChildName('');
+                    setNewChildPhone('');
                     
                     console.log('[CREATE-CHILD] Reloading data...');
                     await loadData();
@@ -819,6 +826,15 @@ const Settings = ({ familyId, onClose }) => {
                   onChange={(e) => setNewChildName(e.target.value)}
                   placeholder={t('parent.settings.childName', { defaultValue: 'שם הילד' })}
                   className="child-name-input"
+                  required
+                />
+                <input
+                  type="tel"
+                  value={newChildPhone}
+                  onChange={(e) => setNewChildPhone(e.target.value)}
+                  placeholder={t('parent.settings.childPhone', { defaultValue: 'מספר טלפון לילד' })}
+                  className="child-name-input"
+                  inputMode="numeric"
                   required
                 />
                 <button type="submit" className="add-child-button" disabled={creatingChild}>
