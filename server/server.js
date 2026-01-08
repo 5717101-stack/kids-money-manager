@@ -628,21 +628,22 @@ async function addChildToFamily(familyId, childName, phoneNumber) {
     }
     
     // Check if phone number belongs to another child (try both formats)
-    let existingFamilyWithChild = await db.collection('families').findOne({
-      'children.phoneNumber': normalizedPhone
-    });
-    if (!existingFamilyWithChild) {
-      // Try without country code
-      if (normalizedPhone.startsWith('+972')) {
-        const withoutCode = '0' + normalizedPhone.substring(4);
-        existingFamilyWithChild = await db.collection('families').findOne({
-          'children.phoneNumber': withoutCode
-        });
+    // We need to check all families and normalize their children's phone numbers for comparison
+    if (db) {
+      const allFamilies = await db.collection('families').find({}).toArray();
+      for (const fam of allFamilies) {
+        if (fam.children && Array.isArray(fam.children)) {
+          for (const ch of fam.children) {
+            if (ch.phoneNumber) {
+              const childPhoneNormalized = normalizePhoneNumber(ch.phoneNumber);
+              if (childPhoneNormalized === normalizedPhone) {
+                console.error(`[ADD-CHILD] ❌ Phone number already in use by a child: ${normalizedPhone} (found in family ${fam._id}, child ${ch._id})`);
+                throw new Error('מספר טלפון זה כבר בשימוש על ידי ילד אחר');
+              }
+            }
+          }
+        }
       }
-    }
-    if (existingFamilyWithChild) {
-      console.error(`[ADD-CHILD] ❌ Phone number already in use by a child: ${normalizedPhone}`);
-      throw new Error('מספר טלפון זה כבר בשימוש על ידי ילד אחר');
     }
   }
   
@@ -1774,23 +1775,22 @@ app.put('/api/families/:familyId/children/:childId', async (req, res) => {
         return res.status(400).json({ error: 'מספר טלפון זה כבר בשימוש על ידי ילד אחר' });
       }
       
-      // Check if phone number belongs to a child in another family (try both formats)
+      // Check if phone number belongs to a child in another family (normalize all children's phones for comparison)
       if (db) {
-        let existingFamilyWithChild = await db.collection('families').findOne({
-          _id: { $ne: familyId },
-          'children.phoneNumber': normalizedPhone
-        });
-        if (!existingFamilyWithChild && normalizedPhone.startsWith('+972')) {
-          const withoutCode = '0' + normalizedPhone.substring(4);
-          existingFamilyWithChild = await db.collection('families').findOne({
-            _id: { $ne: familyId },
-            'children.phoneNumber': withoutCode
-          });
-        }
-        if (existingFamilyWithChild) {
-          console.error(`[UPDATE-CHILD-SERVER] ❌ Phone number already in use by a child in another family: ${normalizedPhone}`);
-          process.stderr.write(`[UPDATE-CHILD-SERVER] ❌ Phone number already in use by child in another family\n`);
-          return res.status(400).json({ error: 'מספר טלפון זה כבר בשימוש על ידי ילד אחר' });
+        const allFamilies = await db.collection('families').find({ _id: { $ne: familyId } }).toArray();
+        for (const fam of allFamilies) {
+          if (fam.children && Array.isArray(fam.children)) {
+            for (const ch of fam.children) {
+              if (ch.phoneNumber) {
+                const childPhoneNormalized = normalizePhoneNumber(ch.phoneNumber);
+                if (childPhoneNormalized === normalizedPhone) {
+                  console.error(`[UPDATE-CHILD-SERVER] ❌ Phone number already in use by a child in another family: ${normalizedPhone} (found in family ${fam._id}, child ${ch._id})`);
+                  process.stderr.write(`[UPDATE-CHILD-SERVER] ❌ Phone number already in use by child in another family\n`);
+                  return res.status(400).json({ error: 'מספר טלפון זה כבר בשימוש על ידי ילד אחר' });
+                }
+              }
+            }
+          }
         }
       }
       
