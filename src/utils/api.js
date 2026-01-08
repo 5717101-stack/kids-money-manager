@@ -144,7 +144,7 @@ export const updateChild = async (familyId, childId, name, phoneNumber) => {
   }
   const response = await apiCall(`/families/${familyId}/children/${childId}`, {
     method: 'PUT',
-    body: JSON.stringify({ name: name.trim(), phoneNumber: phoneNumber.trim() })
+    body: { name: name.trim(), phoneNumber: phoneNumber.trim() }
   });
   return response;
 };
