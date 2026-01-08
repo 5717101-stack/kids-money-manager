@@ -15,6 +15,7 @@ const ParentDashboard = ({ familyId, onChildrenUpdated }) => {
   const [quickActionType, setQuickActionType] = useState('deposit'); // 'deposit' or 'expense'
   const [recentTransactions, setRecentTransactions] = useState([]);
   const [totalFamilyBalance, setTotalFamilyBalance] = useState(0);
+  const [familyPhoneNumber, setFamilyPhoneNumber] = useState('');
 
   useEffect(() => {
     loadData();
@@ -32,6 +33,10 @@ const ParentDashboard = ({ familyId, onChildrenUpdated }) => {
 
       if (dataResult.status === 'fulfilled' && dataResult.value) {
         setAllData(dataResult.value);
+        
+        // Get family phone number from sessionStorage
+        const savedPhone = sessionStorage.getItem('phoneNumber') || '';
+        setFamilyPhoneNumber(savedPhone);
         
         // Calculate total family balance
         const children = Object.values(dataResult.value.children || {});
@@ -100,7 +105,7 @@ const ParentDashboard = ({ familyId, onChildrenUpdated }) => {
         <div className="header-left">
           <LanguageToggle />
           <h1 className="family-name">
-            {t('parent.dashboard.familyName', { defaultValue: 'משפחה' })}
+            {familyPhoneNumber || t('parent.dashboard.familyName', { defaultValue: 'משפחה' })}
           </h1>
         </div>
         <button 

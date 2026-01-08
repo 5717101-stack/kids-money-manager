@@ -263,7 +263,7 @@ const WelcomeScreen = ({ onSelectCreate, onSelectJoinAsParent, onSelectJoinAsChi
             🗑️ מחק הכל
           </button>
         </div>
-        <span className="version">{t('common.version')} 3.0.16</span>
+        <span className="version">{t('common.version')} 3.1.0</span>
       </footer>
       
       {showUsersTable && (

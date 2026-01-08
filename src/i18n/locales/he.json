@@ -20,50 +20,114 @@
     "add": "הוסף",
     "close": "סגור",
     "confirm": "אישור",
-    "back": "חזור"
+    "back": "חזור",
+    "settings": "הגדרות",
+    "saving": "שומר...",
+    "optional": "אופציונלי"
   },
   "parent": {
-    "dashboard": "ממשק הורה",
-    "familyOverview": "סקירת משפחה",
-    "totalBalance": "יתרה כוללת",
-    "recentActivity": "פעילות אחרונה",
-    "addFunds": "הוסף כסף",
-    "deductFunds": "הוצא כסף",
-    "amount": "סכום",
-    "description": "תיאור",
-    "category": "קטגוריה",
-    "transactionType": "סוג עסקה",
-    "deposit": "הפקדה",
-    "expense": "הוצאה",
-    "settings": "הגדרות",
-    "manageChildren": "ניהול ילדים",
-    "addChild": "הוסף ילד",
-    "deleteChild": "מחק ילד",
-    "childAccessCode": "קוד גישה לילד",
-    "parentInviteCode": "קוד הזמנה להורה",
-    "generateInvite": "צור קוד הזמנה",
-    "currency": "מטבע",
-    "automatedAllowance": "קצבה אוטומטית",
-    "weekly": "שבועי",
-    "monthly": "חודשי",
-    "allowanceAmount": "סכום קצבה",
-    "allowanceDay": "יום בשבוע",
-    "allowanceTime": "שעה",
-    "categories": "קטגוריות",
-    "manageCategories": "ניהול קטגוריות"
+    "dashboard": {
+      "familyName": "משפחה",
+      "totalBalance": "יתרה כוללת",
+      "children": "ילדים",
+      "noChildren": "אין ילדים במשפחה. הוסף ילד בהגדרות.",
+      "addMoney": "הוסף כסף",
+      "recordExpense": "דווח הוצאה",
+      "recentActivity": "פעילות אחרונה",
+      "noActivity": "אין פעילות אחרונה",
+      "selectChild": "בחר ילד",
+      "amount": "סכום",
+      "description": "תיאור",
+      "descriptionPlaceholder": "תיאור הפעולה",
+      "category": "קטגוריה",
+      "selectCategory": "בחר קטגוריה",
+      "invalidAmount": "אנא הכנס סכום תקין",
+      "error": "שגיאה"
+    },
+    "settings": {
+      "title": "הגדרות",
+      "manageChildren": "ניהול ילדים",
+      "addChild": "הוסף ילד",
+      "childName": "שם הילד",
+      "child": "ילד",
+      "balance": "יתרה",
+      "edit": "ערוך",
+      "editChild": "עריכת ילד - תכונה בקרוב",
+      "refreshCode": "רענן קוד",
+      "enterChildName": "אנא הכנס שם ילד",
+      "invalidResponse": "תגובה לא תקינה מהשרת",
+      "createChildError": "שגיאה ביצירת ילד",
+      "passwordError": "שגיאה בקבלת סיסמה",
+      "allowance": {
+        "title": "קצבה אוטומטית",
+        "description": "הגדר את הסכום, תדירות (שבועי/חודשי), יום/תאריך ושעה. הסכום יתווסף אוטומטית ליתרה אצל ההורים. ניתן גם לשלם ידנית באמצעות הכפתור למטה.",
+        "frequency": "תדירות",
+        "weekly": "שבועי",
+        "monthly": "חודשי",
+        "dayOfWeek": "יום בשבוע",
+        "dateOfMonth": "תאריך בחודש",
+        "amount": "סכום קצבה",
+        "time": "שעה",
+        "save": "שמור שינויים",
+        "paid": "דמי כיס שולמו ל{name}!",
+        "error": "שגיאה בתשלום דמי הכיס",
+        "payNow": "שלם דמי כיס עכשיו"
+      },
+      "categories": {
+        "title": "ניהול קטגוריות",
+        "addCategory": "הוסף קטגוריה",
+        "categoryName": "שם קטגוריה",
+        "activeFor": "פעיל עבור"
+      },
+      "profileImages": {
+        "title": "תמונות פרופיל",
+        "upload": "העלה תמונה",
+        "remove": "הסר תמונה"
+      }
+    }
   },
   "child": {
-    "dashboard": "הדשבורד שלי",
-    "balance": "יתרה",
-    "cashBox": "קופה",
-    "recentTransactions": "עסקאות אחרונות",
-    "savingsGoals": "מטרות חיסכון",
-    "setGoal": "הגדר מטרת חיסכון",
-    "goalName": "שם המטרה",
-    "targetAmount": "סכום יעד",
-    "progress": "התקדמות",
-    "profilePicture": "תמונת פרופיל",
-    "changePicture": "שנה תמונה"
+    "dashboard": {
+      "hello": "שלום",
+      "greeting": "שלום, {name}!",
+      "balance": "יתרה",
+      "cashBox": "קופה",
+      "totalBalance": "יתרה כוללת"
+    },
+    "savingsGoal": {
+      "title": "מטרת חיסכון",
+      "setGoal": "הגדר מטרת חיסכון",
+      "editGoal": "ערוך מטרה",
+      "goalName": "שם המטרה",
+      "goalNamePlaceholder": "לדוגמה: סט לגו חדש",
+      "targetAmount": "סכום יעד",
+      "progress": "התקדמות",
+      "achieved": "הושג",
+      "of": "מתוך",
+      "noGoal": "אין מטרת חיסכון",
+      "deleteGoal": "מחק מטרה",
+      "invalidGoal": "אנא הכנס שם מטרה וסכום תקין",
+      "error": "שגיאה בשמירת מטרה",
+      "confirmDelete": "האם אתה בטוח שברצונך למחוק את מטרת החיסכון?"
+    },
+    "dashboard": {
+      "error": "שגיאה בעדכון יתרת הקופה"
+    },
+    "profile": {
+      "title": "תמונת פרופיל",
+      "changePicture": "שנה תמונה",
+      "upload": "העלה תמונה",
+      "remove": "הסר תמונה",
+      "invalidFile": "אנא בחר קובץ תמונה בלבד",
+      "fileTooLarge": "גודל הקובץ גדול מדי. אנא בחר תמונה קטנה מ-10MB",
+      "error": "שגיאה בעדכון תמונת הפרופיל"
+    },
+    "history": {
+      "title": "ההיסטוריה שלי",
+      "recentTransactions": "עסקאות אחרונות",
+      "noTransactions": "אין עסקאות",
+      "transaction": "עסקה"
+    }
   },
   "auth": {
     "phoneNumber": "מספר טלפון",
@@ -75,5 +139,14 @@
     "enterChildCode": "הכנס קוד גישה לילד",
     "invalidCode": "קוד לא תקין",
     "loginSuccess": "התחברות הצליחה"
+  },
+  "days": {
+    "sunday": "ראשון",
+    "monday": "שני",
+    "tuesday": "שלישי",
+    "wednesday": "רביעי",
+    "thursday": "חמישי",
+    "friday": "שישי",
+    "saturday": "שבת"
   }
 }

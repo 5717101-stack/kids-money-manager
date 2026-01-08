@@ -20,50 +20,114 @@
     "add": "Add",
     "close": "Close",
     "confirm": "Confirm",
-    "back": "Back"
+    "back": "Back",
+    "settings": "Settings",
+    "saving": "Saving...",
+    "optional": "Optional"
   },
   "parent": {
-    "dashboard": "Parent Dashboard",
-    "familyOverview": "Family Overview",
-    "totalBalance": "Total Balance",
-    "recentActivity": "Recent Activity",
-    "addFunds": "Add Funds",
-    "deductFunds": "Deduct Funds",
-    "amount": "Amount",
-    "description": "Description",
-    "category": "Category",
-    "transactionType": "Transaction Type",
-    "deposit": "Deposit",
-    "expense": "Expense",
-    "settings": "Settings",
-    "manageChildren": "Manage Children",
-    "addChild": "Add Child",
-    "deleteChild": "Delete Child",
-    "childAccessCode": "Child Access Code",
-    "parentInviteCode": "Parent Invite Code",
-    "generateInvite": "Generate Invite Code",
-    "currency": "Currency",
-    "automatedAllowance": "Automated Allowance",
-    "weekly": "Weekly",
-    "monthly": "Monthly",
-    "allowanceAmount": "Allowance Amount",
-    "allowanceDay": "Day of Week",
-    "allowanceTime": "Time",
-    "categories": "Categories",
-    "manageCategories": "Manage Categories"
+    "dashboard": {
+      "familyName": "Family",
+      "totalBalance": "Total Family Balance",
+      "children": "Children",
+      "noChildren": "No children in family. Add a child in settings.",
+      "addMoney": "Add Money",
+      "recordExpense": "Record Expense",
+      "recentActivity": "Recent Activity",
+      "noActivity": "No recent activity",
+      "selectChild": "Select Child",
+      "amount": "Amount",
+      "description": "Description",
+      "descriptionPlaceholder": "Transaction description",
+      "category": "Category",
+      "selectCategory": "Select Category",
+      "invalidAmount": "Please enter a valid amount",
+      "error": "Error"
+    },
+    "settings": {
+      "title": "Settings",
+      "manageChildren": "Manage Children",
+      "addChild": "Add Child",
+      "childName": "Child Name",
+      "child": "Child",
+      "balance": "Balance",
+      "edit": "Edit",
+      "editChild": "Edit Child - Coming Soon",
+      "refreshCode": "Refresh Code",
+      "enterChildName": "Please enter child name",
+      "invalidResponse": "Invalid response from server",
+      "createChildError": "Error creating child",
+      "passwordError": "Error getting password",
+      "allowance": {
+        "title": "Automated Allowance",
+        "description": "Set the amount, frequency (weekly/monthly), day/date and time. The amount will be automatically added to the parent balance. You can also pay manually using the button below.",
+        "frequency": "Frequency",
+        "weekly": "Weekly",
+        "monthly": "Monthly",
+        "dayOfWeek": "Day of Week",
+        "dateOfMonth": "Date of Month",
+        "amount": "Allowance Amount",
+        "time": "Time",
+        "save": "Save Changes",
+        "paid": "Allowance paid to {name}!",
+        "error": "Error paying allowance",
+        "payNow": "Pay Allowance Now"
+      },
+      "categories": {
+        "title": "Category Management",
+        "addCategory": "Add Category",
+        "categoryName": "Category Name",
+        "activeFor": "Active For"
+      },
+      "profileImages": {
+        "title": "Profile Images",
+        "upload": "Upload Image",
+        "remove": "Remove Image"
+      }
+    }
   },
   "child": {
-    "dashboard": "My Dashboard",
-    "balance": "Balance",
-    "cashBox": "Cash Box",
-    "recentTransactions": "Recent Transactions",
-    "savingsGoals": "Savings Goals",
-    "setGoal": "Set Savings Goal",
-    "goalName": "Goal Name",
-    "targetAmount": "Target Amount",
-    "progress": "Progress",
-    "profilePicture": "Profile Picture",
-    "changePicture": "Change Picture"
+    "dashboard": {
+      "hello": "Hello",
+      "greeting": "Hello, {name}!",
+      "balance": "Balance",
+      "cashBox": "Cash Box",
+      "totalBalance": "Total Balance"
+    },
+    "savingsGoal": {
+      "title": "Savings Goal",
+      "setGoal": "Set Savings Goal",
+      "editGoal": "Edit Goal",
+      "goalName": "Goal Name",
+      "goalNamePlaceholder": "e.g., New LEGO Set",
+      "targetAmount": "Target Amount",
+      "progress": "Progress",
+      "achieved": "Achieved",
+      "of": "of",
+      "noGoal": "No savings goal",
+      "deleteGoal": "Delete Goal",
+      "invalidGoal": "Please enter goal name and valid amount",
+      "error": "Error saving goal",
+      "confirmDelete": "Are you sure you want to delete the savings goal?"
+    },
+    "dashboard": {
+      "error": "Error updating cash box balance"
+    },
+    "profile": {
+      "title": "Profile Picture",
+      "changePicture": "Change Picture",
+      "upload": "Upload Image",
+      "remove": "Remove Image",
+      "invalidFile": "Please select an image file only",
+      "fileTooLarge": "File size is too large. Please select an image smaller than 10MB",
+      "error": "Error updating profile picture"
+    },
+    "history": {
+      "title": "My History",
+      "recentTransactions": "Recent Transactions",
+      "noTransactions": "No transactions",
+      "transaction": "Transaction"
+    }
   },
   "auth": {
     "phoneNumber": "Phone Number",
@@ -75,5 +139,14 @@
     "enterChildCode": "Enter Child Access Code",
     "invalidCode": "Invalid code",
     "loginSuccess": "Login successful"
+  },
+  "days": {
+    "sunday": "Sunday",
+    "monday": "Monday",
+    "tuesday": "Tuesday",
+    "wednesday": "Wednesday",
+    "thursday": "Thursday",
+    "friday": "Friday",
+    "saturday": "Saturday"
   }
 }

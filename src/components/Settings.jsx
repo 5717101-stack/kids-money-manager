@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { useTranslation } from 'react-i18next';
 import { getCategories, addCategory, updateCategory, deleteCategory, getData, updateProfileImage, updateWeeklyAllowance, payWeeklyAllowance, createChild, getChildPassword } from '../utils/api';
 import ChildJoin from './ChildJoin';
 
@@ -13,6 +14,7 @@ const CHILD_NAMES = {
 };
 
 const Settings = ({ familyId, onClose }) => {
+  const { t, i18n } = useTranslation();
   const [activeTab, setActiveTab] = useState('categories'); // 'categories', 'profileImages', 'allowances', 'children'
   const [categories, setCategories] = useState([]);
   const [newCategoryName, setNewCategoryName] = useState('');
@@ -346,16 +348,26 @@ const Settings = ({ familyId, onClose }) => {
 
   if (loading) {
     return (
-      <div className="settings-container">
-        <div className="loading">טוען הגדרות...</div>
+      <div className="settings-container" dir={i18n.language === 'he' ? 'rtl' : 'ltr'}>
+        <div className="loading">{t('common.loading', { defaultValue: 'טוען...' })}</div>
       </div>
     );
   }
 
+  const dayNames = [
+    t('days.sunday', { defaultValue: 'ראשון' }),
+    t('days.monday', { defaultValue: 'שני' }),
+    t('days.tuesday', { defaultValue: 'שלישי' }),
+    t('days.wednesday', { defaultValue: 'רביעי' }),
+    t('days.thursday', { defaultValue: 'חמישי' }),
+    t('days.friday', { defaultValue: 'שישי' }),
+    t('days.saturday', { defaultValue: 'שבת' })
+  ];
+
   return (
-    <div className="settings-container">
+    <div className="settings-container" dir={i18n.language === 'he' ? 'rtl' : 'ltr'}>
       <div className="settings-header">
-        <h1>הגדרות</h1>
+        <h1>{t('parent.settings.title', { defaultValue: 'הגדרות' })}</h1>
         <button className="close-button" onClick={onClose}>✕</button>
       </div>
 
@@ -389,17 +401,17 @@ const Settings = ({ familyId, onClose }) => {
       <div className="settings-content">
         {activeTab === 'categories' && (
           <div className="categories-section">
-            <h2>ניהול קטגוריות</h2>
+            <h2>{t('parent.settings.categories.title', { defaultValue: 'ניהול קטגוריות' })}</h2>
             
             <form onSubmit={handleAddCategory} className="add-category-form">
               <input
                 type="text"
                 value={newCategoryName}
                 onChange={(e) => setNewCategoryName(e.target.value)}
-                placeholder="שם קטגוריה חדשה"
+                placeholder={t('parent.settings.categories.categoryName', { defaultValue: 'שם קטגוריה חדשה' })}
                 className="category-input"
               />
-              <button type="submit" className="add-button">הוסף קטגוריה</button>
+              <button type="submit" className="add-button">{t('parent.settings.categories.addCategory', { defaultValue: 'הוסף קטגוריה' })}</button>
             </form>
 
             <div className="categories-list">
@@ -465,7 +477,7 @@ const Settings = ({ familyId, onClose }) => {
 
         {activeTab === 'profileImages' && (
           <div className="profile-images-section">
-            <h2>תמונות פרופיל</h2>
+            <h2>{t('parent.settings.profileImages.title', { defaultValue: 'תמונות פרופיל' })}</h2>
             
             {Object.entries(allData.children || {}).map(([childId, child]) => {
               if (!child) return null;
@@ -530,10 +542,11 @@ const Settings = ({ familyId, onClose }) => {
 
         {activeTab === 'allowances' && (
           <div className="allowances-section">
-            <h2>תצורת דמי כיס</h2>
+            <h2>{t('parent.settings.allowance.title', { defaultValue: 'קצבה אוטומטית' })}</h2>
             <p className="allowance-info">
-              הגדר את הסכום, תדירות (שבועי/חודשי), יום/תאריך ושעה. הסכום יתווסף אוטומטית ליתרה אצל ההורים.
-              ניתן גם לשלם ידנית באמצעות הכפתור למטה.
+              {t('parent.settings.allowance.description', { 
+                defaultValue: 'הגדר את הסכום, תדירות (שבועי/חודשי), יום/תאריך ושעה. הסכום יתווסף אוטומטית ליתרה אצל ההורים. ניתן גם לשלם ידנית באמצעות הכפתור למטה.' 
+              })}
             </p>
             
             {Object.entries(allData.children || {}).map(([childId, child]) => {
@@ -565,44 +578,59 @@ const Settings = ({ familyId, onClose }) => {
 
               return (
                 <div key={childId} className="allowance-item">
-                  <h3>{child?.name || 'ילד'}</h3>
+                  <h3>{child?.name || t('parent.settings.child', { defaultValue: 'ילד' })}</h3>
                   
                   <div className="allowance-config-group">
-                    <label className="allowance-label">סכום:</label>
+                    <label className="allowance-label">{t('parent.settings.allowance.amount', { defaultValue: 'סכום קצבה' })}:</label>
                     <div className="allowance-input-group">
                       <input
                         type="number"
-                        step="1"
+                        step="0.01"
                         min="0"
                         value={state.amount}
-                        onChange={(e) => updateState({ amount: parseInt(e.target.value) || 0 })}
+                        onChange={(e) => updateState({ amount: parseFloat(e.target.value) || 0 })}
                         onBlur={saveChanges}
                         className="allowance-input"
+                        inputMode="numeric"
                       />
                       <span className="currency-label">₪</span>
                     </div>
                   </div>
 
                   <div className="allowance-config-group">
-                    <label className="allowance-label">תדירות:</label>
-                    <select
-                      value={state.type}
-                      onChange={(e) => {
-                        const newType = e.target.value;
-                        const newDay = newType === 'monthly' && state.day === 0 ? 1 : state.day;
-                        updateState({ type: newType, day: newDay });
-                        setTimeout(saveChanges, 0);
-                      }}
-                      className="allowance-select"
-                    >
-                      <option value="weekly">שבועי</option>
-                      <option value="monthly">חודשי</option>
-                    </select>
+                    <label className="allowance-label">{t('parent.settings.allowance.frequency', { defaultValue: 'תדירות' })}:</label>
+                    <div className="frequency-toggle">
+                      <button
+                        type="button"
+                        className={`frequency-button ${state.type === 'weekly' ? 'active' : ''}`}
+                        onClick={() => {
+                          const newDay = state.day === 0 ? 1 : state.day;
+                          updateState({ type: 'weekly', day: newDay });
+                          setTimeout(saveChanges, 0);
+                        }}
+                      >
+                        {t('parent.settings.allowance.weekly', { defaultValue: 'שבועי' })}
+                      </button>
+                      <button
+                        type="button"
+                        className={`frequency-button ${state.type === 'monthly' ? 'active' : ''}`}
+                        onClick={() => {
+                          const newDay = state.day === 0 ? 1 : state.day;
+                          updateState({ type: 'monthly', day: newDay });
+                          setTimeout(saveChanges, 0);
+                        }}
+                      >
+                        {t('parent.settings.allowance.monthly', { defaultValue: 'חודשי' })}
+                      </button>
+                    </div>
                   </div>
 
                   <div className="allowance-config-group">
                     <label className="allowance-label">
-                      {state.type === 'weekly' ? 'יום בשבוע:' : 'תאריך בחודש:'}
+                      {state.type === 'weekly' 
+                        ? t('parent.settings.allowance.dayOfWeek', { defaultValue: 'יום בשבוע' })
+                        : t('parent.settings.allowance.dateOfMonth', { defaultValue: 'תאריך בחודש' })
+                      }:
                     </label>
                     {state.type === 'weekly' ? (
                       <select
@@ -613,13 +641,9 @@ const Settings = ({ familyId, onClose }) => {
                         }}
                         className="allowance-select"
                       >
-                        <option value="0">ראשון</option>
-                        <option value="1">שני</option>
-                        <option value="2">שלישי</option>
-                        <option value="3">רביעי</option>
-                        <option value="4">חמישי</option>
-                        <option value="5">שישי</option>
-                        <option value="6">שבת</option>
+                        {dayNames.map((dayName, index) => (
+                          <option key={index} value={index}>{dayName}</option>
+                        ))}
                       </select>
                     ) : (
                       <select
@@ -632,7 +656,7 @@ const Settings = ({ familyId, onClose }) => {
                       >
                         {Array.from({ length: 31 }, (_, i) => i + 1).map(day => (
                           <option key={day} value={day}>
-                            {day} {day === 1 ? 'בראשון' : day === 2 ? 'בשני' : day === 3 ? 'בשלישי' : 'ב-'}
+                            {day}
                           </option>
                         ))}
                       </select>
@@ -640,7 +664,7 @@ const Settings = ({ familyId, onClose }) => {
                   </div>
 
                   <div className="allowance-config-group">
-                    <label className="allowance-label">שעה:</label>
+                    <label className="allowance-label">{t('parent.settings.allowance.time', { defaultValue: 'שעה' })}:</label>
                     <input
                       type="time"
                       value={state.time}
@@ -661,13 +685,16 @@ const Settings = ({ familyId, onClose }) => {
                         try {
                           await payWeeklyAllowance(familyId, childId);
                           await loadData();
-                          alert(`דמי כיס שולמו ל${child?.name || 'ילד'}!`);
+                          alert(t('parent.settings.allowance.paid', { 
+                            defaultValue: 'דמי כיס שולמו ל{name}!',
+                            name: child?.name || t('parent.settings.child', { defaultValue: 'ילד' })
+                          }));
                         } catch (error) {
-                          alert('שגיאה בתשלום דמי הכיס: ' + (error.message || 'Unknown error'));
+                          alert(t('parent.settings.allowance.error', { defaultValue: 'שגיאה בתשלום דמי הכיס' }) + ': ' + (error.message || 'Unknown error'));
                         }
                       }}
                     >
-                      💰 שלם דמי כיס עכשיו
+                      💰 {t('parent.settings.allowance.payNow', { defaultValue: 'שלם דמי כיס עכשיו' })}
                     </button>
                   )}
                 </div>
@@ -678,7 +705,7 @@ const Settings = ({ familyId, onClose }) => {
 
         {activeTab === 'children' && (
           <div className="children-section">
-            <h2>ניהול ילדים</h2>
+            <h2>{t('parent.settings.manageChildren', { defaultValue: 'ניהול ילדים' })}</h2>
             
             <div className="children-list">
               {Object.entries(allData.children || {}).map(([childId, child]) => (
@@ -689,29 +716,40 @@ const Settings = ({ familyId, onClose }) => {
                     )}
                     <div>
                       <h3>{child.name}</h3>
-                      <p>יתרה: ₪{((child.balance || 0) + (child.cashBoxBalance || 0)).toFixed(2)}</p>
+                      <p>{t('parent.settings.balance', { defaultValue: 'יתרה' })}: ₪{((child.balance || 0) + (child.cashBoxBalance || 0)).toFixed(2)}</p>
                     </div>
                   </div>
-                  <button
-                    className="recover-password-button"
-                    onClick={async () => {
-                      if (!familyId) return;
-                      try {
-                        const password = await getChildPassword(familyId, childId);
-                        setChildPasswordModal({ childId, childName: child.name, password });
-                      } catch (error) {
-                        alert('שגיאה בקבלת סיסמה: ' + error.message);
-                      }
-                    }}
-                  >
-                    שחזר סיסמה
-                  </button>
+                  <div className="child-actions">
+                    <button
+                      className="edit-child-button"
+                      onClick={() => {
+                        // TODO: Implement edit child functionality
+                        alert(t('parent.settings.editChild', { defaultValue: 'עריכת ילד - תכונה בקרוב' }));
+                      }}
+                    >
+                      {t('common.edit', { defaultValue: 'ערוך' })}
+                    </button>
+                    <button
+                      className="recover-password-button"
+                      onClick={async () => {
+                        if (!familyId) return;
+                        try {
+                          const password = await getChildPassword(familyId, childId);
+                          setChildPasswordModal({ childId, childName: child.name, password });
+                        } catch (error) {
+                          alert(t('parent.settings.passwordError', { defaultValue: 'שגיאה בקבלת סיסמה' }) + ': ' + error.message);
+                        }
+                      }}
+                    >
+                      {t('parent.settings.refreshCode', { defaultValue: 'רענן קוד' })}
+                    </button>
+                  </div>
                 </div>
               ))}
             </div>
 
             <div className="add-child-section">
-              <h3>הוסף ילד חדש</h3>
+              <h3>{t('parent.settings.addChild', { defaultValue: 'הוסף ילד חדש' })}</h3>
               <form
                 onSubmit={async (e) => {
                   e.preventDefault();
@@ -723,7 +761,7 @@ const Settings = ({ familyId, onClose }) => {
                   
                   if (!familyId || !newChildName.trim()) {
                     console.error('[CREATE-CHILD] ❌ Missing familyId or child name');
-                    alert('אנא הכנס שם ילד');
+                    alert(t('parent.settings.enterChildName', { defaultValue: 'אנא הכנס שם ילד' }));
                     return;
                   }
                   
@@ -735,7 +773,7 @@ const Settings = ({ familyId, onClose }) => {
                     console.log('[CREATE-CHILD] Result:', JSON.stringify(result, null, 2));
                     
                     if (!result || !result.child) {
-                      throw new Error('תגובה לא תקינה מהשרת');
+                      throw new Error(t('parent.settings.invalidResponse', { defaultValue: 'תגובה לא תקינה מהשרת' }));
                     }
                     
                     setChildPasswordModal({
@@ -765,7 +803,7 @@ const Settings = ({ familyId, onClose }) => {
                     console.error('[CREATE-CHILD] Error Stack:', error.stack);
                     console.error('[CREATE-CHILD] Full Error:', error);
                     console.error('[CREATE-CHILD] ========================================');
-                    alert('שגיאה ביצירת ילד: ' + error.message);
+                    alert(t('parent.settings.createChildError', { defaultValue: 'שגיאה ביצירת ילד' }) + ': ' + error.message);
                   } finally {
                     setCreatingChild(false);
                   }
@@ -776,24 +814,17 @@ const Settings = ({ familyId, onClose }) => {
                   type="text"
                   value={newChildName}
                   onChange={(e) => setNewChildName(e.target.value)}
-                  placeholder="שם הילד"
+                  placeholder={t('parent.settings.childName', { defaultValue: 'שם הילד' })}
                   className="child-name-input"
                   required
                 />
                 <button type="submit" className="add-child-button" disabled={creatingChild}>
-                  {creatingChild ? 'יוצר...' : 'הוסף ילד'}
+                  {creatingChild 
+                    ? t('common.saving', { defaultValue: 'שומר...' })
+                    : t('parent.settings.addChild', { defaultValue: 'הוסף ילד' })
+                  }
                 </button>
               </form>
-            </div>
-
-            <div className="join-child-section">
-              <h3>הצטרף לחשבון משפחתי קיים</h3>
-              <button
-                className="join-child-button"
-                onClick={() => setShowChildJoin(true)}
-              >
-                הצטרף עם קוד
-              </button>
             </div>
           </div>
         )}

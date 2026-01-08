@@ -1,7 +1,9 @@
 import React, { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { getData, getChildPassword } from '../utils/api';
 
 const ChildPasswordLogin = ({ familyId, onChildVerified, onBack }) => {
+  const { t } = useTranslation();
   const [password, setPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
@@ -163,7 +165,7 @@ const ChildPasswordLogin = ({ familyId, onChildVerified, onBack }) => {
         </form>
       </div>
       <footer className="app-footer">
-        <span className="version">גרסה 3.0.16</span>
+        <span className="version">{t('common.version', { defaultValue: 'גרסה' })} 3.1.0</span>
       </footer>
     </div>
   );
