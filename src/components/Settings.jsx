@@ -864,21 +864,21 @@ const Settings = ({ familyId, onClose }) => {
         />
       )}
 
-      {childPasswordModal && (
-        <div className="password-modal-overlay" onClick={() => setChildPasswordModal(null)}>
+      {childPhoneModal && (
+        <div className="password-modal-overlay" onClick={() => setChildPhoneModal(null)}>
           <div className="password-modal" onClick={(e) => e.stopPropagation()}>
             <div className="password-modal-header">
-              <h2>{t('parent.settings.passwordModal.title', { name: childPasswordModal.childName, defaultValue: 'סיסמה ל{name}' })}</h2>
-              <button className="close-button" onClick={() => setChildPasswordModal(null)}>×</button>
+              <h2>{t('parent.settings.phoneModal.title', { name: childPhoneModal.childName, defaultValue: 'מספר טלפון ל{name}' })}</h2>
+              <button className="close-button" onClick={() => setChildPhoneModal(null)}>×</button>
             </div>
             <div className="password-modal-content">
-              <p className="password-label">{t('parent.settings.passwordModal.password', { defaultValue: 'סיסמה' })}:</p>
+              <p className="password-label">{t('parent.settings.phoneModal.phoneNumber', { defaultValue: 'מספר טלפון' })}:</p>
               <div className="password-display-container">
-                <div className="password-display" id="password-display">{childPasswordModal.password}</div>
+                <div className="password-display" id="phone-display">{childPhoneModal.phoneNumber}</div>
                 <button 
                   className="copy-button"
                   onClick={() => {
-                    navigator.clipboard.writeText(childPasswordModal.password);
+                    navigator.clipboard.writeText(childPhoneModal.phoneNumber);
                     const btn = document.querySelector('.copy-button');
                     const originalText = btn.textContent;
                     btn.textContent = '✅ ' + t('parent.settings.passwordModal.copied', { defaultValue: 'הועתק!' });
@@ -886,43 +886,17 @@ const Settings = ({ familyId, onClose }) => {
                       btn.textContent = originalText;
                     }, 2000);
                   }}
-                  title={t('parent.settings.passwordModal.copyPassword', { defaultValue: 'העתק סיסמה' })}
+                  title={t('parent.settings.phoneModal.copyPhone', { defaultValue: 'העתק מספר טלפון' })}
                 >
                   📋 {t('parent.settings.passwordModal.copy', { defaultValue: 'העתק' })}
                 </button>
               </div>
-              {childPasswordModal.joinCode && (
-                <>
-                  <p className="password-label">{t('parent.settings.passwordModal.joinCode', { defaultValue: 'קוד הצטרפות' })}:</p>
-                  <div className="password-display-container">
-                    <div className="password-display" id="joincode-display">{childPasswordModal.joinCode}</div>
-                    <button 
-                      className="copy-button"
-                      onClick={() => {
-                        navigator.clipboard.writeText(childPasswordModal.joinCode);
-                        const btn = document.querySelectorAll('.copy-button')[1];
-                        const originalText = btn.textContent;
-                        btn.textContent = '✅ הועתק!';
-                        setTimeout(() => {
-                          btn.textContent = originalText;
-                        }, 2000);
-                      }}
-                      title={t('parent.settings.passwordModal.copyJoinCode', { defaultValue: 'העתק קוד הצטרפות' })}
-                    >
-                      📋 {t('parent.settings.passwordModal.copy', { defaultValue: 'העתק' })}
-                    </button>
-                  </div>
-                  <p className="password-note">
-                    {t('parent.settings.passwordModal.joinCodeNote', { defaultValue: 'שמור את הקוד הזה! הילד יכול להשתמש בו כדי להצטרף למשפחה ממכשיר אחר.' })}
-                  </p>
-                </>
-              )}
               <p className="password-note">
-                {t('parent.settings.passwordModal.note', { defaultValue: 'שמור את הסיסמה הזו! היא תצטרך אם הילד ישכח אותה או יחליף מכשיר.' })}
+                {t('parent.settings.phoneModal.note', { defaultValue: 'הילד יכול להשתמש במספר הטלפון הזה כדי להתחבר לדף שלו.' })}
               </p>
             </div>
             <div className="password-modal-footer">
-              <button className="password-close-button" onClick={() => setChildPasswordModal(null)}>
+              <button className="password-close-button" onClick={() => setChildPhoneModal(null)}>
                 {t('parent.settings.passwordModal.close', { defaultValue: 'סגור' })}
               </button>
             </div>

@@ -1248,16 +1248,23 @@ app.post('/api/families/:familyId/children', async (req, res) => {
   
   try {
     const { familyId } = req.params;
-    const { name } = req.body;
+    const { name, phoneNumber } = req.body;
     
     console.log(`[CREATE-CHILD-ENDPOINT] Step 1: Validating input...`);
     console.log(`[CREATE-CHILD-ENDPOINT]   Family ID: ${familyId}`);
     console.log(`[CREATE-CHILD-ENDPOINT]   Name: ${name || 'NOT PROVIDED'}`);
+    console.log(`[CREATE-CHILD-ENDPOINT]   Phone: ${phoneNumber || 'NOT PROVIDED'}`);
     
     if (!name) {
       console.error(`[CREATE-CHILD-ENDPOINT] ❌ Name is required`);
       process.stderr.write(`[CREATE-CHILD-ENDPOINT] ❌ Name is required\n`);
       return res.status(400).json({ error: 'שם הילד נדרש' });
+    }
+    
+    if (!phoneNumber) {
+      console.error(`[CREATE-CHILD-ENDPOINT] ❌ Phone number is required`);
+      process.stderr.write(`[CREATE-CHILD-ENDPOINT] ❌ Phone number is required\n`);
+      return res.status(400).json({ error: 'מספר טלפון לילד נדרש' });
     }
     
     console.log(`[CREATE-CHILD-ENDPOINT] Step 2: Getting family...`);
