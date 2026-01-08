@@ -2347,7 +2347,9 @@ body {
 
 .country-code-selector {
   position: relative;
-  min-width: 140px;
+  min-width: 100px;
+  max-width: 120px;
+  flex-shrink: 0;
 }
 
 .country-code-button {

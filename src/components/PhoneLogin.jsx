@@ -118,11 +118,11 @@ const PhoneLogin = ({ onOTPSent }) => {
       try {
         // Add mode: 'cors' and credentials for iOS
         response = await fetch(url, {
-          method: 'POST',
+        method: 'POST',
           mode: 'cors',
           credentials: 'omit',
-          headers: {
-            'Content-Type': 'application/json',
+        headers: {
+          'Content-Type': 'application/json',
             'Accept': 'application/json',
           },
           body: JSON.stringify(requestBody),
@@ -333,19 +333,6 @@ const PhoneLogin = ({ onOTPSent }) => {
 
         <form onSubmit={handleSubmit} className="phone-login-form">
           <div className="phone-input-group">
-            <input
-              type="tel"
-              className="phone-input"
-              value={phoneNumber}
-              onChange={(e) => {
-                setPhoneNumber(e.target.value);
-                setError('');
-              }}
-              placeholder={t('auth.phoneLogin.phonePlaceholder', { defaultValue: 'מספר טלפון' })}
-              required
-              autoFocus
-              inputMode="numeric"
-            />
             <div className="country-code-selector">
               <button
                 type="button"
@@ -372,6 +359,19 @@ const PhoneLogin = ({ onOTPSent }) => {
                 </div>
               )}
             </div>
+            <input
+              type="tel"
+              className="phone-input"
+              value={phoneNumber}
+              onChange={(e) => {
+                setPhoneNumber(e.target.value);
+                setError('');
+              }}
+              placeholder={t('auth.phoneLogin.phonePlaceholder', { defaultValue: 'מספר טלפון' })}
+              required
+              autoFocus
+              inputMode="numeric"
+            />
           </div>
 
           {error && <div className="error-message">{error}</div>}

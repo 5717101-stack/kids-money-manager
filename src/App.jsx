@@ -203,7 +203,7 @@ const App = () => {
 
   return (
     <div className="app">
-      <div style={{ position: 'fixed', top: '16px', right: '16px', zIndex: 1000, display: 'flex', gap: '8px', alignItems: 'center' }}>
+      <div style={{ position: 'fixed', bottom: '16px', right: '16px', zIndex: 1000, display: 'flex', gap: '8px', alignItems: 'center' }}>
         <LanguageToggle />
         {(screen === 'welcome' || screen === 'phone' || screen === 'otp' || screen === 'child-password' || screen === 'parent-invite' || screen === 'child-invite') && (
           <button
