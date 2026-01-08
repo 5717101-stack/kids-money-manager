@@ -1278,16 +1278,18 @@ app.post('/api/families/:familyId/children', async (req, res) => {
     console.log(`[CREATE-CHILD-ENDPOINT]   Family has ${family.children?.length || 0} children`);
     
     console.log(`[CREATE-CHILD-ENDPOINT] Step 3: Adding child to family...`);
-    const { child, childCode, childPassword } = await addChildToFamily(familyId, name);
+    const { child, phoneNumber: savedPhone } = await addChildToFamily(familyId, name.trim(), phoneNumber.trim());
     console.log(`[CREATE-CHILD-ENDPOINT] ✅ Child added successfully`);
     console.log(`[CREATE-CHILD-ENDPOINT]   Child ID: ${child._id}`);
     console.log(`[CREATE-CHILD-ENDPOINT]   Child Name: ${child.name}`);
+    console.log(`[CREATE-CHILD-ENDPOINT]   Child Phone: ${savedPhone}`);
     
     const responseBody = {
       success: true,
       child: {
         _id: child._id,
         name: child.name,
+        phoneNumber: child.phoneNumber,
         balance: child.balance,
         cashBoxBalance: child.cashBoxBalance,
         profileImage: child.profileImage,
@@ -1297,8 +1299,7 @@ app.post('/api/families/:familyId/children', async (req, res) => {
         allowanceTime: child.allowanceTime,
         transactions: child.transactions
       },
-      joinCode: childCode,
-      password: childPassword
+      phoneNumber: savedPhone
     };
     
     const duration = Date.now() - requestStart;
