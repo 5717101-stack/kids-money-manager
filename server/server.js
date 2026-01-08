@@ -517,8 +517,12 @@ function normalizePhoneNumber(phoneNumber, defaultCountryCode = '+972') {
   if (!phoneNumber) return phoneNumber;
   const trimmed = phoneNumber.trim();
   
-  // If already starts with +, return as is
+  // If already starts with +, check if it has double country code (e.g., +972054...)
   if (trimmed.startsWith('+')) {
+    // If it's +9720..., remove the 0 after country code
+    if (trimmed.startsWith('+9720') && trimmed.length > 5) {
+      return '+972' + trimmed.substring(5); // +972054... -> +97254...
+    }
     return trimmed;
   }
   
