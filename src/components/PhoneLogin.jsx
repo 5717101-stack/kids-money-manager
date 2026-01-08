@@ -405,7 +405,7 @@ const PhoneLogin = ({ onOTPSent }) => {
         >
           🔍 בדיקת לוגים
         </button>
-        <span className="version">{t('common.version', { defaultValue: 'גרסה' })} 3.3.6</span>
+        <span className="version">{t('common.version', { defaultValue: 'גרסה' })} 3.3.7</span>
       </footer>
     </div>
   );

@@ -1013,26 +1013,50 @@ app.post('/api/auth/send-otp', async (req, res) => {
     process.stderr.write(`[SEND-OTP] OTP expires at: ${new Date(expiresAt).toISOString()}\n`);
     
     console.log(`[SEND-OTP] ========================================`);
-    console.log(`[SEND-OTP] Step 3: Checking if family exists...`);
-    const existingFamily = await getFamilyByPhone(normalizedPhone);
-    console.log(`[SEND-OTP]   Family exists: ${existingFamily ? 'YES' : 'NO'}`);
-    if (existingFamily) {
-      console.log(`[SEND-OTP]   Family ID: ${existingFamily._id}`);
-    }
-    console.log(`[SEND-OTP] ========================================\n`);
+    console.log(`[SEND-OTP] Step 3: Checking if phone number exists (family or child)...`);
     
-    process.stderr.write(`[SEND-OTP] Step 3: Checking if family exists...\n`);
-    process.stderr.write(`[SEND-OTP] Family exists: ${existingFamily ? 'YES' : 'NO'}\n`);
-    if (existingFamily) {
-      process.stderr.write(`[SEND-OTP] Family ID: ${existingFamily._id}\n`);
+    // First check if phone number belongs to a child
+    let child = null;
+    let existingFamily = null;
+    
+    if (db) {
+      // Find child by phone number
+      const familyWithChild = await db.collection('families').findOne({
+        'children.phoneNumber': normalizedPhone
+      });
+      
+      if (familyWithChild) {
+        child = familyWithChild.children.find(c => c.phoneNumber === normalizedPhone);
+        if (child) {
+          existingFamily = familyWithChild;
+          console.log(`[SEND-OTP]   ✅ Found child: ${child.name} (${child._id}) in family ${existingFamily._id}`);
+          process.stderr.write(`[SEND-OTP] ✅ Found child: ${child.name} in family ${existingFamily._id}\n`);
+        }
+      }
     }
+    
+    // If not a child, check if it's a family phone number
+    if (!child) {
+      existingFamily = await getFamilyByPhone(normalizedPhone);
+      if (existingFamily) {
+        console.log(`[SEND-OTP]   ✅ Found family: ${existingFamily._id}`);
+        process.stderr.write(`[SEND-OTP] ✅ Found family: ${existingFamily._id}\n`);
+      } else {
+        console.log(`[SEND-OTP]   ℹ️  New user - will create family after OTP verification`);
+        process.stderr.write(`[SEND-OTP] ℹ️  New user - will create family after OTP verification\n`);
+      }
+    }
+    
+    console.log(`[SEND-OTP] ========================================\n`);
     
     console.log(`[SEND-OTP] ========================================`);
     console.log(`[SEND-OTP] Step 4: Storing OTP in memory...`);
     otpStore.set(normalizedPhone, {
       code: otpCode,
       expiresAt,
-      familyId: existingFamily ? existingFamily._id : null
+      familyId: existingFamily ? existingFamily._id : null,
+      isChild: !!child,
+      childId: child ? child._id : null
     });
     console.log(`[SEND-OTP]   OTP stored for: ${normalizedPhone}`);
     console.log(`[SEND-OTP]   OTP code: ${otpCode}`);
@@ -1166,21 +1190,36 @@ app.post('/api/auth/verify-otp', async (req, res) => {
       return res.status(400).json({ error: 'קוד אימות שגוי' });
     }
     
-    // Check if phone number belongs to a child first
+    // Use information from OTP store (set during send-otp)
     let child = null;
     let family = null;
     
-    if (db) {
-      // Find child by phone number
-      const familyWithChild = await db.collection('families').findOne({
-        'children.phoneNumber': normalizedPhone
-      });
-      
-      if (familyWithChild) {
-        child = familyWithChild.children.find(c => c.phoneNumber === normalizedPhone);
+    // If OTP store indicates this is a child, use that information
+    if (storedOTP.isChild && storedOTP.childId && storedOTP.familyId) {
+      console.log(`[VERIFY-OTP] ℹ️  OTP store indicates this is a child: ${storedOTP.childId} in family ${storedOTP.familyId}`);
+      family = await getFamilyById(storedOTP.familyId);
+      if (family) {
+        child = family.children?.find(c => c._id === storedOTP.childId);
         if (child) {
-          family = familyWithChild;
-          console.log(`[VERIFY-OTP] ✅ Found child: ${child.name} (${child._id}) in family ${family._id}`);
+          console.log(`[VERIFY-OTP] ✅ Found child from OTP store: ${child.name} (${child._id}) in family ${family._id}`);
+        }
+      }
+    }
+    
+    // If not found from OTP store, check database
+    if (!child) {
+      if (db) {
+        // Find child by phone number
+        const familyWithChild = await db.collection('families').findOne({
+          'children.phoneNumber': normalizedPhone
+        });
+        
+        if (familyWithChild) {
+          child = familyWithChild.children.find(c => c.phoneNumber === normalizedPhone);
+          if (child) {
+            family = familyWithChild;
+            console.log(`[VERIFY-OTP] ✅ Found child from database: ${child.name} (${child._id}) in family ${family._id}`);
+          }
         }
       }
     }
@@ -1190,7 +1229,8 @@ app.post('/api/auth/verify-otp', async (req, res) => {
       family = await getFamilyByPhone(normalizedPhone);
       
       if (!family) {
-        // Create new family with phone number
+        // Only create new family if it's not a child and not an existing family
+        // This prevents creating a new family when a child's phone number is used
         const familyId = `family_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
         family = {
           _id: familyId,
