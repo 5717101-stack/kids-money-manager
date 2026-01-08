@@ -346,9 +346,10 @@ const ChildView = ({ childId, familyId }) => {
         ) : (
           <ExpensePieChart
             expensesByCategory={expensesByCategory}
-            title={t('child.expenses.chartTitle', { 
-              defaultValue: expensesPeriod === 'week' ? 'הוצאות - שבוע אחרון' : 'הוצאות - חודש אחרון'
-            })}
+            title={expensesPeriod === 'week' 
+              ? t('child.expenses.week', { defaultValue: 'הוצאות - שבוע אחרון' })
+              : t('child.expenses.month', { defaultValue: 'הוצאות - חודש אחרון' })
+            }
             days={expensesPeriod === 'week' ? 7 : 30}
           />
         )}
