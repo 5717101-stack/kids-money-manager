@@ -185,6 +185,12 @@
       "recentTransactions": "Recent Transactions",
       "noTransactions": "No transactions",
       "transaction": "Transaction"
+    },
+    "expenses": {
+      "title": "Expenses Distribution",
+      "week": "Last Week",
+      "month": "Last Month",
+      "chartTitle": "Expenses - {period}"
     }
   },
   "parentLogin": {

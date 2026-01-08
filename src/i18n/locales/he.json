@@ -185,6 +185,12 @@
       "recentTransactions": "עסקאות אחרונות",
       "noTransactions": "אין עסקאות",
       "transaction": "עסקה"
+    },
+    "expenses": {
+      "title": "התפלגות הוצאות",
+      "week": "שבוע אחרון",
+      "month": "חודש אחרון",
+      "chartTitle": "הוצאות - {period}"
     }
   },
   "auth": {

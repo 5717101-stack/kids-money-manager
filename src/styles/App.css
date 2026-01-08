@@ -3667,6 +3667,75 @@ body {
   border: 2px dashed var(--border);
 }
 
+/* Expenses Chart Section */
+.expenses-chart-section {
+  background: var(--bg-card);
+  border-radius: var(--radius-xl);
+  padding: 32px;
+  margin-bottom: 32px;
+  box-shadow: var(--shadow-md);
+  border: 2px solid var(--border);
+}
+
+.expenses-chart-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 24px;
+  flex-wrap: wrap;
+  gap: 16px;
+}
+
+.expenses-chart-header h2 {
+  font-size: 24px;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin: 0;
+}
+
+.period-toggle {
+  display: flex;
+  gap: 8px;
+  background: var(--bg);
+  padding: 4px;
+  border-radius: var(--radius-md);
+  border: 2px solid var(--border);
+}
+
+.period-button {
+  padding: 10px 20px;
+  border: none;
+  border-radius: var(--radius-sm);
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  background: transparent;
+  color: var(--text-secondary);
+}
+
+.period-button:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.period-button.active {
+  background: var(--primary);
+  color: white;
+  box-shadow: var(--shadow-sm);
+}
+
+.period-button.active:hover {
+  background: var(--primary-hover);
+}
+
+.chart-loading {
+  text-align: center;
+  padding: 40px;
+  color: var(--text-secondary);
+  font-size: 16px;
+}
+
 /* My History */
 .child-history-section {
   background: var(--bg-card);

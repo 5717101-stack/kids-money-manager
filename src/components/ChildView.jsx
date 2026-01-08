@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
-import { getChild, getChildTransactions, updateCashBoxBalance, getSavingsGoal, updateSavingsGoal, deleteSavingsGoal, updateProfileImage } from '../utils/api';
+import { getChild, getChildTransactions, updateCashBoxBalance, getSavingsGoal, updateSavingsGoal, deleteSavingsGoal, updateProfileImage, getExpensesByCategory } from '../utils/api';
+import ExpensePieChart from './ExpensePieChart';
 
 const ChildView = ({ childId, familyId }) => {
   const { t, i18n } = useTranslation();
@@ -13,17 +14,22 @@ const ChildView = ({ childId, familyId }) => {
   const [editingGoal, setEditingGoal] = useState(false);
   const [showImagePicker, setShowImagePicker] = useState(false);
   const fileInputRef = React.useRef(null);
+  const [expensesPeriod, setExpensesPeriod] = useState('month'); // 'week' or 'month'
+  const [expensesByCategory, setExpensesByCategory] = useState([]);
+  const [loadingExpenses, setLoadingExpenses] = useState(false);
 
   useEffect(() => {
     loadChildData();
     loadSavingsGoal();
+    loadExpensesByCategory();
     // Refresh every 5 seconds to show updated balance
     const interval = setInterval(() => {
       loadChildData();
       loadSavingsGoal();
+      loadExpensesByCategory();
     }, 5000);
     return () => clearInterval(interval);
-  }, [childId, familyId]);
+  }, [childId, familyId, expensesPeriod]);
 
   const loadChildData = async () => {
     if (!familyId || !childId) return;
@@ -51,6 +57,21 @@ const ChildView = ({ childId, familyId }) => {
       }
     } catch (error) {
       console.error('Error loading savings goal:', error);
+    }
+  };
+
+  const loadExpensesByCategory = async () => {
+    if (!familyId || !childId) return;
+    try {
+      setLoadingExpenses(true);
+      const days = expensesPeriod === 'week' ? 7 : 30;
+      const expenses = await getExpensesByCategory(familyId, childId, days);
+      setExpensesByCategory(expenses || []);
+    } catch (error) {
+      console.error('Error loading expenses by category:', error);
+      setExpensesByCategory([]);
+    } finally {
+      setLoadingExpenses(false);
     }
   };
 
@@ -291,6 +312,40 @@ const ChildView = ({ childId, familyId }) => {
           <div className="no-goal-message">
             {t('child.savingsGoal.noGoal', { defaultValue: 'אין מטרת חיסכון' })}
           </div>
+        )}
+      </div>
+
+      {/* Expenses Distribution Chart */}
+      <div className="expenses-chart-section">
+        <div className="expenses-chart-header">
+          <h2>{t('child.expenses.title', { defaultValue: 'התפלגות הוצאות' })}</h2>
+          <div className="period-toggle">
+            <button
+              className={`period-button ${expensesPeriod === 'week' ? 'active' : ''}`}
+              onClick={() => setExpensesPeriod('week')}
+            >
+              {t('child.expenses.week', { defaultValue: 'שבוע אחרון' })}
+            </button>
+            <button
+              className={`period-button ${expensesPeriod === 'month' ? 'active' : ''}`}
+              onClick={() => setExpensesPeriod('month')}
+            >
+              {t('child.expenses.month', { defaultValue: 'חודש אחרון' })}
+            </button>
+          </div>
+        </div>
+        {loadingExpenses ? (
+          <div className="chart-loading">
+            {t('common.loading', { defaultValue: 'טוען...' })}
+          </div>
+        ) : (
+          <ExpensePieChart
+            expensesByCategory={expensesByCategory}
+            title={t('child.expenses.chartTitle', { 
+              defaultValue: expensesPeriod === 'week' ? 'הוצאות - שבוע אחרון' : 'הוצאות - חודש אחרון'
+            })}
+            days={expensesPeriod === 'week' ? 7 : 30}
+          />
         )}
       </div>
 
