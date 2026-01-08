@@ -1492,6 +1492,7 @@ app.get('/api/families/:familyId/children', async (req, res) => {
     const children = (family.children || []).map(child => ({
       _id: child._id,
       name: child.name,
+      phoneNumber: child.phoneNumber || '',
       balance: child.balance || 0,
       cashBoxBalance: child.cashBoxBalance || 0,
       profileImage: child.profileImage || null,
@@ -1548,6 +1549,7 @@ app.get('/api/families/:familyId/children/:childId', async (req, res) => {
     
     res.json({
       name: child.name,
+      phoneNumber: child.phoneNumber || '',
       balance: child.balance || 0,
       cashBoxBalance: child.cashBoxBalance || 0,
       profileImage: child.profileImage || null,
@@ -1645,9 +1647,34 @@ app.put('/api/families/:familyId/children/:childId', async (req, res) => {
       console.log(`[UPDATE-CHILD-SERVER] ✅ Child updated successfully`);
     }
     
-    const responseBody = { success: true, message: 'ילד עודכן בהצלחה' };
+    // Fetch updated child data to return in response
+    console.log(`[UPDATE-CHILD-SERVER] Step 5: Fetching updated child data...`);
+    const updatedFamily = await getFamilyById(familyId);
+    const updatedChild = updatedFamily?.children?.find(c => c._id === childId);
+    
+    if (!updatedChild) {
+      console.error(`[UPDATE-CHILD-SERVER] ❌ Updated child not found after update`);
+      process.stderr.write(`[UPDATE-CHILD-SERVER] ❌ Updated child not found\n`);
+      return res.status(500).json({ error: 'שגיאה בטעינת הנתונים המעודכנים' });
+    }
+    
+    console.log(`[UPDATE-CHILD-SERVER] ✅ Updated child data:`, {
+      _id: updatedChild._id,
+      name: updatedChild.name,
+      phoneNumber: updatedChild.phoneNumber
+    });
+    
+    const responseBody = { 
+      success: true, 
+      message: 'ילד עודכן בהצלחה',
+      child: {
+        _id: updatedChild._id,
+        name: updatedChild.name,
+        phoneNumber: updatedChild.phoneNumber
+      }
+    };
     const duration = Date.now() - requestStart;
-    console.log(`[UPDATE-CHILD-SERVER] Step 5: Sending response...`);
+    console.log(`[UPDATE-CHILD-SERVER] Step 6: Sending response...`);
     console.log(`[UPDATE-CHILD-SERVER]   Response Status: 200`);
     console.log(`[UPDATE-CHILD-SERVER]   Response Body:`, JSON.stringify(responseBody, null, 2));
     console.log(`[UPDATE-CHILD-SERVER]   Duration: ${duration}ms`);

@@ -971,7 +971,26 @@ const Settings = ({ familyId, onClose, onLogout }) => {
                     });
                     const result = await updateChild(familyId, editingChild.childId, editChildName.trim(), editChildPhone.trim());
                     console.log('[UPDATE-CHILD] Update successful:', result);
+                    
+                    // Update local state immediately if we have the updated child data
+                    if (result?.child) {
+                      console.log('[UPDATE-CHILD] Updating local state with new data:', result.child);
+                      setAllData(prev => {
+                        const updated = { ...prev };
+                        if (updated.children && updated.children[editingChild.childId]) {
+                          updated.children[editingChild.childId] = {
+                            ...updated.children[editingChild.childId],
+                            name: result.child.name,
+                            phoneNumber: result.child.phoneNumber
+                          };
+                        }
+                        return updated;
+                      });
+                    }
+                    
+                    // Reload data from server to ensure consistency
                     await loadData();
+                    
                     setEditingChild(null);
                     setEditChildName('');
                     setEditChildPhone('');

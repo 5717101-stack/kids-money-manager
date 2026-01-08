@@ -167,7 +167,7 @@ const ChildPasswordLogin = ({ familyId, onChildVerified, onBack }) => {
         </form>
       </div>
       <footer className="app-footer">
-        <span className="version">{t('common.version', { defaultValue: 'גרסה' })} 3.3.5</span>
+        <span className="version">{t('common.version', { defaultValue: 'גרסה' })} 3.3.6</span>
       </footer>
     </div>
   );
