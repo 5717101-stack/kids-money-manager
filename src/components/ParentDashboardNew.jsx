@@ -4,6 +4,7 @@ import { getData, getCategories, getChildTransactions, addTransaction } from '..
 import LanguageToggle from './LanguageToggle';
 import Sidebar from './Sidebar';
 import QuickActionModal from './QuickActionModal';
+import Settings from './Settings';
 
 const ParentDashboard = ({ familyId, onChildrenUpdated, onLogout }) => {
   const { t, i18n } = useTranslation();
