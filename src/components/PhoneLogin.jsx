@@ -204,9 +204,14 @@ const PhoneLogin = ({ onOTPSent }) => {
           box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2);
         `;
         
+        const otpSentTitle = t('auth.phoneLogin.otpSent', { defaultValue: 'קוד אימות נשלח' });
+        const otpSentTo = t('auth.phoneLogin.otpSentTo', { phone: fullPhoneNumber, defaultValue: `קוד האימות נשלח לטלפון ${fullPhoneNumber}` });
+        const copyText = t('auth.phoneLogin.copy', { defaultValue: 'העתק' });
+        const closeText = t('auth.phoneLogin.close', { defaultValue: 'סגור' });
+        
         modalContent.innerHTML = `
-          <h2 style="margin: 0 0 20px 0; color: #333; font-size: 24px;">✅ קוד אימות נשלח</h2>
-          <p style="margin: 0 0 20px 0; color: #666; font-size: 16px;">קוד האימות נשלח לטלפון ${fullPhoneNumber}</p>
+          <h2 style="margin: 0 0 20px 0; color: #333; font-size: 24px;">✅ ${otpSentTitle}</h2>
+          <p style="margin: 0 0 20px 0; color: #666; font-size: 16px;">${otpSentTo}</p>
           <div style="display: flex; align-items: center; justify-content: center; gap: 10px; margin: 20px 0;">
             <div id="otp-display" style="
               font-size: 32px;
@@ -228,7 +233,7 @@ const PhoneLogin = ({ onOTPSent }) => {
               cursor: pointer;
               font-size: 16px;
               font-weight: 600;
-            ">📋 ${t('auth.phoneLogin.copy', { defaultValue: 'העתק' })}</button>
+            ">📋 ${copyText}</button>
           </div>
           <button id="close-otp-modal" style="
             padding: 12px 30px;
@@ -240,17 +245,18 @@ const PhoneLogin = ({ onOTPSent }) => {
             font-size: 16px;
             font-weight: 600;
             margin-top: 10px;
-          ">${t('auth.phoneLogin.close', { defaultValue: 'סגור' })}</button>
+          ">${closeText}</button>
         `;
         
         modal.appendChild(modalContent);
         document.body.appendChild(modal);
         
         const copyBtn = modalContent.querySelector('#copy-otp-btn');
+        const copiedText = t('auth.phoneLogin.copied', { defaultValue: 'הועתק!' });
         copyBtn.addEventListener('click', () => {
           navigator.clipboard.writeText(data.otpCode);
           const originalText = copyBtn.textContent;
-          copyBtn.textContent = '✅ ' + t('auth.phoneLogin.copied', { defaultValue: 'הועתק!' });
+          copyBtn.textContent = '✅ ' + copiedText;
           setTimeout(() => {
             copyBtn.textContent = originalText;
           }, 2000);
