@@ -134,7 +134,7 @@ const OTPVerification = ({ phoneNumber, isExistingFamily, onVerified, onBack }) 
         throw new Error(data.error || t('auth.otpVerification.invalidCode', { defaultValue: 'קוד אימות שגוי' }));
       }
 
-      onVerified(data.familyId, data.phoneNumber, data.isNewFamily, data.isChild, data.childId);
+      onVerified(data.familyId, data.phoneNumber, data.isNewFamily, data.isChild, data.childId, data.isAdditionalParent);
     } catch (error) {
       console.error('Error verifying OTP:', error);
       setError(error.message || t('auth.otpVerification.verifyError', { defaultValue: 'שגיאה באימות קוד' }));
@@ -302,7 +302,7 @@ const OTPVerification = ({ phoneNumber, isExistingFamily, onVerified, onBack }) 
         >
           🔍 בדיקת לוגים
         </button>
-        <span className="version">{t('common.version', { defaultValue: 'גרסה' })} 3.4.12</span>
+        <span className="version">{t('common.version', { defaultValue: 'גרסה' })} 3.4.13</span>
       </footer>
     </div>
   );

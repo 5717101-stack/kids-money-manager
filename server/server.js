@@ -538,13 +538,14 @@ function normalizePhoneNumber(phoneNumber, defaultCountryCode = '+972') {
 async function getFamilyByPhone(phoneNumber) {
   if (!phoneNumber) return null;
   
-  // Try exact match first
+  const normalized = normalizePhoneNumber(phoneNumber);
+  
+  // Try exact match first (main parent)
   if (db) {
     let family = await db.collection('families').findOne({ phoneNumber });
     if (family) return family;
     
-    // Try normalized version
-    const normalized = normalizePhoneNumber(phoneNumber);
+    // Try normalized version (main parent)
     if (normalized !== phoneNumber) {
       family = await db.collection('families').findOne({ phoneNumber: normalized });
       if (family) return family;
@@ -555,6 +556,24 @@ async function getFamilyByPhone(phoneNumber) {
       const withoutCode = '0' + phoneNumber.substring(4);
       family = await db.collection('families').findOne({ phoneNumber: withoutCode });
       if (family) return family;
+    }
+    
+    // If not found as main parent, check additional parents
+    const allFamilies = await db.collection('families').find({}).toArray();
+    for (const fam of allFamilies) {
+      if (fam.additionalParents && Array.isArray(fam.additionalParents)) {
+        const foundParent = fam.additionalParents.find(p => {
+          const parentPhoneNormalized = normalizePhoneNumber(p.phoneNumber);
+          return parentPhoneNormalized === normalized || 
+                 parentPhoneNormalized === phoneNumber ||
+                 p.phoneNumber === normalized ||
+                 p.phoneNumber === phoneNumber;
+        });
+        if (foundParent) {
+          console.log(`[GET-FAMILY-BY-PHONE] Found family ${fam._id} via additional parent ${foundParent.name}`);
+          return fam;
+        }
+      }
     }
   }
   return null;
@@ -1313,7 +1332,7 @@ app.post('/api/auth/verify-otp', async (req, res) => {
       }
     }
     
-    // If not a child, check if it's a parent's phone number
+    // If not a child, check if it's a parent's phone number (main or additional)
     if (!child) {
       // Check if storedOTP has familyId (from send-otp)
       if (storedOTP.familyId) {
@@ -1323,15 +1342,22 @@ app.post('/api/auth/verify-otp', async (req, res) => {
         }
       }
       
-      // If not found from OTP store, check database
+      // If not found from OTP store, check database (this now checks both main and additional parents)
       if (!family) {
         family = await getFamilyByPhone(normalizedPhone);
         if (family) {
           console.log(`[VERIFY-OTP] ✅ Found family from database: ${family._id}`);
+          // Check if this is an additional parent
+          if (family.additionalParents && Array.isArray(family.additionalParents)) {
+            const additionalParent = family.additionalParents.find(p => normalizePhoneNumber(p.phoneNumber) === normalizedPhone);
+            if (additionalParent) {
+              console.log(`[VERIFY-OTP] ℹ️  This is an additional parent: ${additionalParent.name}`);
+            }
+          }
         }
       }
       
-      // Only create new family if it's not a child and not an existing family
+      // Only create new family if it's not a child and not an existing family (main or additional parent)
       if (!family) {
         console.log(`[VERIFY-OTP] ℹ️  No existing family or child found - creating new family`);
         const familyId = `family_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
@@ -1357,6 +1383,16 @@ app.post('/api/auth/verify-otp', async (req, res) => {
       }
     }
     
+    // Check if this is an additional parent
+    let isAdditionalParent = false;
+    if (family && !child && family.additionalParents && Array.isArray(family.additionalParents)) {
+      const additionalParent = family.additionalParents.find(p => normalizePhoneNumber(p.phoneNumber) === normalizedPhone);
+      isAdditionalParent = !!additionalParent;
+      if (isAdditionalParent) {
+        console.log(`[VERIFY-OTP] ✅ User is an additional parent: ${additionalParent.name}`);
+      }
+    }
+    
     // Remove OTP
     otpStore.delete(normalizedPhone);
     
@@ -1364,9 +1400,10 @@ app.post('/api/auth/verify-otp', async (req, res) => {
       success: true,
       familyId: family._id,
       phoneNumber: normalizedPhone,
-      isNewFamily: !storedOTP.familyId && !child,
+      isNewFamily: !storedOTP.familyId && !child && !isAdditionalParent,
       isChild: !!child,
-      childId: child ? child._id : null
+      childId: child ? child._id : null,
+      isAdditionalParent: isAdditionalParent
     });
   } catch (error) {
     console.error('Error verifying OTP:', error);
@@ -2667,10 +2704,25 @@ app.post('/api/families/:familyId/parent', async (req, res) => {
       return res.status(400).json({ error: 'מספר טלפון זה כבר קיים במשפחה' });
     }
 
-    // Check if phone is already in use by another family
+    // Check if phone is already in use by another family (as main parent or additional parent)
     const existingFamily = await getFamilyByPhone(normalizedPhone);
     if (existingFamily && existingFamily._id !== familyId) {
       return res.status(400).json({ error: 'מספר טלפון זה כבר בשימוש במשפחה אחרת' });
+    }
+    
+    // Also check if phone is already in use by a child in any family
+    const allFamilies = await db.collection('families').find({}).toArray();
+    for (const fam of allFamilies) {
+      if (fam.children && Array.isArray(fam.children)) {
+        for (const ch of fam.children) {
+          if (ch.phoneNumber) {
+            const childPhoneNormalized = normalizePhoneNumber(ch.phoneNumber);
+            if (childPhoneNormalized === normalizedPhone) {
+              return res.status(400).json({ error: 'מספר טלפון זה כבר בשימוש על ידי ילד' });
+            }
+          }
+        }
+      }
     }
 
     // Add the new parent to additionalParents array

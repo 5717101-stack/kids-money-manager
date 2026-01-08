@@ -110,7 +110,7 @@ const App = () => {
     }
   };
 
-  const handleOTPVerified = (fId, phoneNum, isNewFamily, isChild, childId) => {
+  const handleOTPVerified = (fId, phoneNum, isNewFamily, isChild, childId, isAdditionalParent) => {
     setFamilyId(fId);
     setPhoneNumber(phoneNum);
     sessionStorage.setItem('familyId', fId);
@@ -130,12 +130,13 @@ const App = () => {
     }
     
     // Priority order for parent login:
-    // 1. If user was creating a family (even if number already exists), treat them as parent
-    // 2. If coming from main login, always show parent dashboard
-    // 3. If it's a new family, show parent dashboard
-    // 4. Otherwise (existing family from "Join"), show child password login
-    if (isCreatingFamily || screen === 'main-login' || isNewFamily) {
-      // User came from "Create Family" OR "Main Login" OR it's a new family - show parent dashboard
+    // 1. If user is an additional parent, show parent dashboard
+    // 2. If user was creating a family (even if number already exists), treat them as parent
+    // 3. If coming from main login, always show parent dashboard
+    // 4. If it's a new family, show parent dashboard
+    // 5. Otherwise (existing family from "Join"), show child password login
+    if (isAdditionalParent || isCreatingFamily || screen === 'main-login' || isNewFamily) {
+      // User is additional parent OR came from "Create Family" OR "Main Login" OR it's a new family - show parent dashboard
       sessionStorage.setItem('parentLoggedIn', 'true');
       sessionStorage.removeItem('isChildView');
       sessionStorage.removeItem('childId');

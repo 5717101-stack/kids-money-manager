@@ -17,9 +17,9 @@ const MainLogin = ({ onLoginSuccess, onShowWelcome }) => {
     setShowOTP(true);
   };
 
-  const handleOTPVerified = (fId, phoneNum, isNewFamily, isChild, childId) => {
+  const handleOTPVerified = (fId, phoneNum, isNewFamily, isChild, childId, isAdditionalParent) => {
     // Pass to parent component with child info if applicable
-    onLoginSuccess(fId, phoneNum, isNewFamily, isChild, childId);
+    onLoginSuccess(fId, phoneNum, isNewFamily, isChild, childId, isAdditionalParent);
   };
 
   const handleBackFromOTP = () => {
