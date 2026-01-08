@@ -757,8 +757,8 @@ strong, b {
 }
 
 .form-group input[type="number"]:focus {
-  border-width: 3px;
-  box-shadow: 0 0 0 5px var(--primary-light);
+  border-width: 1px;
+  box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.1);
 }
 
 .amount-input-wrapper {
