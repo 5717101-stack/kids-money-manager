@@ -241,7 +241,8 @@ const ParentDashboard = ({ familyId, onChildrenUpdated }) => {
             if (onChildrenUpdated) {
               await onChildrenUpdated();
             }
-          }} 
+          }}
+          onLogout={onLogout}
         />
       )}
 
