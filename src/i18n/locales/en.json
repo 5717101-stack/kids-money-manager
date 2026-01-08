@@ -1,4 +1,7 @@
 {
+  "login": {
+    "newUser": "New User"
+  },
   "welcome": {
     "title": "👨‍👩‍👧‍👦 <span class=\"kids-green\">Kids</span> Money Manager",
     "subtitle": "Family Finance & Allowance Tracker",

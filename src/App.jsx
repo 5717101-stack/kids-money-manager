@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
+import MainLogin from './components/MainLogin';
 import WelcomeScreen from './components/WelcomeScreen';
 import PhoneLogin from './components/PhoneLogin';
 import OTPVerification from './components/OTPVerification';
@@ -12,7 +13,7 @@ import LanguageToggle from './components/LanguageToggle';
 
 const App = () => {
   const { i18n } = useTranslation();
-  const [screen, setScreen] = useState('welcome'); // 'welcome', 'phone', 'otp', 'child-password', 'parent-invite', 'child-invite', 'dashboard', 'child-view'
+  const [screen, setScreen] = useState('main-login'); // 'main-login', 'welcome', 'phone', 'otp', 'child-password', 'parent-invite', 'child-invite', 'dashboard', 'child-view'
   const [familyId, setFamilyId] = useState(null);
   const [phoneNumber, setPhoneNumber] = useState('');
   const [view, setView] = useState('parent'); // 'parent', 'child1', 'child2', etc.
@@ -49,6 +50,9 @@ const App = () => {
         setScreen('dashboard');
         loadChildren(savedFamilyId);
       }
+    } else {
+      // If not logged in, show main login screen
+      setScreen('main-login');
     }
   }, []);
 
@@ -113,8 +117,9 @@ const App = () => {
     sessionStorage.setItem('phoneNumber', phoneNum);
     
     // If user was creating a family (even if number already exists), treat them as parent
-    if (isNewFamily || isCreatingFamily) {
-      // New family OR existing family but user came from "Create" - show parent dashboard
+    // OR if coming from main login, always show parent dashboard
+    if (isNewFamily || isCreatingFamily || screen === 'main-login') {
+      // New family OR existing family but user came from "Create" or "Main Login" - show parent dashboard
       sessionStorage.setItem('parentLoggedIn', 'true');
       sessionStorage.removeItem('isChildView');
       sessionStorage.removeItem('childId');
@@ -177,7 +182,7 @@ const App = () => {
     setCurrentChild(null);
     setIsChildView(false);
     setView('parent');
-    setScreen('welcome');
+    setScreen('main-login');
   };
 
   return (
@@ -185,6 +190,12 @@ const App = () => {
       <div style={{ position: 'fixed', top: '16px', right: '16px', zIndex: 1000 }}>
         <LanguageToggle />
       </div>
+      {screen === 'main-login' && (
+        <MainLogin 
+          onLoginSuccess={handleOTPVerified}
+          onShowWelcome={() => setScreen('welcome')}
+        />
+      )}
       {screen === 'welcome' && (
         <WelcomeScreen 
           onSelectCreate={handleWelcomeCreate}
@@ -264,7 +275,7 @@ const App = () => {
           </main>
           
           <footer className="app-footer">
-            <span className="version">{t('common.version', { defaultValue: 'גרסה' })} 3.2.4</span>
+            <span className="version">{t('common.version', { defaultValue: 'גרסה' })} 3.2.5</span>
           </footer>
         </>
       )}
