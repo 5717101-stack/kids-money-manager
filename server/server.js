@@ -1565,37 +1565,64 @@ app.get('/api/families/:familyId/children/:childId', async (req, res) => {
 
 // Update child (name and phone number)
 app.put('/api/families/:familyId/children/:childId', async (req, res) => {
+  const requestStart = Date.now();
+  const timestamp = new Date().toISOString();
+  console.log(`\n[UPDATE-CHILD-SERVER] ========================================`);
+  console.log(`[UPDATE-CHILD-SERVER] 📥 Request received at ${timestamp}`);
+  console.log(`[UPDATE-CHILD-SERVER] Method: ${req.method}`);
+  console.log(`[UPDATE-CHILD-SERVER] Path: ${req.path}`);
+  console.log(`[UPDATE-CHILD-SERVER] Family ID: ${req.params.familyId}, Child ID: ${req.params.childId}`);
+  console.log(`[UPDATE-CHILD-SERVER] Body:`, JSON.stringify(req.body, null, 2));
+  console.log(`[UPDATE-CHILD-SERVER] ========================================\n`);
+  process.stderr.write(`[UPDATE-CHILD-SERVER] Request received - Family: ${req.params.familyId}, Child: ${req.params.childId}\n`);
+  
   try {
     const { familyId, childId } = req.params;
     const { name, phoneNumber } = req.body;
     
+    console.log(`[UPDATE-CHILD-SERVER] Step 1: Validating input...`);
     if (!name || !phoneNumber) {
+      console.error(`[UPDATE-CHILD-SERVER] ❌ Name and Phone Number are required`);
+      process.stderr.write(`[UPDATE-CHILD-SERVER] ❌ Name and Phone Number are required\n`);
       return res.status(400).json({ error: 'שם ומספר טלפון נדרשים' });
     }
+    console.log(`[UPDATE-CHILD-SERVER] ✅ Input validated: name="${name}", phoneNumber="${phoneNumber}"`);
     
+    console.log(`[UPDATE-CHILD-SERVER] Step 2: Getting family...`);
     const family = await getFamilyById(familyId);
     if (!family) {
+      console.error(`[UPDATE-CHILD-SERVER] ❌ Family not found: ${familyId}`);
+      process.stderr.write(`[UPDATE-CHILD-SERVER] ❌ Family not found: ${familyId}\n`);
       return res.status(404).json({ error: 'משפחה לא נמצאה' });
     }
+    console.log(`[UPDATE-CHILD-SERVER] ✅ Family found: ${familyId}`);
     
     const childIndex = family.children?.findIndex(c => c._id === childId);
     if (childIndex === -1) {
+      console.error(`[UPDATE-CHILD-SERVER] ❌ Child not found: ${childId} in family: ${familyId}`);
+      process.stderr.write(`[UPDATE-CHILD-SERVER] ❌ Child not found: ${childId}\n`);
       return res.status(404).json({ error: 'ילד לא נמצא' });
     }
+    console.log(`[UPDATE-CHILD-SERVER] ✅ Child found at index: ${childIndex}`);
     
     const normalizedPhone = phoneNumber.trim();
     const currentChild = family.children[childIndex];
+    console.log(`[UPDATE-CHILD-SERVER] Current child phone: "${currentChild.phoneNumber}", New phone: "${normalizedPhone}"`);
     
     // Check if phone number is already in use by another child
     if (currentChild.phoneNumber !== normalizedPhone) {
+      console.log(`[UPDATE-CHILD-SERVER] Step 3: Checking for duplicate phone number...`);
       const existingChild = family.children.find(c => c._id !== childId && c.phoneNumber === normalizedPhone);
       if (existingChild) {
+        console.error(`[UPDATE-CHILD-SERVER] ❌ Phone number already in use by another child: ${normalizedPhone}`);
+        process.stderr.write(`[UPDATE-CHILD-SERVER] ❌ Phone number already in use\n`);
         return res.status(400).json({ error: 'מספר טלפון זה כבר בשימוש על ידי ילד אחר' });
       }
+      console.log(`[UPDATE-CHILD-SERVER] ✅ Phone number not in use by another child`);
     }
     
-    // Update child in database
-    await db.collection('families').updateOne(
+    console.log(`[UPDATE-CHILD-SERVER] Step 4: Updating child in database...`);
+    const updateResult = await db.collection('families').updateOne(
       { _id: familyId, 'children._id': childId },
       { 
         $set: { 
@@ -1604,11 +1631,42 @@ app.put('/api/families/:familyId/children/:childId', async (req, res) => {
         }
       }
     );
+    console.log(`[UPDATE-CHILD-SERVER] Update result:`, JSON.stringify(updateResult, null, 2));
     
-    res.json({ success: true, message: 'ילד עודכן בהצלחה' });
+    if (updateResult.matchedCount === 0) {
+      console.error(`[UPDATE-CHILD-SERVER] ❌ No document matched the update query`);
+      process.stderr.write(`[UPDATE-CHILD-SERVER] ❌ No document matched\n`);
+      return res.status(404).json({ error: 'ילד לא נמצא במסד הנתונים' });
+    }
+    
+    if (updateResult.modifiedCount === 0) {
+      console.warn(`[UPDATE-CHILD-SERVER] ⚠️ Document matched but no changes were made`);
+    } else {
+      console.log(`[UPDATE-CHILD-SERVER] ✅ Child updated successfully`);
+    }
+    
+    const responseBody = { success: true, message: 'ילד עודכן בהצלחה' };
+    const duration = Date.now() - requestStart;
+    console.log(`[UPDATE-CHILD-SERVER] Step 5: Sending response...`);
+    console.log(`[UPDATE-CHILD-SERVER]   Response Status: 200`);
+    console.log(`[UPDATE-CHILD-SERVER]   Response Body:`, JSON.stringify(responseBody, null, 2));
+    console.log(`[UPDATE-CHILD-SERVER]   Duration: ${duration}ms`);
+    console.log(`[UPDATE-CHILD-SERVER] ========================================\n`);
+    process.stderr.write(`[UPDATE-CHILD-SERVER] ✅ Success - Child updated: ${childId}, Name: ${name.trim()}, Phone: ${normalizedPhone}\n`);
+    
+    res.json(responseBody);
   } catch (error) {
-    console.error('Error updating child:', error);
-    res.status(500).json({ error: 'שגיאה בעדכון ילד' });
+    const duration = Date.now() - requestStart;
+    console.error(`[UPDATE-CHILD-SERVER] ========================================`);
+    console.error(`[UPDATE-CHILD-SERVER] ❌❌❌ ERROR ❌❌❌`);
+    console.error(`[UPDATE-CHILD-SERVER] Error Name:`, error.name);
+    console.error(`[UPDATE-CHILD-SERVER] Error Message:`, error.message);
+    console.error(`[UPDATE-CHILD-SERVER] Error Stack:`, error.stack);
+    console.error(`[UPDATE-CHILD-SERVER] Full Error:`, error);
+    console.error(`[UPDATE-CHILD-SERVER] Duration: ${duration}ms`);
+    console.error(`[UPDATE-CHILD-SERVER] ========================================\n`);
+    process.stderr.write(`[UPDATE-CHILD-SERVER] ❌ Error: ${error.message}\n`);
+    res.status(500).json({ error: error.message || 'שגיאה בעדכון ילד' });
   }
 });
 

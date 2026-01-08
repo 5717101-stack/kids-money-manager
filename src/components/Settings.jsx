@@ -963,19 +963,33 @@ const Settings = ({ familyId, onClose, onLogout }) => {
                   
                   setUpdatingChild(true);
                   try {
-                    await updateChild(familyId, editingChild.childId, editChildName.trim(), editChildPhone.trim());
+                    console.log('[UPDATE-CHILD] Starting update:', {
+                      familyId,
+                      childId: editingChild.childId,
+                      name: editChildName.trim(),
+                      phoneNumber: editChildPhone.trim()
+                    });
+                    const result = await updateChild(familyId, editingChild.childId, editChildName.trim(), editChildPhone.trim());
+                    console.log('[UPDATE-CHILD] Update successful:', result);
                     await loadData();
                     setEditingChild(null);
                     setEditChildName('');
                     setEditChildPhone('');
+                    alert(t('parent.settings.updateChildSuccess', { defaultValue: 'ילד עודכן בהצלחה!' }));
                     if (onClose) {
                       setTimeout(() => {
                         onClose();
                       }, 500);
                     }
                   } catch (error) {
-                    console.error('Error updating child:', error);
-                    alert(t('parent.settings.updateChildError', { defaultValue: 'שגיאה בעדכון ילד' }) + ': ' + error.message);
+                    console.error('[UPDATE-CHILD] Error updating child:', {
+                      error: error,
+                      message: error.message,
+                      stack: error.stack,
+                      name: error.name
+                    });
+                    const errorMessage = error.message || 'שגיאה לא ידועה';
+                    alert(t('parent.settings.updateChildError', { defaultValue: 'שגיאה בעדכון ילד' }) + ': ' + errorMessage);
                   } finally {
                     setUpdatingChild(false);
                   }

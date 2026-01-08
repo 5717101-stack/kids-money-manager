@@ -77,8 +77,24 @@ async function apiCall(endpoint, options = {}) {
     }
 
     if (!response.ok) {
-      const error = await response.json().catch(() => ({ error: 'Unknown error' }));
-      throw new Error(error.error || `HTTP error! status: ${response.status}`);
+      let errorData;
+      try {
+        const text = await response.text();
+        try {
+          errorData = JSON.parse(text);
+        } catch {
+          errorData = { error: text || `HTTP error! status: ${response.status}` };
+        }
+      } catch (e) {
+        errorData = { error: `HTTP error! status: ${response.status}` };
+      }
+      console.error('[API] Response error:', {
+        status: response.status,
+        statusText: response.statusText,
+        error: errorData,
+        url: url
+      });
+      throw new Error(errorData.error || `HTTP error! status: ${response.status}`);
     }
 
     return await response.json();
@@ -139,14 +155,38 @@ export const getChild = async (familyId, childId) => {
 
 // Update child (name and phone number)
 export const updateChild = async (familyId, childId, name, phoneNumber) => {
-  if (!familyId || !childId || !name || !phoneNumber) {
-    throw new Error('Family ID, Child ID, name, and phone number are required');
-  }
-  const response = await apiCall(`/families/${familyId}/children/${childId}`, {
-    method: 'PUT',
-    body: { name: name.trim(), phoneNumber: phoneNumber.trim() }
+  console.log('[UPDATE-CHILD-API] Starting updateChild:', {
+    familyId,
+    childId,
+    name: name.trim(),
+    phoneNumber: phoneNumber.trim()
   });
-  return response;
+  
+  if (!familyId || !childId || !name || !phoneNumber) {
+    const error = 'Family ID, Child ID, name, and phone number are required';
+    console.error('[UPDATE-CHILD-API] Validation error:', error);
+    throw new Error(error);
+  }
+  
+  try {
+    const requestBody = { name: name.trim(), phoneNumber: phoneNumber.trim() };
+    console.log('[UPDATE-CHILD-API] Request body:', requestBody);
+    
+    const response = await apiCall(`/families/${familyId}/children/${childId}`, {
+      method: 'PUT',
+      body: requestBody
+    });
+    
+    console.log('[UPDATE-CHILD-API] Response received:', response);
+    return response;
+  } catch (error) {
+    console.error('[UPDATE-CHILD-API] Error in updateChild:', {
+      error: error,
+      message: error.message,
+      stack: error.stack
+    });
+    throw error;
+  }
 };
 
 // Add transaction (deposit or expense)
