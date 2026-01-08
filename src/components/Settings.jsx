@@ -353,8 +353,10 @@ const Settings = ({ familyId, onClose, onLogout }) => {
 
   if (loading) {
     return (
-      <div className="settings-container" dir={i18n.language === 'he' ? 'rtl' : 'ltr'}>
-        <div className="loading">{t('common.loading', { defaultValue: 'טוען...' })}</div>
+      <div className="modal-overlay" onClick={onClose} dir={i18n.language === 'he' ? 'rtl' : 'ltr'}>
+        <div className="modal-content settings-container" onClick={(e) => e.stopPropagation()} dir={i18n.language === 'he' ? 'rtl' : 'ltr'}>
+          <div className="loading">{t('common.loading', { defaultValue: 'טוען...' })}</div>
+        </div>
       </div>
     );
   }
