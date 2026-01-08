@@ -2488,8 +2488,13 @@ app.delete('/api/admin/families/:familyId', async (req, res) => {
   console.log(`[DELETE-FAMILY] ⚠️ DELETE FAMILY REQUEST`);
   console.log(`[DELETE-FAMILY] ========================================`);
   console.log(`[DELETE-FAMILY] Timestamp: ${timestamp}`);
+  console.log(`[DELETE-FAMILY] Method: ${req.method}`);
+  console.log(`[DELETE-FAMILY] Path: ${req.path}`);
+  console.log(`[DELETE-FAMILY] Original URL: ${req.originalUrl}`);
   console.log(`[DELETE-FAMILY] Family ID: ${req.params.familyId}`);
   console.log(`[DELETE-FAMILY] ========================================\n`);
+  
+  process.stderr.write(`[DELETE-FAMILY] ⚠️ DELETE FAMILY REQUEST - ${req.params.familyId}\n`);
   
   try {
     if (!db) {
