@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
-import { getCategories, addCategory, updateCategory, deleteCategory, getData, updateProfileImage, updateWeeklyAllowance, payWeeklyAllowance, createChild, updateChild, getFamilyInfo, updateParentInfo } from '../utils/api';
+import { getCategories, addCategory, updateCategory, deleteCategory, getData, updateProfileImage, updateWeeklyAllowance, payWeeklyAllowance, createChild, updateChild, getFamilyInfo, updateParentInfo, addParent } from '../utils/api';
 import ChildJoin from './ChildJoin';
 
 const CHILD_COLORS = {
@@ -38,6 +38,9 @@ const Settings = ({ familyId, onClose, onLogout }) => {
   const [editParentName, setEditParentName] = useState('');
   const [editParentPhone, setEditParentPhone] = useState('');
   const [updatingParent, setUpdatingParent] = useState(false);
+  const [addingParent, setAddingParent] = useState(false);
+  const [newParentName, setNewParentName] = useState('');
+  const [newParentPhone, setNewParentPhone] = useState('');
 
   useEffect(() => {
     loadData();
@@ -1082,7 +1085,88 @@ const Settings = ({ familyId, onClose, onLogout }) => {
 
         {activeTab === 'parents' && (
           <div className="parents-section">
-            <h2>{t('parent.settings.parents.title', { defaultValue: 'ניהול הורים' })}</h2>
+            <div className="parents-header">
+              <h2>{t('parent.settings.parents.title', { defaultValue: 'ניהול הורים' })}</h2>
+              {!addingParent && (
+                <button
+                  className="add-parent-button"
+                  onClick={() => {
+                    setAddingParent(true);
+                    setNewParentName('');
+                    setNewParentPhone('');
+                  }}
+                >
+                  + {t('parent.settings.parents.addParent', { defaultValue: 'הוסף הורה' })}
+                </button>
+              )}
+            </div>
+            
+            {addingParent && (
+              <div className="parent-item parent-item-new">
+                <div className="parent-edit">
+                  <div className="form-group">
+                    <label>{t('parent.settings.parents.name', { defaultValue: 'שם' })}:</label>
+                    <input
+                      type="text"
+                      value={newParentName}
+                      onChange={(e) => setNewParentName(e.target.value)}
+                      placeholder={t('parent.settings.parents.namePlaceholder', { defaultValue: 'שם ההורה' })}
+                      className="parent-input"
+                    />
+                  </div>
+                  <div className="form-group">
+                    <label>{t('parent.settings.parents.phone', { defaultValue: 'טלפון' })}:</label>
+                    <input
+                      type="tel"
+                      value={newParentPhone}
+                      onChange={(e) => setNewParentPhone(e.target.value)}
+                      placeholder={t('parent.settings.parents.phonePlaceholder', { defaultValue: 'מספר טלפון' })}
+                      className="parent-input"
+                    />
+                  </div>
+                  <div className="parent-actions">
+                    <button
+                      className="save-button"
+                      onClick={async () => {
+                        if (!newParentName.trim() || !newParentPhone.trim()) {
+                          alert(t('parent.settings.parents.fillAllFields', { defaultValue: 'אנא מלא את כל השדות' }));
+                          return;
+                        }
+                        try {
+                          setUpdatingParent(true);
+                          await addParent(familyId, newParentName.trim(), newParentPhone.trim());
+                          await loadData();
+                          setAddingParent(false);
+                          setNewParentName('');
+                          setNewParentPhone('');
+                          alert(t('parent.settings.parents.addSuccess', { defaultValue: 'הורה נוסף בהצלחה!' }));
+                        } catch (error) {
+                          alert(t('parent.settings.parents.addError', { defaultValue: 'שגיאה בהוספת הורה' }) + ': ' + (error.message || 'Unknown error'));
+                        } finally {
+                          setUpdatingParent(false);
+                        }
+                      }}
+                      disabled={updatingParent || !newParentName.trim() || !newParentPhone.trim()}
+                    >
+                      {updatingParent 
+                        ? t('common.saving', { defaultValue: 'שומר...' })
+                        : t('common.save', { defaultValue: 'שמור' })
+                      }
+                    </button>
+                    <button
+                      className="cancel-button"
+                      onClick={() => {
+                        setAddingParent(false);
+                        setNewParentName('');
+                        setNewParentPhone('');
+                      }}
+                    >
+                      {t('common.cancel', { defaultValue: 'ביטול' })}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
             
             {familyInfo && familyInfo.parents && familyInfo.parents.length > 0 ? (
               <div className="parents-list">

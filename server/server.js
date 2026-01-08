@@ -2623,6 +2623,82 @@ app.get('/api/families/:familyId', async (req, res) => {
   }
 });
 
+// Add a new parent to the family
+app.post('/api/families/:familyId/parent', async (req, res) => {
+  const timestamp = new Date().toISOString();
+  console.log(`\n[ADD-PARENT] ========================================`);
+  console.log(`[ADD-PARENT] ➕ ADD PARENT REQUEST`);
+  console.log(`[ADD-PARENT] ========================================`);
+  console.log(`[ADD-PARENT] Timestamp: ${timestamp}`);
+  console.log(`[ADD-PARENT] Family ID: ${req.params.familyId}`);
+  console.log(`[ADD-PARENT] Body: ${JSON.stringify(req.body)}`);
+  console.log(`[ADD-PARENT] ========================================\n`);
+
+  try {
+    if (!db) {
+      console.error(`[ADD-PARENT] ❌ No database connection`);
+      return res.status(500).json({ error: 'אין חיבור למסד הנתונים' });
+    }
+
+    const { familyId } = req.params;
+    const { name, phoneNumber } = req.body;
+
+    if (!name || !phoneNumber) {
+      console.log(`[ADD-PARENT] ❌ Missing name or phoneNumber`);
+      return res.status(400).json({ error: 'שם ומספר טלפון נדרשים' });
+    }
+
+    const family = await db.collection('families').findOne({ _id: familyId });
+    if (!family) {
+      console.log(`[ADD-PARENT] ❌ Family not found: ${familyId}`);
+      return res.status(404).json({ error: 'משפחה לא נמצאה' });
+    }
+
+    const normalizedPhone = normalizePhoneNumber(phoneNumber.trim());
+    
+    // Check if phone is already in use by the main parent
+    if (family.phoneNumber === normalizedPhone) {
+      return res.status(400).json({ error: 'מספר טלפון זה כבר שייך להורה הראשי' });
+    }
+
+    // Check if phone is already in use by another additional parent
+    const additionalParents = family.additionalParents || [];
+    if (additionalParents.some(p => p.phoneNumber === normalizedPhone)) {
+      return res.status(400).json({ error: 'מספר טלפון זה כבר קיים במשפחה' });
+    }
+
+    // Check if phone is already in use by another family
+    const existingFamily = await getFamilyByPhone(normalizedPhone);
+    if (existingFamily && existingFamily._id !== familyId) {
+      return res.status(400).json({ error: 'מספר טלפון זה כבר בשימוש במשפחה אחרת' });
+    }
+
+    // Add the new parent to additionalParents array
+    const newParent = {
+      phoneNumber: normalizedPhone,
+      name: name.trim(),
+      isMain: false
+    };
+
+    await db.collection('families').updateOne(
+      { _id: familyId },
+      { 
+        $push: { additionalParents: newParent }
+      }
+    );
+
+    console.log(`[ADD-PARENT] ✅ Parent added successfully to family ${familyId}`);
+    res.json({ 
+      success: true, 
+      message: 'הורה נוסף בהצלחה',
+      parent: newParent
+    });
+  } catch (error) {
+    console.error('[ADD-PARENT] Error adding parent:', error);
+    res.status(500).json({ error: 'שגיאה בהוספת הורה', details: error.message });
+  }
+});
+
 // Update parent info (name or phone)
 app.put('/api/families/:familyId/parent', async (req, res) => {
   try {

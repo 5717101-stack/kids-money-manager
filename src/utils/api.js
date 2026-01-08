@@ -421,6 +421,20 @@ export const updateParentInfo = async (familyId, name, phoneNumber, isMain = tru
   return response;
 };
 
+export const addParent = async (familyId, name, phoneNumber) => {
+  if (!familyId) {
+    throw new Error('Family ID is required');
+  }
+  if (!name || !phoneNumber) {
+    throw new Error('Parent name and phone number are required');
+  }
+  const response = await apiCall(`/families/${familyId}/parent`, {
+    method: 'POST',
+    body: JSON.stringify({ name, phoneNumber })
+  });
+  return response;
+};
+
 // Admin functions
 export const getAllUsers = async () => {
   return await apiCall('/admin/all-users');

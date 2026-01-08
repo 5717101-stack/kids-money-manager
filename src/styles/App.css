@@ -4743,13 +4743,64 @@ body {
    ============================================ */
 
 .parents-section {
-  padding: 20px;
+  padding: 24px;
+  max-width: 900px;
+  margin: 0 auto;
+  background: var(--bg-primary);
+  border-radius: 16px;
+}
+
+.parents-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 32px;
+  flex-wrap: wrap;
+  gap: 16px;
+  padding-bottom: 20px;
+  border-bottom: 2px solid var(--border);
+}
+
+.parents-header h2 {
+  margin: 0;
+  font-size: 28px;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.add-parent-button {
+  padding: 12px 24px;
+  background: linear-gradient(135deg, var(--primary) 0%, var(--secondary) 100%);
+  color: white;
+  border: none;
+  border-radius: 8px;
+  font-size: 16px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+  box-shadow: 0 2px 8px rgba(79, 70, 229, 0.3);
+}
+
+.add-parent-button:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(79, 70, 229, 0.4);
+}
+
+.add-parent-button:active {
+  transform: translateY(0);
+}
+
+.parent-item-new {
+  border: 2px dashed var(--primary);
+  background: rgba(79, 70, 229, 0.05);
+  margin-bottom: 20px;
 }
 
 .parents-list {
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 20px;
+  margin-top: 20px;
 }
 
 .parent-item {
@@ -4801,6 +4852,19 @@ body {
   display: flex;
   flex-direction: column;
   gap: 16px;
+  width: 100%;
+}
+
+.parent-edit .form-group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.parent-edit .form-group label {
+  font-weight: 600;
+  color: var(--text-primary);
+  font-size: 14px;
 }
 
 .parent-input {
@@ -4880,6 +4944,15 @@ body {
   padding: 40px 20px;
   color: var(--text-secondary);
   font-size: 16px;
+  background: var(--bg-card);
+  border: 1px dashed var(--border);
+  border-radius: 12px;
+  margin-top: 16px;
+}
+
+.parent-item-new {
+  border: 2px dashed var(--primary);
+  background: var(--primary-light);
 }
 
 /* RTL Support */

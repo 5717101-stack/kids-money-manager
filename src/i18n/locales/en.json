@@ -79,7 +79,23 @@
         "categories": "Expense Categories",
         "profileImages": "Profile Images",
         "allowances": "Allowances",
-        "children": "Children"
+        "children": "Children",
+        "parents": "Parents"
+      },
+      "parents": {
+        "title": "Manage Parents",
+        "addParent": "Add Parent",
+        "name": "Name",
+        "phone": "Phone",
+        "namePlaceholder": "Parent Name",
+        "phonePlaceholder": "Phone Number",
+        "mainParent": "Main Parent",
+        "noParents": "No parents registered",
+        "fillAllFields": "Please fill all fields",
+        "addSuccess": "Parent added successfully!",
+        "addError": "Error adding parent",
+        "updateSuccess": "Parent info updated successfully!",
+        "updateError": "Error updating parent info"
       },
       "passwordModal": {
         "title": "Password for {name}",

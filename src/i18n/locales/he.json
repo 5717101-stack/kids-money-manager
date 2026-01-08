@@ -79,7 +79,23 @@
         "categories": "קטגוריות הוצאות",
         "profileImages": "תמונות פרופיל",
         "allowances": "דמי כיס",
-        "children": "ילדים"
+        "children": "ילדים",
+        "parents": "הורים"
+      },
+      "parents": {
+        "title": "ניהול הורים",
+        "addParent": "הוסף הורה",
+        "name": "שם",
+        "phone": "טלפון",
+        "namePlaceholder": "שם ההורה",
+        "phonePlaceholder": "מספר טלפון",
+        "mainParent": "הורה ראשי",
+        "noParents": "אין הורים רשומים",
+        "fillAllFields": "אנא מלא את כל השדות",
+        "addSuccess": "הורה נוסף בהצלחה!",
+        "addError": "שגיאה בהוספת הורה",
+        "updateSuccess": "פרטי ההורה עודכנו בהצלחה!",
+        "updateError": "שגיאה בעדכון פרטי ההורה"
       },
       "passwordModal": {
         "title": "סיסמה ל{name}",
