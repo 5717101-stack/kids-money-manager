@@ -1338,6 +1338,7 @@ app.post('/api/auth/verify-otp', async (req, res) => {
         family = {
           _id: familyId,
           phoneNumber: normalizedPhone, // Store normalized phone number
+          parentName: 'הורה1', // Default parent name
           createdAt: new Date().toISOString(),
           children: [],
           categories: [
@@ -2577,6 +2578,94 @@ process.on('SIGINT', () => {
 });
 
 // Handle uncaught errors - don't crash on errors
+// Get family info (for parents management)
+app.get('/api/families/:familyId', async (req, res) => {
+  try {
+    const { familyId } = req.params;
+    const family = await db.collection('families').findOne({ _id: familyId });
+    
+    if (!family) {
+      return res.status(404).json({ error: 'Family not found' });
+    }
+    
+    // Get parents list (phoneNumber is the main parent, and any additional parents)
+    const parents = [];
+    if (family.phoneNumber) {
+      parents.push({
+        phoneNumber: family.phoneNumber,
+        name: family.parentName || 'הורה1',
+        isMain: true
+      });
+    }
+    
+    // Add any additional parents if they exist
+    if (family.additionalParents && Array.isArray(family.additionalParents)) {
+      family.additionalParents.forEach(parent => {
+        parents.push({
+          phoneNumber: parent.phoneNumber,
+          name: parent.name || 'הורה נוסף',
+          isMain: false
+        });
+      });
+    }
+    
+    res.json({
+      _id: family._id,
+      phoneNumber: family.phoneNumber,
+      parentName: family.parentName || 'הורה1',
+      parents: parents,
+      createdAt: family.createdAt,
+      lastLoginAt: family.lastLoginAt
+    });
+  } catch (error) {
+    console.error('Error getting family info:', error);
+    res.status(500).json({ error: 'Failed to get family info' });
+  }
+});
+
+// Update parent info (name or phone)
+app.put('/api/families/:familyId/parent', async (req, res) => {
+  try {
+    const { familyId } = req.params;
+    const { name, phoneNumber, isMain } = req.body;
+    
+    const family = await db.collection('families').findOne({ _id: familyId });
+    if (!family) {
+      return res.status(404).json({ error: 'Family not found' });
+    }
+    
+    if (isMain) {
+      // Update main parent
+      const updateData = {};
+      if (name !== undefined) {
+        updateData.parentName = name.trim();
+      }
+      if (phoneNumber !== undefined) {
+        const normalizedPhone = normalizePhoneNumber(phoneNumber.trim());
+        // Check if phone is already in use by another family
+        const existingFamily = await getFamilyByPhone(normalizedPhone);
+        if (existingFamily && existingFamily._id !== familyId) {
+          return res.status(400).json({ error: 'מספר טלפון זה כבר בשימוש במשפחה אחרת' });
+        }
+        updateData.phoneNumber = normalizedPhone;
+      }
+      
+      await db.collection('families').updateOne(
+        { _id: familyId },
+        { $set: updateData }
+      );
+    } else {
+      // Update additional parent (not implemented yet, but structure is ready)
+      // For now, we only support main parent
+    }
+    
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Error updating parent info:', error);
+    res.status(500).json({ error: 'Failed to update parent info' });
+  }
+});
+
 // Admin endpoint - Get all users
 app.get('/api/admin/all-users', async (req, res) => {
   const timestamp = new Date().toISOString();

@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
-import { getCategories, addCategory, updateCategory, deleteCategory, getData, updateProfileImage, updateWeeklyAllowance, payWeeklyAllowance, createChild, updateChild } from '../utils/api';
+import { getCategories, addCategory, updateCategory, deleteCategory, getData, updateProfileImage, updateWeeklyAllowance, payWeeklyAllowance, createChild, updateChild, getFamilyInfo, updateParentInfo } from '../utils/api';
 import ChildJoin from './ChildJoin';
 
 const CHILD_COLORS = {
@@ -15,7 +15,7 @@ const CHILD_NAMES = {
 
 const Settings = ({ familyId, onClose, onLogout }) => {
   const { t, i18n } = useTranslation();
-  const [activeTab, setActiveTab] = useState('categories'); // 'categories', 'profileImages', 'allowances', 'children'
+  const [activeTab, setActiveTab] = useState('categories'); // 'categories', 'profileImages', 'allowances', 'children', 'parents'
   const [categories, setCategories] = useState([]);
   const [newCategoryName, setNewCategoryName] = useState('');
   const [editingCategory, setEditingCategory] = useState(null);
@@ -33,6 +33,11 @@ const Settings = ({ familyId, onClose, onLogout }) => {
   const [editChildName, setEditChildName] = useState('');
   const [editChildPhone, setEditChildPhone] = useState('');
   const [updatingChild, setUpdatingChild] = useState(false);
+  const [familyInfo, setFamilyInfo] = useState(null);
+  const [editingParent, setEditingParent] = useState(null);
+  const [editParentName, setEditParentName] = useState('');
+  const [editParentPhone, setEditParentPhone] = useState('');
+  const [updatingParent, setUpdatingParent] = useState(false);
 
   useEffect(() => {
     loadData();
@@ -47,7 +52,7 @@ const Settings = ({ familyId, onClose, onLogout }) => {
       }
       
       console.log('[SETTINGS] Loading data for family:', familyId);
-      const [categoriesData, childrenData] = await Promise.all([
+      const [categoriesData, childrenData, familyData] = await Promise.all([
         getCategories(familyId).catch(err => {
           console.error('Error loading categories:', err);
           return [];
@@ -55,6 +60,10 @@ const Settings = ({ familyId, onClose, onLogout }) => {
         getData(familyId).catch(err => {
           console.error('Error loading children data:', err);
           return { children: {} };
+        }),
+        getFamilyInfo(familyId).catch(err => {
+          console.error('Error loading family info:', err);
+          return null;
         })
       ]);
       
@@ -68,6 +77,7 @@ const Settings = ({ familyId, onClose, onLogout }) => {
       
       setCategories(Array.isArray(categoriesData) ? categoriesData : []);
       setAllData(childrenData && childrenData.children ? childrenData : { children: {} });
+      setFamilyInfo(familyData);
       
       // Initialize allowance states
       const states = {};

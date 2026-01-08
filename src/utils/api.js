@@ -401,6 +401,26 @@ export const deleteSavingsGoal = async (familyId, childId) => {
   return response;
 };
 
+// Family/Parents API
+export const getFamilyInfo = async (familyId) => {
+  if (!familyId) {
+    throw new Error('Family ID is required');
+  }
+  const response = await apiCall(`/families/${familyId}`);
+  return response;
+};
+
+export const updateParentInfo = async (familyId, name, phoneNumber, isMain = true) => {
+  if (!familyId) {
+    throw new Error('Family ID is required');
+  }
+  const response = await apiCall(`/families/${familyId}/parent`, {
+    method: 'PUT',
+    body: JSON.stringify({ name, phoneNumber, isMain })
+  });
+  return response;
+};
+
 // Admin functions
 export const getAllUsers = async () => {
   return await apiCall('/admin/all-users');

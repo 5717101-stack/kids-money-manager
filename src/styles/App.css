@@ -4737,3 +4737,157 @@ body {
     font-size: 52px;
   }
 }
+
+/* ============================================
+   Parents Section Styles
+   ============================================ */
+
+.parents-section {
+  padding: 20px;
+}
+
+.parents-list {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.parent-item {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 20px;
+  transition: all 0.2s;
+}
+
+.parent-item:hover {
+  box-shadow: var(--shadow-md);
+}
+
+.parent-display {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+}
+
+.parent-info {
+  flex: 1;
+}
+
+.parent-name {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 8px;
+  font-size: 18px;
+}
+
+.main-parent-badge {
+  background: var(--primary);
+  color: white;
+  padding: 4px 12px;
+  border-radius: 12px;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.parent-phone {
+  color: var(--text-secondary);
+  font-size: 14px;
+}
+
+.parent-edit {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.parent-input {
+  width: 100%;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font-size: 16px;
+  transition: border-color 0.2s;
+}
+
+.parent-input:focus {
+  outline: none;
+  border-color: var(--primary);
+}
+
+.parent-actions {
+  display: flex;
+  gap: 12px;
+  justify-content: flex-end;
+}
+
+.save-button,
+.cancel-button {
+  padding: 10px 20px;
+  border: none;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.save-button {
+  background: var(--primary);
+  color: white;
+}
+
+.save-button:hover:not(:disabled) {
+  background: var(--primary-hover);
+  transform: translateY(-1px);
+}
+
+.save-button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.cancel-button {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.cancel-button:hover {
+  background: var(--border);
+}
+
+.edit-button {
+  padding: 8px 16px;
+  background: var(--primary);
+  color: white;
+  border: none;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.edit-button:hover {
+  background: var(--primary-hover);
+  transform: translateY(-1px);
+}
+
+.no-parents-message {
+  text-align: center;
+  padding: 40px 20px;
+  color: var(--text-secondary);
+  font-size: 16px;
+}
+
+/* RTL Support */
+[dir="rtl"] .parent-display {
+  flex-direction: row-reverse;
+}
+
+[dir="rtl"] .parent-actions {
+  flex-direction: row-reverse;
+}
+
