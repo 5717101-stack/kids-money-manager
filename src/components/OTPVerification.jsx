@@ -300,7 +300,7 @@ const OTPVerification = ({ phoneNumber, isExistingFamily, onVerified, onBack }) 
         >
           🔍 בדיקת לוגים
         </button>
-        <span className="version">{t('common.version', { defaultValue: 'גרסה' })} 3.2.1</span>
+        <span className="version">{t('common.version', { defaultValue: 'גרסה' })} 3.2.2</span>
       </footer>
     </div>
   );

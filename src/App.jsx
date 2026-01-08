@@ -95,10 +95,14 @@ const App = () => {
       const response = await fetch(`${apiUrl}/families/${fId}/children/${childId}`);
       const data = await response.json();
       if (data) {
-        setCurrentChild({ ...data, _id: childId });
+        const childData = { ...data, _id: childId };
+        setCurrentChild(childData);
+        console.log('[APP] Child data loaded:', childData);
+        return childData;
       }
     } catch (error) {
       console.error('Error loading child data:', error);
+      return null;
     }
   };
 
@@ -128,11 +132,32 @@ const App = () => {
   };
 
   const handleChildPasswordVerified = (child, fId) => {
-    setCurrentChild(child);
+    console.log('[APP] handleChildPasswordVerified called:', { child, fId });
+    
+    // Ensure familyId is set
+    if (fId) {
+      setFamilyId(fId);
+      sessionStorage.setItem('familyId', fId);
+    }
+    
+    // Ensure child has all required properties
+    const childData = {
+      ...child,
+      _id: child._id || child.id,
+      name: child.name || 'ילד'
+    };
+    
+    setCurrentChild(childData);
     setIsChildView(true);
-    sessionStorage.setItem('childId', child._id);
+    sessionStorage.setItem('childId', childData._id);
     sessionStorage.setItem('isChildView', 'true');
     sessionStorage.removeItem('parentLoggedIn');
+    
+    console.log('[APP] Setting screen to child-view with:', { 
+      familyId: fId || familyId, 
+      currentChild: childData 
+    });
+    
     setScreen('child-view');
   };
 
@@ -239,7 +264,7 @@ const App = () => {
           </main>
           
           <footer className="app-footer">
-            <span className="version">{t('common.version', { defaultValue: 'גרסה' })} 3.2.1</span>
+            <span className="version">{t('common.version', { defaultValue: 'גרסה' })} 3.2.2</span>
           </footer>
         </>
       )}
