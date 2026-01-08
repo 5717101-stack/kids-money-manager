@@ -262,7 +262,7 @@ const ParentDashboard = ({ familyId, onChildrenUpdated }) => {
   return (
     <div className="parent-dashboard">
       <div className="dashboard-header">
-        <h1>ממשק הורה - ניהול כסף ל<span className="kids-red">Kids</span></h1>
+        <h1>ממשק הורה - ניהול כסף ל<span className="kids-green">Kids</span></h1>
         <div className="header-buttons">
           <button 
             className="settings-button" 

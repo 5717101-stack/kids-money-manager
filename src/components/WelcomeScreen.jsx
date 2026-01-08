@@ -1,6 +1,10 @@
-import React from 'react';
+import React, { useState } from 'react';
+import { useTranslation } from 'react-i18next';
+import UsersTable from './UsersTable';
 
-const WelcomeScreen = ({ onSelectCreate, onSelectJoin }) => {
+const WelcomeScreen = ({ onSelectCreate, onSelectJoinAsParent, onSelectJoinAsChild }) => {
+  const { t } = useTranslation();
+  const [showUsersTable, setShowUsersTable] = useState(false);
   const handleDeleteAllUsers = async () => {
     // First confirmation
     const firstConfirm = window.confirm(
@@ -173,8 +177,8 @@ const WelcomeScreen = ({ onSelectCreate, onSelectJoin }) => {
     <div className="welcome-screen">
       <div className="welcome-container">
         <div className="welcome-header">
-          <h1>👨‍👩‍👧‍👦 <span className="kids-red">Kids</span> Money Manager</h1>
-          <p className="welcome-subtitle">ניהול כספי לילדים</p>
+          <h1 dangerouslySetInnerHTML={{ __html: t('welcome.title') }} />
+          <p className="welcome-subtitle">{t('welcome.subtitle')}</p>
         </div>
         
         <div className="welcome-options">
@@ -184,25 +188,55 @@ const WelcomeScreen = ({ onSelectCreate, onSelectJoin }) => {
           >
             <span className="button-icon">➕</span>
             <span className="button-text">
-              <strong>הקמת חשבון משפחתי חדש</strong>
-              <small>צור חשבון חדש למשפחה שלך</small>
+              <strong>{t('welcome.createFamily')}</strong>
+              <small>{t('welcome.createFamilyDesc')}</small>
             </span>
           </button>
           
           <button 
             className="welcome-button join-button"
-            onClick={onSelectJoin}
+            onClick={onSelectJoinAsParent}
           >
-            <span className="button-icon">🔗</span>
+            <span className="button-icon">👨‍👩‍👧‍👦</span>
             <span className="button-text">
-              <strong>הצטרפות לחשבון משפחתי קיים</strong>
-              <small>הצטרף למשפחה קיימת עם קוד</small>
+              <strong>{t('welcome.joinAsParent')}</strong>
+              <small>{t('welcome.joinAsParentDesc')}</small>
+            </span>
+          </button>
+
+          <button 
+            className="welcome-button join-button"
+            onClick={onSelectJoinAsChild}
+            style={{ backgroundColor: '#ec4899' }}
+          >
+            <span className="button-icon">👦</span>
+            <span className="button-text">
+              <strong>{t('welcome.joinAsChild')}</strong>
+              <small>{t('welcome.joinAsChildDesc')}</small>
             </span>
           </button>
         </div>
       </div>
       <footer className="app-footer">
-        <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
+        <div style={{ display: 'flex', gap: '12px', alignItems: 'center', flexWrap: 'wrap' }}>
+          <button 
+            className="users-table-button"
+            onClick={() => setShowUsersTable(true)}
+            title="הצג טבלת משתמשים"
+            style={{
+              padding: '8px 16px',
+              backgroundColor: '#3b82f6',
+              color: 'white',
+              border: 'none',
+              borderRadius: '8px',
+              cursor: 'pointer',
+              fontSize: '14px',
+              fontWeight: '600',
+              transition: 'all 0.2s ease'
+            }}
+          >
+            📊 טבלת משתמשים
+          </button>
           <button 
             className="test-logs-button"
             onClick={handleTestLogs}
@@ -229,8 +263,12 @@ const WelcomeScreen = ({ onSelectCreate, onSelectJoin }) => {
             🗑️ מחק הכל
           </button>
         </div>
-        <span className="version">גרסה 2.9.37</span>
+        <span className="version">{t('common.version')} 3.0.16</span>
       </footer>
+      
+      {showUsersTable && (
+        <UsersTable onClose={() => setShowUsersTable(false)} />
+      )}
     </div>
   );
 };

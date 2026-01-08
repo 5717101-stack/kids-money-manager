@@ -3,7 +3,11 @@
   "appName": "Kids Money Manager",
   "webDir": "dist",
   "server": {
-    "androidScheme": "https"
+    "androidScheme": "https",
+    "allowNavigation": [
+      "https://kids-money-manager-server.onrender.com",
+      "https://kids-money-manager-production.up.railway.app"
+    ]
   }
 }
 

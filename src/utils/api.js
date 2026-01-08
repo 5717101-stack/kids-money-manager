@@ -1,12 +1,13 @@
 // Get API URL - check if we're in production, development, or mobile app
 const getApiUrl = () => {
   // Production API URL (Render)
-  const PRODUCTION_API = import.meta.env.VITE_API_URL || 'https://kids-money-manager-server.onrender.com/api';
+  const PRODUCTION_API = 'https://kids-money-manager-server.onrender.com/api';
   
   // If we're in a mobile app (Capacitor)
   if (typeof window !== 'undefined' && window.Capacitor?.isNativePlatform()) {
-    // Use VITE_API_URL if set, otherwise use PRODUCTION_API
-    return import.meta.env.VITE_API_URL || PRODUCTION_API;
+    // In native app, always use Render URL directly
+    console.log('[API] Using Render API URL for native app:', PRODUCTION_API);
+    return PRODUCTION_API;
   }
   
   // In production (Vercel), use the environment variable
@@ -20,7 +21,7 @@ const getApiUrl = () => {
   }
   
   // Fallback
-  console.warn('VITE_API_URL not set! Please configure it in Vercel environment variables.');
+  console.warn('[API] VITE_API_URL not set, using Render fallback:', PRODUCTION_API);
   return PRODUCTION_API;
 };
 
@@ -30,14 +31,50 @@ const API_BASE_URL = getApiUrl();
 async function apiCall(endpoint, options = {}) {
   const url = `${API_BASE_URL}${endpoint}`;
   
+  // Create AbortController for timeout
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 seconds timeout
+  
   try {
-    const response = await fetch(url, {
-      headers: {
-        'Content-Type': 'application/json',
-        ...options.headers
-      },
-      ...options
-    });
+    let response;
+    try {
+      response = await fetch(url, {
+        method: options.method || 'GET',
+        mode: 'cors',
+        credentials: 'omit',
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+          ...options.headers
+        },
+        body: options.body ? JSON.stringify(options.body) : undefined,
+        signal: controller.signal,
+        ...options
+      });
+      clearTimeout(timeoutId);
+    } catch (fetchError) {
+      clearTimeout(timeoutId);
+      console.error('[API] Fetch error details:', {
+        name: fetchError.name,
+        message: fetchError.message,
+        stack: fetchError.stack,
+        url: url,
+        isNative: typeof window !== 'undefined' && window.Capacitor?.isNativePlatform(),
+        apiBaseUrl: API_BASE_URL
+      });
+      
+      // Handle specific iOS/WebView errors
+      if (fetchError.name === 'TypeError' && (fetchError.message === 'Load failed' || fetchError.message.includes('Failed to fetch'))) {
+        const errorMsg = typeof window !== 'undefined' && window.Capacitor?.isNativePlatform() 
+          ? `שגיאת רשת ב-iOS: לא ניתן להתחבר לשרת.\nURL: ${url}\nודא שהשרת רץ ב-Render.`
+          : `לא ניתן להתחבר לשרת. בדוק:\n1. שהשרת רץ ב-Render\n2. ש-VITE_API_URL מוגדר ב-Vercel: ${API_BASE_URL}\n3. שהכתובת נכונה ומסתיימת ב-/api`;
+        throw new Error(errorMsg);
+      }
+      if (fetchError.name === 'AbortError') {
+        throw new Error('הבקשה בוטלה: השרת לא הגיב בזמן. נסה שוב.');
+      }
+      throw fetchError;
+    }
 
     if (!response.ok) {
       const error = await response.json().catch(() => ({ error: 'Unknown error' }));
@@ -46,20 +83,24 @@ async function apiCall(endpoint, options = {}) {
 
     return await response.json();
   } catch (error) {
-    console.error('API call error:', {
+    console.error('[API] API call error:', {
       url,
       error: error.message,
       apiBaseUrl: API_BASE_URL,
-      envVar: import.meta.env.VITE_API_URL
+      envVar: import.meta.env.VITE_API_URL,
+      isNative: typeof window !== 'undefined' && window.Capacitor?.isNativePlatform()
     });
     
+    // Don't override the error if it's already a custom error message
+    if (error.message && (error.message.includes('שגיאת רשת') || error.message.includes('הבקשה בוטלה'))) {
+      throw error;
+    }
+    
     if (error.message === 'Failed to fetch' || error.name === 'TypeError') {
-      throw new Error(
-        `לא ניתן להתחבר לשרת. בדוק:\n` +
-        `1. שהשרת רץ ב-Render\n` +
-        `2. ש-VITE_API_URL מוגדר ב-Vercel: ${API_BASE_URL}\n` +
-        `3. שהכתובת נכונה ומסתיימת ב-/api`
-      );
+      const errorMsg = typeof window !== 'undefined' && window.Capacitor?.isNativePlatform() 
+        ? `שגיאת רשת ב-iOS: לא ניתן להתחבר לשרת.\nURL: ${url}\nודא שהשרת רץ ב-Render.`
+        : `לא ניתן להתחבר לשרת. בדוק:\n1. שהשרת רץ ב-Render\n2. ש-VITE_API_URL מוגדר ב-Vercel: ${API_BASE_URL}\n3. שהכתובת נכונה ומסתיימת ב-/api`;
+      throw new Error(errorMsg);
     }
     
     throw error;
@@ -262,4 +303,34 @@ export const getChildPassword = async (familyId, childId) => {
   }
   const response = await apiCall(`/families/${familyId}/children/${childId}/password`);
   return response.password;
+};
+
+// Savings Goals API
+export const getSavingsGoal = async (familyId, childId) => {
+  if (!familyId || !childId) {
+    throw new Error('Family ID and Child ID are required');
+  }
+  const response = await apiCall(`/families/${familyId}/children/${childId}/savings-goal`);
+  return response.savingsGoal;
+};
+
+export const updateSavingsGoal = async (familyId, childId, name, targetAmount) => {
+  if (!familyId || !childId) {
+    throw new Error('Family ID and Child ID are required');
+  }
+  const response = await apiCall(`/families/${familyId}/children/${childId}/savings-goal`, {
+    method: 'PUT',
+    body: JSON.stringify({ name, targetAmount: parseFloat(targetAmount) })
+  });
+  return response.savingsGoal;
+};
+
+export const deleteSavingsGoal = async (familyId, childId) => {
+  if (!familyId || !childId) {
+    throw new Error('Family ID and Child ID are required');
+  }
+  const response = await apiCall(`/families/${familyId}/children/${childId}/savings-goal`, {
+    method: 'DELETE'
+  });
+  return response;
 };

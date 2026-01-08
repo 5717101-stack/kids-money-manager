@@ -622,21 +622,20 @@ const Settings = ({ familyId, onClose }) => {
                         <option value="6">שבת</option>
                       </select>
                     ) : (
-                      <input
-                        type="number"
-                        min="1"
-                        max="31"
+                      <select
                         value={state.day}
                         onChange={(e) => {
-                          const dayValue = parseInt(e.target.value) || 1;
-                          if (dayValue >= 1 && dayValue <= 31) {
-                            updateState({ day: dayValue });
-                          }
+                          updateState({ day: parseInt(e.target.value) });
+                          setTimeout(saveChanges, 0);
                         }}
-                        onBlur={saveChanges}
-                        className="allowance-input"
-                        style={{ width: '80px' }}
-                      />
+                        className="allowance-select"
+                      >
+                        {Array.from({ length: 31 }, (_, i) => i + 1).map(day => (
+                          <option key={day} value={day}>
+                            {day} {day === 1 ? 'בראשון' : day === 2 ? 'בשני' : day === 3 ? 'בשלישי' : 'ב-'}
+                          </option>
+                        ))}
+                      </select>
                     )}
                   </div>
 

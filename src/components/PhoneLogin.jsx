@@ -60,7 +60,17 @@ const PhoneLogin = ({ onOTPSent }) => {
     setIsLoading(true);
 
     try {
-      const apiUrl = import.meta.env.VITE_API_URL || 'https://kids-money-manager-server.onrender.com/api';
+      // For iOS, always use Render URL directly
+      let apiUrl;
+      if (typeof window !== 'undefined' && window.Capacitor?.isNativePlatform()) {
+        // In native app, use Render URL directly
+        apiUrl = 'https://kids-money-manager-server.onrender.com/api';
+        console.log('[FRONTEND] Using Render API URL for native app:', apiUrl);
+      } else {
+        // In web, use environment variable or fallback
+        apiUrl = import.meta.env.VITE_API_URL || 'https://kids-money-manager-server.onrender.com/api';
+        console.log('[FRONTEND] Using API URL:', apiUrl);
+      }
       const url = `${apiUrl}/auth/send-otp`;
       const requestBody = { phoneNumber: fullPhoneNumber };
       
@@ -79,13 +89,54 @@ const PhoneLogin = ({ onOTPSent }) => {
       console.log('[FRONTEND] 🚀 Calling fetch()...');
       console.log('[FRONTEND] Request start time:', new Date().toISOString());
       
-      const response = await fetch(url, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(requestBody)
-      });
+      // Create AbortController for timeout
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 seconds timeout
+      
+      let response;
+      try {
+        // Add mode: 'cors' and credentials for iOS
+        response = await fetch(url, {
+          method: 'POST',
+          mode: 'cors',
+          credentials: 'omit',
+          headers: {
+            'Content-Type': 'application/json',
+            'Accept': 'application/json',
+          },
+          body: JSON.stringify(requestBody),
+          signal: controller.signal
+        });
+        clearTimeout(timeoutId);
+      } catch (fetchError) {
+        clearTimeout(timeoutId);
+        console.error('[FRONTEND] Fetch error details:', {
+          name: fetchError.name,
+          message: fetchError.message,
+          stack: fetchError.stack,
+          url: url,
+          isNative: typeof window !== 'undefined' && window.Capacitor?.isNativePlatform(),
+          userAgent: typeof navigator !== 'undefined' ? navigator.userAgent : 'N/A',
+          platform: typeof window !== 'undefined' && window.Capacitor?.getPlatform ? window.Capacitor.getPlatform() : 'N/A'
+        });
+        
+        // Log the actual URL being used
+        console.error('[FRONTEND] API URL being used:', apiUrl);
+        console.error('[FRONTEND] Full URL:', url);
+        console.error('[FRONTEND] Is Native Platform:', typeof window !== 'undefined' && window.Capacitor?.isNativePlatform());
+        
+        // Handle specific iOS/WebView errors
+        if (fetchError.name === 'TypeError' && (fetchError.message === 'Load failed' || fetchError.message.includes('Failed to fetch'))) {
+          const errorMsg = typeof window !== 'undefined' && window.Capacitor?.isNativePlatform() 
+            ? 'שגיאת רשת ב-iOS: לא ניתן להתחבר לשרת. ודא שהשרת רץ ונגיש.'
+            : 'שגיאת רשת: לא ניתן להתחבר לשרת. בדוק את חיבור האינטרנט או נסה שוב מאוחר יותר.';
+          throw new Error(errorMsg);
+        }
+        if (fetchError.name === 'AbortError') {
+          throw new Error('הבקשה בוטלה: השרת לא הגיב בזמן. נסה שוב.');
+        }
+        throw fetchError;
+      }
       
       const requestDuration = Date.now() - requestStartTime;
       console.log('[FRONTEND] ========================================');
@@ -317,7 +368,7 @@ const PhoneLogin = ({ onOTPSent }) => {
         >
           🔍 בדיקת לוגים
         </button>
-        <span className="version">גרסה 2.9.37</span>
+        <span className="version">גרסה 3.0.16</span>
       </footer>
     </div>
   );
