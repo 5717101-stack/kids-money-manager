@@ -1175,6 +1175,7 @@ const Settings = ({ familyId, onClose, onLogout, activeTab: externalActiveTab, h
                           <label>{t('parent.settings.parents.phone', { defaultValue: 'טלפון' })}:</label>
                           <input
                             type="tel"
+                            inputMode="numeric"
                             value={editParentPhone}
                             onChange={(e) => setEditParentPhone(e.target.value)}
                             placeholder={t('parent.settings.parents.phonePlaceholder', { defaultValue: 'מספר טלפון' })}
