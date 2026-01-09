@@ -153,8 +153,6 @@ const ParentDashboard = ({ familyId, onChildrenUpdated, onLogout, onViewChild })
     setShowChildSelector(true);
   };
 
-  const childrenList = Object.values(allData.children || {}).filter(child => child && child._id);
-
   if (loading) {
     return (
       <div className="parent-dashboard-new">
@@ -305,9 +303,13 @@ const ParentDashboard = ({ familyId, onChildrenUpdated, onLogout, onViewChild })
         
         <button 
           className="bottom-nav-button center-button"
-          onClick={() => handleBottomNavAction('deposit')}
+          onClick={handleCenterButtonClick}
         >
-          <span className="center-button-icon">+</span>
+          {selectedChild ? (
+            <span className="center-button-text">{selectedChild.name}</span>
+          ) : (
+            <span className="center-button-text">{t('parent.dashboard.selectChild', { defaultValue: 'בחירת ילד' })}</span>
+          )}
         </button>
         
         <button 
