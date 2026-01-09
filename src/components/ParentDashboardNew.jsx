@@ -242,13 +242,13 @@ const ParentDashboard = ({ familyId, onChildrenUpdated, onLogout, onViewChild })
 
       {/* Total Family Balance Card */}
       <div className="fintech-card">
-        <div className="label-text" style={{ paddingLeft: '8px', paddingRight: '8px', paddingTop: '16px' }}>{t('parent.dashboard.totalBalance', { defaultValue: 'יתרה כוללת' })}</div>
-        <div className="big-balance" style={{ paddingLeft: '8px', paddingRight: '8px', paddingBottom: '16px' }}>₪{totalFamilyBalance.toFixed(2)}</div>
+        <div className="label-text">{t('parent.dashboard.totalBalance', { defaultValue: 'יתרה כוללת' })}</div>
+        <div className="big-balance">₪{totalFamilyBalance.toFixed(2)}</div>
       </div>
 
       {/* Recent Activity */}
       <div className="fintech-card">
-        <h2 style={{ fontSize: '18px', fontWeight: 600, marginBottom: '12px', marginTop: 0, paddingLeft: '8px', paddingRight: '8px', paddingTop: '16px' }}>{t('parent.dashboard.recentActivity', { defaultValue: 'פעילות אחרונה' })}</h2>
+        <h2 style={{ fontSize: '18px', fontWeight: 600, marginBottom: '16px', marginTop: 0 }}>{t('parent.dashboard.recentActivity', { defaultValue: 'פעילות אחרונה' })}</h2>
         {recentTransactions.length === 0 ? (
           <div style={{ textAlign: 'center', padding: '20px', color: 'var(--text-muted)' }}>
             {t('parent.dashboard.noActivity', { defaultValue: 'אין פעילות אחרונה' })}
@@ -256,7 +256,7 @@ const ParentDashboard = ({ familyId, onChildrenUpdated, onLogout, onViewChild })
         ) : (
           <div>
             {recentTransactions.map((transaction, index) => (
-              <div key={index} style={{ padding: '10px 8px', borderBottom: index < recentTransactions.length - 1 ? '1px solid var(--border)' : 'none' }}>
+              <div key={index} style={{ padding: '12px 0', borderBottom: index < recentTransactions.length - 1 ? '1px solid var(--border)' : 'none' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   <span style={{ fontSize: '14px', fontWeight: 500 }}>{transaction.childName}:</span>
                   <span style={{ fontSize: '16px', fontWeight: 600, color: transaction.type === 'deposit' ? '#10B981' : '#EF4444' }}>
