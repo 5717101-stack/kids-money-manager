@@ -126,10 +126,10 @@ const ParentDashboard = ({ familyId, onChildrenUpdated, onLogout }) => {
       <div className="dashboard-header-new">
         <div className="header-left">
           <LanguageToggle />
-          <h1 className="family-name">
-            {getPageTitle()}
-          </h1>
         </div>
+        <h1 className="family-name">
+          {getPageTitle()}
+        </h1>
         <button 
           className="hamburger-menu-button" 
           onClick={() => setShowSidebar(true)}

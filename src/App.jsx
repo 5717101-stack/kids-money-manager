@@ -316,12 +316,6 @@ const App = () => {
       {screen === 'dashboard' && familyId && !isChildView && (
         <>
           <nav className="main-nav">
-            <button
-              className={`parent-button ${view === 'parent' ? 'active' : ''}`}
-              onClick={() => setView('parent')}
-            >
-              👨‍👩‍👧‍👦 ממשק הורה
-            </button>
             {children.map((child, index) => (
               <button
                 key={child._id}

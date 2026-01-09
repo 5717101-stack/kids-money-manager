@@ -601,7 +601,7 @@ const Settings = ({ familyId, onClose, onLogout, activeTab: externalActiveTab, h
 
         {activeTab === 'allowances' && (
           <div className="allowances-section">
-            <h2>{t('parent.settings.allowance.title', { defaultValue: 'קצבה אוטומטית' })}</h2>
+            <h2>{t('parent.settings.allowance.title', { defaultValue: 'דמי כיס' })}</h2>
             <p className="allowance-info">
               {t('parent.settings.allowance.description', { 
                 defaultValue: 'הגדר את הסכום, תדירות (שבועי/חודשי), יום/תאריך ושעה. הסכום יתווסף אוטומטית ליתרה אצל ההורים. ניתן גם לשלם ידנית באמצעות הכפתור למטה.' 
