@@ -280,46 +280,18 @@ const App = () => {
       )}
 
       {screen === 'dashboard' && familyId && !isChildView && (
-        <>
-          <nav className="main-nav">
-            {children.map((child, index) => (
-              <button
-                key={child._id}
-                className={view === child._id ? 'active' : ''}
-                onClick={() => setView(child._id)}
-              >
-                {child.profileImage ? (
-                  <img src={child.profileImage} alt={child.name} className="nav-profile-icon" />
-                ) : (
-                  <span>👦</span>
-                )}
-                {child.name}
-              </button>
-            ))}
-          </nav>
-
-          <main className="main-content">
-            {view === 'parent' && (
-              <ParentDashboard 
-                familyId={familyId} 
-                onChildrenUpdated={loadChildren} 
-                onLogout={handleLogout}
-                onViewChild={(child) => {
-                  setCurrentChild(child);
-                  setIsChildView(true);
-                  setScreen('child-view');
-                  sessionStorage.setItem('childId', child._id);
-                  sessionStorage.setItem('isChildView', 'true');
-                }}
-              />
-            )}
-            {children.map(child => (
-              view === child._id && (
-                <ChildView key={child._id} childId={child._id} familyId={familyId} />
-              )
-            ))}
-          </main>
-        </>
+        <ParentDashboard 
+          familyId={familyId} 
+          onChildrenUpdated={loadChildren} 
+          onLogout={handleLogout}
+          onViewChild={(child) => {
+            setCurrentChild(child);
+            setIsChildView(true);
+            setScreen('child-view');
+            sessionStorage.setItem('childId', child._id);
+            sessionStorage.setItem('isChildView', 'true');
+          }}
+        />
       )}
     </div>
   );
