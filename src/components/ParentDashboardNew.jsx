@@ -144,7 +144,7 @@ const ParentDashboard = ({ familyId, onChildrenUpdated, onLogout }) => {
 
       {/* Content based on current view */}
       {currentView === 'dashboard' && (
-        <>
+        <div className="dashboard-content-wrapper">
 
       {/* Total Family Balance Card */}
       <div className="total-balance-card">

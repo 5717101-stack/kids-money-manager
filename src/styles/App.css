@@ -3247,18 +3247,33 @@ strong, b {
    ============================================ */
 
 .parent-dashboard-new {
-  min-height: 100vh;
+  height: 100vh;
+  height: -webkit-fill-available; /* iOS Safari fix */
+  max-height: 100vh;
+  max-height: -webkit-fill-available; /* iOS Safari fix */
   background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  padding: 20px;
-  padding-bottom: 100px;
+  padding: 12px;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.dashboard-content-wrapper {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  display: flex;
+  flex-direction: column;
 }
 
 .dashboard-header-new {
-  display: flex;
-  justify-content: space-between;
+  display: grid;
+  grid-template-columns: 44px 1fr 44px;
   align-items: center;
-  margin-bottom: 24px;
-  padding: 16px 20px;
+  gap: 12px;
+  margin-bottom: 16px;
+  padding: 12px 16px;
   background: rgba(255, 255, 255, 0.95);
   border-radius: 16px;
   box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
@@ -3267,31 +3282,37 @@ strong, b {
 }
 
 .dashboard-header-new .family-name {
-  position: absolute;
-  left: 50%;
-  transform: translateX(-50%);
-  width: auto;
+  margin: 0;
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--text-primary);
   text-align: center;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-[dir="rtl"] .dashboard-header-new .family-name {
-  left: auto;
-  right: 20px;
-  transform: none;
-  text-align: right;
+[dir="rtl"] .dashboard-header-new {
+  grid-template-columns: 44px 1fr 44px;
 }
 
-[dir="ltr"] .dashboard-header-new .family-name {
-  left: 20px;
-  right: auto;
-  transform: none;
-  text-align: left;
+[dir="ltr"] .dashboard-header-new {
+  grid-template-columns: 44px 1fr 44px;
 }
 
 .header-left {
   display: flex;
   align-items: center;
-  gap: 16px;
+  justify-content: flex-start;
+  width: 44px;
+}
+
+.dashboard-header-new .hamburger-menu-button {
+  justify-self: flex-end;
+}
+
+[dir="rtl"] .dashboard-header-new .hamburger-menu-button {
+  justify-self: flex-start;
 }
 
 .family-name {
@@ -3350,7 +3371,8 @@ strong, b {
 
 /* Children Overview */
 .children-overview {
-  margin-bottom: 24px;
+  margin-bottom: 12px;
+  flex-shrink: 0;
 }
 
 .section-title {
@@ -3491,8 +3513,9 @@ strong, b {
 /* Quick Actions */
 .quick-actions-section {
   display: flex;
-  gap: 16px;
-  margin-bottom: 24px;
+  gap: 12px;
+  margin-bottom: 12px;
+  flex-shrink: 0;
 }
 
 .quick-action-button {
@@ -3544,8 +3567,13 @@ strong, b {
 .recent-activity-section {
   background: rgba(255, 255, 255, 0.95);
   border-radius: 16px;
-  padding: 20px;
+  padding: 16px;
   box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
 }
 
 .recent-transactions-list {
@@ -5296,15 +5324,31 @@ strong, b {
 
 
 /* Settings Page Container (Full Page, Not Modal) */
+.settings-page-wrapper {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
 .settings-page-container {
   width: 100%;
-  padding: 20px;
+  padding: 12px;
   background: var(--bg);
-  min-height: calc(100vh - 80px);
+  flex: 1;
+  min-height: 0;
   overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  display: flex;
+  flex-direction: column;
 }
 
 .settings-page-container .settings-content {
   max-width: 1200px;
   margin: 0 auto;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
 }
