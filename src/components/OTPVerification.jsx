@@ -1,8 +1,9 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
+import { APP_VERSION } from '../constants';
 
 const OTPVerification = ({ phoneNumber, isExistingFamily, onVerified, onBack }) => {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const [otp, setOtp] = useState(['', '', '', '', '', '']);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
@@ -238,72 +239,135 @@ const OTPVerification = ({ phoneNumber, isExistingFamily, onVerified, onBack }) 
   };
 
   return (
-    <div className="otp-verification">
-      <div className="otp-container">
-        <div className="otp-header">
-          <button className="back-button" onClick={onBack}>
-            {t('auth.otpVerification.back', { defaultValue: '← חזור' })}
-          </button>
-          <h1>🔐 {t('auth.otpVerification.title', { defaultValue: 'אימות קוד' })}</h1>
-          <p className="otp-subtitle">
-            {t('auth.otpVerification.subtitle', { phone: phoneNumber, defaultValue: 'נשלח קוד ל-{phone}' })}
+    <div className="app-layout" dir={i18n.language === 'he' ? 'rtl' : 'ltr'}>
+      <div className="app-header">
+        <button 
+          className="menu-btn"
+          onClick={onBack}
+          style={{ fontSize: '20px' }}
+        >
+          ←
+        </button>
+        <h1 className="header-title">
+          {t('auth.otpVerification.title', { defaultValue: 'אימות קוד' })}
+        </h1>
+        <div style={{ width: '44px' }}></div>
+      </div>
+
+      <div className="content-area" style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', padding: '20px' }}>
+        <div className="fintech-card" style={{ maxWidth: '500px', width: '100%', margin: '0 auto' }}>
+          <p style={{ fontSize: '14px', color: 'var(--text-muted)', marginBottom: '24px', textAlign: 'center' }}>
+            {t('auth.otpVerification.sentTo', { defaultValue: 'נשלח ל' })} {phoneNumber}
           </p>
+
+          <form onSubmit={handleSubmit} onPaste={handlePaste} style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
+            <div style={{ display: 'flex', gap: '12px', justifyContent: 'center' }} dir="ltr">
+              {otp.map((digit, index) => (
+                <input
+                  key={index}
+                  ref={el => inputRefs.current[index] = el}
+                  type="text"
+                  inputMode="numeric"
+                  maxLength={index === 0 ? 6 : 1}
+                  value={digit}
+                  onChange={(e) => handleOTPChange(index, e.target.value)}
+                  onKeyDown={(e) => handleKeyDown(index, e)}
+                  autoFocus={index === 0}
+                  autoComplete={index === 0 ? "one-time-code" : "off"}
+                  autoCapitalize="off"
+                  autoCorrect="off"
+                  spellCheck="false"
+                  style={{
+                    width: '50px',
+                    height: '60px',
+                    borderRadius: '12px',
+                    border: '2px solid rgba(0,0,0,0.1)',
+                    fontSize: '24px',
+                    fontWeight: 700,
+                    textAlign: 'center',
+                    outline: 'none',
+                    transition: '0.2s'
+                  }}
+                  onFocus={(e) => e.target.style.borderColor = 'var(--primary)'}
+                  onBlur={(e) => e.target.style.borderColor = 'rgba(0,0,0,0.1)'}
+                />
+              ))}
+            </div>
+
+            {error && (
+              <div style={{
+                padding: '12px 16px',
+                borderRadius: '12px',
+                background: '#FEE2E2',
+                color: '#DC2626',
+                fontSize: '14px',
+                textAlign: 'center'
+              }}>
+                {error}
+              </div>
+            )}
+
+            <button 
+              type="submit" 
+              disabled={isLoading || otp.join('').length !== 6}
+              style={{
+                width: '100%',
+                height: '50px',
+                borderRadius: '12px',
+                background: isLoading || otp.join('').length !== 6 ? '#ccc' : 'var(--primary-gradient)',
+                color: 'white',
+                border: 'none',
+                fontSize: '16px',
+                fontWeight: 600,
+                cursor: isLoading || otp.join('').length !== 6 ? 'not-allowed' : 'pointer',
+                transition: '0.2s'
+              }}
+              onMouseEnter={(e) => {
+                if (!isLoading && otp.join('').length === 6) {
+                  e.currentTarget.style.transform = 'translateY(-2px)';
+                  e.currentTarget.style.boxShadow = '0 10px 20px rgba(99, 102, 241, 0.3)';
+                }
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.transform = 'translateY(0)';
+                e.currentTarget.style.boxShadow = 'none';
+              }}
+            >
+              {isLoading 
+                ? t('auth.otpVerification.verifying', { defaultValue: 'מאמת...' })
+                : t('auth.otpVerification.verify', { defaultValue: 'אימות' })}
+            </button>
+
+            <div style={{ textAlign: 'center' }}>
+              {canResend ? (
+                <button 
+                  type="button" 
+                  onClick={handleResend}
+                  style={{
+                    background: 'none',
+                    border: 'none',
+                    color: 'var(--primary)',
+                    fontSize: '14px',
+                    fontWeight: 600,
+                    cursor: 'pointer',
+                    padding: '8px 16px'
+                  }}
+                >
+                  {t('auth.otpVerification.resend', { defaultValue: 'שלח קוד מחדש' })}
+                </button>
+              ) : (
+                <p style={{ fontSize: '14px', color: 'var(--text-muted)' }}>
+                  {t('auth.otpVerification.resendIn', { seconds: resendTimer, defaultValue: 'ניתן לשלוח קוד מחדש בעוד {seconds} שניות' })}
+                </p>
+              )}
+            </div>
+          </form>
         </div>
 
-        <form onSubmit={handleSubmit} className="otp-form" onPaste={handlePaste}>
-          <div className="otp-inputs" dir="ltr">
-            {otp.map((digit, index) => (
-              <input
-                key={index}
-                ref={el => inputRefs.current[index] = el}
-                type="text"
-                inputMode="numeric"
-                maxLength={index === 0 ? 6 : 1}
-                value={digit}
-                onChange={(e) => handleOTPChange(index, e.target.value)}
-                onKeyDown={(e) => handleKeyDown(index, e)}
-                className="otp-input"
-                autoFocus={index === 0}
-                autoComplete={index === 0 ? "one-time-code" : "off"}
-                autoCapitalize="off"
-                autoCorrect="off"
-                spellCheck="false"
-              />
-            ))}
-          </div>
-
-          {error && <div className="error-message">{error}</div>}
-
-          <button 
-            type="submit" 
-            className="otp-button otp-button-green"
-            disabled={isLoading || otp.join('').length !== 6}
-          >
-            {isLoading 
-              ? t('auth.otpVerification.verifying', { defaultValue: 'מאמת...' })
-              : t('auth.otpVerification.verify', { defaultValue: 'אימות' })}
-          </button>
-
-          <div className="resend-section">
-            {canResend ? (
-              <button 
-                type="button" 
-                className="resend-button"
-                onClick={handleResend}
-              >
-                {t('auth.otpVerification.resend', { defaultValue: 'שלח קוד מחדש' })}
-              </button>
-            ) : (
-              <p className="resend-timer">
-                {t('auth.otpVerification.resendIn', { seconds: resendTimer, defaultValue: 'ניתן לשלוח קוד מחדש בעוד {seconds} שניות' })}
-              </p>
-            )}
-          </div>
-        </form>
+        <div style={{ textAlign: 'center', marginTop: '20px', fontSize: '12px', color: 'var(--text-muted)' }}>
+          {t('common.version', { defaultValue: 'גרסה' })} {APP_VERSION}
+        </div>
       </div>
-      <footer className="app-footer">
-        <span className="version">{t('common.version', { defaultValue: 'גרסה' })} 3.4.54</span>
-      </footer>
     </div>
   );
 };

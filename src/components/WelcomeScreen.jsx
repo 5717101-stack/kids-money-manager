@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import UsersTable from './UsersTable';
+import { APP_VERSION } from '../constants';
 
 const WelcomeScreen = ({ onSelectCreate, onSelectJoinAsParent, onSelectJoinAsChild }) => {
   const { t } = useTranslation();
@@ -256,7 +257,7 @@ const WelcomeScreen = ({ onSelectCreate, onSelectJoinAsParent, onSelectJoinAsChi
             🗑️ מחק הכל
           </button>
         </div>
-        <span className="version">{t('common.version')} 3.4.54</span>
+        <span className="version">{t('common.version')} {APP_VERSION}</span>
       </footer>
       
       {showUsersTable && (

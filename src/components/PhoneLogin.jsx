@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { APP_VERSION } from '../constants';
 
 const COUNTRY_CODES_HE = [
   { code: '+972', name: 'ישראל', flag: '🇮🇱' },
@@ -214,72 +215,168 @@ const PhoneLogin = ({ onOTPSent }) => {
   };
 
   return (
-    <div className="phone-login">
-      <div className="phone-login-container">
-        <div className="phone-login-header">
-          <h1>📱 {t('auth.phoneLogin.title', { defaultValue: 'הכנס מספר טלפון' })}</h1>
-          <p className="phone-login-subtitle">{t('auth.phoneLogin.subtitle', { defaultValue: 'נשלח לך קוד אימות ב-SMS' })}</p>
+    <div className="app-layout" dir={i18n.language === 'he' ? 'rtl' : 'ltr'}>
+      <div className="app-header">
+        <div style={{ width: '44px' }}></div>
+        <h1 className="header-title">
+          {t('auth.phoneLogin.title', { defaultValue: 'הכנס מספר טלפון' })}
+        </h1>
+        <div style={{ width: '44px' }}></div>
+      </div>
+
+      <div className="content-area" style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', padding: '20px' }}>
+        <div className="fintech-card" style={{ maxWidth: '500px', width: '100%', margin: '0 auto' }}>
+          <p style={{ fontSize: '14px', color: 'var(--text-muted)', marginBottom: '24px', textAlign: 'center' }}>
+            {t('auth.phoneLogin.subtitle', { defaultValue: 'נשלח לך קוד אימות ב-SMS' })}
+          </p>
+
+          <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+            <div style={{ display: 'flex', gap: '10px', width: '100%', flexDirection: i18n.language === 'he' ? 'row-reverse' : 'row' }}>
+              <div style={{ position: 'relative', flexShrink: 0 }}>
+                <button
+                  type="button"
+                  onClick={() => setShowCountryList(!showCountryList)}
+                  style={{
+                    height: '50px',
+                    width: '50px',
+                    padding: '0',
+                    borderRadius: '12px',
+                    border: '1px solid rgba(0,0,0,0.1)',
+                    background: 'white',
+                    fontSize: '24px',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center'
+                  }}
+                >
+                  {selectedCountry.flag}
+                </button>
+                {showCountryList && (
+                  <div style={{
+                    position: 'absolute',
+                    top: '100%',
+                    [i18n.language === 'he' ? 'right' : 'left']: 0,
+                    marginTop: '8px',
+                    background: 'white',
+                    borderRadius: '12px',
+                    border: '1px solid rgba(0,0,0,0.1)',
+                    boxShadow: '0 10px 40px rgba(0,0,0,0.15)',
+                    maxHeight: '300px',
+                    overflowY: 'auto',
+                    zIndex: 1000,
+                    minWidth: '250px',
+                    width: 'auto'
+                  }}>
+                    {COUNTRY_CODES.map((country) => (
+                      <button
+                        key={country.code}
+                        type="button"
+                        onClick={() => {
+                          setSelectedCountry(country);
+                          setShowCountryList(false);
+                        }}
+                        style={{
+                          width: '100%',
+                          padding: '12px 16px',
+                          border: 'none',
+                          background: 'transparent',
+                          textAlign: 'start',
+                          cursor: 'pointer',
+                          fontSize: '14px',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '12px'
+                        }}
+                        onMouseEnter={(e) => e.currentTarget.style.background = '#F3F4F6'}
+                        onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
+                      >
+                        <span style={{ fontSize: '20px' }}>{country.flag}</span>
+                        <span style={{ fontWeight: 600 }}>{country.code}</span>
+                        <span style={{ flex: 1 }}>{country.name}</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+              <input
+                type="tel"
+                value={phoneNumber}
+                onChange={(e) => {
+                  setPhoneNumber(e.target.value);
+                  setError('');
+                }}
+                placeholder={t('auth.phoneLogin.phonePlaceholder', { defaultValue: 'מספר טלפון' })}
+                required
+                autoFocus
+                inputMode="numeric"
+                style={{
+                  flex: 1,
+                  minWidth: 0,
+                  height: '50px',
+                  padding: '0 16px',
+                  borderRadius: '12px',
+                  border: '1px solid rgba(0,0,0,0.1)',
+                  fontSize: '16px',
+                  outline: 'none',
+                  transition: '0.2s',
+                  boxSizing: 'border-box'
+                }}
+                onFocus={(e) => e.target.style.borderColor = 'var(--primary)'}
+                onBlur={(e) => e.target.style.borderColor = 'rgba(0,0,0,0.1)'}
+              />
+            </div>
+
+            {error && (
+              <div style={{
+                padding: '12px 16px',
+                borderRadius: '12px',
+                background: '#FEE2E2',
+                color: '#DC2626',
+                fontSize: '14px',
+                textAlign: 'center'
+              }}>
+                {error}
+              </div>
+            )}
+
+            <button 
+              type="submit" 
+              disabled={isLoading || !phoneNumber}
+              style={{
+                width: '100%',
+                height: '50px',
+                borderRadius: '12px',
+                background: isLoading || !phoneNumber ? '#ccc' : 'var(--primary-gradient)',
+                color: 'white',
+                border: 'none',
+                fontSize: '16px',
+                fontWeight: 600,
+                cursor: isLoading || !phoneNumber ? 'not-allowed' : 'pointer',
+                transition: '0.2s'
+              }}
+              onMouseEnter={(e) => {
+                if (!isLoading && phoneNumber) {
+                  e.currentTarget.style.transform = 'translateY(-2px)';
+                  e.currentTarget.style.boxShadow = '0 10px 20px rgba(99, 102, 241, 0.3)';
+                }
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.transform = 'translateY(0)';
+                e.currentTarget.style.boxShadow = 'none';
+              }}
+            >
+              {isLoading 
+                ? t('auth.phoneLogin.sending', { defaultValue: 'שולח...' })
+                : t('auth.phoneLogin.sendCode', { defaultValue: 'שלח קוד אימות' })}
+            </button>
+          </form>
         </div>
 
-        <form onSubmit={handleSubmit} className="phone-login-form">
-          <div className="phone-input-group">
-            <div className="country-code-selector">
-              <button
-                type="button"
-                className="country-code-button"
-                onClick={() => setShowCountryList(!showCountryList)}
-              >
-                {selectedCountry.flag} {selectedCountry.code}
-              </button>
-              {showCountryList && (
-                <div className="country-list">
-                  {COUNTRY_CODES.map((country) => (
-                    <button
-                      key={country.code}
-                      type="button"
-                      className="country-item"
-                      onClick={() => {
-                        setSelectedCountry(country);
-                        setShowCountryList(false);
-                      }}
-                    >
-                      {country.flag} {country.code} {country.name}
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
-            <input
-              type="tel"
-              className="phone-input"
-              value={phoneNumber}
-              onChange={(e) => {
-                setPhoneNumber(e.target.value);
-                setError('');
-              }}
-              placeholder={t('auth.phoneLogin.phonePlaceholder', { defaultValue: 'מספר טלפון' })}
-              required
-              autoFocus
-              inputMode="numeric"
-            />
-          </div>
-
-          {error && <div className="error-message">{error}</div>}
-
-          <button 
-            type="submit" 
-            className="phone-login-button"
-            disabled={isLoading || !phoneNumber}
-          >
-            {isLoading 
-              ? t('auth.phoneLogin.sending', { defaultValue: 'שולח...' })
-              : t('auth.phoneLogin.sendCode', { defaultValue: 'שלח קוד אימות' })}
-          </button>
-        </form>
+        <div style={{ textAlign: 'center', marginTop: '20px', fontSize: '12px', color: 'var(--text-muted)' }}>
+          {t('common.version', { defaultValue: 'גרסה' })} {APP_VERSION}
+        </div>
       </div>
-      <footer className="app-footer">
-        <span className="version">{t('common.version', { defaultValue: 'גרסה' })} 3.4.54</span>
-      </footer>
     </div>
   );
 };

@@ -2,9 +2,7 @@ import React, { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import Settings from './Settings';
 import LanguageToggle from './LanguageToggle';
-
-// Get version from package.json
-const VERSION = '3.4.54';
+import { APP_VERSION } from '../constants';
 
 const Sidebar = ({ isOpen, onClose, familyId, onLogout, onChildrenUpdated, onMenuItemClick, childrenList = [], onChildDashboardClick }) => {
   const { t, i18n } = useTranslation();
@@ -60,34 +58,33 @@ const Sidebar = ({ isOpen, onClose, familyId, onLogout, onChildrenUpdated, onMen
   return (
     <>
       {/* Backdrop */}
-      {isOpen && (
-        <div 
-          className="sidebar-backdrop" 
-          onClick={onClose}
-        />
-      )}
+      <div 
+        className={`sidebar-overlay ${isOpen ? 'open' : ''}`}
+        onClick={onClose}
+      />
 
       {/* Sidebar */}
-      <div className={`sidebar ${isOpen ? 'sidebar-open' : ''}`}>
-        <div className="sidebar-header">
+      <div className={`sidebar-panel ${isOpen ? 'open' : ''}`} style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+        <div style={{ marginBottom: '30px' }}>
           <button 
-            className="sidebar-close-button"
+            className="menu-btn"
             onClick={onClose}
             aria-label={t('common.close', { defaultValue: 'סגור' })}
+            style={{ marginBottom: '20px' }}
           >
             ✕
           </button>
-          <h2 className="sidebar-title">
+          <h2 style={{ fontSize: '24px', fontWeight: 700, margin: 0 }}>
             {t('sidebar.title', { defaultValue: 'הגדרות' })}
           </h2>
         </div>
 
-        <div className="sidebar-content">
-          <nav className="sidebar-nav">
+        <div className="sidebar-content" style={{ flex: 1, overflowY: 'auto' }}>
+          <nav className="sidebar-nav" style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
             {menuItems.map(item => (
               <div key={item.id}>
                 <button
-                  className={`sidebar-nav-item ${activeTab === item.id ? 'active' : ''} ${item.hasSubmenu && showChildrenSubmenu ? 'submenu-open' : ''}`}
+                  className={`sidebar-link ${activeTab === item.id ? 'active' : ''} ${item.hasSubmenu && showChildrenSubmenu ? 'submenu-open' : ''}`}
                   onClick={() => {
                     if (item.hasSubmenu) {
                       setShowChildrenSubmenu(!showChildrenSubmenu);
@@ -100,11 +97,26 @@ const Sidebar = ({ isOpen, onClose, familyId, onLogout, onChildrenUpdated, onMen
                       setShowChildrenSubmenu(false);
                     }
                   }}
+                  style={{
+                    padding: '12px 16px',
+                    borderRadius: '12px',
+                    transition: 'background 0.2s'
+                  }}
+                  onMouseEnter={(e) => {
+                    if (activeTab !== item.id) {
+                      e.currentTarget.style.background = '#F3F4F6';
+                    }
+                  }}
+                  onMouseLeave={(e) => {
+                    if (activeTab !== item.id) {
+                      e.currentTarget.style.background = 'transparent';
+                    }
+                  }}
                 >
-                  <span className="sidebar-nav-icon">{item.icon}</span>
-                  <span className="sidebar-nav-label">{item.label}</span>
+                  <span style={{ fontSize: '20px' }}>{item.icon}</span>
+                  <span>{item.label}</span>
                   {item.hasSubmenu && (
-                    <span className="sidebar-submenu-arrow">{showChildrenSubmenu ? '▼' : '▶'}</span>
+                    <span style={{ marginLeft: 'auto' }}>{showChildrenSubmenu ? '▼' : '▶'}</span>
                   )}
                 </button>
                 {item.hasSubmenu && item.id === 'childrenDashboard' && showChildrenSubmenu && (
@@ -149,16 +161,17 @@ const Sidebar = ({ isOpen, onClose, familyId, onLogout, onChildrenUpdated, onMen
           </nav>
         </div>
 
-        <div className="sidebar-footer">
+        <div style={{ marginTop: 'auto', paddingTop: '30px', borderTop: '1px solid rgba(0,0,0,0.1)' }}>
           <button 
-            className="sidebar-logout-button"
+            className="sidebar-link"
             onClick={handleLogout}
+            style={{ color: '#EF4444', fontWeight: 600 }}
           >
-            <span className="sidebar-nav-icon">🚪</span>
+            <span style={{ fontSize: '20px' }}>🚪</span>
             <span>{t('common.logout', { defaultValue: 'התנתק' })}</span>
           </button>
-          <div className="sidebar-version">
-            {t('common.version', { defaultValue: 'גרסה' })} {VERSION}
+          <div style={{ marginTop: '20px', fontSize: '12px', color: 'var(--text-muted)', textAlign: 'center' }}>
+            {t('common.version', { defaultValue: 'גרסה' })} {APP_VERSION}
           </div>
         </div>
       </div>
