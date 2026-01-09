@@ -259,7 +259,7 @@ const ParentDashboard = ({ familyId, onChildrenUpdated, onLogout }) => {
           </div>
         )}
       </div>
-        </>
+        </div>
       )}
 
       {/* Sidebar */}
