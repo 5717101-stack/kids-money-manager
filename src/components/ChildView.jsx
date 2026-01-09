@@ -241,6 +241,7 @@ const ChildView = ({ childId, familyId, onBackToParent, onLogout }) => {
         </button>
       )}
       
+      <div className="child-view-content">
       {/* Top Profile Section */}
       <div className="child-profile-section">
         <div className="profile-image-container">
@@ -491,6 +492,7 @@ const ChildView = ({ childId, familyId, onBackToParent, onLogout }) => {
           </div>
         </div>
       )}
+      </div>
     </div>
   );
 };

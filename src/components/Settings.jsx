@@ -1263,7 +1263,9 @@ const Settings = ({ familyId, onClose, onLogout, activeTab: externalActiveTab, h
     // Render as full page, not modal
     return (
       <div className="settings-page-container" dir={i18n.language === 'he' ? 'rtl' : 'ltr'}>
-        {content}
+        <div className="settings-page-content">
+          {content}
+        </div>
       </div>
     );
   }
