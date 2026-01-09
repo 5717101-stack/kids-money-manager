@@ -283,21 +283,23 @@ const ParentDashboard = ({ familyId, onChildrenUpdated, onLogout }) => {
 
       {/* Settings Content (not modal) */}
       {currentView !== 'dashboard' && (
-        <Settings 
-          familyId={familyId}
-          onClose={async () => {
-            setCurrentView('dashboard');
-            await loadData();
-            if (onChildrenUpdated) {
-              await onChildrenUpdated();
-            }
-          }}
-          onLogout={onLogout}
-          activeTab={currentView}
-          hideTabs={true}
-          inSidebar={false}
-          asPage={true}
-        />
+        <div className="settings-page-wrapper">
+          <Settings 
+            familyId={familyId}
+            onClose={async () => {
+              setCurrentView('dashboard');
+              await loadData();
+              if (onChildrenUpdated) {
+                await onChildrenUpdated();
+              }
+            }}
+            onLogout={onLogout}
+            activeTab={currentView}
+            hideTabs={true}
+            inSidebar={false}
+            asPage={true}
+          />
+        </div>
       )}
 
       {showQuickAction && (
