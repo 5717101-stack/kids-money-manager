@@ -388,7 +388,7 @@ const PhoneLogin = ({ onOTPSent }) => {
         </form>
       </div>
       <footer className="app-footer">
-        <span className="version">{t('common.version', { defaultValue: 'גרסה' })} 3.4.26</span>
+        <span className="version">{t('common.version', { defaultValue: 'גרסה' })} 3.4.27</span>
       </footer>
     </div>
   );

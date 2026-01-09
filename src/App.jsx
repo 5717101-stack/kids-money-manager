@@ -9,7 +9,6 @@ import ChildView from './components/ChildView';
 import ChildPasswordLogin from './components/ChildPasswordLogin';
 import JoinParentScreen from './components/JoinParentScreen';
 import JoinChildScreen from './components/JoinChildScreen';
-import LanguageToggle from './components/LanguageToggle';
 
 const App = () => {
   const { t, i18n } = useTranslation();
@@ -204,29 +203,6 @@ const App = () => {
 
   return (
     <div className="app">
-      <div style={{ position: 'fixed', bottom: '16px', right: '16px', zIndex: 1000, display: 'flex', gap: '8px', alignItems: 'center' }}>
-        <LanguageToggle />
-        {(screen === 'welcome' || screen === 'phone' || screen === 'otp' || screen === 'child-password' || screen === 'parent-invite' || screen === 'child-invite') && (
-          <button
-            className="logout-button"
-            onClick={handleLogout}
-            title={t('common.logout', { defaultValue: 'התנתק' })}
-            style={{
-              padding: '8px 16px',
-              backgroundColor: '#ef4444',
-              color: 'white',
-              border: 'none',
-              borderRadius: '8px',
-              cursor: 'pointer',
-              fontSize: '14px',
-              fontWeight: '600',
-              transition: 'all 0.2s ease'
-            }}
-          >
-            🚪 {t('common.logout', { defaultValue: 'התנתק' })}
-          </button>
-        )}
-      </div>
       {screen === 'main-login' && (
         <MainLogin 
           onLoginSuccess={handleOTPVerified}
@@ -330,13 +306,6 @@ const App = () => {
                 {child.name}
               </button>
             ))}
-            <button
-              className="logout-button"
-              onClick={handleLogout}
-              title="התנתק"
-            >
-              🚪 התנתק
-            </button>
           </nav>
 
           <main className="main-content">
@@ -349,26 +318,6 @@ const App = () => {
               )
             ))}
           </main>
-          
-          <footer className="app-footer">
-            <button 
-              className="test-logs-button"
-              onClick={async () => {
-                try {
-                  const apiUrl = import.meta.env.VITE_API_URL || 'https://kids-money-manager-server.onrender.com/api';
-                  await fetch(`${apiUrl}/test-logs`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' }
-                  });
-                } catch (error) {
-                  console.error('Error sending test log:', error);
-                }
-              }}
-              title="בדיקת לוגים"
-            >
-              🔍 בדיקת לוגים
-            </button>
-          </footer>
         </>
       )}
     </div>
