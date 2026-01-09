@@ -92,6 +92,31 @@ const ParentDashboard = ({ familyId, onChildrenUpdated, onLogout, onViewChild })
     }
   };
 
+  const childrenList = Object.values(allData.children || {}).filter(child => child && child._id);
+
+  // Load selected child from sessionStorage when childrenList is available
+  useEffect(() => {
+    if (typeof window !== 'undefined' && childrenList.length > 0) {
+      const savedChildId = sessionStorage.getItem('selectedChildId');
+      if (savedChildId) {
+        const child = childrenList.find(c => c._id === savedChildId);
+        if (child) {
+          setSelectedChild(child);
+        } else {
+          // Child not found, clear selection
+          sessionStorage.removeItem('selectedChildId');
+          setSelectedChild(null);
+        }
+      }
+    } else if (childrenList.length === 0) {
+      // No children, clear selection
+      setSelectedChild(null);
+      if (typeof window !== 'undefined') {
+        sessionStorage.removeItem('selectedChildId');
+      }
+    }
+  }, [childrenList]);
+
   const handleBottomNavAction = (type) => {
     // If children list is empty, show message
     if (childrenList.length === 0) {
