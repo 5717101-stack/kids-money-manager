@@ -1,10 +1,19 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { addTransaction } from '../utils/api';
 
 const QuickActionModal = ({ familyId, children, categories, type, onClose, onComplete }) => {
   const { t, i18n } = useTranslation();
-  const [selectedChildId, setSelectedChildId] = useState(children[0]?._id || '');
+  // Check if a child was pre-selected from the child selector
+  const preSelectedChildId = typeof window !== 'undefined' ? sessionStorage.getItem('selectedChildId') : null;
+  const [selectedChildId, setSelectedChildId] = useState(preSelectedChildId || children[0]?._id || '');
+  
+  useEffect(() => {
+    // Clear the pre-selected child from sessionStorage after using it
+    if (preSelectedChildId && typeof window !== 'undefined') {
+      sessionStorage.removeItem('selectedChildId');
+    }
+  }, [preSelectedChildId]);
   const [amount, setAmount] = useState('');
   const [description, setDescription] = useState('');
   const [category, setCategory] = useState('');

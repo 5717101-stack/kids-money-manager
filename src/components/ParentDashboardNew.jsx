@@ -14,6 +14,8 @@ const ParentDashboard = ({ familyId, onChildrenUpdated, onLogout, onViewChild })
   const [currentView, setCurrentView] = useState('dashboard'); // 'dashboard', 'categories', 'profileImages', 'allowances', 'children', 'parents'
   const [showQuickAction, setShowQuickAction] = useState(false);
   const [quickActionType, setQuickActionType] = useState('deposit'); // 'deposit' or 'expense'
+  const [showChildSelector, setShowChildSelector] = useState(false);
+  const [pendingActionType, setPendingActionType] = useState(null); // 'deposit' or 'expense'
   const [recentTransactions, setRecentTransactions] = useState([]);
   const [totalFamilyBalance, setTotalFamilyBalance] = useState(0);
   const [familyPhoneNumber, setFamilyPhoneNumber] = useState('');
@@ -151,24 +153,6 @@ const ParentDashboard = ({ familyId, onChildrenUpdated, onLogout, onViewChild })
         <div className="total-balance-value">₪{totalFamilyBalance.toFixed(2)}</div>
       </div>
 
-      {/* Quick Actions */}
-      <div className="quick-actions-section">
-        <button 
-          className="quick-action-button deposit-button"
-          onClick={() => handleQuickAction('deposit')}
-        >
-          <span className="quick-action-icon">+</span>
-          <span className="quick-action-label">{t('parent.dashboard.addMoney', { defaultValue: 'הוסף כסף' })}</span>
-        </button>
-        <button 
-          className="quick-action-button expense-button"
-          onClick={() => handleQuickAction('expense')}
-        >
-          <span className="quick-action-icon">-</span>
-          <span className="quick-action-label">{t('parent.dashboard.recordExpense', { defaultValue: 'דווח הוצאה' })}</span>
-        </button>
-      </div>
-
       {/* Recent Activity */}
       <div className="recent-activity-section">
         <h2 className="section-title">{t('parent.dashboard.recentActivity', { defaultValue: 'פעילות אחרונה' })}</h2>
@@ -246,13 +230,77 @@ const ParentDashboard = ({ familyId, onChildrenUpdated, onLogout, onViewChild })
         </div>
       )}
 
+      {/* Bottom Navigation Bar */}
+      <div className="bottom-nav-bar">
+        <button 
+          className="bottom-nav-button expense-button"
+          onClick={() => handleBottomNavAction('expense')}
+        >
+          <span className="bottom-nav-icon">-</span>
+          <span className="bottom-nav-label">{t('parent.dashboard.recordExpense', { defaultValue: 'דיווח הוצאה' })}</span>
+        </button>
+        
+        <button 
+          className="bottom-nav-button center-button"
+          onClick={() => handleBottomNavAction('deposit')}
+        >
+          <span className="center-button-icon">+</span>
+        </button>
+        
+        <button 
+          className="bottom-nav-button income-button"
+          onClick={() => handleBottomNavAction('deposit')}
+        >
+          <span className="bottom-nav-icon">+</span>
+          <span className="bottom-nav-label">{t('parent.dashboard.addMoney', { defaultValue: 'הוספת כסף' })}</span>
+        </button>
+      </div>
+
+      {/* Child Selector Modal */}
+      {showChildSelector && (
+        <div className="child-selector-modal-overlay" onClick={() => setShowChildSelector(false)}>
+          <div className="child-selector-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="child-selector-header">
+              <h2>{t('parent.dashboard.selectChild', { defaultValue: 'בחר ילד' })}</h2>
+              <button 
+                className="close-button" 
+                onClick={() => setShowChildSelector(false)}
+              >
+                ✕
+              </button>
+            </div>
+            <div className="child-selector-list">
+              {childrenList.map((child) => (
+                <button
+                  key={child._id}
+                  className="child-selector-item"
+                  onClick={() => handleChildSelected(child)}
+                >
+                  {child.profileImage ? (
+                    <img src={child.profileImage} alt={child.name} className="child-selector-avatar" />
+                  ) : (
+                    <div className="child-selector-avatar-placeholder">
+                      {child.name.charAt(0).toUpperCase()}
+                    </div>
+                  )}
+                  <span className="child-selector-name">{child.name}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
       {showQuickAction && (
         <QuickActionModal
           familyId={familyId}
           children={childrenList}
           categories={categories}
           type={quickActionType}
-          onClose={() => setShowQuickAction(false)}
+          onClose={() => {
+            setShowQuickAction(false);
+            sessionStorage.removeItem('selectedChildId');
+          }}
           onComplete={handleQuickActionComplete}
         />
       )}

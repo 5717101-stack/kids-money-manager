@@ -3423,7 +3423,7 @@ strong, b {
   flex-direction: column;
   padding: 0 16px;
   padding-top: calc(60px + var(--safe-area-inset-top));
-  padding-bottom: calc(16px + var(--safe-area-inset-bottom));
+  padding-bottom: calc(100px + var(--safe-area-inset-bottom));
   width: 100%;
   max-width: 100%;
   box-sizing: border-box;
@@ -3520,6 +3520,236 @@ strong, b {
 .settings-button-new:hover {
   background: rgba(0, 0, 0, 0.05);
   transform: rotate(90deg);
+}
+
+/* Bottom Navigation Bar */
+.bottom-nav-bar {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  padding-bottom: calc(12px + var(--safe-area-inset-bottom));
+  background: var(--bg-card);
+  border-top: 1px solid var(--border);
+  box-shadow: 0 -2px 10px rgba(0, 0, 0, 0.1);
+  z-index: 999;
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
+}
+
+.bottom-nav-button {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 8px 16px;
+  background: transparent;
+  border: none;
+  border-radius: 12px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 600;
+  min-width: 60px;
+}
+
+.bottom-nav-button:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.bottom-nav-icon {
+  font-size: 24px;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.bottom-nav-label {
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.bottom-nav-button.center-button {
+  width: 64px;
+  height: 64px;
+  border-radius: 50%;
+  background: var(--primary);
+  color: white;
+  box-shadow: 0 4px 12px rgba(99, 102, 241, 0.4);
+  padding: 0;
+  min-width: 64px;
+  position: relative;
+  z-index: 1;
+}
+
+.bottom-nav-button.center-button:hover {
+  background: var(--primary-hover);
+  transform: scale(1.05);
+  box-shadow: 0 6px 16px rgba(99, 102, 241, 0.5);
+}
+
+.center-button-icon {
+  font-size: 32px;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.bottom-nav-button.expense-button {
+  color: var(--danger);
+}
+
+.bottom-nav-button.expense-button:hover {
+  background: var(--danger-light);
+  color: var(--danger);
+}
+
+.bottom-nav-button.income-button {
+  color: var(--success);
+}
+
+.bottom-nav-button.income-button:hover {
+  background: var(--success-light);
+  color: var(--success);
+}
+
+/* Child Selector Modal */
+.child-selector-modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  z-index: 10000;
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+}
+
+.child-selector-modal {
+  background: var(--bg-card);
+  border-radius: 20px 20px 0 0;
+  width: 100%;
+  max-width: 100%;
+  max-height: 70vh;
+  padding: 0;
+  box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.2);
+  animation: slideUp 0.3s ease-out;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+@keyframes slideUp {
+  from {
+    transform: translateY(100%);
+  }
+  to {
+    transform: translateY(0);
+  }
+}
+
+.child-selector-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 20px 24px;
+  border-bottom: 1px solid var(--border);
+}
+
+.child-selector-header h2 {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.child-selector-header .close-button {
+  background: transparent;
+  border: none;
+  font-size: 24px;
+  color: var(--text-secondary);
+  cursor: pointer;
+  padding: 4px;
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  transition: all 0.2s ease;
+}
+
+.child-selector-header .close-button:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.child-selector-list {
+  padding: 16px;
+  overflow-y: auto;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.child-selector-item {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 16px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  width: 100%;
+  text-align: right;
+}
+
+.child-selector-item:hover {
+  background: var(--bg-hover);
+  border-color: var(--primary);
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-md);
+}
+
+.child-selector-avatar {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  object-fit: cover;
+  border: 2px solid var(--border);
+}
+
+.child-selector-avatar-placeholder {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, var(--primary) 0%, var(--secondary) 100%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 20px;
+  font-weight: 700;
+  color: white;
+  border: 2px solid var(--border);
+}
+
+.child-selector-name {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text-primary);
+  flex: 1;
 }
 
 /* Total Balance Card */

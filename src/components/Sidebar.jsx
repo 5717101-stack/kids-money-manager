@@ -4,7 +4,7 @@ import Settings from './Settings';
 import LanguageToggle from './LanguageToggle';
 
 // Get version from package.json
-const VERSION = '3.4.43';
+const VERSION = '3.4.44';
 
 const Sidebar = ({ isOpen, onClose, familyId, onLogout, onChildrenUpdated, onMenuItemClick, childrenList = [], onChildDashboardClick }) => {
   const { t, i18n } = useTranslation();
