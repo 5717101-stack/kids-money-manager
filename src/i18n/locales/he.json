@@ -169,6 +169,7 @@
       "backToParent": "ממשק הורים",
       "cashBox": "קופה",
       "totalBalance": "יתרה כוללת",
+      "myBalance": "היתרה שלי:",
       "confirmLogout": "האם אתה בטוח שברצונך להתנתק?"
     },
     "savingsGoal": {
@@ -181,6 +182,7 @@
       "progress": "התקדמות",
       "achieved": "הושג",
       "of": "מתוך",
+      "missing": "חסר",
       "noGoal": "אין מטרת חיסכון",
       "deleteGoal": "מחק מטרה",
       "invalidGoal": "אנא הכנס שם מטרה וסכום תקין",

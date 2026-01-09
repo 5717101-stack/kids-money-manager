@@ -166,7 +166,8 @@
       "greeting": "Hello, {name}!",
       "balance": "Balance",
       "cashBox": "Cash Box",
-      "totalBalance": "Total Balance"
+      "totalBalance": "Total Balance",
+      "myBalance": "My Balance:"
     },
     "savingsGoal": {
       "title": "Savings Goal",
@@ -178,6 +179,7 @@
       "progress": "Progress",
       "achieved": "Achieved",
       "of": "of",
+      "missing": "Missing",
       "noGoal": "No savings goal",
       "deleteGoal": "Delete Goal",
       "invalidGoal": "Please enter goal name and valid amount",
