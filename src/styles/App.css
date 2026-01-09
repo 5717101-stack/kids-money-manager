@@ -94,20 +94,20 @@ body {
   max-width: 100% !important;
   margin-left: 0 !important;
   margin-right: 0 !important;
+  margin-bottom: 0 !important;
   box-sizing: border-box;
   border-radius: 0 !important;
   border-left: none !important;
   border-right: none !important;
-  padding-left: 0;
-  padding-right: 0;
+  padding: 0 !important;
 }
 
-/* Total Balance Card - 50% wider (150% of original width) */
+/* Total Balance Card - Full width */
 .parent-dashboard-new .content-area > .fintech-card:first-child {
-  width: 150% !important;
-  max-width: 150% !important;
-  margin-left: -25% !important;
-  margin-right: -25% !important;
+  width: 100% !important;
+  max-width: 100% !important;
+  margin-left: 0 !important;
+  margin-right: 0 !important;
   position: relative;
   z-index: 1;
 }
