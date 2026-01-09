@@ -253,12 +253,17 @@ const ChildView = ({ childId, familyId, onBackToParent, onLogout }) => {
 
     if (value === '=') {
       try {
-        // Evaluate the expression
-        const result = Function('"use strict"; return (' + calculatorHistory + ')')();
-        setCalculatorResult(result);
-        setCalculatorValue(result.toString());
+        // Evaluate the expression safely
+        // Replace × with * for evaluation
+        const expression = calculatorHistory.replace(/×/g, '*');
+        // Use Function constructor with strict mode for safe evaluation
+        const result = new Function('"use strict"; return (' + expression + ')')();
+        const roundedResult = Math.round(result * 100) / 100; // Round to 2 decimal places
+        setCalculatorResult(roundedResult);
+        setCalculatorValue(roundedResult.toString());
       } catch (error) {
         setCalculatorValue('Error');
+        setCalculatorResult(null);
       }
       return;
     }
@@ -273,8 +278,10 @@ const ChildView = ({ childId, familyId, onBackToParent, onLogout }) => {
     }
 
     // Handle operators
-    if (['+', '-', '*', '/'].includes(value)) {
-      setCalculatorHistory(calculatorHistory + value);
+    if (['+', '-', '*', '/', '×'].includes(value)) {
+      // Replace × with * for internal storage
+      const operator = value === '×' ? '*' : value;
+      setCalculatorHistory(calculatorHistory + operator);
       setCalculatorValue(value);
       return;
     }
@@ -609,6 +616,169 @@ const ChildView = ({ childId, familyId, onBackToParent, onLogout }) => {
                 )}
               </div>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Bottom Navigation Bar */}
+      <div className="bottom-nav-bar">
+        <button 
+          className="bottom-nav-button expense-button"
+          onClick={() => handleBottomNavAction('expense')}
+        >
+          <span className="bottom-nav-icon">-</span>
+          <span className="bottom-nav-label">{t('parent.dashboard.recordExpense', { defaultValue: 'דיווח הוצאה' })}</span>
+        </button>
+        
+        <button 
+          className="bottom-nav-button center-button"
+          onClick={handleCalculatorClick}
+        >
+          <span className="center-button-icon">🧮</span>
+        </button>
+        
+        <button 
+          className="bottom-nav-button income-button"
+          onClick={() => handleBottomNavAction('deposit')}
+        >
+          <span className="bottom-nav-icon">+</span>
+          <span className="bottom-nav-label">{t('parent.dashboard.addMoney', { defaultValue: 'הוספת כסף' })}</span>
+        </button>
+      </div>
+
+      {/* Calculator Overlay */}
+      {showCalculator && (
+        <div className="calculator-overlay" onClick={() => setShowCalculator(false)}>
+          <div className="calculator-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="calculator-header">
+              <h2>{t('child.calculator.title', { defaultValue: 'מחשבון' })}</h2>
+              <button 
+                className="calculator-close" 
+                onClick={() => setShowCalculator(false)}
+              >
+                ✕
+              </button>
+            </div>
+            <div className="calculator-display">
+              <div className="calculator-history">{calculatorHistory || ' '}</div>
+              <div className="calculator-value">{calculatorValue}</div>
+            </div>
+            <div className="calculator-buttons">
+              <button className="calc-btn calc-btn-clear" onClick={() => handleCalculatorInput('C')}>C</button>
+              <button className="calc-btn calc-btn-operator" onClick={() => handleCalculatorInput('←')}>←</button>
+              <button className="calc-btn calc-btn-operator" onClick={() => handleCalculatorInput('/')}>/</button>
+              <button className="calc-btn calc-btn-operator" onClick={() => handleCalculatorInput('×')}>×</button>
+              
+              <button className="calc-btn calc-btn-number" onClick={() => handleCalculatorInput('7')}>7</button>
+              <button className="calc-btn calc-btn-number" onClick={() => handleCalculatorInput('8')}>8</button>
+              <button className="calc-btn calc-btn-number" onClick={() => handleCalculatorInput('9')}>9</button>
+              <button className="calc-btn calc-btn-operator" onClick={() => handleCalculatorInput('-')}>-</button>
+              
+              <button className="calc-btn calc-btn-number" onClick={() => handleCalculatorInput('4')}>4</button>
+              <button className="calc-btn calc-btn-number" onClick={() => handleCalculatorInput('5')}>5</button>
+              <button className="calc-btn calc-btn-number" onClick={() => handleCalculatorInput('6')}>6</button>
+              <button className="calc-btn calc-btn-operator" onClick={() => handleCalculatorInput('+')}>+</button>
+              
+              <button className="calc-btn calc-btn-number" onClick={() => handleCalculatorInput('1')}>1</button>
+              <button className="calc-btn calc-btn-number" onClick={() => handleCalculatorInput('2')}>2</button>
+              <button className="calc-btn calc-btn-number" onClick={() => handleCalculatorInput('3')}>3</button>
+              <button className="calc-btn calc-btn-equals" rowSpan="2" onClick={() => handleCalculatorInput('=')}>=</button>
+              
+              <button className="calc-btn calc-btn-number calc-btn-zero" onClick={() => handleCalculatorInput('0')}>0</button>
+              <button className="calc-btn calc-btn-number" onClick={() => handleCalculatorInput('.')}>.</button>
+            </div>
+            {calculatorResult !== null && (
+              <button className="calculator-use-result" onClick={useCalculatorResult}>
+                {t('child.calculator.useResult', { defaultValue: 'השתמש בתוצאה' })}: {calculatorResult}
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Transaction Modal */}
+      {showTransactionModal && (
+        <div className="modal-overlay" onClick={() => setShowTransactionModal(false)}>
+          <div className="modal-content quick-action-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <h2>
+                {transactionType === 'deposit' 
+                  ? t('parent.dashboard.addMoney', { defaultValue: 'הוספת כסף' })
+                  : t('parent.dashboard.recordExpense', { defaultValue: 'דיווח הוצאה' })
+                }
+              </h2>
+              <button className="modal-close" onClick={() => setShowTransactionModal(false)}>✕</button>
+            </div>
+
+            <form onSubmit={(e) => { e.preventDefault(); handleSubmitTransaction(); }} className="quick-action-form">
+              <div className="form-group">
+                <label>{t('parent.dashboard.amount', { defaultValue: 'סכום' })} (₪):</label>
+                <div style={{ display: 'flex', gap: '8px' }}>
+                  <input
+                    type="number"
+                    inputMode="decimal"
+                    step="0.01"
+                    min="0.01"
+                    value={transactionAmount}
+                    onChange={(e) => setTransactionAmount(e.target.value)}
+                    placeholder="0.00"
+                    required
+                    style={{ flex: 1 }}
+                  />
+                  <button 
+                    type="button"
+                    className="calculator-button-small"
+                    onClick={() => {
+                      setShowCalculator(true);
+                      setCalculatorValue(transactionAmount || '0');
+                      setCalculatorHistory(transactionAmount || '0');
+                      setCalculatorResult(null);
+                    }}
+                    title={t('child.calculator.title', { defaultValue: 'מחשבון' })}
+                  >
+                    🧮
+                  </button>
+                </div>
+              </div>
+
+              {transactionType === 'expense' && categories.length > 0 && (
+                <div className="form-group">
+                  <label>{t('parent.dashboard.category', { defaultValue: 'קטגוריה' })}:</label>
+                  <select
+                    value={transactionCategory}
+                    onChange={(e) => setTransactionCategory(e.target.value)}
+                    required
+                  >
+                    <option value="">{t('parent.dashboard.selectCategory', { defaultValue: 'בחר קטגוריה' })}</option>
+                    {categories.map(cat => (
+                      <option key={cat._id} value={cat.name}>{cat.name}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
+
+              <div className="form-group">
+                <label>{t('parent.dashboard.description', { defaultValue: 'תיאור' })} (אופציונלי):</label>
+                <input
+                  type="text"
+                  value={transactionDescription}
+                  onChange={(e) => setTransactionDescription(e.target.value)}
+                  placeholder={t('parent.dashboard.descriptionPlaceholder', { defaultValue: 'תיאור הפעולה' })}
+                />
+              </div>
+
+              <div className="modal-actions">
+                <button type="button" className="cancel-button" onClick={() => setShowTransactionModal(false)}>
+                  {t('common.cancel', { defaultValue: 'ביטול' })}
+                </button>
+                <button type="submit" className="submit-button" disabled={submittingTransaction}>
+                  {submittingTransaction 
+                    ? t('common.saving', { defaultValue: 'שומר...' })
+                    : t('common.confirm', { defaultValue: 'אישור' })
+                  }
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

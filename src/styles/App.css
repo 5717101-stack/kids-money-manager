@@ -4377,7 +4377,7 @@ strong, b {
   -webkit-overflow-scrolling: touch;
   padding: 16px;
   padding-top: calc(60px + var(--safe-area-inset-top));
-  padding-bottom: calc(16px + var(--safe-area-inset-bottom));
+  padding-bottom: calc(100px + var(--safe-area-inset-bottom));
   width: 100%;
   max-width: 100%;
   box-sizing: border-box;
