@@ -71,6 +71,24 @@ const OTPVerification = ({ phoneNumber, isExistingFamily, onVerified, onBack }) 
   const handleOTPChange = (index, value) => {
     if (!/^\d*$/.test(value)) return;
     
+    // Handle AutoFill - if value is longer than 1 digit, it's likely AutoFill
+    if (value.length > 1) {
+      const digits = value.replace(/\D/g, '').slice(0, 6);
+      const newOtp = ['', '', '', '', '', ''];
+      for (let i = 0; i < digits.length && i < 6; i++) {
+        newOtp[i] = digits[i];
+      }
+      setOtp(newOtp);
+      setError('');
+      // Focus last filled input
+      if (digits.length === 6) {
+        inputRefs.current[5]?.focus();
+      } else if (digits.length > 0) {
+        inputRefs.current[digits.length - 1]?.focus();
+      }
+      return;
+    }
+    
     const newOtp = [...otp];
     newOtp[index] = value.slice(-1);
     setOtp(newOtp);
@@ -283,12 +301,16 @@ const OTPVerification = ({ phoneNumber, isExistingFamily, onVerified, onBack }) 
                 ref={el => inputRefs.current[index] = el}
                 type="text"
                 inputMode="numeric"
-                maxLength="1"
+                maxLength={index === 0 ? 6 : 1}
                 value={digit}
                 onChange={(e) => handleOTPChange(index, e.target.value)}
                 onKeyDown={(e) => handleKeyDown(index, e)}
                 className="otp-input"
                 autoFocus={index === 0}
+                autoComplete={index === 0 ? "one-time-code" : "off"}
+                autoCapitalize="off"
+                autoCorrect="off"
+                spellCheck="false"
               />
             ))}
           </div>
@@ -323,7 +345,7 @@ const OTPVerification = ({ phoneNumber, isExistingFamily, onVerified, onBack }) 
         </form>
       </div>
       <footer className="app-footer">
-        <span className="version">{t('common.version', { defaultValue: 'גרסה' })} 3.4.29</span>
+        <span className="version">{t('common.version', { defaultValue: 'גרסה' })} 3.4.30</span>
       </footer>
     </div>
   );

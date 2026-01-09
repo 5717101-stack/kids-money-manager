@@ -1211,7 +1211,10 @@ app.post('/api/auth/send-otp', async (req, res) => {
     process.stderr.write(`[SEND-OTP] To: ${normalizedPhone}\n`);
     process.stderr.write(`[SEND-OTP] OTP: ${otpCode}\n`);
     
-    const smsResult = await sendSMS(normalizedPhone, `קוד האימות שלך: ${otpCode}`);
+    // Format SMS for iOS AutoFill - must include the code in a recognizable format
+    // iOS recognizes patterns like: "Your code is: 123456" or "123456 is your code"
+    const smsMessage = `${otpCode} הוא קוד האימות שלך. קוד זה תקף ל-10 דקות.`;
+    const smsResult = await sendSMS(normalizedPhone, smsMessage);
     
     console.log(`[SEND-OTP] ========================================`);
     console.log(`[SEND-OTP] Step 6: SMS result received`);
