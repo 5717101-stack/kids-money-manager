@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { getChild, getChildTransactions, updateCashBoxBalance, getSavingsGoal, updateSavingsGoal, deleteSavingsGoal, updateProfileImage, getExpensesByCategory, addTransaction, getCategories } from '../utils/api';
+import { smartCompressImage } from '../utils/imageCompression';
 import ExpensePieChart from './ExpensePieChart';
 
 const ChildView = ({ childId, familyId, onBackToParent, onLogout }) => {
@@ -45,9 +46,20 @@ const ChildView = ({ childId, familyId, onBackToParent, onLogout }) => {
   useEffect(() => {
     if (familyId && childId) {
       loadExpensesByCategory();
+      loadCategories();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [expensesPeriod, familyId, childId]);
+
+  const loadCategories = async () => {
+    if (!familyId) return;
+    try {
+      const cats = await getCategories(familyId);
+      setCategories(cats || []);
+    } catch (error) {
+      console.error('Error loading categories:', error);
+    }
+  };
 
   const loadChildData = async () => {
     if (!familyId || !childId) return;
@@ -151,57 +163,15 @@ const ChildView = ({ childId, familyId, onBackToParent, onLogout }) => {
       return;
     }
 
-    // Compress image
-    const compressImage = (file, maxWidth = 1920, maxHeight = 1920, quality = 0.8) => {
-      return new Promise((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onload = (e) => {
-          const img = new Image();
-          img.onload = () => {
-            const canvas = document.createElement('canvas');
-            let width = img.width;
-            let height = img.height;
-            
-            if (width > height) {
-              if (width > maxWidth) {
-                height = (height * maxWidth) / width;
-                width = maxWidth;
-              }
-            } else {
-              if (height > maxHeight) {
-                width = (width * maxHeight) / height;
-                height = maxHeight;
-              }
-            }
-            
-            canvas.width = width;
-            canvas.height = height;
-            const ctx = canvas.getContext('2d');
-            ctx.drawImage(img, 0, 0, width, height);
-            
-            canvas.toBlob((blob) => {
-              if (blob) {
-                const reader2 = new FileReader();
-                reader2.onloadend = () => resolve(reader2.result);
-                reader2.onerror = reject;
-                reader2.readAsDataURL(blob);
-              } else {
-                reject(new Error('Failed to compress image'));
-              }
-            }, 'image/jpeg', quality);
-          };
-          img.onerror = reject;
-          img.src = e.target.result;
-        };
-        reader.onerror = reject;
-        reader.readAsDataURL(file);
-      });
-    };
-
     try {
-      let base64Image = await compressImage(file);
-      if (base64Image.length > 5 * 1024 * 1024) {
-        base64Image = await compressImage(file, 1280, 1280, 0.6);
+      // Compress image before uploading using smart compression
+      console.log('Compressing image, original size:', file.size, 'bytes');
+      const base64Image = await smartCompressImage(file);
+      console.log('Compressed image size:', base64Image.length, 'bytes');
+      
+      // Check if compressed image is still too large (max 1MB base64)
+      if (base64Image.length > 1024 * 1024) {
+        throw new Error(t('child.profile.error', { defaultValue: 'התמונה גדולה מדי גם לאחר דחיסה. אנא בחר תמונה קטנה יותר.' }));
       }
       
       await updateProfileImage(familyId, childId, base64Image);
@@ -222,14 +192,17 @@ const ChildView = ({ childId, familyId, onBackToParent, onLogout }) => {
   };
 
   const handleBottomNavAction = (type) => {
+    console.log('[ChildView] handleBottomNavAction called with type:', type);
     setTransactionType(type);
     setTransactionAmount('');
     setTransactionDescription('');
     setTransactionCategory('');
     setShowTransactionModal(true);
+    console.log('[ChildView] showTransactionModal set to true');
   };
 
   const handleCalculatorClick = () => {
+    console.log('[ChildView] handleCalculatorClick called');
     setShowCalculator(true);
     setCalculatorValue('0');
     setCalculatorHistory('');
@@ -353,56 +326,48 @@ const ChildView = ({ childId, familyId, onBackToParent, onLogout }) => {
   const isParent = typeof window !== 'undefined' && sessionStorage.getItem('parentLoggedIn') === 'true';
 
   return (
-    <div className="child-view" dir={i18n.language === 'he' ? 'rtl' : 'ltr'}>
-      {/* Back to Parent Dashboard Button - Only show if logged in as parent */}
-      {isParent && onBackToParent && (
-        <button 
-          className="back-to-parent-button"
-          onClick={onBackToParent}
-          title={t('child.dashboard.backToParent', { defaultValue: 'חזור לממשק הורים' })}
-          aria-label={t('child.dashboard.backToParent', { defaultValue: 'חזור לממשק הורים' })}
-        >
-          <span className="back-to-parent-icon">←</span>
-          <span className="back-to-parent-label">{t('child.dashboard.backToParent', { defaultValue: 'ממשק הורים' })}</span>
-        </button>
-      )}
-      
-      <div className="child-view-content">
-      {/* Top Profile Section */}
-      <div className="child-profile-section">
-        <div className="profile-image-container">
-          {childData.profileImage ? (
-            <img 
-              src={childData.profileImage} 
-              alt={childData.name}
-              className="child-profile-image-large"
-            />
-          ) : (
-            <div className="child-profile-placeholder-large">
-              {childData.name.charAt(0).toUpperCase()}
-            </div>
-          )}
+    <div className="app-layout" dir={i18n.language === 'he' ? 'rtl' : 'ltr'}>
+      {/* Header */}
+      <div className="app-header">
+        {isParent && onBackToParent && (
           <button 
-            className="camera-icon-button"
-            onClick={() => setShowImagePicker(true)}
-            title={t('child.profile.changePicture', { defaultValue: 'שנה תמונה' })}
+            className="menu-btn"
+            onClick={onBackToParent}
+            title={t('child.dashboard.backToParent', { defaultValue: 'חזור לממשק הורים' })}
+            aria-label={t('child.dashboard.backToParent', { defaultValue: 'חזור לממשק הורים' })}
           >
-            📷
+            ←
           </button>
-        </div>
-        <h1 className="child-greeting">
-          {t('child.dashboard.hello', { defaultValue: 'שלום' })}, {childData.name}! 👋
+        )}
+        {!isParent && (
+          <div style={{ width: '44px' }}></div>
+        )}
+        <h1 className="header-title">
+          {childData.name}
         </h1>
+        {!isParent && onLogout && (
+          <button 
+            className="menu-btn"
+            onClick={onLogout}
+            title={t('common.logout', { defaultValue: 'התנתק' })}
+          >
+            🚪
+          </button>
+        )}
+        {isParent && (
+          <div style={{ width: '44px' }}></div>
+        )}
       </div>
-
+      
+      <div className="content-area" style={{ flex: 1, overflowY: 'auto', paddingBottom: '120px' }}>
       {/* My Balance Card */}
-      <div className="my-balance-card">
-        <div className="my-balance-label">{t('child.dashboard.myBalance', { defaultValue: 'היתרה שלי:' })}</div>
-        <div className="my-balance-value">₪{totalBalance.toFixed(2)}</div>
+      <div className="fintech-card">
+        <div className="label-text">{t('child.dashboard.myBalance', { defaultValue: 'היתרה שלי:' })}</div>
+        <div className="big-balance">₪{totalBalance.toFixed(2)}</div>
       </div>
 
       {/* Savings Goal Tracker */}
-      <div className="savings-goal-section">
+      <div className="fintech-card">
         <div className="savings-goal-header">
           <h2>{t('child.savingsGoal.title', { defaultValue: 'מטרת חיסכון' })}</h2>
           {savingsGoal ? (
@@ -482,7 +447,7 @@ const ChildView = ({ childId, familyId, onBackToParent, onLogout }) => {
       </div>
 
       {/* Expenses Distribution Chart */}
-      <div className="expenses-chart-section">
+      <div className="fintech-card">
         <div className="expenses-chart-header">
           <h2>{t('child.expenses.title', { defaultValue: 'התפלגות הוצאות' })}</h2>
           <div className="period-toggle">
@@ -517,7 +482,7 @@ const ChildView = ({ childId, familyId, onBackToParent, onLogout }) => {
       </div>
 
       {/* My History */}
-      <div className="child-history-section">
+      <div className="fintech-card">
         <h2>{t('child.history.title', { defaultValue: 'ההיסטוריה שלי' })}</h2>
         {transactions.length === 0 ? (
           <div className="no-transactions-message">
@@ -635,32 +600,6 @@ const ChildView = ({ childId, familyId, onBackToParent, onLogout }) => {
           </div>
         </div>
       )}
-
-      {/* Bottom Navigation Bar */}
-      <div className="bottom-nav-bar">
-        <button 
-          className="bottom-nav-button expense-button"
-          onClick={() => handleBottomNavAction('expense')}
-        >
-          <span className="bottom-nav-icon">-</span>
-          <span className="bottom-nav-label">{t('parent.dashboard.recordExpense', { defaultValue: 'דיווח הוצאה' })}</span>
-        </button>
-        
-        <button 
-          className="bottom-nav-button center-button"
-          onClick={handleCalculatorClick}
-        >
-          <span className="center-button-icon">🧮</span>
-        </button>
-        
-        <button 
-          className="bottom-nav-button income-button"
-          onClick={() => handleBottomNavAction('deposit')}
-        >
-          <span className="bottom-nav-icon">+</span>
-          <span className="bottom-nav-label">{t('parent.dashboard.addMoney', { defaultValue: 'הוספת כסף' })}</span>
-        </button>
-      </div>
 
       {/* Calculator Overlay */}
       {showCalculator && (
@@ -798,6 +737,47 @@ const ChildView = ({ childId, familyId, onBackToParent, onLogout }) => {
           </div>
         </div>
       )}
+      </div>
+
+      {/* Bottom Navigation Bar - Outside content-area */}
+      <div className="bottom-nav">
+        <button 
+          className="nav-item"
+          onClick={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            handleBottomNavAction('expense');
+          }}
+          type="button"
+        >
+          <span style={{ fontSize: '20px' }}>-</span>
+          <span>{t('parent.dashboard.recordExpense', { defaultValue: 'דיווח הוצאה' })}</span>
+        </button>
+        
+        <button 
+          className="fab-btn"
+          onClick={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            handleCalculatorClick();
+          }}
+          type="button"
+        >
+          🧮
+        </button>
+        
+        <button 
+          className="nav-item"
+          onClick={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            handleBottomNavAction('deposit');
+          }}
+          type="button"
+        >
+          <span style={{ fontSize: '20px' }}>+</span>
+          <span>{t('parent.dashboard.addMoney', { defaultValue: 'הוספת כסף' })}</span>
+        </button>
       </div>
     </div>
   );

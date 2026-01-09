@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { getCategories, addCategory, updateCategory, deleteCategory, getData, updateProfileImage, updateWeeklyAllowance, payWeeklyAllowance, createChild, updateChild, getFamilyInfo, updateParentInfo, addParent } from '../utils/api';
+import { smartCompressImage } from '../utils/imageCompression';
 import ChildJoin from './ChildJoin';
 
 const CHILD_COLORS = {
@@ -205,78 +206,19 @@ const Settings = ({ familyId, onClose, onLogout, activeTab: externalActiveTab, h
       }
       return;
     }
-    
-    // Function to compress image
-    const compressImage = (file, maxWidth = 1920, maxHeight = 1920, quality = 0.8) => {
-      return new Promise((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onload = (e) => {
-          const img = new Image();
-          img.onload = () => {
-            const canvas = document.createElement('canvas');
-            let width = img.width;
-            let height = img.height;
-            
-            // Calculate new dimensions
-            if (width > height) {
-              if (width > maxWidth) {
-                height = (height * maxWidth) / width;
-                width = maxWidth;
-              }
-            } else {
-              if (height > maxHeight) {
-                width = (width * maxHeight) / height;
-                height = maxHeight;
-              }
-            }
-            
-            canvas.width = width;
-            canvas.height = height;
-            
-            const ctx = canvas.getContext('2d');
-            ctx.drawImage(img, 0, 0, width, height);
-            
-            // Convert to base64 with compression
-            canvas.toBlob((blob) => {
-              if (blob) {
-                const reader2 = new FileReader();
-                reader2.onloadend = () => {
-                  resolve(reader2.result);
-                };
-                reader2.onerror = reject;
-                reader2.readAsDataURL(blob);
-              } else {
-                reject(new Error('Failed to compress image'));
-              }
-            }, 'image/jpeg', quality);
-          };
-          img.onerror = reject;
-          img.src = e.target.result;
-        };
-        reader.onerror = reject;
-        reader.readAsDataURL(file);
-      });
-    };
 
     // Set uploading state
     setUploadingImages(prev => ({ ...prev, [childId]: true }));
 
     try {
-      // Compress image before uploading
+      // Compress image before uploading using smart compression
       console.log('Compressing image, original size:', file.size, 'bytes');
-      let base64Image = await compressImage(file);
+      const base64Image = await smartCompressImage(file);
       console.log('Compressed image size:', base64Image.length, 'bytes');
       
-      // Check if compressed image is still too large (max 5MB base64 = ~3.75MB original)
-      if (base64Image.length > 5 * 1024 * 1024) {
-        // Try with lower quality
-        console.log('Image still too large, trying lower quality...');
-        const compressedImage = await compressImage(file, 1280, 1280, 0.6);
-        if (compressedImage.length > 5 * 1024 * 1024) {
-          throw new Error(t('parent.settings.alerts.imageTooLargeAfterCompression', { defaultValue: 'התמונה גדולה מדי גם לאחר דחיסה. אנא בחר תמונה קטנה יותר.' }));
-        }
-        base64Image = compressedImage;
-        console.log('Re-compressed image size:', base64Image.length, 'bytes');
+      // Check if compressed image is still too large (max 1MB base64)
+      if (base64Image.length > 1024 * 1024) {
+        throw new Error(t('parent.settings.alerts.imageTooLargeAfterCompression', { defaultValue: 'התמונה גדולה מדי גם לאחר דחיסה. אנא בחר תמונה קטנה יותר.' }));
       }
       
       console.log('Uploading image, final size:', base64Image.length, 'bytes');
@@ -435,75 +377,139 @@ const Settings = ({ familyId, onClose, onLogout, activeTab: externalActiveTab, h
 
       <div className="settings-content">
         {activeTab === 'categories' && (
-          <div className="categories-section">
-            {!asPage && <h2>{t('parent.settings.categories.title', { defaultValue: 'ניהול קטגוריות' })}</h2>}
+          <div className="categories-section" style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+            {!asPage && <h2 style={{ fontSize: '20px', fontWeight: 700, margin: 0 }}>{t('parent.settings.categories.title', { defaultValue: 'ניהול קטגוריות' })}</h2>}
             
-            <form onSubmit={handleAddCategory} className="add-category-form">
+            {/* Input Group */}
+            <form onSubmit={handleAddCategory} style={{ display: 'flex', gap: '10px', width: '100%', alignItems: 'center' }}>
               <input
                 type="text"
                 value={newCategoryName}
                 onChange={(e) => setNewCategoryName(e.target.value)}
-                placeholder={t('parent.settings.categories.categoryName', { defaultValue: 'שם קטגוריה חדשה' })}
-                className="category-input"
+                placeholder={t('parent.settings.categories.categoryName', { defaultValue: 'שם קטגוריה' })}
+                style={{
+                  flex: 1,
+                  height: '50px',
+                  borderRadius: '12px',
+                  border: '1px solid rgba(0,0,0,0.1)',
+                  padding: '0 16px',
+                  fontSize: '16px',
+                  outline: 'none'
+                }}
               />
-              <button type="submit" className="add-button">{t('parent.settings.categories.addCategory', { defaultValue: 'הוסף קטגוריה' })}</button>
+              <button 
+                type="submit" 
+                style={{
+                  width: 'auto',
+                  height: '50px',
+                  padding: '0 24px',
+                  borderRadius: '12px',
+                  background: 'var(--primary-gradient)',
+                  color: 'white',
+                  border: 'none',
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                  whiteSpace: 'nowrap'
+                }}
+              >
+                {t('parent.settings.categories.addCategory', { defaultValue: 'הוסף קטגוריה' })}
+              </button>
             </form>
 
-            <div className="categories-list">
+            {/* Categories List as Mini Cards */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
               {categories.map(category => (
-                <div key={category._id} className="category-item">
+                <div 
+                  key={category._id} 
+                  style={{
+                    background: 'white',
+                    padding: '16px',
+                    borderRadius: '16px',
+                    boxShadow: '0 2px 10px rgba(0,0,0,0.05)',
+                    display: 'flex',
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    gap: '12px'
+                  }}
+                >
                   {editingCategory === category._id ? (
-                    <div className="category-edit">
-                      <input
-                        type="text"
-                        defaultValue={category.name}
-                        onBlur={(e) => {
-                          if (e.target.value !== category.name) {
-                            handleUpdateCategory(category._id, e.target.value, category.activeFor);
-                          } else {
-                            setEditingCategory(null);
-                          }
-                        }}
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter') {
-                            e.target.blur();
-                          } else if (e.key === 'Escape') {
-                            setEditingCategory(null);
-                          }
-                        }}
-                        autoFocus
-                        className="category-name-input"
-                      />
-                    </div>
+                    <input
+                      type="text"
+                      defaultValue={category.name}
+                      onBlur={(e) => {
+                        if (e.target.value !== category.name) {
+                          handleUpdateCategory(category._id, e.target.value, category.activeFor);
+                        } else {
+                          setEditingCategory(null);
+                        }
+                      }}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          e.target.blur();
+                        } else if (e.key === 'Escape') {
+                          setEditingCategory(null);
+                        }
+                      }}
+                      autoFocus
+                      style={{
+                        flex: 1,
+                        padding: '8px 12px',
+                        borderRadius: '8px',
+                        border: '1px solid rgba(0,0,0,0.1)',
+                        fontSize: '16px',
+                        outline: 'none'
+                      }}
+                    />
                   ) : (
-                    <div className="category-header">
-                      <span 
-                        className="category-name"
-                        onClick={() => setEditingCategory(category._id)}
-                      >
-                        {category.name}
-                      </span>
+                    <>
                       <button
-                        className="delete-button"
                         onClick={() => handleDeleteCategory(category._id)}
+                        style={{
+                          background: 'none',
+                          border: 'none',
+                          fontSize: '18px',
+                          cursor: 'pointer',
+                          padding: '4px',
+                          flexShrink: 0
+                        }}
                       >
                         🗑️
                       </button>
-                    </div>
+                      <span 
+                        onClick={() => setEditingCategory(category._id)}
+                        style={{
+                          flex: 1,
+                          fontSize: '16px',
+                          fontWeight: 600,
+                          cursor: 'pointer'
+                        }}
+                      >
+                        {category.name}
+                      </span>
+                      <div style={{ display: 'flex', flexDirection: 'row', gap: '12px', flexWrap: 'wrap', alignItems: 'center' }}>
+                        {Object.entries(allData.children || {}).map(([childId, child]) => (
+                          <label 
+                            key={childId}
+                            style={{
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: '6px',
+                              cursor: 'pointer',
+                              fontSize: '14px'
+                            }}
+                          >
+                            <input
+                              type="checkbox"
+                              checked={(category.activeFor || []).includes(childId)}
+                              onChange={() => toggleCategoryForChild(category._id, childId)}
+                              style={{ width: '18px', height: '18px', cursor: 'pointer' }}
+                            />
+                            {child.name}
+                          </label>
+                        ))}
+                      </div>
+                    </>
                   )}
-                  
-                  <div className="category-children">
-                    {Object.entries(allData.children || {}).map(([childId, child]) => (
-                      <label key={childId}>
-                        <input
-                          type="checkbox"
-                          checked={(category.activeFor || []).includes(childId)}
-                          onChange={() => toggleCategoryForChild(category._id, childId)}
-                        />
-                        {child.name}
-                      </label>
-                    ))}
-                  </div>
                 </div>
               ))}
             </div>
@@ -741,34 +747,63 @@ const Settings = ({ familyId, onClose, onLogout, activeTab: externalActiveTab, h
         )}
 
         {activeTab === 'children' && (
-          <div className="children-section">
-            {!asPage && <h2>{t('parent.settings.manageChildren', { defaultValue: 'ניהול ילדים' })}</h2>}
+          <div className="children-section" style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+            {!asPage && <h2 style={{ fontSize: '20px', fontWeight: 700, margin: 0 }}>{t('parent.settings.manageChildren', { defaultValue: 'ניהול ילדים' })}</h2>}
             
-            <div className="children-list">
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
               {Object.entries(allData.children || {}).map(([childId, child]) => (
-                <div key={childId} className="child-item">
-                  <div className="child-info">
-                    {child.profileImage && (
-                      <img src={child.profileImage} alt={child.name} className="child-avatar" />
-                    )}
-                    <div>
-                      <h3>{child.name}</h3>
-                      <p>{t('parent.settings.balance', { defaultValue: 'יתרה' })}: ₪{((child.balance || 0) + (child.cashBoxBalance || 0)).toFixed(2)}</p>
-                    </div>
+                <div 
+                  key={childId} 
+                  style={{
+                    background: 'white',
+                    padding: '16px',
+                    borderRadius: '16px',
+                    boxShadow: '0 2px 10px rgba(0,0,0,0.05)',
+                    display: 'flex',
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    gap: '12px'
+                  }}
+                >
+                  {child.profileImage && (
+                    <img 
+                      src={child.profileImage} 
+                      alt={child.name} 
+                      style={{
+                        width: '50px',
+                        height: '50px',
+                        borderRadius: '50%',
+                        objectFit: 'cover',
+                        flexShrink: 0
+                      }}
+                    />
+                  )}
+                  <div style={{ flex: 1 }}>
+                    <h3 style={{ margin: 0, fontSize: '16px', fontWeight: 600 }}>{child.name}</h3>
+                    <p style={{ margin: '4px 0 0 0', fontSize: '14px', color: 'var(--text-muted)' }}>
+                      {t('parent.settings.balance', { defaultValue: 'יתרה' })}: ₪{((child.balance || 0) + (child.cashBoxBalance || 0)).toFixed(2)}
+                    </p>
                   </div>
-                  <div className="child-actions">
-                  <button
-                      className="edit-child-button"
+                  <div style={{ display: 'flex', gap: '8px', flexShrink: 0 }}>
+                    <button
                       onClick={() => {
                         setEditingChild({ childId, childName: child.name, phoneNumber: child.phoneNumber || '' });
                         setEditChildName(child.name);
                         setEditChildPhone(child.phoneNumber || '');
                       }}
+                      style={{
+                        padding: '8px 16px',
+                        borderRadius: '8px',
+                        border: '1px solid rgba(0,0,0,0.1)',
+                        background: 'white',
+                        fontSize: '14px',
+                        fontWeight: 500,
+                        cursor: 'pointer'
+                      }}
                     >
                       {t('common.edit', { defaultValue: 'ערוך' })}
                     </button>
                     <button
-                      className="view-phone-button"
                       onClick={() => {
                         const childPhone = child.phoneNumber || '';
                         if (childPhone) {
@@ -777,16 +812,25 @@ const Settings = ({ familyId, onClose, onLogout, activeTab: externalActiveTab, h
                           alert(t('parent.settings.noPhoneNumber', { defaultValue: 'לילד זה אין מספר טלפון מוגדר' }));
                         }
                       }}
+                      style={{
+                        padding: '8px 16px',
+                        borderRadius: '8px',
+                        border: '1px solid rgba(0,0,0,0.1)',
+                        background: 'white',
+                        fontSize: '14px',
+                        fontWeight: 500,
+                        cursor: 'pointer'
+                      }}
                     >
                       {t('parent.settings.viewPhone', { defaultValue: 'צפה בטלפון' })}
-                  </button>
+                    </button>
                   </div>
                 </div>
               ))}
             </div>
 
-            <div className="add-child-section">
-              <h3>{t('parent.settings.addChild', { defaultValue: 'הוסף ילד חדש' })}</h3>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+              <h3 style={{ fontSize: '18px', fontWeight: 600, margin: 0 }}>{t('parent.settings.addChild', { defaultValue: 'הוסף ילד חדש' })}</h3>
               <form
                 onSubmit={async (e) => {
                   e.preventDefault();
@@ -851,14 +895,23 @@ const Settings = ({ familyId, onClose, onLogout, activeTab: externalActiveTab, h
                     setCreatingChild(false);
                   }
                 }}
-                className="add-child-form"
+                style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}
               >
                 <input
                   type="text"
                   value={newChildName}
                   onChange={(e) => setNewChildName(e.target.value)}
                   placeholder={t('parent.settings.childName', { defaultValue: 'שם הילד' })}
-                  className="child-name-input"
+                  style={{
+                    width: '100%',
+                    height: '50px',
+                    borderRadius: '12px',
+                    border: '1px solid rgba(0,0,0,0.1)',
+                    padding: '0 16px',
+                    fontSize: '16px',
+                    outline: 'none',
+                    boxSizing: 'border-box'
+                  }}
                   required
                 />
                 <input
@@ -866,11 +919,34 @@ const Settings = ({ familyId, onClose, onLogout, activeTab: externalActiveTab, h
                   value={newChildPhone}
                   onChange={(e) => setNewChildPhone(e.target.value)}
                   placeholder={t('parent.settings.childPhone', { defaultValue: 'מספר טלפון לילד' })}
-                  className="child-name-input"
                   inputMode="numeric"
+                  style={{
+                    width: '100%',
+                    height: '50px',
+                    borderRadius: '12px',
+                    border: '1px solid rgba(0,0,0,0.1)',
+                    padding: '0 16px',
+                    fontSize: '16px',
+                    outline: 'none',
+                    boxSizing: 'border-box'
+                  }}
                   required
                 />
-                <button type="submit" className="add-child-button" disabled={creatingChild}>
+                <button 
+                  type="submit" 
+                  disabled={creatingChild}
+                  style={{
+                    width: '100%',
+                    height: '50px',
+                    borderRadius: '12px',
+                    background: creatingChild ? '#ccc' : 'var(--primary-gradient)',
+                    color: 'white',
+                    border: 'none',
+                    fontSize: '16px',
+                    fontWeight: 600,
+                    cursor: creatingChild ? 'not-allowed' : 'pointer'
+                  }}
+                >
                   {creatingChild 
                     ? t('common.saving', { defaultValue: 'שומר...' })
                     : t('parent.settings.addChild', { defaultValue: 'הוסף ילד' })
