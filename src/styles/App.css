@@ -2712,7 +2712,7 @@ strong, b {
   .otp-header h1 {
     font-size: 24px;
   }
-  
+
   .otp-input {
     width: 45px;
     height: 55px;
@@ -3267,16 +3267,20 @@ strong, b {
   left: 50%;
   transform: translateX(-50%);
   width: auto;
+  text-align: center;
 }
 
 [dir="rtl"] .dashboard-header-new .family-name {
   left: auto;
-  right: 50%;
-  transform: translateX(50%);
+  right: 20px;
+  transform: none;
   text-align: right;
 }
 
 [dir="ltr"] .dashboard-header-new .family-name {
+  left: 20px;
+  right: auto;
+  transform: none;
   text-align: left;
 }
 
