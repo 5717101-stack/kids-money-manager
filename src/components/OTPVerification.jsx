@@ -357,7 +357,12 @@ const OTPVerification = ({ phoneNumber, isExistingFamily, onVerified, onBack }) 
                 </button>
               ) : (
                 <p style={{ fontSize: '14px', color: 'var(--text-muted)' }}>
-                  {t('auth.otpVerification.resendIn', { seconds: resendTimer, defaultValue: 'ניתן לשלוח קוד מחדש בעוד {seconds} שניות' })}
+                  {t('auth.otpVerification.resendIn', { 
+                    seconds: resendTimer,
+                    defaultValue: i18n.language === 'he' 
+                      ? 'ניתן לשלוח קוד מחדש בעוד {{seconds}} שניות' 
+                      : 'You can resend code in {{seconds}} seconds'
+                  })}
                 </p>
               )}
             </div>

@@ -254,7 +254,7 @@
       "verify": "אימות",
       "verifying": "מאמת...",
       "resend": "שלח קוד מחדש",
-      "resendIn": "ניתן לשלוח קוד מחדש בעוד {seconds} שניות",
+      "resendIn": "ניתן לשלוח קוד מחדש בעוד {{seconds}} שניות",
       "back": "חזור",
       "invalidCode": "קוד אימות שגוי",
       "verifyError": "שגיאה באימות קוד",

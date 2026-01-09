@@ -255,7 +255,7 @@
       "verify": "Verify",
       "verifying": "Verifying...",
       "resend": "Resend Code",
-      "resendIn": "You can resend code in {seconds} seconds",
+      "resendIn": "You can resend code in {{seconds}} seconds",
       "back": "Back",
       "invalidCode": "Invalid verification code",
       "verifyError": "Error verifying code",
