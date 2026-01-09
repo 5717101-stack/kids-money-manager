@@ -24,49 +24,6 @@ const OTPVerification = ({ phoneNumber, isExistingFamily, onVerified, onBack }) 
     return () => clearInterval(timer);
   }, []);
 
-  // Automatically send SMS when OTP verification screen opens
-  useEffect(() => {
-    const sendOTPOnMount = async () => {
-      if (!phoneNumber) return;
-      
-      try {
-        // Determine API URL
-        let apiUrl;
-        if (typeof window !== 'undefined' && window.Capacitor?.isNativePlatform()) {
-          apiUrl = 'https://kids-money-manager-server.onrender.com/api';
-        } else {
-          apiUrl = import.meta.env.VITE_API_URL || 'https://kids-money-manager-server.onrender.com/api';
-        }
-        
-        const url = `${apiUrl}/auth/send-otp`;
-        
-        // Send OTP request
-        const response = await fetch(url, {
-          method: 'POST',
-          mode: 'cors',
-          credentials: 'omit',
-          headers: {
-            'Content-Type': 'application/json',
-            'Accept': 'application/json',
-          },
-          body: JSON.stringify({ phoneNumber }),
-        });
-        
-        if (response.ok) {
-          const data = await response.json();
-          console.log('[OTP] SMS sent automatically when OTP screen opened:', data);
-        } else {
-          console.error('[OTP] Failed to send SMS automatically:', await response.text());
-        }
-      } catch (error) {
-        console.error('[OTP] Error sending SMS automatically:', error);
-        // Don't show error to user - this is automatic background operation
-      }
-    };
-    
-    // Send SMS automatically when component mounts
-    sendOTPOnMount();
-  }, [phoneNumber]);
 
   const handleOTPChange = (index, value) => {
     if (!/^\d*$/.test(value)) return;
@@ -345,7 +302,7 @@ const OTPVerification = ({ phoneNumber, isExistingFamily, onVerified, onBack }) 
         </form>
       </div>
       <footer className="app-footer">
-        <span className="version">{t('common.version', { defaultValue: 'גרסה' })} 3.4.30</span>
+        <span className="version">{t('common.version', { defaultValue: 'גרסה' })} 3.4.31</span>
       </footer>
     </div>
   );
