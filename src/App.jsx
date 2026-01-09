@@ -274,13 +274,6 @@ const App = () => {
               )}
               <span className="child-name">{currentChild.name}</span>
             </div>
-            <button
-              className="logout-button"
-              onClick={handleLogout}
-              title="התנתק"
-            >
-              🚪 התנתק
-            </button>
           </nav>
 
           <main className="main-content">
