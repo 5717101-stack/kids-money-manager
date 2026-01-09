@@ -91,6 +91,35 @@ const ParentDashboard = ({ familyId, onChildrenUpdated, onLogout, onViewChild })
     }
   };
 
+  const handleBottomNavAction = (type) => {
+    // If children list is empty or has only one child, open directly
+    if (childrenList.length === 0) {
+      // No children, show message or handle differently
+      alert(t('parent.dashboard.noChildren', { defaultValue: 'אין ילדים במשפחה. הוסף ילד בהגדרות.' }));
+      return;
+    }
+    if (childrenList.length === 1) {
+      // Only one child, open directly
+      setQuickActionType(type);
+      setShowQuickAction(true);
+      return;
+    }
+    // Multiple children, show selector
+    setPendingActionType(type);
+    setShowChildSelector(true);
+  };
+
+  const handleChildSelected = (child) => {
+    setShowChildSelector(false);
+    setQuickActionType(pendingActionType);
+    // Pre-select the child in QuickActionModal
+    setShowQuickAction(true);
+    // Store selected child ID for QuickActionModal
+    if (typeof window !== 'undefined') {
+      sessionStorage.setItem('selectedChildId', child._id);
+    }
+  };
+
   const childrenList = Object.values(allData.children || {}).filter(child => child && child._id);
 
   if (loading) {
@@ -230,7 +259,8 @@ const ParentDashboard = ({ familyId, onChildrenUpdated, onLogout, onViewChild })
         </div>
       )}
 
-      {/* Bottom Navigation Bar */}
+      {/* Bottom Navigation Bar - Only show on dashboard view */}
+      {currentView === 'dashboard' && (
       <div className="bottom-nav-bar">
         <button 
           className="bottom-nav-button expense-button"
