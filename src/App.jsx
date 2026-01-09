@@ -303,7 +303,18 @@ const App = () => {
 
           <main className="main-content">
             {view === 'parent' && (
-              <ParentDashboard familyId={familyId} onChildrenUpdated={loadChildren} onLogout={handleLogout} />
+              <ParentDashboard 
+                familyId={familyId} 
+                onChildrenUpdated={loadChildren} 
+                onLogout={handleLogout}
+                onViewChild={(child) => {
+                  setCurrentChild(child);
+                  setIsChildView(true);
+                  setScreen('child-view');
+                  sessionStorage.setItem('childId', child._id);
+                  sessionStorage.setItem('isChildView', 'true');
+                }}
+              />
             )}
             {children.map(child => (
               view === child._id && (

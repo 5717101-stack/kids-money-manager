@@ -217,6 +217,12 @@ const ParentDashboard = ({ familyId, onChildrenUpdated, onLogout, onViewChild })
         familyId={familyId}
         onLogout={onLogout}
         onChildrenUpdated={onChildrenUpdated}
+        childrenList={childrenList}
+        onChildDashboardClick={(child) => {
+          if (onViewChild) {
+            onViewChild(child);
+          }
+        }}
       />
 
       {/* Settings Content (not modal) */}
