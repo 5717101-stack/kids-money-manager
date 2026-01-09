@@ -238,13 +238,6 @@ const WelcomeScreen = ({ onSelectCreate, onSelectJoinAsParent, onSelectJoinAsChi
             📊 טבלת משתמשים
           </button>
           <button 
-            className="test-logs-button"
-            onClick={handleTestLogs}
-            title="בדיקת לוגים"
-          >
-            🔍 בדיקת לוגים
-          </button>
-          <button 
             className="delete-all-button"
             onClick={handleDeleteAllUsers}
             title="מחק את כל המשתמשים והנתונים"
@@ -263,7 +256,7 @@ const WelcomeScreen = ({ onSelectCreate, onSelectJoinAsParent, onSelectJoinAsChi
             🗑️ מחק הכל
           </button>
         </div>
-        <span className="version">{t('common.version')} 3.4.24</span>
+        <span className="version">{t('common.version')} 3.4.25</span>
       </footer>
       
       {showUsersTable && (

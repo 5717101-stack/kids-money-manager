@@ -388,24 +388,7 @@ const PhoneLogin = ({ onOTPSent }) => {
         </form>
       </div>
       <footer className="app-footer">
-        <button 
-          className="test-logs-button"
-          onClick={async () => {
-            try {
-              const apiUrl = import.meta.env.VITE_API_URL || 'https://kids-money-manager-server.onrender.com/api';
-              await fetch(`${apiUrl}/test-logs`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' }
-              });
-            } catch (error) {
-              console.error('Error sending test log:', error);
-            }
-          }}
-          title="בדיקת לוגים"
-        >
-          🔍 בדיקת לוגים
-        </button>
-        <span className="version">{t('common.version', { defaultValue: 'גרסה' })} 3.4.24</span>
+        <span className="version">{t('common.version', { defaultValue: 'גרסה' })} 3.4.25</span>
       </footer>
     </div>
   );

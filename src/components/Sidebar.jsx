@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import Settings from './Settings';
+import LanguageToggle from './LanguageToggle';
 
 const Sidebar = ({ isOpen, onClose, familyId, onLogout, onChildrenUpdated, onMenuItemClick }) => {
   const { t, i18n } = useTranslation();
@@ -89,6 +90,11 @@ const Sidebar = ({ isOpen, onClose, familyId, onLogout, onChildrenUpdated, onMen
                 <span className="sidebar-nav-label">{item.label}</span>
               </button>
             ))}
+            
+            {/* Language Toggle */}
+            <div className="sidebar-language-toggle">
+              <LanguageToggle />
+            </div>
           </nav>
         </div>
 

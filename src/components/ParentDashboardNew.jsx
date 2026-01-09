@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { getData, getCategories, getChildTransactions, addTransaction } from '../utils/api';
-import LanguageToggle from './LanguageToggle';
 import Sidebar from './Sidebar';
 import QuickActionModal from './QuickActionModal';
 import Settings from './Settings';
@@ -125,7 +124,6 @@ const ParentDashboard = ({ familyId, onChildrenUpdated, onLogout }) => {
       {/* Header */}
       <div className="dashboard-header-new">
         <div className="header-left">
-          <LanguageToggle />
         </div>
         <h1 className="family-name">
           {getPageTitle()}

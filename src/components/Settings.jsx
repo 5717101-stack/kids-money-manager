@@ -394,29 +394,7 @@ const Settings = ({ familyId, onClose, onLogout, activeTab: externalActiveTab, h
       {!inSidebar && !asPage && (
         <div className="settings-header">
           <h1>{t('parent.settings.title', { defaultValue: 'הגדרות' })}</h1>
-          <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-            {onLogout && (
-              <button
-                className="logout-button"
-                onClick={onLogout}
-                title={t('common.logout', { defaultValue: 'התנתק' })}
-                style={{
-                  padding: '8px 16px',
-                  backgroundColor: '#ef4444',
-                  color: 'white',
-                  border: 'none',
-                  borderRadius: '8px',
-                  cursor: 'pointer',
-                  fontSize: '14px',
-                  fontWeight: '600',
-                  transition: 'all 0.2s ease'
-                }}
-              >
-                🚪 {t('common.logout', { defaultValue: 'התנתק' })}
-              </button>
-            )}
-        <button className="close-button" onClick={onClose}>✕</button>
-          </div>
+          <button className="close-button" onClick={onClose}>✕</button>
         </div>
       )}
 

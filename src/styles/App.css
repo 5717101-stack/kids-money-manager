@@ -1116,6 +1116,7 @@ strong, b {
   display: flex;
   gap: 12px;
   margin-bottom: 32px;
+  flex-wrap: wrap;
 }
 
 .category-input {
@@ -1142,6 +1143,8 @@ strong, b {
   background: var(--primary);
   color: var(--text-light);
   border-radius: var(--radius-md);
+  white-space: nowrap;
+  flex-shrink: 0;
   cursor: pointer;
   transition: all 0.2s ease;
   box-shadow: var(--shadow-sm);
@@ -3260,6 +3263,7 @@ strong, b {
   border-radius: 16px;
   box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
   position: relative;
+  z-index: 1;
 }
 
 .dashboard-header-new .family-name {
@@ -5173,6 +5177,14 @@ strong, b {
   padding: 16px;
   gap: 8px;
   border-bottom: 1px solid var(--border);
+}
+
+.sidebar-language-toggle {
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border);
+  display: flex;
+  justify-content: center;
 }
 
 .sidebar-nav-item {
