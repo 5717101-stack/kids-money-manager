@@ -202,7 +202,7 @@ const App = () => {
   };
 
   return (
-    <div className="app">
+    <div className="app" dir={i18n.language === 'he' ? 'rtl' : 'ltr'}>
       {screen === 'main-login' && (
         <MainLogin 
           onLoginSuccess={handleOTPVerified}
@@ -264,34 +264,38 @@ const App = () => {
       )}
 
       {screen === 'child-view' && familyId && currentChild && (
-        <ChildView 
-          childId={currentChild._id} 
-          familyId={familyId}
-          onBackToParent={() => {
-            setIsChildView(false);
-            setCurrentChild(null);
-            setScreen('dashboard');
-            sessionStorage.removeItem('childId');
-            sessionStorage.removeItem('isChildView');
-            sessionStorage.setItem('parentLoggedIn', 'true');
-          }}
-          onLogout={handleLogout}
-        />
+        <div className="app-layout">
+          <ChildView 
+            childId={currentChild._id} 
+            familyId={familyId}
+            onBackToParent={() => {
+              setIsChildView(false);
+              setCurrentChild(null);
+              setScreen('dashboard');
+              sessionStorage.removeItem('childId');
+              sessionStorage.removeItem('isChildView');
+              sessionStorage.setItem('parentLoggedIn', 'true');
+            }}
+            onLogout={handleLogout}
+          />
+        </div>
       )}
 
       {screen === 'dashboard' && familyId && !isChildView && (
-        <ParentDashboard 
-          familyId={familyId} 
-          onChildrenUpdated={loadChildren} 
-          onLogout={handleLogout}
-          onViewChild={(child) => {
-            setCurrentChild(child);
-            setIsChildView(true);
-            setScreen('child-view');
-            sessionStorage.setItem('childId', child._id);
-            sessionStorage.setItem('isChildView', 'true');
-          }}
-        />
+        <div className="app-layout">
+          <ParentDashboard 
+            familyId={familyId} 
+            onChildrenUpdated={loadChildren} 
+            onLogout={handleLogout}
+            onViewChild={(child) => {
+              setCurrentChild(child);
+              setIsChildView(true);
+              setScreen('child-view');
+              sessionStorage.setItem('childId', child._id);
+              sessionStorage.setItem('isChildView', 'true');
+            }}
+          />
+        </div>
       )}
     </div>
   );

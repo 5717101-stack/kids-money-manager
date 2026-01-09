@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { getChild, getChildTransactions, updateCashBoxBalance, getSavingsGoal, updateSavingsGoal, deleteSavingsGoal, updateProfileImage, getExpensesByCategory, addTransaction, getCategories } from '../utils/api';
 import { smartCompressImage } from '../utils/imageCompression';
@@ -33,12 +33,12 @@ const ChildView = ({ childId, familyId, onBackToParent, onLogout }) => {
   useEffect(() => {
     loadChildData();
     loadSavingsGoal();
-    // Refresh every 5 seconds to show updated balance (but not expenses chart)
+    // Refresh every 15 seconds to show updated balance (reduced frequency for better performance)
     const interval = setInterval(() => {
       loadChildData();
       loadSavingsGoal();
       // Don't reload expenses chart automatically - only when period changes
-    }, 5000);
+    }, 15000);
     return () => clearInterval(interval);
   }, [childId, familyId]);
 
@@ -61,7 +61,7 @@ const ChildView = ({ childId, familyId, onBackToParent, onLogout }) => {
     }
   };
 
-  const loadChildData = async () => {
+  const loadChildData = useCallback(async () => {
     if (!familyId || !childId) return;
     try {
       const child = await getChild(familyId, childId);
@@ -74,9 +74,9 @@ const ChildView = ({ childId, familyId, onBackToParent, onLogout }) => {
     } catch (error) {
       console.error('Error loading child data:', error);
     }
-  };
+  }, [familyId, childId]);
 
-  const loadSavingsGoal = async () => {
+  const loadSavingsGoal = useCallback(async () => {
     if (!familyId || !childId) return;
     try {
       const goal = await getSavingsGoal(familyId, childId);
@@ -88,7 +88,7 @@ const ChildView = ({ childId, familyId, onBackToParent, onLogout }) => {
     } catch (error) {
       console.error('Error loading savings goal:', error);
     }
-  };
+  }, [familyId, childId]);
 
   const loadExpensesByCategory = async () => {
     if (!familyId || !childId) return;
@@ -290,6 +290,19 @@ const ChildView = ({ childId, familyId, onBackToParent, onLogout }) => {
 
     try {
       setSubmittingTransaction(true);
+      const amount = parseFloat(transactionAmount);
+      const currentCashBox = childData?.cashBoxBalance || 0;
+      
+      // Update cashBoxBalance based on transaction type
+      // Deposit adds to cash box, expense subtracts from cash box
+      const newCashBoxBalance = transactionType === 'deposit' 
+        ? currentCashBox + amount 
+        : Math.max(0, currentCashBox - amount);
+      
+      // Update cash box balance
+      await updateCashBoxBalance(familyId, childId, newCashBoxBalance);
+      
+      // Also add transaction to history (for display purposes)
       const category = transactionType === 'expense' ? transactionCategory : null;
       await addTransaction(familyId, childId, transactionType, transactionAmount, transactionDescription, category);
       
@@ -317,10 +330,15 @@ const ChildView = ({ childId, familyId, onBackToParent, onLogout }) => {
     );
   }
 
-  const totalBalance = (childData.balance || 0) + (childData.cashBoxBalance || 0);
-  const goalProgress = savingsGoal && savingsGoal.targetAmount > 0
-    ? Math.min((totalBalance / savingsGoal.targetAmount) * 100, 100)
-    : 0;
+  // Memoize calculations to avoid unnecessary recalculations
+  const totalBalance = useMemo(() => {
+    return (childData?.balance || 0) + (childData?.cashBoxBalance || 0);
+  }, [childData?.balance, childData?.cashBoxBalance]);
+  
+  const goalProgress = useMemo(() => {
+    if (!savingsGoal || !savingsGoal.targetAmount || savingsGoal.targetAmount <= 0) return 0;
+    return Math.min((totalBalance / savingsGoal.targetAmount) * 100, 100);
+  }, [savingsGoal, totalBalance]);
 
   // Check if user is a parent (logged in as parent)
   const isParent = typeof window !== 'undefined' && sessionStorage.getItem('parentLoggedIn') === 'true';
@@ -359,11 +377,83 @@ const ChildView = ({ childId, familyId, onBackToParent, onLogout }) => {
         )}
       </div>
       
-      <div className="content-area" style={{ flex: 1, overflowY: 'auto', paddingBottom: '120px' }}>
-      {/* My Balance Card */}
+      <div className="content-area" style={{ flex: 1, overflowY: 'auto', paddingBottom: '120px', minHeight: 0 }}>
+      {/* Profile Image Section */}
+      <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '20px', paddingTop: '10px' }}>
+        <div style={{ position: 'relative' }}>
+          {childData?.profileImage ? (
+            <img 
+              src={childData.profileImage} 
+              alt={childData.name}
+              loading="lazy"
+              decoding="async"
+              style={{
+                width: '120px',
+                height: '120px',
+                borderRadius: '50%',
+                objectFit: 'cover',
+                border: '4px solid white',
+                boxShadow: '0 4px 12px rgba(0,0,0,0.1)'
+              }}
+            />
+          ) : (
+            <div style={{
+              width: '120px',
+              height: '120px',
+              borderRadius: '50%',
+              background: 'var(--primary-gradient)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              fontSize: '48px',
+              color: 'white',
+              fontWeight: 700,
+              border: '4px solid white',
+              boxShadow: '0 4px 12px rgba(0,0,0,0.1)'
+            }}>
+              {childData?.name?.charAt(0)?.toUpperCase() || '?'}
+            </div>
+          )}
+          <button
+            onClick={() => setShowImagePicker(true)}
+            style={{
+              position: 'absolute',
+              bottom: 0,
+              right: 0,
+              width: '36px',
+              height: '36px',
+              borderRadius: '50%',
+              background: 'var(--primary)',
+              border: '3px solid white',
+              color: 'white',
+              fontSize: '18px',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              boxShadow: '0 2px 8px rgba(0,0,0,0.2)'
+            }}
+            title={childData?.profileImage ? t('child.profile.changePicture', { defaultValue: 'שנה תמונה' }) : t('child.profile.upload', { defaultValue: 'העלה תמונה' })}
+          >
+            {childData?.profileImage ? '✏️' : '+'}
+          </button>
+        </div>
+      </div>
+
+      {/* Total Balance Card - Redesigned */}
       <div className="fintech-card">
-        <div className="label-text">{t('child.dashboard.myBalance', { defaultValue: 'היתרה שלי:' })}</div>
-        <div className="big-balance">₪{totalBalance.toFixed(2)}</div>
+        <div className="label-text" style={{ marginBottom: '8px' }}>{t('child.dashboard.totalBalance', { defaultValue: 'יתרה כוללת' })}</div>
+        <div className="big-balance" style={{ marginBottom: '16px' }}>₪{totalBalance.toFixed(2)}</div>
+        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '14px', color: 'var(--text-muted)', paddingTop: '12px', borderTop: '1px solid rgba(0,0,0,0.1)' }}>
+          <div>
+            <div style={{ fontSize: '12px', marginBottom: '4px' }}>יתרה אצל ההורים</div>
+            <div style={{ fontSize: '16px', fontWeight: 600, color: 'var(--text-main)' }}>₪{(childData?.balance || 0).toFixed(2)}</div>
+          </div>
+          <div style={{ textAlign: 'right' }}>
+            <div style={{ fontSize: '12px', marginBottom: '4px' }}>יתרה בקופה</div>
+            <div style={{ fontSize: '16px', fontWeight: 600, color: 'var(--text-main)' }}>₪{(childData?.cashBoxBalance || 0).toFixed(2)}</div>
+          </div>
+        </div>
       </div>
 
       {/* Savings Goal Tracker */}
@@ -402,40 +492,29 @@ const ChildView = ({ childId, familyId, onBackToParent, onLogout }) => {
         </div>
 
         {savingsGoal ? (
-          <div className="savings-goal-display-circular">
-            <div className="circular-progress-container">
-              <svg className="circular-progress" viewBox="0 0 200 200">
-                <circle
-                  className="circular-progress-bg"
-                  cx="100"
-                  cy="100"
-                  r="90"
-                  fill="none"
-                  stroke="#E5E7EB"
-                  strokeWidth="16"
-                />
-                <circle
-                  className="circular-progress-fill"
-                  cx="100"
-                  cy="100"
-                  r="90"
-                  fill="none"
-                  stroke="#10B981"
-                  strokeWidth="16"
-                  strokeLinecap="round"
-                  strokeDasharray={`${2 * Math.PI * 90}`}
-                  strokeDashoffset={`${2 * Math.PI * 90 * (1 - goalProgress / 100)}`}
-                  transform="rotate(-90 100 100)"
-                />
-              </svg>
-              <div className="circular-progress-content">
-                <div className="circular-progress-percentage">{goalProgress.toFixed(0)}%</div>
-              </div>
-            </div>
-            <div className="goal-info">
+          <div className="savings-goal-display-linear">
+            <div className="goal-info-header">
               <div className="goal-name">{savingsGoal.name}</div>
+              <div className="goal-progress-percentage">{goalProgress.toFixed(0)}%</div>
+            </div>
+            <div className="linear-progress-container">
+              <div 
+                className="linear-progress-bar"
+                style={{ width: `${goalProgress}%` }}
+              />
+            </div>
+            <div className="goal-info-footer">
+              <div className="goal-amount">
+                <span className="goal-label">{t('child.savingsGoal.saved', { defaultValue: 'נחסך' })}:</span>
+                <span className="goal-value">₪{totalBalance.toFixed(2)}</span>
+              </div>
               <div className="goal-remaining">
-                {t('child.savingsGoal.missing', { defaultValue: 'חסר' })}: ₪{Math.max(0, savingsGoal.targetAmount - totalBalance).toFixed(2)}
+                <span className="goal-label">{t('child.savingsGoal.missing', { defaultValue: 'חסר' })}:</span>
+                <span className="goal-value">₪{Math.max(0, savingsGoal.targetAmount - totalBalance).toFixed(2)}</span>
+              </div>
+              <div className="goal-target">
+                <span className="goal-label">{t('child.savingsGoal.target', { defaultValue: 'יעד' })}:</span>
+                <span className="goal-value">₪{savingsGoal.targetAmount.toFixed(2)}</span>
               </div>
             </div>
           </div>
@@ -481,32 +560,40 @@ const ChildView = ({ childId, familyId, onBackToParent, onLogout }) => {
         )}
       </div>
 
-      {/* My History */}
+      {/* My History - Scrollable */}
       <div className="fintech-card">
-        <h2>{t('child.history.title', { defaultValue: 'ההיסטוריה שלי' })}</h2>
+        <h2 style={{ marginBottom: '16px' }}>{t('child.history.title', { defaultValue: 'ההיסטוריה שלי' })}</h2>
         {transactions.length === 0 ? (
           <div className="no-transactions-message">
             {t('child.history.noTransactions', { defaultValue: 'אין עסקאות' })}
           </div>
         ) : (
-          <div className="transactions-list-simple">
-            {transactions.map((transaction, index) => (
-              <div key={index} className={`transaction-item-simple ${transaction.type === 'deposit' ? 'positive' : 'negative'}`}>
-                <div className="transaction-main-simple">
-                  <span className="transaction-description-simple">
-                    {transaction.description || transaction.category || t('child.history.transaction', { defaultValue: 'עסקה' })}
-                  </span>
-                  <span className="transaction-amount-simple">
-                    {transaction.type === 'deposit' ? '+' : '-'}₪{Math.abs(transaction.amount || 0).toFixed(2)}
-                  </span>
-                </div>
-                {transaction.date && (
-                  <div className="transaction-date-simple">
-                    {new Date(transaction.date).toLocaleDateString(i18n.language === 'he' ? 'he-IL' : 'en-US')}
+          <div style={{ 
+            maxHeight: '300px', 
+            overflowY: 'auto',
+            overflowX: 'hidden',
+            paddingRight: '8px',
+            WebkitOverflowScrolling: 'touch'
+          }}>
+            <div className="transactions-list-simple">
+              {transactions.map((transaction, index) => (
+                <div key={index} className={`transaction-item-simple ${transaction.type === 'deposit' ? 'positive' : 'negative'}`}>
+                  <div className="transaction-main-simple">
+                    <span className="transaction-description-simple">
+                      {transaction.description || transaction.category || t('child.history.transaction', { defaultValue: 'עסקה' })}
+                    </span>
+                    <span className="transaction-amount-simple">
+                      {transaction.type === 'deposit' ? '+' : '-'}₪{Math.abs(transaction.amount || 0).toFixed(2)}
+                    </span>
                   </div>
-                )}
-              </div>
-            ))}
+                  {transaction.date && (
+                    <div className="transaction-date-simple">
+                      {new Date(transaction.date).toLocaleDateString(i18n.language === 'he' ? 'he-IL' : 'en-US')}
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
           </div>
         )}
       </div>
@@ -604,7 +691,7 @@ const ChildView = ({ childId, familyId, onBackToParent, onLogout }) => {
       {/* Calculator Overlay */}
       {showCalculator && (
         <div className="calculator-overlay" onClick={() => setShowCalculator(false)}>
-          <div className="calculator-modal" onClick={(e) => e.stopPropagation()}>
+          <div className="calculator-modal" onClick={(e) => e.stopPropagation()} dir="ltr">
             <div className="calculator-header">
               <h2>{t('child.calculator.title', { defaultValue: 'מחשבון' })}</h2>
               <button 
@@ -741,19 +828,21 @@ const ChildView = ({ childId, familyId, onBackToParent, onLogout }) => {
 
       {/* Bottom Navigation Bar - Outside content-area */}
       <div className="bottom-nav">
+        {/* Left: Income (Deposit) - affects cash box */}
         <button 
           className="nav-item"
           onClick={(e) => {
             e.preventDefault();
             e.stopPropagation();
-            handleBottomNavAction('expense');
+            handleBottomNavAction('deposit');
           }}
           type="button"
         >
-          <span style={{ fontSize: '20px' }}>-</span>
-          <span>{t('parent.dashboard.recordExpense', { defaultValue: 'דיווח הוצאה' })}</span>
+          <span style={{ fontSize: '20px' }}>+</span>
+          <span>{t('child.dashboard.addIncome', { defaultValue: 'הכנסה' })}</span>
         </button>
         
+        {/* Center: Calculator */}
         <button 
           className="fab-btn"
           onClick={(e) => {
@@ -766,17 +855,18 @@ const ChildView = ({ childId, familyId, onBackToParent, onLogout }) => {
           🧮
         </button>
         
+        {/* Right: Expense - affects cash box */}
         <button 
           className="nav-item"
           onClick={(e) => {
             e.preventDefault();
             e.stopPropagation();
-            handleBottomNavAction('deposit');
+            handleBottomNavAction('expense');
           }}
           type="button"
         >
-          <span style={{ fontSize: '20px' }}>+</span>
-          <span>{t('parent.dashboard.addMoney', { defaultValue: 'הוספת כסף' })}</span>
+          <span style={{ fontSize: '20px' }}>-</span>
+          <span>{t('child.dashboard.recordExpense', { defaultValue: 'הוצאה' })}</span>
         </button>
       </div>
     </div>

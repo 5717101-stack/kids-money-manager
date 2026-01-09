@@ -64,7 +64,7 @@ const QuickActionModal = ({ familyId, children, categories, type, onClose, onCom
 
   return (
     <div className="modal-overlay" onClick={onClose} dir={i18n.language === 'he' ? 'rtl' : 'ltr'}>
-      <div className="modal-content quick-action-modal" onClick={(e) => e.stopPropagation()}>
+      <div className="modal-content" onClick={(e) => e.stopPropagation()}>
         <div className="modal-header">
           <h2>
             {type === 'deposit' 

@@ -80,6 +80,7 @@ body {
   width: 100%;
   max-width: 100%;
   box-sizing: border-box;
+  min-height: 0; /* Critical for flex scrolling to work */
 }
 
 /* Parent Dashboard - Same as Child Dashboard */
@@ -617,4 +618,333 @@ body {
 .child-selector-item-balance {
   font-size: 14px;
   color: var(--text-muted);
+}
+
+/* Calculator Overlay - Higher z-index than bottom-nav */
+.calculator-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(8px);
+  z-index: 10004 !important;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+}
+
+.calculator-modal {
+  background: rgba(255, 255, 255, 0.95);
+  backdrop-filter: blur(30px);
+  border-radius: 24px;
+  padding: 24px;
+  max-width: 400px;
+  width: 100%;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+  border: 1px solid rgba(255, 255, 255, 0.5);
+  position: relative;
+  direction: ltr; /* Force LTR for calculator */
+}
+
+.calculator-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 20px;
+}
+
+.calculator-header h2 {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 600;
+}
+
+.calculator-close {
+  background: none;
+  border: none;
+  font-size: 24px;
+  cursor: pointer;
+  color: var(--text-muted);
+  padding: 0;
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  transition: background 0.2s;
+}
+
+.calculator-close:hover {
+  background: rgba(0, 0, 0, 0.05);
+}
+
+.calculator-display {
+  background: #F3F4F6;
+  border-radius: 12px;
+  padding: 20px;
+  margin-bottom: 20px;
+  text-align: right;
+  min-height: 80px;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+}
+
+.calculator-history {
+  font-size: 14px;
+  color: var(--text-muted);
+  margin-bottom: 8px;
+  min-height: 20px;
+}
+
+.calculator-value {
+  font-size: 32px;
+  font-weight: 700;
+  color: var(--text-main);
+  word-break: break-all;
+}
+
+.calculator-buttons {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 12px;
+}
+
+.calc-btn {
+  padding: 16px;
+  border: none;
+  border-radius: 12px;
+  font-size: 18px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+  background: #F3F4F6;
+  color: var(--text-main);
+}
+
+.calc-btn:hover {
+  background: #E5E7EB;
+  transform: scale(0.95);
+}
+
+.calc-btn:active {
+  transform: scale(0.9);
+}
+
+.calc-btn-number {
+  background: white;
+  border: 1px solid #E5E7EB;
+}
+
+.calc-btn-operator {
+  background: var(--primary);
+  color: white;
+}
+
+.calc-btn-operator:hover {
+  background: #4F46E5;
+}
+
+.calc-btn-clear {
+  background: #EF4444;
+  color: white;
+}
+
+.calc-btn-clear:hover {
+  background: #DC2626;
+}
+
+.calc-btn-equals {
+  background: var(--primary-gradient);
+  color: white;
+  grid-row: span 2;
+}
+
+.calc-btn-equals:hover {
+  opacity: 0.9;
+}
+
+.calc-btn-zero {
+  grid-column: span 2;
+}
+
+.calculator-use-result {
+  width: 100%;
+  padding: 12px;
+  margin-top: 12px;
+  border: none;
+  border-radius: 12px;
+  background: var(--primary-gradient);
+  color: white;
+  font-size: 16px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.calculator-use-result:hover {
+  opacity: 0.9;
+  transform: translateY(-2px);
+}
+
+/* Savings Goal - Linear Progress Bar */
+.savings-goal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 20px;
+}
+
+.savings-goal-header h2 {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--text-main);
+}
+
+.goal-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.edit-goal-button,
+.delete-goal-button,
+.set-goal-button {
+  padding: 8px 16px;
+  border-radius: 8px;
+  border: none;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.edit-goal-button {
+  background: var(--primary);
+  color: white;
+}
+
+.edit-goal-button:hover {
+  background: #4F46E5;
+}
+
+.delete-goal-button {
+  background: #EF4444;
+  color: white;
+}
+
+.delete-goal-button:hover {
+  background: #DC2626;
+}
+
+.set-goal-button {
+  background: var(--primary-gradient);
+  color: white;
+}
+
+.set-goal-button:hover {
+  opacity: 0.9;
+}
+
+.savings-goal-display-linear {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.goal-info-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.goal-name {
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--text-main);
+}
+
+.goal-progress-percentage {
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--primary);
+}
+
+.linear-progress-container {
+  width: 100%;
+  height: 24px;
+  background: #E5E7EB;
+  border-radius: 12px;
+  overflow: hidden;
+  position: relative;
+}
+
+.linear-progress-bar {
+  height: 100%;
+  background: var(--primary-gradient);
+  border-radius: 12px;
+  transition: width 0.5s ease;
+  position: relative;
+  overflow: hidden;
+}
+
+.linear-progress-bar::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgba(255, 255, 255, 0.3),
+    transparent
+  );
+  animation: shimmer 2s infinite;
+}
+
+@keyframes shimmer {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(100%);
+  }
+}
+
+.goal-info-footer {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.goal-amount,
+.goal-remaining,
+.goal-target {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  flex: 1;
+  min-width: 100px;
+}
+
+.goal-label {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.goal-value {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text-main);
+}
+
+.no-goal-message {
+  text-align: center;
+  padding: 40px 20px;
+  color: var(--text-muted);
+  font-size: 16px;
 }

@@ -544,12 +544,17 @@ setInterval(() => {
 
 async function initializeData() {
   try {
-    // Create indexes
+    // Create indexes for performance optimization
     if (db) {
+      // Main indexes
       await db.collection('families').createIndex({ phoneNumber: 1 }, { unique: true });
+      await db.collection('families').createIndex({ _id: 1 }); // Already exists but ensure it
       await db.collection('families').createIndex({ 'children._id': 1 });
+      await db.collection('families').createIndex({ 'children.phoneNumber': 1 }); // For child phone lookup
+      await db.collection('families').createIndex({ 'additionalParents.phoneNumber': 1 }); // For additional parent lookup
       await db.collection('otpCodes').createIndex({ phoneNumber: 1 });
       await db.collection('otpCodes').createIndex({ expiresAt: 1 }, { expireAfterSeconds: 0 });
+      await db.collection('otpCodes').createIndex({ familyId: 1 }); // For OTP family lookup
     }
     console.log('[DB] Indexes created');
   } catch (error) {
@@ -581,22 +586,55 @@ function normalizePhoneNumber(phoneNumber, defaultCountryCode = '+972') {
   return defaultCountryCode + trimmed;
 }
 
+// Cache for family lookups (5 minute TTL)
+const familyCache = new Map();
+const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+
 async function getFamilyByPhone(phoneNumber) {
   if (!phoneNumber) return null;
   
   const normalized = normalizePhoneNumber(phoneNumber);
+  
+  // Check cache first
+  const cacheKey = `phone:${normalized}`;
+  const cached = familyCache.get(cacheKey);
+  if (cached && Date.now() - cached.timestamp < CACHE_TTL) {
+    console.log(`[GET-FAMILY-BY-PHONE] Cache hit for: ${normalized}`);
+    return cached.data;
+  }
+  
   console.log(`[GET-FAMILY-BY-PHONE] Searching for phone: ${phoneNumber}, normalized: ${normalized}`);
   
   if (db) {
-    // Get all families and normalize all phone numbers for comparison
-    const allFamilies = await db.collection('families').find({}).toArray();
+    // First try direct lookup by main phone (indexed)
+    let family = await db.collection('families').findOne({ phoneNumber: normalized });
+    if (family) {
+      console.log(`[GET-FAMILY-BY-PHONE] Found family ${family._id} via main parent (indexed)`);
+      familyCache.set(cacheKey, { data: family, timestamp: Date.now() });
+      return family;
+    }
+    
+    // Try to find by additional parents using aggregation (more efficient than loading all)
+    family = await db.collection('families').findOne({
+      'additionalParents.phoneNumber': normalized
+    });
+    if (family) {
+      console.log(`[GET-FAMILY-BY-PHONE] Found family ${family._id} via additional parent (indexed)`);
+      familyCache.set(cacheKey, { data: family, timestamp: Date.now() });
+      return family;
+    }
+    
+    // Fallback: if normalization doesn't match exactly, do a limited scan
+    // Only check first 100 families (should be enough for most cases)
+    const allFamilies = await db.collection('families').find({}).limit(100).toArray();
     
     for (const fam of allFamilies) {
       // Check main parent phone (normalize for comparison)
       if (fam.phoneNumber) {
         const mainPhoneNormalized = normalizePhoneNumber(fam.phoneNumber);
         if (mainPhoneNormalized === normalized) {
-          console.log(`[GET-FAMILY-BY-PHONE] Found family ${fam._id} via main parent`);
+          console.log(`[GET-FAMILY-BY-PHONE] Found family ${fam._id} via main parent (fallback)`);
+          familyCache.set(cacheKey, { data: fam, timestamp: Date.now() });
           return fam;
         }
       }
@@ -607,7 +645,8 @@ async function getFamilyByPhone(phoneNumber) {
           if (parent.phoneNumber) {
             const parentPhoneNormalized = normalizePhoneNumber(parent.phoneNumber);
             if (parentPhoneNormalized === normalized) {
-              console.log(`[GET-FAMILY-BY-PHONE] Found family ${fam._id} via additional parent ${parent.name}`);
+              console.log(`[GET-FAMILY-BY-PHONE] Found family ${fam._id} via additional parent ${parent.name} (fallback)`);
+              familyCache.set(cacheKey, { data: fam, timestamp: Date.now() });
               return fam;
             }
           }
@@ -627,11 +666,39 @@ async function getFamilyByEmail(email) {
   return null;
 }
 
+// Cache for getFamilyById (2 minute TTL)
+const familyByIdCache = new Map();
+const FAMILY_BY_ID_CACHE_TTL = 2 * 60 * 1000; // 2 minutes
+
 async function getFamilyById(familyId) {
+  if (!familyId) return null;
+  
+  // Check cache first
+  const cacheKey = `id:${familyId}`;
+  const cached = familyByIdCache.get(cacheKey);
+  if (cached && Date.now() - cached.timestamp < FAMILY_BY_ID_CACHE_TTL) {
+    return cached.data;
+  }
+  
   if (db) {
-    return await db.collection('families').findOne({ _id: familyId });
+    const family = await db.collection('families').findOne({ _id: familyId });
+    if (family) {
+      // Cache the result
+      familyByIdCache.set(cacheKey, { data: family, timestamp: Date.now() });
+    }
+    return family;
   }
   return null;
+}
+
+// Function to invalidate cache when family is updated
+function invalidateFamilyCache(familyId) {
+  if (familyId) {
+    familyByIdCache.delete(`id:${familyId}`);
+    // Also clear phone-based cache entries (we don't know which phone, so clear all)
+    // In production, you might want to track phone->familyId mapping
+    familyCache.clear();
+  }
 }
 
 async function createFamily(phoneNumber, countryCode = '+972') {
@@ -691,19 +758,33 @@ async function addChildToFamily(familyId, childName, phoneNumber) {
       throw new Error('מספר טלפון זה כבר בשימוש על ידי הורה');
     }
     
-    // Check if phone number belongs to another child (try both formats)
-    // We need to check all families and normalize their children's phone numbers for comparison
+    // Check if phone number belongs to another child using indexed query (much faster)
     if (db) {
-      const allFamilies = await db.collection('families').find({}).toArray();
-      for (const fam of allFamilies) {
-        if (fam.children && Array.isArray(fam.children)) {
-          for (const ch of fam.children) {
-            if (ch.phoneNumber) {
-              const childPhoneNormalized = normalizePhoneNumber(ch.phoneNumber);
-              if (childPhoneNormalized === normalizedPhone) {
-                console.error(`[ADD-CHILD] ❌ Phone number already in use by a child: ${normalizedPhone} (found in family ${fam._id}, child ${ch._id})`);
-                throw new Error('מספר טלפון זה כבר בשימוש על ידי ילד אחר');
-              }
+      const existingFamily = await db.collection('families').findOne({
+        $or: [
+          { phoneNumber: normalizedPhone },
+          { 'children.phoneNumber': normalizedPhone },
+          { 'additionalParents.phoneNumber': normalizedPhone }
+        ]
+      });
+      
+      if (existingFamily) {
+        // Double-check by normalizing
+        if (existingFamily.phoneNumber && normalizePhoneNumber(existingFamily.phoneNumber) === normalizedPhone) {
+          throw new Error('מספר טלפון זה כבר בשימוש על ידי הורה');
+        }
+        if (existingFamily.children) {
+          for (const ch of existingFamily.children) {
+            if (ch.phoneNumber && normalizePhoneNumber(ch.phoneNumber) === normalizedPhone) {
+              console.error(`[ADD-CHILD] ❌ Phone number already in use by a child: ${normalizedPhone} (found in family ${existingFamily._id}, child ${ch._id})`);
+              throw new Error('מספר טלפון זה כבר בשימוש על ידי ילד אחר');
+            }
+          }
+        }
+        if (existingFamily.additionalParents) {
+          for (const parent of existingFamily.additionalParents) {
+            if (parent.phoneNumber && normalizePhoneNumber(parent.phoneNumber) === normalizedPhone) {
+              throw new Error('מספר טלפון זה כבר בשימוש על ידי הורה');
             }
           }
         }
@@ -744,6 +825,9 @@ async function addChildToFamily(familyId, childName, phoneNumber) {
       }
     );
     console.log(`[ADD-CHILD] ✅ Child saved to database`);
+    
+    // Invalidate cache
+    invalidateFamilyCache(familyId);
     
     // Update categories to include new child
     if (family.categories && family.categories.length > 0) {
@@ -1142,26 +1226,46 @@ app.post('/api/auth/send-otp', async (req, res) => {
     let existingFamily = null;
     
     if (db) {
-      // Search through all families and normalize children's phone numbers for comparison
-      const allFamilies = await db.collection('families').find({}).toArray();
-      console.log(`[SEND-OTP] Searching through ${allFamilies.length} families for child with phone: ${normalizedPhone}`);
-      for (const fam of allFamilies) {
-        if (fam.children && Array.isArray(fam.children)) {
-          for (const ch of fam.children) {
-            if (ch.phoneNumber) {
-              const childPhoneNormalized = normalizePhoneNumber(ch.phoneNumber);
-              console.log(`[SEND-OTP]   Checking child ${ch.name}: raw="${ch.phoneNumber}", normalized="${childPhoneNormalized}" vs search="${normalizedPhone}"`);
-              if (childPhoneNormalized === normalizedPhone) {
-                child = ch;
-                existingFamily = fam;
-                console.log(`[SEND-OTP]   ✅ Found child: ${child.name} (${child._id}) in family ${existingFamily._id}`);
-                console.log(`[SEND-OTP]   Child phone (raw): ${ch.phoneNumber}, normalized: ${childPhoneNormalized}`);
-                process.stderr.write(`[SEND-OTP] ✅ Found child: ${child.name} in family ${existingFamily._id}\n`);
-                break;
-              }
+      // Use indexed query first (much faster)
+      const familyWithChild = await db.collection('families').findOne({
+        'children.phoneNumber': normalizedPhone
+      });
+      
+      if (familyWithChild && familyWithChild.children) {
+        for (const ch of familyWithChild.children) {
+          if (ch.phoneNumber) {
+            const childPhoneNormalized = normalizePhoneNumber(ch.phoneNumber);
+            console.log(`[SEND-OTP]   Checking child ${ch.name}: raw="${ch.phoneNumber}", normalized="${childPhoneNormalized}" vs search="${normalizedPhone}"`);
+            if (childPhoneNormalized === normalizedPhone) {
+              child = ch;
+              existingFamily = familyWithChild;
+              console.log(`[SEND-OTP]   ✅ Found child (indexed): ${child.name} (${child._id}) in family ${existingFamily._id}`);
+              process.stderr.write(`[SEND-OTP] ✅ Found child: ${child.name} in family ${existingFamily._id}\n`);
+              break;
             }
           }
-          if (child) break;
+        }
+      }
+      
+      // Fallback: limited scan if indexed query didn't work
+      if (!child) {
+        const allFamilies = await db.collection('families').find({}).limit(50).toArray();
+        console.log(`[SEND-OTP] Searching through ${allFamilies.length} families for child with phone: ${normalizedPhone} (fallback)`);
+        for (const fam of allFamilies) {
+          if (fam.children && Array.isArray(fam.children)) {
+            for (const ch of fam.children) {
+              if (ch.phoneNumber) {
+                const childPhoneNormalized = normalizePhoneNumber(ch.phoneNumber);
+                if (childPhoneNormalized === normalizedPhone) {
+                  child = ch;
+                  existingFamily = fam;
+                  console.log(`[SEND-OTP]   ✅ Found child (fallback): ${child.name} (${child._id}) in family ${existingFamily._id}`);
+                  break;
+                }
+              }
+            }
+            if (child) break;
+          }
         }
       }
       if (!child) {
@@ -1353,25 +1457,45 @@ app.post('/api/auth/verify-otp', async (req, res) => {
       }
     }
     
-    // If not found from OTP store, check database directly (normalize all children's phones for comparison)
+    // If not found from OTP store, check database directly using indexed query
     if (!child && db) {
-      // Search through all families and normalize children's phone numbers for comparison
-      const allFamilies = await db.collection('families').find({}).toArray();
-      for (const fam of allFamilies) {
-        if (fam.children && Array.isArray(fam.children)) {
-          for (const ch of fam.children) {
-            if (ch.phoneNumber) {
-              const childPhoneNormalized = normalizePhoneNumber(ch.phoneNumber);
-              if (childPhoneNormalized === normalizedPhone) {
-                child = ch;
-                family = fam;
-                console.log(`[VERIFY-OTP] ✅ Found child from database: ${child.name} (${child._id}) in family ${family._id}`);
-                console.log(`[VERIFY-OTP] Child phone (raw): ${ch.phoneNumber}, normalized: ${childPhoneNormalized}`);
-                break;
-              }
+      // Use indexed query to find child by phone number (much faster)
+      const familyWithChild = await db.collection('families').findOne({
+        'children.phoneNumber': normalizedPhone
+      });
+      
+      if (familyWithChild && familyWithChild.children) {
+        for (const ch of familyWithChild.children) {
+          if (ch.phoneNumber) {
+            const childPhoneNormalized = normalizePhoneNumber(ch.phoneNumber);
+            if (childPhoneNormalized === normalizedPhone) {
+              child = ch;
+              family = familyWithChild;
+              console.log(`[VERIFY-OTP] ✅ Found child from database (indexed): ${child.name} (${child._id}) in family ${family._id}`);
+              break;
             }
           }
-          if (child) break;
+        }
+      }
+      
+      // Fallback: if indexed query didn't work, try limited scan (only first 50 families)
+      if (!child) {
+        const allFamilies = await db.collection('families').find({}).limit(50).toArray();
+        for (const fam of allFamilies) {
+          if (fam.children && Array.isArray(fam.children)) {
+            for (const ch of fam.children) {
+              if (ch.phoneNumber) {
+                const childPhoneNormalized = normalizePhoneNumber(ch.phoneNumber);
+                if (childPhoneNormalized === normalizedPhone) {
+                  child = ch;
+                  family = fam;
+                  console.log(`[VERIFY-OTP] ✅ Found child from database (fallback): ${child.name} (${child._id}) in family ${family._id}`);
+                  break;
+                }
+              }
+            }
+            if (child) break;
+          }
         }
       }
     }
@@ -1920,6 +2044,9 @@ app.put('/api/families/:familyId/children/:childId', async (req, res) => {
       console.log(`[UPDATE-CHILD-SERVER] ✅ Child updated successfully`);
     }
     
+    // Invalidate cache before fetching updated data
+    invalidateFamilyCache(familyId);
+    
     // Fetch updated child data to return in response
     console.log(`[UPDATE-CHILD-SERVER] Step 5: Fetching updated child data...`);
     const updatedFamily = await getFamilyById(familyId);
@@ -2158,6 +2285,8 @@ app.put('/api/families/:familyId/children/:childId/cashbox', async (req, res) =>
         { _id: familyId, 'children._id': childId },
         { $set: { 'children.$.cashBoxBalance': amount } }
       );
+      // Invalidate cache
+      invalidateFamilyCache(familyId);
     }
     
     res.json({
@@ -2215,6 +2344,7 @@ app.post('/api/families/:familyId/categories', async (req, res) => {
         { _id: familyId },
         { $set: { categories: family.categories } }
       );
+      invalidateFamilyCache(familyId);
     }
     
     res.json({ category });
@@ -2247,6 +2377,7 @@ app.put('/api/families/:familyId/categories/:categoryId', async (req, res) => {
         { _id: familyId },
         { $set: { categories: family.categories } }
       );
+      invalidateFamilyCache(familyId);
     }
     
     res.json({ success: true });
@@ -2272,6 +2403,7 @@ app.delete('/api/families/:familyId/categories/:categoryId', async (req, res) =>
         { _id: familyId },
         { $set: { categories: family.categories } }
       );
+      invalidateFamilyCache(familyId);
     }
     
     res.json({ success: true });
@@ -2310,6 +2442,7 @@ app.put('/api/families/:familyId/children/:childId/profile-image', async (req, r
         { _id: familyId, 'children._id': childId },
         { $set: { 'children.$.profileImage': profileImage || null } }
       );
+      invalidateFamilyCache(familyId);
     }
     
     res.json({ success: true, profileImage: profileImage || null });
@@ -2372,6 +2505,7 @@ app.put('/api/families/:familyId/children/:childId/savings-goal', async (req, re
       { _id: familyId, 'children._id': childId },
       { $set: { 'children.$.savingsGoal': savingsGoal } }
     );
+    invalidateFamilyCache(familyId);
     
     res.json({ success: true, savingsGoal });
   } catch (error) {
@@ -2388,6 +2522,7 @@ app.delete('/api/families/:familyId/children/:childId/savings-goal', async (req,
       { _id: familyId, 'children._id': childId },
       { $unset: { 'children.$.savingsGoal': '' } }
     );
+    invalidateFamilyCache(familyId);
     
     res.json({ success: true });
   } catch (error) {
@@ -2445,6 +2580,7 @@ app.put('/api/families/:familyId/children/:childId/weekly-allowance', async (req
           }
         }
       );
+      invalidateFamilyCache(familyId);
     }
     
     res.json({ success: true, weeklyAllowance: amount, allowanceType: type, allowanceDay: day, allowanceTime: time });

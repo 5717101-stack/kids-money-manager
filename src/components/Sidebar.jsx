@@ -140,7 +140,7 @@ const Sidebar = ({ isOpen, onClose, familyId, onLogout, onChildrenUpdated, onMen
                         >
                           <span className="sidebar-submenu-icon">
                             {child.profileImage ? (
-                              <img src={child.profileImage} alt={child.name} className="sidebar-child-avatar" />
+                              <img src={child.profileImage} alt={child.name} className="sidebar-child-avatar" loading="lazy" decoding="async" />
                             ) : (
                               <span className="sidebar-child-initial">{child.name ? child.name.charAt(0).toUpperCase() : '?'}</span>
                             )}

@@ -23,7 +23,7 @@ const ParentDashboard = ({ familyId, onChildrenUpdated, onLogout, onViewChild })
 
   useEffect(() => {
     loadData();
-    const interval = setInterval(loadData, 5000); // Refresh every 5 seconds
+    const interval = setInterval(loadData, 15000); // Refresh every 15 seconds (reduced for better performance)
     return () => clearInterval(interval);
   }, [familyId]);
 
@@ -325,17 +325,18 @@ const ParentDashboard = ({ familyId, onChildrenUpdated, onLogout, onViewChild })
 
       {/* Bottom Navigation Bar - Always visible for parent */}
       <div className="bottom-nav">
+          {/* Left: Income (Deposit) */}
           <button 
             className="nav-item"
             onClick={(e) => {
               e.preventDefault();
               e.stopPropagation();
-              handleBottomNavAction('expense');
+              handleBottomNavAction('deposit');
             }}
             type="button"
           >
-            <span style={{ fontSize: '20px' }}>-</span>
-            <span>{t('parent.dashboard.recordExpense', { defaultValue: 'דיווח הוצאה' })}</span>
+            <span style={{ fontSize: '20px' }}>+</span>
+            <span>{t('parent.dashboard.addMoney', { defaultValue: 'הוספת כסף' })}</span>
           </button>
           
           <button 
@@ -354,17 +355,18 @@ const ParentDashboard = ({ familyId, onChildrenUpdated, onLogout, onViewChild })
             )}
           </button>
           
+          {/* Right: Expense */}
           <button 
             className="nav-item"
             onClick={(e) => {
               e.preventDefault();
               e.stopPropagation();
-              handleBottomNavAction('deposit');
+              handleBottomNavAction('expense');
             }}
             type="button"
           >
-            <span style={{ fontSize: '20px' }}>+</span>
-            <span>{t('parent.dashboard.addMoney', { defaultValue: 'הוספת כסף' })}</span>
+            <span style={{ fontSize: '20px' }}>-</span>
+            <span>{t('parent.dashboard.recordExpense', { defaultValue: 'דיווח הוצאה' })}</span>
           </button>
         </div>
 
@@ -389,7 +391,7 @@ const ParentDashboard = ({ familyId, onChildrenUpdated, onLogout, onViewChild })
                   onClick={() => handleChildSelected(child)}
                 >
                   {child.profileImage ? (
-                    <img src={child.profileImage} alt={child.name} className="child-selector-avatar" />
+                    <img src={child.profileImage} alt={child.name} className="child-selector-avatar" loading="lazy" decoding="async" />
                   ) : (
                     <div className="child-selector-avatar-placeholder">
                       {child.name.charAt(0).toUpperCase()}

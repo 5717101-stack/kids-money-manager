@@ -104,38 +104,41 @@ export const compressImage = (file, options = {}) => {
 
 /**
  * Smart compression that automatically adjusts quality based on file size
+ * Optimized to reduce compression attempts for better performance
  * @param {File} file - The image file to compress
  * @returns {Promise<string>} Base64 encoded compressed image
  */
 export const smartCompressImage = async (file) => {
   const maxSize = 500 * 1024; // 500KB target
   
-  // Start with moderate compression
+  // Estimate initial compression based on file size
+  let initialWidth = 800;
+  let initialQuality = 0.7;
+  
+  // If file is very large (>5MB), start with more aggressive compression
+  if (file.size > 5 * 1024 * 1024) {
+    initialWidth = 600;
+    initialQuality = 0.6;
+  } else if (file.size > 2 * 1024 * 1024) {
+    initialWidth = 700;
+    initialQuality = 0.65;
+  }
+  
+  // Start with optimized compression based on file size
   let compressed = await compressImage(file, {
-    maxWidth: 800,
-    maxHeight: 800,
-    quality: 0.7,
+    maxWidth: initialWidth,
+    maxHeight: initialWidth,
+    quality: initialQuality,
     maxSize: maxSize
   });
   
-  // If still too large, try more aggressive compression
+  // Only try one more time if still too large (reduced from 3 attempts to 2)
   if (compressed.length > maxSize) {
     console.log('Image still too large, applying more aggressive compression...');
     compressed = await compressImage(file, {
-      maxWidth: 600,
-      maxHeight: 600,
-      quality: 0.6,
-      maxSize: maxSize
-    });
-  }
-  
-  // If still too large, try maximum compression
-  if (compressed.length > maxSize) {
-    console.log('Image still too large, applying maximum compression...');
-    compressed = await compressImage(file, {
-      maxWidth: 400,
-      maxHeight: 400,
-      quality: 0.5,
+      maxWidth: 500,
+      maxHeight: 500,
+      quality: 0.55,
       maxSize: maxSize
     });
   }
