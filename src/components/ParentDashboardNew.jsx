@@ -285,6 +285,7 @@ const ParentDashboard = ({ familyId, onChildrenUpdated, onLogout, onViewChild })
           <span className="bottom-nav-label">{t('parent.dashboard.addMoney', { defaultValue: 'הוספת כסף' })}</span>
         </button>
       </div>
+      )}
 
       {/* Child Selector Modal */}
       {showChildSelector && (
