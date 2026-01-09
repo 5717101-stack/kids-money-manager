@@ -391,7 +391,7 @@ const Settings = ({ familyId, onClose, onLogout, activeTab: externalActiveTab, h
 
   const content = (
     <div dir={i18n.language === 'he' ? 'rtl' : 'ltr'}>
-      {!inSidebar && (
+      {!inSidebar && !asPage && (
         <div className="settings-header">
           <h1>{t('parent.settings.title', { defaultValue: 'הגדרות' })}</h1>
           <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
@@ -1279,6 +1279,15 @@ const Settings = ({ familyId, onClose, onLogout, activeTab: externalActiveTab, h
 
   if (inSidebar) {
     return content;
+  }
+
+  if (asPage) {
+    // Render as full page, not modal
+    return (
+      <div className="settings-page-container" dir={i18n.language === 'he' ? 'rtl' : 'ltr'}>
+        {content}
+      </div>
+    );
   }
 
   return (
