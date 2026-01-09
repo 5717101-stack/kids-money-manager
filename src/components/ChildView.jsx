@@ -431,6 +431,7 @@ const ChildView = ({ childId, familyId, onBackToParent, onLogout }) => {
                 <label>{t('child.savingsGoal.targetAmount', { defaultValue: 'סכום יעד' })} (₪):</label>
                 <input
                   type="number"
+                  inputMode="decimal"
                   step="0.01"
                   min="0.01"
                   value={goalAmount}

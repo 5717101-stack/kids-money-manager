@@ -47,6 +47,7 @@ const JoinParentScreen = ({ onVerified, onBack }) => {
           <label>{t('auth.enterInviteCode')}</label>
           <input
             type="text"
+            inputMode="numeric"
             value={inviteCode}
             onChange={(e) => setInviteCode(e.target.value)}
             placeholder="Enter invite code"

@@ -403,6 +403,7 @@ const ParentDashboard = ({ familyId, onChildrenUpdated, onLogout }) => {
                   }}>₪</span>
                   <input
                     type="number"
+                    inputMode="numeric"
                     id="amount"
                     step="1"
                     min="1"

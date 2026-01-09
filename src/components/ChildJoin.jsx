@@ -55,6 +55,7 @@ const ChildJoin = ({ familyId, onJoined, onCancel }) => {
             <label htmlFor="joinCode">קוד הצטרפות:</label>
             <input
               type="text"
+              inputMode="numeric"
               id="joinCode"
               className="join-code-input"
               value={joinCode}

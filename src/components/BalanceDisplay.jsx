@@ -88,6 +88,7 @@ const BalanceDisplay = ({ balance, cashBoxBalance, childName, color, editable = 
             <div className="balance-amount-small cashbox-editable-container" style={{ color: color }}>
               <input
                 type="number"
+                inputMode="decimal"
                 className="cashbox-input-inline"
                 value={cashBoxValue}
                 onChange={handleCashBoxChange}

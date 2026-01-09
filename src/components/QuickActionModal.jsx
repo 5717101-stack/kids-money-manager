@@ -94,6 +94,7 @@ const QuickActionModal = ({ familyId, children, categories, type, onClose, onCom
             <label>{t('parent.dashboard.amount', { defaultValue: 'סכום' })} (₪):</label>
             <input
               type="number"
+              inputMode="decimal"
               step="0.01"
               min="0.01"
               value={amount}
