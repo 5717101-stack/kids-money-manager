@@ -436,7 +436,7 @@ const Settings = ({ familyId, onClose, onLogout, activeTab: externalActiveTab, h
       <div className="settings-content">
         {activeTab === 'categories' && (
           <div className="categories-section">
-            <h2>{t('parent.settings.categories.title', { defaultValue: 'ניהול קטגוריות' })}</h2>
+            {!asPage && <h2>{t('parent.settings.categories.title', { defaultValue: 'ניהול קטגוריות' })}</h2>}
             
             <form onSubmit={handleAddCategory} className="add-category-form">
               <input
@@ -512,7 +512,7 @@ const Settings = ({ familyId, onClose, onLogout, activeTab: externalActiveTab, h
 
         {activeTab === 'profileImages' && (
           <div className="profile-images-section">
-            <h2>{t('parent.settings.profileImages.title', { defaultValue: 'תמונות פרופיל' })}</h2>
+            {!asPage && <h2>{t('parent.settings.profileImages.title', { defaultValue: 'תמונות פרופיל' })}</h2>}
             
             {Object.entries(allData.children || {}).map(([childId, child]) => {
               if (!child) return null;
@@ -579,7 +579,7 @@ const Settings = ({ familyId, onClose, onLogout, activeTab: externalActiveTab, h
 
         {activeTab === 'allowances' && (
           <div className="allowances-section">
-            <h2>{t('parent.settings.allowance.title', { defaultValue: 'דמי כיס' })}</h2>
+            {!asPage && <h2>{t('parent.settings.allowance.title', { defaultValue: 'דמי כיס' })}</h2>}
             <p className="allowance-info">
               {t('parent.settings.allowance.description', { 
                 defaultValue: 'הגדר את הסכום, תדירות (שבועי/חודשי), יום/תאריך ושעה. הסכום יתווסף אוטומטית ליתרה אצל ההורים. ניתן גם לשלם ידנית באמצעות הכפתור למטה.' 
@@ -742,7 +742,7 @@ const Settings = ({ familyId, onClose, onLogout, activeTab: externalActiveTab, h
 
         {activeTab === 'children' && (
           <div className="children-section">
-            <h2>{t('parent.settings.manageChildren', { defaultValue: 'ניהול ילדים' })}</h2>
+            {!asPage && <h2>{t('parent.settings.manageChildren', { defaultValue: 'ניהול ילדים' })}</h2>}
             
             <div className="children-list">
               {Object.entries(allData.children || {}).map(([childId, child]) => (
@@ -1072,7 +1072,7 @@ const Settings = ({ familyId, onClose, onLogout, activeTab: externalActiveTab, h
         {activeTab === 'parents' && (
           <div className="parents-section">
             <div className="parents-header">
-              <h2>{t('parent.settings.parents.title', { defaultValue: 'ניהול הורים' })}</h2>
+              {!asPage && <h2>{t('parent.settings.parents.title', { defaultValue: 'ניהול הורים' })}</h2>}
               {!addingParent && (
                 <button
                   className="add-parent-button"
