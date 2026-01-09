@@ -167,7 +167,8 @@
       "balance": "יתרה",
       "backToParent": "ממשק הורים",
       "cashBox": "קופה",
-      "totalBalance": "יתרה כוללת"
+      "totalBalance": "יתרה כוללת",
+      "confirmLogout": "האם אתה בטוח שברצונך להתנתק?"
     },
     "savingsGoal": {
       "title": "מטרת חיסכון",
