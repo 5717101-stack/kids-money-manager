@@ -395,18 +395,10 @@ const ChildView = ({ childId, familyId, onBackToParent, onLogout }) => {
         </h1>
       </div>
 
-      {/* Big Number - Current Balance */}
-      <div className="big-balance-display">
-        <div className="big-balance-label">{t('child.dashboard.totalBalance', { defaultValue: 'יתרה כוללת' })}</div>
-        <div className="big-balance-value">₪{totalBalance.toFixed(2)}</div>
-        <div className="balance-breakdown">
-          <span className="balance-item">
-            {t('child.dashboard.balance', { defaultValue: 'יתרה' })}: ₪{(childData.balance || 0).toFixed(2)}
-          </span>
-          <span className="balance-item">
-            {t('child.dashboard.cashBox', { defaultValue: 'קופה' })}: ₪{(childData.cashBoxBalance || 0).toFixed(2)}
-          </span>
-        </div>
+      {/* My Balance Card */}
+      <div className="my-balance-card">
+        <div className="my-balance-label">{t('child.dashboard.myBalance', { defaultValue: 'היתרה שלי:' })}</div>
+        <div className="my-balance-value">₪{totalBalance.toFixed(2)}</div>
       </div>
 
       {/* Savings Goal Tracker */}
@@ -445,17 +437,41 @@ const ChildView = ({ childId, familyId, onBackToParent, onLogout }) => {
         </div>
 
         {savingsGoal ? (
-          <div className="savings-goal-display">
-            <div className="goal-title">{savingsGoal.name}</div>
-            <div className="goal-progress-bar-large">
-              <div 
-                className="goal-progress-fill-large"
-                style={{ width: `${goalProgress}%` }}
-              />
+          <div className="savings-goal-display-circular">
+            <div className="circular-progress-container">
+              <svg className="circular-progress" viewBox="0 0 200 200">
+                <circle
+                  className="circular-progress-bg"
+                  cx="100"
+                  cy="100"
+                  r="90"
+                  fill="none"
+                  stroke="#E5E7EB"
+                  strokeWidth="16"
+                />
+                <circle
+                  className="circular-progress-fill"
+                  cx="100"
+                  cy="100"
+                  r="90"
+                  fill="none"
+                  stroke="#10B981"
+                  strokeWidth="16"
+                  strokeLinecap="round"
+                  strokeDasharray={`${2 * Math.PI * 90}`}
+                  strokeDashoffset={`${2 * Math.PI * 90 * (1 - goalProgress / 100)}`}
+                  transform="rotate(-90 100 100)"
+                />
+              </svg>
+              <div className="circular-progress-content">
+                <div className="circular-progress-percentage">{goalProgress.toFixed(0)}%</div>
+              </div>
             </div>
-            <div className="goal-progress-text">
-              {goalProgress.toFixed(0)}% {t('child.savingsGoal.achieved', { defaultValue: 'הושג' })} - 
-              ₪{totalBalance.toFixed(2)} {t('child.savingsGoal.of', { defaultValue: 'מתוך' })} ₪{savingsGoal.targetAmount.toFixed(2)}
+            <div className="goal-info">
+              <div className="goal-name">{savingsGoal.name}</div>
+              <div className="goal-remaining">
+                {t('child.savingsGoal.missing', { defaultValue: 'חסר' })}: ₪{Math.max(0, savingsGoal.targetAmount - totalBalance).toFixed(2)}
+              </div>
             </div>
           </div>
         ) : (

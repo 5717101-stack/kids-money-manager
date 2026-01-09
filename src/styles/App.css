@@ -48,8 +48,8 @@ html[dir="ltr"] body {
   --warning: #F59E0B;
   --info: #06B6D4;
   
-  /* Neutral Colors - High-End Minimalist aesthetic */
-  --bg: #F5F7FA;
+  /* Neutral Colors - High-End Minimalist aesthetic (Updated to match reference) */
+  --bg: #F9FAFB;
   --bg-card: #FFFFFF;
   --bg-hover: #F3F4F6;
   --border: #E5E7EB;
@@ -3993,7 +3993,7 @@ strong, b {
   box-shadow: var(--shadow-xl);
   width: 100%;
   box-sizing: border-box;
-  border: 1px solid var(--border);
+  border: 2px solid #3B82F6;
 }
 
 .total-balance-label {
@@ -4026,7 +4026,7 @@ strong, b {
 .section-title {
   font-size: 20px;
   font-weight: 600;
-  color: white;
+  color: var(--text-primary);
   margin-bottom: 16px;
   padding: 0 4px;
 }
@@ -4056,6 +4056,66 @@ strong, b {
 .children-cards-container::-webkit-scrollbar-thumb {
   background: rgba(255, 255, 255, 0.5);
   border-radius: 3px;
+}
+
+/* Small Child Cards (Square with Icon) */
+.child-card-small {
+  background: var(--bg-card);
+  border-radius: var(--radius-lg);
+  padding: 20px;
+  min-width: 100px;
+  max-width: 100px;
+  width: 100px;
+  height: 100px;
+  flex-shrink: 0;
+  box-shadow: var(--shadow-md);
+  border: 1px solid var(--border);
+  transition: transform 0.2s, box-shadow 0.2s;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  cursor: pointer;
+}
+
+.child-card-small:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-lg);
+}
+
+.child-card-icon {
+  width: 50px;
+  height: 50px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 32px;
+  line-height: 1;
+}
+
+.child-icon-image {
+  width: 50px;
+  height: 50px;
+  border-radius: 50%;
+  object-fit: cover;
+}
+
+.child-icon-emoji {
+  font-size: 32px;
+  line-height: 1;
+}
+
+.child-card-name {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary);
+  text-align: center;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  width: 100%;
 }
 
 .child-card {
@@ -4527,7 +4587,39 @@ strong, b {
   margin: 0;
 }
 
-/* Big Number - Current Balance */
+/* My Balance Card (Child View) */
+.my-balance-card {
+  background: var(--bg-card);
+  border-radius: var(--radius-xl);
+  padding: 32px 24px;
+  margin: 0 0 24px 0;
+  text-align: center;
+  box-shadow: var(--shadow-xl);
+  width: 100%;
+  box-sizing: border-box;
+  border: 2px solid #3B82F6;
+}
+
+.my-balance-label {
+  font-size: 14px;
+  color: var(--text-secondary);
+  margin-bottom: 12px;
+  font-weight: 600;
+}
+
+.my-balance-value {
+  font-size: 3rem; /* 48px */
+  font-weight: 800;
+  letter-spacing: -1px;
+  background: linear-gradient(135deg, #1F2937 0%, #4B5563 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  line-height: 1.1;
+  margin: 0;
+}
+
+/* Big Number - Current Balance (Legacy) */
 .big-balance-display {
   text-align: center;
   padding: 48px 24px;
@@ -4668,6 +4760,66 @@ strong, b {
 
 .savings-goal-display {
   margin-top: 24px;
+}
+
+.savings-goal-display-circular {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 24px;
+  margin-top: 24px;
+}
+
+.circular-progress-container {
+  position: relative;
+  width: 200px;
+  height: 200px;
+}
+
+.circular-progress {
+  width: 100%;
+  height: 100%;
+  transform: rotate(-90deg);
+}
+
+.circular-progress-bg {
+  stroke: #E5E7EB;
+}
+
+.circular-progress-fill {
+  stroke: #10B981;
+  transition: stroke-dashoffset 0.5s ease;
+}
+
+.circular-progress-content {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  text-align: center;
+}
+
+.circular-progress-percentage {
+  font-size: 48px;
+  font-weight: 800;
+  color: var(--text-primary);
+  line-height: 1;
+}
+
+.goal-info {
+  text-align: center;
+}
+
+.goal-name {
+  font-size: 20px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-bottom: 8px;
+}
+
+.goal-remaining {
+  font-size: 16px;
+  color: var(--text-secondary);
 }
 
 .goal-title {

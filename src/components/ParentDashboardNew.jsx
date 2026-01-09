@@ -238,6 +238,37 @@ const ParentDashboard = ({ familyId, onChildrenUpdated, onLogout, onViewChild })
         <div className="total-balance-value">₪{totalFamilyBalance.toFixed(2)}</div>
       </div>
 
+      {/* Children Cards Section */}
+      {childrenList.length > 0 && (
+        <div className="children-overview">
+          <div className="children-cards-container">
+            {childrenList.map((child) => {
+              const childBalance = (child.balance || 0) + (child.cashBoxBalance || 0);
+              return (
+                <div 
+                  key={child._id} 
+                  className="child-card-small"
+                  onClick={() => {
+                    if (onViewChild) {
+                      onViewChild(child);
+                    }
+                  }}
+                >
+                  <div className="child-card-icon">
+                    {child.profileImage ? (
+                      <img src={child.profileImage} alt={child.name} className="child-icon-image" />
+                    ) : (
+                      <span className="child-icon-emoji">👶</span>
+                    )}
+                  </div>
+                  <div className="child-card-name">{child.name}</div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
       {/* Recent Activity */}
       <div className="recent-activity-section">
         <h2 className="section-title">{t('parent.dashboard.recentActivity', { defaultValue: 'פעילות אחרונה' })}</h2>
