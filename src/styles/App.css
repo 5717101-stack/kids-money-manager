@@ -1350,12 +1350,12 @@ strong, b {
 
 /* Allowances Section */
 .allowance-info {
-  background: var(--primary-light);
-  padding: 16px;
-  border-radius: var(--radius-md);
-  margin-bottom: 32px;
-  color: var(--text-primary);
-  border-right: 3px solid var(--primary);
+  background: transparent;
+  padding: 0;
+  border-radius: 0;
+  margin-bottom: 16px;
+  color: var(--text-secondary);
+  border: none;
   font-size: 14px;
   line-height: 1.6;
 }
