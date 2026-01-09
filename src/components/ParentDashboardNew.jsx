@@ -118,6 +118,10 @@ const ParentDashboard = ({ familyId, onChildrenUpdated, onLogout, onViewChild })
   }, [childrenList]);
 
   const handleBottomNavAction = (type) => {
+    console.log('[ParentDashboard] handleBottomNavAction called with type:', type);
+    console.log('[ParentDashboard] childrenList.length:', childrenList.length);
+    console.log('[ParentDashboard] selectedChild:', selectedChild);
+    
     // If children list is empty, show message
     if (childrenList.length === 0) {
       alert(t('parent.dashboard.noChildren', { defaultValue: 'אין ילדים במשפחה. הוסף ילד בהגדרות.' }));
@@ -126,6 +130,7 @@ const ParentDashboard = ({ familyId, onChildrenUpdated, onLogout, onViewChild })
     
     // If no child is selected, show selector
     if (!selectedChild) {
+      console.log('[ParentDashboard] No child selected, showing selector');
       setPendingActionType(type);
       setShowChildSelector(true);
       return;
@@ -133,12 +138,14 @@ const ParentDashboard = ({ familyId, onChildrenUpdated, onLogout, onViewChild })
     
     // If only one child exists, use it directly
     if (childrenList.length === 1) {
+      console.log('[ParentDashboard] Only one child, using directly');
       setQuickActionType(type);
       setShowQuickAction(true);
       return;
     }
     
     // Child is selected, proceed with action
+    console.log('[ParentDashboard] Child selected, showing quick action');
     setQuickActionType(type);
     setShowQuickAction(true);
   };
@@ -161,6 +168,9 @@ const ParentDashboard = ({ familyId, onChildrenUpdated, onLogout, onViewChild })
   };
 
   const handleCenterButtonClick = () => {
+    console.log('[ParentDashboard] handleCenterButtonClick called');
+    console.log('[ParentDashboard] childrenList.length:', childrenList.length);
+    
     // If children list is empty, show message
     if (childrenList.length === 0) {
       alert(t('parent.dashboard.noChildren', { defaultValue: 'אין ילדים במשפחה. הוסף ילד בהגדרות.' }));
@@ -169,11 +179,13 @@ const ParentDashboard = ({ familyId, onChildrenUpdated, onLogout, onViewChild })
     
     // If only one child, select it automatically
     if (childrenList.length === 1) {
+      console.log('[ParentDashboard] Only one child, selecting automatically');
       handleChildSelected(childrenList[0]);
       return;
     }
     
     // Show child selector
+    console.log('[ParentDashboard] Showing child selector');
     setPendingActionType(null);
     setShowChildSelector(true);
   };
@@ -207,90 +219,55 @@ const ParentDashboard = ({ familyId, onChildrenUpdated, onLogout, onViewChild })
   };
 
   return (
-    <div className="parent-dashboard-new" dir={i18n.language === 'he' ? 'rtl' : 'ltr'}>
+    <div className="app-layout parent-dashboard-new" dir={i18n.language === 'he' ? 'rtl' : 'ltr'}>
       {/* Header */}
-      <div className="dashboard-header-new">
+      <div className="app-header">
         <button 
-          className="hamburger-menu-button" 
+          className="menu-btn" 
           onClick={() => setShowSidebar(true)}
           title={t('common.settings', { defaultValue: 'הגדרות' })}
           aria-label={t('common.settings', { defaultValue: 'הגדרות' })}
-          style={{ position: 'absolute', top: 'calc(12px + var(--safe-area-inset-top))', [i18n.language === 'he' ? 'right' : 'left']: '16px', zIndex: 10 }}
         >
-          <span className="hamburger-icon">
-            <span></span>
-            <span></span>
-            <span></span>
-          </span>
+          ☰
         </button>
-        <h1 className="family-name" style={{ textAlign: 'center', width: '100%' }}>
+        <h1 className="header-title">
           {getPageTitle()}
         </h1>
+        <div style={{ width: '44px' }}></div> {/* Spacer for centering */}
       </div>
 
       {/* Content based on current view */}
       {currentView === 'dashboard' && (
-        <div className="dashboard-content-wrapper">
+        <div className="content-area">
 
       {/* Total Family Balance Card */}
-      <div className="total-balance-card">
-        <div className="total-balance-label">{t('parent.dashboard.totalBalance', { defaultValue: 'יתרה כוללת' })}</div>
-        <div className="total-balance-value">₪{totalFamilyBalance.toFixed(2)}</div>
+      <div className="fintech-card">
+        <div className="label-text" style={{ paddingLeft: '16px', paddingRight: '16px' }}>{t('parent.dashboard.totalBalance', { defaultValue: 'יתרה כוללת' })}</div>
+        <div className="big-balance" style={{ paddingLeft: '16px', paddingRight: '16px' }}>₪{totalFamilyBalance.toFixed(2)}</div>
       </div>
 
-      {/* Children Cards Section */}
-      {childrenList.length > 0 && (
-        <div className="children-overview">
-          <div className="children-cards-container">
-            {childrenList.map((child) => {
-              const childBalance = (child.balance || 0) + (child.cashBoxBalance || 0);
-              return (
-                <div 
-                  key={child._id} 
-                  className="child-card-small"
-                  onClick={() => {
-                    if (onViewChild) {
-                      onViewChild(child);
-                    }
-                  }}
-                >
-                  <div className="child-card-icon">
-                    {child.profileImage ? (
-                      <img src={child.profileImage} alt={child.name} className="child-icon-image" />
-                    ) : (
-                      <span className="child-icon-emoji">👶</span>
-                    )}
-                  </div>
-                  <div className="child-card-name">{child.name}</div>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      )}
-
       {/* Recent Activity */}
-      <div className="recent-activity-section">
-        <h2 className="section-title">{t('parent.dashboard.recentActivity', { defaultValue: 'פעילות אחרונה' })}</h2>
+      <div className="fintech-card">
+        <h2 style={{ fontSize: '18px', fontWeight: 600, marginBottom: '16px', marginTop: 0, paddingLeft: '16px', paddingRight: '16px' }}>{t('parent.dashboard.recentActivity', { defaultValue: 'פעילות אחרונה' })}</h2>
         {recentTransactions.length === 0 ? (
-          <div className="no-activity-message">
+          <div style={{ textAlign: 'center', padding: '20px', color: 'var(--text-muted)' }}>
             {t('parent.dashboard.noActivity', { defaultValue: 'אין פעילות אחרונה' })}
           </div>
         ) : (
-          <div className="recent-transactions-list">
+          <div>
             {recentTransactions.map((transaction, index) => (
-              <div key={index} className="recent-transaction-item">
-                <div className="transaction-main">
-                  <span className="transaction-child-name">{transaction.childName}:</span>
-                  <span className={`transaction-amount ${transaction.type === 'deposit' ? 'positive' : 'negative'}`}>
+              <div key={index} style={{ padding: '12px 16px', borderBottom: index < recentTransactions.length - 1 ? '1px solid var(--border)' : 'none' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span style={{ fontSize: '14px', fontWeight: 500 }}>{transaction.childName}:</span>
+                  <span style={{ fontSize: '16px', fontWeight: 600, color: transaction.type === 'deposit' ? '#10B981' : '#EF4444' }}>
                     {transaction.type === 'deposit' ? '+' : '-'}₪{Math.abs(transaction.amount || 0).toFixed(2)}
                   </span>
                 </div>
                 {transaction.description && (
-                  <div className="transaction-description">{transaction.description}</div>
+                  <div style={{ fontSize: '12px', color: 'var(--text-muted)', marginTop: '4px' }}>{transaction.description}</div>
                 )}
                 {transaction.category && (
-                  <div className="transaction-category">{transaction.category}</div>
+                  <div style={{ fontSize: '12px', color: 'var(--text-muted)', marginTop: '4px' }}>{transaction.category}</div>
                 )}
               </div>
             ))}
@@ -327,7 +304,7 @@ const ParentDashboard = ({ familyId, onChildrenUpdated, onLogout, onViewChild })
 
       {/* Settings Content (not modal) */}
       {currentView !== 'dashboard' && (
-        <div className="settings-page-wrapper">
+        <div className="content-area">
           <Settings 
             familyId={familyId}
             onClose={async () => {
@@ -347,34 +324,49 @@ const ParentDashboard = ({ familyId, onChildrenUpdated, onLogout, onViewChild })
       )}
 
       {/* Bottom Navigation Bar - Always visible for parent */}
-      <div className="bottom-nav-bar">
-        <button 
-          className="bottom-nav-button expense-button"
-          onClick={() => handleBottomNavAction('expense')}
-        >
-          <span className="bottom-nav-icon">-</span>
-          <span className="bottom-nav-label">{t('parent.dashboard.recordExpense', { defaultValue: 'דיווח הוצאה' })}</span>
-        </button>
-        
-        <button 
-          className="bottom-nav-button center-button"
-          onClick={handleCenterButtonClick}
-        >
-          {selectedChild ? (
-            <span className="center-button-text">{selectedChild.name}</span>
-          ) : (
-            <span className="center-button-text">{t('parent.dashboard.selectChild', { defaultValue: 'בחירת ילד' })}</span>
-          )}
-        </button>
-        
-        <button 
-          className="bottom-nav-button income-button"
-          onClick={() => handleBottomNavAction('deposit')}
-        >
-          <span className="bottom-nav-icon">+</span>
-          <span className="bottom-nav-label">{t('parent.dashboard.addMoney', { defaultValue: 'הוספת כסף' })}</span>
-        </button>
-      </div>
+      <div className="bottom-nav">
+          <button 
+            className="nav-item"
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              handleBottomNavAction('expense');
+            }}
+            type="button"
+          >
+            <span style={{ fontSize: '20px' }}>-</span>
+            <span>{t('parent.dashboard.recordExpense', { defaultValue: 'דיווח הוצאה' })}</span>
+          </button>
+          
+          <button 
+            className="fab-btn"
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              handleCenterButtonClick();
+            }}
+            type="button"
+          >
+            {selectedChild ? (
+              <span style={{ fontSize: '14px', fontWeight: 700 }}>{selectedChild.name}</span>
+            ) : (
+              <span style={{ fontSize: '14px', fontWeight: 700 }}>{t('parent.dashboard.selectChild', { defaultValue: 'בחירת ילד' })}</span>
+            )}
+          </button>
+          
+          <button 
+            className="nav-item"
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              handleBottomNavAction('deposit');
+            }}
+            type="button"
+          >
+            <span style={{ fontSize: '20px' }}>+</span>
+            <span>{t('parent.dashboard.addMoney', { defaultValue: 'הוספת כסף' })}</span>
+          </button>
+        </div>
 
       {/* Child Selector Modal */}
       {showChildSelector && (
