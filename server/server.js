@@ -26,7 +26,7 @@ console.log(`Starting...\n`);
 const app = express();
 const PORT = process.env.PORT || 3001;
 
-// Twilio configuration (for SMS OTP) - DEPRECATED, using email instead
+// Twilio configuration (for SMS OTP)
 const TWILIO_ACCOUNT_SID = process.env.TWILIO_ACCOUNT_SID;
 const TWILIO_AUTH_TOKEN = process.env.TWILIO_AUTH_TOKEN;
 const TWILIO_PHONE_NUMBER = process.env.TWILIO_PHONE_NUMBER;
@@ -468,13 +468,59 @@ async function sendSMS(phoneNumber, message) {
   console.log(`[SMS] Message: ${message}`);
   console.log(`[SMS] ============================\n`);
   
-  // Always return success - SMS provider not configured
-  // OTP will be shown in the alert message instead
-  console.log(`[SMS] ⚠️  SMS provider not configured - OTP will be shown in alert`);
-  console.log(`[SMS] OTP Code: ${message.match(/\d{6}/)?.[0] || 'N/A'}`);
-  console.log(`[SMS] ============================\n`);
-  
-  return { success: true, dev: true, message: 'OTP shown in alert (SMS provider not configured)' };
+  // Check if Twilio is configured
+  if (twilioClient && TWILIO_PHONE_NUMBER) {
+    try {
+      console.log(`[SMS] 📤 Attempting to send SMS via Twilio...`);
+      console.log(`[SMS] From: ${TWILIO_PHONE_NUMBER}`);
+      console.log(`[SMS] To: ${phoneNumber}`);
+      
+      const result = await twilioClient.messages.create({
+        body: message,
+        from: TWILIO_PHONE_NUMBER,
+        to: phoneNumber
+      });
+      
+      const duration = Date.now() - startTime;
+      console.log(`[SMS] ✅ SMS sent successfully via Twilio!`);
+      console.log(`[SMS] SID: ${result.sid}`);
+      console.log(`[SMS] Status: ${result.status}`);
+      console.log(`[SMS] Duration: ${duration}ms`);
+      console.log(`[SMS] ============================\n`);
+      
+      return { 
+        success: true, 
+        sid: result.sid, 
+        status: result.status,
+        message: 'SMS sent successfully via Twilio'
+      };
+    } catch (error) {
+      const duration = Date.now() - startTime;
+      console.error(`[SMS] ❌ Failed to send SMS via Twilio!`);
+      console.error(`[SMS] Error: ${error.message}`);
+      console.error(`[SMS] Error Code: ${error.code || 'N/A'}`);
+      console.error(`[SMS] Duration: ${duration}ms`);
+      console.error(`[SMS] ============================\n`);
+      
+      return { 
+        success: false, 
+        error: error.message, 
+        code: error.code,
+        message: 'Failed to send SMS via Twilio'
+      };
+    }
+  } else {
+    // Twilio not configured - return success for development
+    console.log(`[SMS] ⚠️  Twilio not configured - SMS will not be sent`);
+    console.log(`[SMS] OTP Code: ${message.match(/\d{6}/)?.[0] || 'N/A'}`);
+    console.log(`[SMS] ============================\n`);
+    
+    return { 
+      success: true, 
+      dev: true, 
+      message: 'OTP shown in alert (Twilio not configured)' 
+    };
+  }
 }
 
 // Store OTP codes temporarily (in production, use Redis or similar)
