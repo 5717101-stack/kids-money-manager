@@ -3576,22 +3576,36 @@ strong, b {
 }
 
 .bottom-nav-button.center-button {
-  width: 64px;
+  width: auto;
+  min-width: 120px;
+  max-width: 200px;
   height: 64px;
-  border-radius: 50%;
+  border-radius: 32px;
   background: var(--primary);
   color: white;
   box-shadow: 0 4px 12px rgba(99, 102, 241, 0.4);
-  padding: 0;
-  min-width: 64px;
+  padding: 0 20px;
   position: relative;
   z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .bottom-nav-button.center-button:hover {
   background: var(--primary-hover);
   transform: scale(1.05);
   box-shadow: 0 6px 16px rgba(99, 102, 241, 0.5);
+}
+
+.center-button-text {
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1.2;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
 }
 
 .center-button-icon {

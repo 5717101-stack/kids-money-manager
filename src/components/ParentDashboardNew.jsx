@@ -16,6 +16,7 @@ const ParentDashboard = ({ familyId, onChildrenUpdated, onLogout, onViewChild })
   const [quickActionType, setQuickActionType] = useState('deposit'); // 'deposit' or 'expense'
   const [showChildSelector, setShowChildSelector] = useState(false);
   const [pendingActionType, setPendingActionType] = useState(null); // 'deposit' or 'expense'
+  const [selectedChild, setSelectedChild] = useState(null); // Store selected child object
   const [recentTransactions, setRecentTransactions] = useState([]);
   const [totalFamilyBalance, setTotalFamilyBalance] = useState(0);
   const [familyPhoneNumber, setFamilyPhoneNumber] = useState('');
@@ -92,32 +93,64 @@ const ParentDashboard = ({ familyId, onChildrenUpdated, onLogout, onViewChild })
   };
 
   const handleBottomNavAction = (type) => {
-    // If children list is empty or has only one child, open directly
+    // If children list is empty, show message
     if (childrenList.length === 0) {
-      // No children, show message or handle differently
       alert(t('parent.dashboard.noChildren', { defaultValue: 'אין ילדים במשפחה. הוסף ילד בהגדרות.' }));
       return;
     }
+    
+    // If no child is selected, show selector
+    if (!selectedChild) {
+      setPendingActionType(type);
+      setShowChildSelector(true);
+      return;
+    }
+    
+    // If only one child exists, use it directly
     if (childrenList.length === 1) {
-      // Only one child, open directly
       setQuickActionType(type);
       setShowQuickAction(true);
       return;
     }
-    // Multiple children, show selector
-    setPendingActionType(type);
-    setShowChildSelector(true);
+    
+    // Child is selected, proceed with action
+    setQuickActionType(type);
+    setShowQuickAction(true);
   };
 
   const handleChildSelected = (child) => {
+    setSelectedChild(child);
     setShowChildSelector(false);
-    setQuickActionType(pendingActionType);
-    // Pre-select the child in QuickActionModal
-    setShowQuickAction(true);
-    // Store selected child ID for QuickActionModal
+    
+    // Store selected child ID in sessionStorage
     if (typeof window !== 'undefined') {
       sessionStorage.setItem('selectedChildId', child._id);
     }
+    
+    // If there was a pending action, execute it
+    if (pendingActionType) {
+      setQuickActionType(pendingActionType);
+      setShowQuickAction(true);
+      setPendingActionType(null);
+    }
+  };
+
+  const handleCenterButtonClick = () => {
+    // If children list is empty, show message
+    if (childrenList.length === 0) {
+      alert(t('parent.dashboard.noChildren', { defaultValue: 'אין ילדים במשפחה. הוסף ילד בהגדרות.' }));
+      return;
+    }
+    
+    // If only one child, select it automatically
+    if (childrenList.length === 1) {
+      handleChildSelected(childrenList[0]);
+      return;
+    }
+    
+    // Show child selector
+    setPendingActionType(null);
+    setShowChildSelector(true);
   };
 
   const childrenList = Object.values(allData.children || {}).filter(child => child && child._id);
