@@ -315,8 +315,7 @@ const ParentDashboard = ({ familyId, onChildrenUpdated, onLogout, onViewChild })
         </div>
       )}
 
-      {/* Bottom Navigation Bar - Only show on dashboard view */}
-      {currentView === 'dashboard' && (
+      {/* Bottom Navigation Bar - Always visible for parent */}
       <div className="bottom-nav-bar">
         <button 
           className="bottom-nav-button expense-button"
@@ -345,7 +344,6 @@ const ParentDashboard = ({ familyId, onChildrenUpdated, onLogout, onViewChild })
           <span className="bottom-nav-label">{t('parent.dashboard.addMoney', { defaultValue: 'הוספת כסף' })}</span>
         </button>
       </div>
-      )}
 
       {/* Child Selector Modal */}
       {showChildSelector && (
