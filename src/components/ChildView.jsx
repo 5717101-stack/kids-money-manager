@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
-import { getChild, getChildTransactions, updateCashBoxBalance, getSavingsGoal, updateSavingsGoal, deleteSavingsGoal, updateProfileImage, getExpensesByCategory } from '../utils/api';
+import { getChild, getChildTransactions, updateCashBoxBalance, getSavingsGoal, updateSavingsGoal, deleteSavingsGoal, updateProfileImage, getExpensesByCategory, addTransaction, getCategories } from '../utils/api';
 import ExpensePieChart from './ExpensePieChart';
 
 const ChildView = ({ childId, familyId, onBackToParent, onLogout }) => {
@@ -17,6 +17,17 @@ const ChildView = ({ childId, familyId, onBackToParent, onLogout }) => {
   const [expensesPeriod, setExpensesPeriod] = useState('month'); // 'week' or 'month'
   const [expensesByCategory, setExpensesByCategory] = useState([]);
   const [loadingExpenses, setLoadingExpenses] = useState(false);
+  const [showCalculator, setShowCalculator] = useState(false);
+  const [showTransactionModal, setShowTransactionModal] = useState(false);
+  const [transactionType, setTransactionType] = useState('deposit'); // 'deposit' or 'expense'
+  const [transactionAmount, setTransactionAmount] = useState('');
+  const [transactionDescription, setTransactionDescription] = useState('');
+  const [transactionCategory, setTransactionCategory] = useState('');
+  const [categories, setCategories] = useState([]);
+  const [submittingTransaction, setSubmittingTransaction] = useState(false);
+  const [calculatorValue, setCalculatorValue] = useState('0');
+  const [calculatorHistory, setCalculatorHistory] = useState('');
+  const [calculatorResult, setCalculatorResult] = useState(null);
 
   useEffect(() => {
     loadChildData();
@@ -207,6 +218,114 @@ const ChildView = ({ childId, familyId, onBackToParent, onLogout }) => {
       await loadChildData();
     } catch (error) {
       alert(t('child.profile.error', { defaultValue: 'שגיאה בהסרת תמונה' }) + ': ' + error.message);
+    }
+  };
+
+  const handleBottomNavAction = (type) => {
+    setTransactionType(type);
+    setTransactionAmount('');
+    setTransactionDescription('');
+    setTransactionCategory('');
+    setShowTransactionModal(true);
+  };
+
+  const handleCalculatorClick = () => {
+    setShowCalculator(true);
+    setCalculatorValue('0');
+    setCalculatorHistory('');
+    setCalculatorResult(null);
+  };
+
+  const handleCalculatorInput = (value) => {
+    if (calculatorResult !== null) {
+      // If there's a result, start fresh
+      setCalculatorValue(value);
+      setCalculatorHistory('');
+      setCalculatorResult(null);
+      return;
+    }
+
+    if (value === 'C') {
+      setCalculatorValue('0');
+      setCalculatorHistory('');
+      return;
+    }
+
+    if (value === '=') {
+      try {
+        // Evaluate the expression
+        const result = Function('"use strict"; return (' + calculatorHistory + ')')();
+        setCalculatorResult(result);
+        setCalculatorValue(result.toString());
+      } catch (error) {
+        setCalculatorValue('Error');
+      }
+      return;
+    }
+
+    if (value === '←') {
+      if (calculatorHistory.length > 0) {
+        const newHistory = calculatorHistory.slice(0, -1);
+        setCalculatorHistory(newHistory);
+        setCalculatorValue(newHistory || '0');
+      }
+      return;
+    }
+
+    // Handle operators
+    if (['+', '-', '*', '/'].includes(value)) {
+      setCalculatorHistory(calculatorHistory + value);
+      setCalculatorValue(value);
+      return;
+    }
+
+    // Handle numbers and decimal
+    if (calculatorHistory === '' || ['+', '-', '*', '/'].includes(calculatorHistory.slice(-1))) {
+      setCalculatorHistory(calculatorHistory + value);
+      setCalculatorValue(value);
+    } else {
+      const newHistory = calculatorHistory + value;
+      setCalculatorHistory(newHistory);
+      setCalculatorValue(newHistory.match(/[\d.]+$/)?.[0] || value);
+    }
+  };
+
+  const useCalculatorResult = () => {
+    if (calculatorResult !== null) {
+      setTransactionAmount(calculatorResult.toString());
+      setShowCalculator(false);
+    }
+  };
+
+  const handleSubmitTransaction = async () => {
+    if (!transactionAmount || parseFloat(transactionAmount) <= 0) {
+      alert(t('parent.dashboard.invalidAmount', { defaultValue: 'אנא הכנס סכום תקין' }));
+      return;
+    }
+
+    if (transactionType === 'expense' && categories.length > 0 && !transactionCategory) {
+      alert(t('parent.dashboard.selectCategory', { defaultValue: 'אנא בחר קטגוריה' }));
+      return;
+    }
+
+    try {
+      setSubmittingTransaction(true);
+      const category = transactionType === 'expense' ? transactionCategory : null;
+      await addTransaction(familyId, childId, transactionType, transactionAmount, transactionDescription, category);
+      
+      // Reset form
+      setTransactionAmount('');
+      setTransactionDescription('');
+      setTransactionCategory('');
+      setShowTransactionModal(false);
+      
+      // Reload data to show updated balance
+      await loadChildData();
+      await loadExpensesByCategory();
+    } catch (error) {
+      alert(t('parent.dashboard.error', { defaultValue: 'שגיאה' }) + ': ' + error.message);
+    } finally {
+      setSubmittingTransaction(false);
     }
   };
 

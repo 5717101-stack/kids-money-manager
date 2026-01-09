@@ -199,6 +199,10 @@
       "fileTooLarge": "גודל הקובץ גדול מדי. אנא בחר תמונה קטנה מ-10MB",
       "error": "שגיאה בעדכון תמונת הפרופיל"
     },
+    "calculator": {
+      "title": "מחשבון",
+      "useResult": "השתמש בתוצאה"
+    },
     "history": {
       "title": "ההיסטוריה שלי",
       "recentTransactions": "עסקאות אחרונות",
