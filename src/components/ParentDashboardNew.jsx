@@ -5,7 +5,7 @@ import Sidebar from './Sidebar';
 import QuickActionModal from './QuickActionModal';
 import Settings from './Settings';
 
-const ParentDashboard = ({ familyId, onChildrenUpdated, onLogout }) => {
+const ParentDashboard = ({ familyId, onChildrenUpdated, onLogout, onViewChild }) => {
   const { t, i18n } = useTranslation();
   const [allData, setAllData] = useState({ children: {} });
   const [categories, setCategories] = useState([]);
