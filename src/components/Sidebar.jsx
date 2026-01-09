@@ -3,15 +3,22 @@ import { useTranslation } from 'react-i18next';
 import Settings from './Settings';
 import LanguageToggle from './LanguageToggle';
 
-const Sidebar = ({ isOpen, onClose, familyId, onLogout, onChildrenUpdated, onMenuItemClick }) => {
+const Sidebar = ({ isOpen, onClose, familyId, onLogout, onChildrenUpdated, onMenuItemClick, childrenList = [], onChildDashboardClick }) => {
   const { t, i18n } = useTranslation();
   const [activeTab, setActiveTab] = useState(null);
+  const [showChildrenSubmenu, setShowChildrenSubmenu] = useState(false);
 
   const menuItems = [
     {
       id: 'dashboard',
       label: t('sidebar.dashboard', { defaultValue: 'ממשק הורים' }),
       icon: '🏠'
+    },
+    {
+      id: 'childrenDashboard',
+      label: t('sidebar.childrenDashboard', { defaultValue: 'דשבורד ילדים' }),
+      icon: '👦',
+      hasSubmenu: true
     },
     {
       id: 'profileImages',
@@ -30,7 +37,7 @@ const Sidebar = ({ isOpen, onClose, familyId, onLogout, onChildrenUpdated, onMen
     },
     {
       id: 'children',
-      label: t('sidebar.children', { defaultValue: 'ילדים' }),
+      label: t('sidebar.childrenSettings', { defaultValue: 'הגדרת ילדים' }),
       icon: '👶'
     },
     {
@@ -75,20 +82,61 @@ const Sidebar = ({ isOpen, onClose, familyId, onLogout, onChildrenUpdated, onMen
         <div className="sidebar-content">
           <nav className="sidebar-nav">
             {menuItems.map(item => (
-              <button
-                key={item.id}
-                className={`sidebar-nav-item ${activeTab === item.id ? 'active' : ''}`}
-                onClick={() => {
-                  if (onMenuItemClick) {
-                    onMenuItemClick(item.id);
-                  } else {
-                    setActiveTab(item.id);
-                  }
-                }}
-              >
-                <span className="sidebar-nav-icon">{item.icon}</span>
-                <span className="sidebar-nav-label">{item.label}</span>
-              </button>
+              <div key={item.id}>
+                <button
+                  className={`sidebar-nav-item ${activeTab === item.id ? 'active' : ''} ${item.hasSubmenu && showChildrenSubmenu ? 'submenu-open' : ''}`}
+                  onClick={() => {
+                    if (item.hasSubmenu) {
+                      setShowChildrenSubmenu(!showChildrenSubmenu);
+                    } else {
+                      if (onMenuItemClick) {
+                        onMenuItemClick(item.id);
+                      } else {
+                        setActiveTab(item.id);
+                      }
+                      setShowChildrenSubmenu(false);
+                    }
+                  }}
+                >
+                  <span className="sidebar-nav-icon">{item.icon}</span>
+                  <span className="sidebar-nav-label">{item.label}</span>
+                  {item.hasSubmenu && (
+                    <span className="sidebar-submenu-arrow">{showChildrenSubmenu ? '▼' : '▶'}</span>
+                  )}
+                </button>
+                {item.hasSubmenu && item.id === 'childrenDashboard' && showChildrenSubmenu && (
+                  <div className="sidebar-submenu">
+                    {childrenList.length === 0 ? (
+                      <div className="sidebar-submenu-item disabled">
+                        {t('sidebar.noChildren', { defaultValue: 'אין ילדים' })}
+                      </div>
+                    ) : (
+                      childrenList.map(child => (
+                        <button
+                          key={child._id}
+                          className="sidebar-submenu-item"
+                          onClick={() => {
+                            if (onChildDashboardClick) {
+                              onChildDashboardClick(child);
+                            }
+                            setShowChildrenSubmenu(false);
+                            onClose();
+                          }}
+                        >
+                          <span className="sidebar-submenu-icon">
+                            {child.profileImage ? (
+                              <img src={child.profileImage} alt={child.name} className="sidebar-child-avatar" />
+                            ) : (
+                              <span className="sidebar-child-initial">{child.name.charAt(0).toUpperCase()}</span>
+                            )}
+                          </span>
+                          <span className="sidebar-submenu-label">{child.name}</span>
+                        </button>
+                      ))
+                    )}
+                  </div>
+                )}
+              </div>
             ))}
             
             {/* Language Toggle */}

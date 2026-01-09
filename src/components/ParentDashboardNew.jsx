@@ -151,67 +151,6 @@ const ParentDashboard = ({ familyId, onChildrenUpdated, onLogout }) => {
         <div className="total-balance-value">₪{totalFamilyBalance.toFixed(2)}</div>
       </div>
 
-      {/* Children Overview */}
-      <div className="children-overview">
-        <h2 className="section-title">{t('parent.dashboard.children', { defaultValue: 'ילדים' })}</h2>
-        <div className="children-cards-container">
-          {childrenList.length === 0 ? (
-            <div className="no-children-message">
-              {t('parent.dashboard.noChildren', { defaultValue: 'אין ילדים במשפחה. הוסף ילד בהגדרות.' })}
-            </div>
-          ) : (
-            childrenList.map((child, index) => {
-              const balance = (child.balance || 0) + (child.cashBoxBalance || 0);
-              const goal = child.savingsGoal || null;
-              const goalProgress = goal && goal.targetAmount > 0 
-                ? Math.min((balance / goal.targetAmount) * 100, 100) 
-                : 0;
-              
-              return (
-                <div key={child._id} className="child-card">
-                  <div className="child-card-header">
-                    <div className="child-profile-section">
-                      {child.profileImage ? (
-                        <img 
-                          src={child.profileImage} 
-                          alt={child.name}
-                          className="child-profile-image"
-                        />
-                      ) : (
-                        <div className="child-profile-placeholder">
-                          {child.name.charAt(0).toUpperCase()}
-                        </div>
-                      )}
-                      <div className="child-info">
-                        <h3 className="child-name">{child.name}</h3>
-                        <div className="child-balance">₪{balance.toFixed(2)}</div>
-                      </div>
-                    </div>
-                  </div>
-                  
-                  {goal && goal.targetAmount > 0 && (
-                    <div className="goal-progress-mini">
-                      <div className="goal-progress-label">
-                        {goal.name || t('child.savingsGoals', { defaultValue: 'מטרת חיסכון' })}
-                      </div>
-                      <div className="goal-progress-bar">
-                        <div 
-                          className="goal-progress-fill"
-                          style={{ width: `${goalProgress}%` }}
-                        />
-                      </div>
-                      <div className="goal-progress-text">
-                        {goalProgress.toFixed(0)}% ({balance.toFixed(2)} / {goal.targetAmount.toFixed(2)})
-                      </div>
-                    </div>
-                  )}
-                </div>
-              );
-            })
-          )}
-        </div>
-      </div>
-
       {/* Quick Actions */}
       <div className="quick-actions-section">
         <button 

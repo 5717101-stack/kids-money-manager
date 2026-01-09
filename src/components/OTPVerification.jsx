@@ -302,7 +302,7 @@ const OTPVerification = ({ phoneNumber, isExistingFamily, onVerified, onBack }) 
         </form>
       </div>
       <footer className="app-footer">
-        <span className="version">{t('common.version', { defaultValue: 'גרסה' })} 3.4.37</span>
+        <span className="version">{t('common.version', { defaultValue: 'גרסה' })} 3.4.38</span>
       </footer>
     </div>
   );

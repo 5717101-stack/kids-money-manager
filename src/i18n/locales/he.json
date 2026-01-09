@@ -292,6 +292,9 @@
     "categories": "קטגוריות",
     "allowances": "דמי כיס",
     "children": "ילדים",
+    "childrenSettings": "הגדרת ילדים",
+    "childrenDashboard": "דשבורד ילדים",
+    "noChildren": "אין ילדים",
     "parents": "הורים",
     "confirmLogout": "האם אתה בטוח שברצונך להתנתק?"
   }
