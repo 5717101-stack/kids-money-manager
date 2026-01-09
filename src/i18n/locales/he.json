@@ -165,6 +165,7 @@
       "hello": "שלום",
       "greeting": "שלום, {name}!",
       "balance": "יתרה",
+      "backToParent": "ממשק הורים",
       "cashBox": "קופה",
       "totalBalance": "יתרה כוללת"
     },

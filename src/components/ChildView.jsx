@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { getChild, getChildTransactions, updateCashBoxBalance, getSavingsGoal, updateSavingsGoal, deleteSavingsGoal, updateProfileImage, getExpensesByCategory } from '../utils/api';
 import ExpensePieChart from './ExpensePieChart';
 
-const ChildView = ({ childId, familyId }) => {
+const ChildView = ({ childId, familyId, onBackToParent }) => {
   const { t, i18n } = useTranslation();
   const [childData, setChildData] = useState(null);
   const [transactions, setTransactions] = useState([]);
@@ -223,8 +223,24 @@ const ChildView = ({ childId, familyId }) => {
     ? Math.min((totalBalance / savingsGoal.targetAmount) * 100, 100)
     : 0;
 
+  // Check if user is a parent (logged in as parent)
+  const isParent = typeof window !== 'undefined' && sessionStorage.getItem('parentLoggedIn') === 'true';
+
   return (
     <div className="child-view" dir={i18n.language === 'he' ? 'rtl' : 'ltr'}>
+      {/* Back to Parent Dashboard Button - Only show if logged in as parent */}
+      {isParent && onBackToParent && (
+        <button 
+          className="back-to-parent-button"
+          onClick={onBackToParent}
+          title={t('child.dashboard.backToParent', { defaultValue: 'חזור לממשק הורים' })}
+          aria-label={t('child.dashboard.backToParent', { defaultValue: 'חזור לממשק הורים' })}
+        >
+          <span className="back-to-parent-icon">←</span>
+          <span className="back-to-parent-label">{t('child.dashboard.backToParent', { defaultValue: 'ממשק הורים' })}</span>
+        </button>
+      )}
+      
       {/* Top Profile Section */}
       <div className="child-profile-section">
         <div className="profile-image-container">

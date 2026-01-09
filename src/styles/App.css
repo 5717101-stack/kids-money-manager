@@ -917,6 +917,52 @@ strong, b {
   background: var(--bg);
   min-height: 100vh;
   min-height: -webkit-fill-available; /* iOS Safari fix */
+  position: relative;
+}
+
+/* Back to Parent Button */
+.back-to-parent-button {
+  position: absolute;
+  top: calc(12px + var(--safe-area-inset-top));
+  right: 16px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  background: var(--primary);
+  color: white;
+  border: none;
+  border-radius: 12px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  z-index: 10;
+}
+
+[dir="ltr"] .back-to-parent-button {
+  right: auto;
+  left: 16px;
+}
+
+.back-to-parent-button:hover {
+  background: var(--primary-hover);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
+}
+
+.back-to-parent-button:active {
+  transform: translateY(0);
+}
+
+.back-to-parent-icon {
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.back-to-parent-label {
+  font-size: 14px;
 }
 
 .child-header {

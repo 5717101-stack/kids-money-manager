@@ -277,7 +277,18 @@ const App = () => {
           </nav>
 
           <main className="main-content">
-            <ChildView childId={currentChild._id} familyId={familyId} />
+            <ChildView 
+              childId={currentChild._id} 
+              familyId={familyId}
+              onBackToParent={() => {
+                setIsChildView(false);
+                setCurrentChild(null);
+                setScreen('dashboard');
+                sessionStorage.removeItem('childId');
+                sessionStorage.removeItem('isChildView');
+                sessionStorage.setItem('parentLoggedIn', 'true');
+              }}
+            />
           </main>
         </>
       )}
