@@ -3259,6 +3259,25 @@ strong, b {
   background: rgba(255, 255, 255, 0.95);
   border-radius: 16px;
   box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+  position: relative;
+}
+
+.dashboard-header-new .family-name {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  width: auto;
+}
+
+[dir="rtl"] .dashboard-header-new .family-name {
+  left: auto;
+  right: 50%;
+  transform: translateX(50%);
+  text-align: right;
+}
+
+[dir="ltr"] .dashboard-header-new .family-name {
+  text-align: left;
 }
 
 .header-left {
