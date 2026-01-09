@@ -123,16 +123,12 @@ const ParentDashboard = ({ familyId, onChildrenUpdated, onLogout }) => {
     <div className="parent-dashboard-new" dir={i18n.language === 'he' ? 'rtl' : 'ltr'}>
       {/* Header */}
       <div className="dashboard-header-new">
-        <div className="header-left">
-        </div>
-        <h1 className="family-name">
-          {getPageTitle()}
-        </h1>
         <button 
           className="hamburger-menu-button" 
           onClick={() => setShowSidebar(true)}
           title={t('common.settings', { defaultValue: 'הגדרות' })}
           aria-label={t('common.settings', { defaultValue: 'הגדרות' })}
+          style={{ position: 'absolute', top: 'calc(12px + var(--safe-area-inset-top))', [i18n.language === 'he' ? 'right' : 'left']: '16px', zIndex: 10 }}
         >
           <span className="hamburger-icon">
             <span></span>
@@ -140,6 +136,9 @@ const ParentDashboard = ({ familyId, onChildrenUpdated, onLogout }) => {
             <span></span>
           </span>
         </button>
+        <h1 className="family-name" style={{ textAlign: 'center', width: '100%' }}>
+          {getPageTitle()}
+        </h1>
       </div>
 
       {/* Content based on current view */}
