@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { getChild, getChildTransactions, updateCashBoxBalance, getSavingsGoal, updateSavingsGoal, deleteSavingsGoal, updateProfileImage, getExpensesByCategory } from '../utils/api';
 import ExpensePieChart from './ExpensePieChart';
 
-const ChildView = ({ childId, familyId, onBackToParent }) => {
+const ChildView = ({ childId, familyId, onBackToParent, onLogout }) => {
   const { t, i18n } = useTranslation();
   const [childData, setChildData] = useState(null);
   const [transactions, setTransactions] = useState([]);

@@ -3,6 +3,9 @@ import { useTranslation } from 'react-i18next';
 import Settings from './Settings';
 import LanguageToggle from './LanguageToggle';
 
+// Get version from package.json
+const VERSION = '3.4.40';
+
 const Sidebar = ({ isOpen, onClose, familyId, onLogout, onChildrenUpdated, onMenuItemClick, childrenList = [], onChildDashboardClick }) => {
   const { t, i18n } = useTranslation();
   const [activeTab, setActiveTab] = useState(null);
@@ -154,6 +157,9 @@ const Sidebar = ({ isOpen, onClose, familyId, onLogout, onChildrenUpdated, onMen
             <span className="sidebar-nav-icon">🚪</span>
             <span>{t('common.logout', { defaultValue: 'התנתק' })}</span>
           </button>
+          <div className="sidebar-version">
+            {t('common.version', { defaultValue: 'גרסה' })} {VERSION}
+          </div>
         </div>
       </div>
     </>

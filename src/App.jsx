@@ -264,33 +264,19 @@ const App = () => {
       )}
 
       {screen === 'child-view' && familyId && currentChild && (
-        <>
-          <nav className="main-nav child-only-nav">
-            <div className="child-nav-info">
-              {currentChild.profileImage ? (
-                <img src={currentChild.profileImage} alt={currentChild.name} className="nav-profile-icon" />
-              ) : (
-                <span>👦</span>
-              )}
-              <span className="child-name">{currentChild.name}</span>
-            </div>
-          </nav>
-
-          <main className="main-content">
-            <ChildView 
-              childId={currentChild._id} 
-              familyId={familyId}
-              onBackToParent={() => {
-                setIsChildView(false);
-                setCurrentChild(null);
-                setScreen('dashboard');
-                sessionStorage.removeItem('childId');
-                sessionStorage.removeItem('isChildView');
-                sessionStorage.setItem('parentLoggedIn', 'true');
-              }}
-            />
-          </main>
-        </>
+        <ChildView 
+          childId={currentChild._id} 
+          familyId={familyId}
+          onBackToParent={() => {
+            setIsChildView(false);
+            setCurrentChild(null);
+            setScreen('dashboard');
+            sessionStorage.removeItem('childId');
+            sessionStorage.removeItem('isChildView');
+            sessionStorage.setItem('parentLoggedIn', 'true');
+          }}
+          onLogout={handleLogout}
+        />
       )}
 
       {screen === 'dashboard' && familyId && !isChildView && (

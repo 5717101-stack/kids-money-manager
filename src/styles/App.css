@@ -965,6 +965,45 @@ strong, b {
   font-size: 14px;
 }
 
+/* Child Logout Section */
+.child-logout-section {
+  margin-top: 32px;
+  padding-top: 24px;
+  border-top: 1px solid var(--border);
+}
+
+.child-logout-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  width: 100%;
+  padding: 14px 16px;
+  background: var(--error);
+  color: white;
+  border: none;
+  border-radius: 12px;
+  font-size: 16px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.child-logout-button:hover {
+  background: var(--error-hover);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
+}
+
+.child-logout-button:active {
+  transform: translateY(0);
+}
+
+.child-logout-icon {
+  font-size: 18px;
+}
+
 .child-header {
   display: flex;
   align-items: center;
