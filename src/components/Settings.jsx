@@ -629,7 +629,6 @@ const Settings = ({ familyId, onClose, onLogout, activeTab: externalActiveTab, h
                         onChange={(e) => updateState({ amount: parseFloat(e.target.value) || 0 })}
                         onBlur={saveChanges}
                         className="allowance-input"
-                        inputMode="numeric"
                       />
                       <span className="currency-label">₪</span>
                     </div>
