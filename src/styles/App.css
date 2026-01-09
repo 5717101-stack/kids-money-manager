@@ -1386,9 +1386,10 @@ strong, b {
 
 .allowance-label {
   font-weight: 600;
+  font-size: 14px;
   color: var(--text-primary);
-  min-width: 140px;
-  font-size: 15px;
+  width: 100%;
+  margin-bottom: 8px;
 }
 
 .allowance-input-group {
@@ -4624,6 +4625,9 @@ strong, b {
   padding: 4px;
   border-radius: var(--radius-md);
   border: 2px solid var(--border);
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
 }
 
 .frequency-button {
