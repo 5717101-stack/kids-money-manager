@@ -2662,6 +2662,7 @@ app.post('/api/families/:familyId/children/:childId/pay-allowance', async (req, 
           }
         }
       );
+      invalidateFamilyCache(familyId);
     }
     
     res.json({ success: true, transaction, balance });
