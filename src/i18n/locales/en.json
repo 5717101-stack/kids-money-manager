@@ -45,7 +45,15 @@
       "category": "Category",
       "selectCategory": "Select Category",
       "invalidAmount": "Please enter a valid amount",
-      "error": "Error"
+      "error": "Error",
+      "expensesByCategory": "Expenses by Category",
+      "week": "Week",
+      "month": "Month",
+      "other": "Other",
+      "noExpenses": "No expenses in this period",
+      "total": "Total",
+      "all": "All",
+      "balanceDetail": "Balance Detail by Children"
     },
     "settings": {
       "title": "Settings",

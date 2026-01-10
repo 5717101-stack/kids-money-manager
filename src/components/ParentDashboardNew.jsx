@@ -6,6 +6,7 @@ import Sidebar from './Sidebar';
 import QuickActionModal from './QuickActionModal';
 import Settings from './Settings';
 import DeleteFamilyProfile from './DeleteFamilyProfile';
+import ExpensesPieChart from './ExpensesPieChart';
 
 const ParentDashboard = ({ familyId, onChildrenUpdated, onLogout, onViewChild }) => {
   const { t, i18n } = useTranslation();
@@ -461,6 +462,13 @@ const ParentDashboard = ({ familyId, onChildrenUpdated, onLogout, onViewChild })
         <div className="label-text">{t('parent.dashboard.totalBalance', { defaultValue: 'יתרה כוללת' })}</div>
         <div className="big-balance">₪{totalFamilyBalance.toFixed(2)}</div>
       </div>
+
+      {/* Expenses Pie Chart */}
+      <ExpensesPieChart 
+        familyId={familyId}
+        children={childrenList}
+        categories={categories}
+      />
 
       {/* Recent Activity */}
       <div className="fintech-card activity-card">

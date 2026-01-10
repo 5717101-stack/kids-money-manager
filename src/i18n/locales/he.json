@@ -46,7 +46,15 @@
       "category": "קטגוריה",
       "selectCategory": "בחר קטגוריה",
       "invalidAmount": "אנא הכנס סכום תקין",
-      "error": "שגיאה"
+      "error": "שגיאה",
+      "expensesByCategory": "הוצאות לפי קטגוריות",
+      "week": "שבוע",
+      "month": "חודש",
+      "other": "אחר",
+      "noExpenses": "אין הוצאות בתקופה זו",
+      "total": "סה\"כ",
+      "all": "הכל",
+      "balanceDetail": "פירוט יתרה לפי ילדים"
     },
     "settings": {
       "title": "הגדרות",
