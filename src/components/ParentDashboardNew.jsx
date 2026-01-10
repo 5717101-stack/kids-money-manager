@@ -249,6 +249,11 @@ const ParentDashboard = ({ familyId, onChildrenUpdated, onLogout, onViewChild })
     } catch (error) {
       alert(t('parent.profile.error', { defaultValue: 'שגיאה בעדכון תמונת הפרופיל' }) + ': ' + error.message);
     }
+    
+    // Reset file input so same file can be selected again
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
   };
 
   const handleRemoveImage = async () => {
@@ -292,13 +297,15 @@ const ParentDashboard = ({ familyId, onChildrenUpdated, onLogout, onViewChild })
               alt={parentName}
               loading="lazy"
               decoding="async"
+              onClick={() => setShowImagePicker(true)}
               style={{
                 width: '120px',
                 height: '120px',
                 borderRadius: '50%',
                 objectFit: 'cover',
                 border: '4px solid white',
-                boxShadow: '0 4px 12px rgba(0,0,0,0.1)'
+                boxShadow: '0 4px 12px rgba(0,0,0,0.1)',
+                cursor: 'pointer'
               }}
             />
           ) : (
@@ -320,7 +327,15 @@ const ParentDashboard = ({ familyId, onChildrenUpdated, onLogout, onViewChild })
             </div>
           )}
           <button
-            onClick={() => setShowImagePicker(true)}
+            onClick={() => {
+              if (parentProfileImage) {
+                // If image exists, open modal with options
+                setShowImagePicker(true);
+              } else {
+                // If no image, open file picker directly
+                fileInputRef.current?.click();
+              }
+            }}
             style={{
               position: 'absolute',
               bottom: 0,
@@ -350,12 +365,13 @@ const ParentDashboard = ({ familyId, onChildrenUpdated, onLogout, onViewChild })
         ref={fileInputRef}
         type="file"
         accept="image/*"
+        capture="environment"
         style={{ display: 'none' }}
         onChange={handleImageUpload}
       />
 
-      {/* Image picker modal */}
-      {showImagePicker && (
+      {/* Image picker modal - only shown when image exists */}
+      {showImagePicker && parentProfileImage && (
         <div className="modal-overlay" onClick={() => setShowImagePicker(false)}>
           <div className="modal-content" onClick={(e) => e.stopPropagation()}>
             <div className="modal-header">
@@ -366,6 +382,7 @@ const ParentDashboard = ({ familyId, onChildrenUpdated, onLogout, onViewChild })
               <button
                 onClick={() => {
                   fileInputRef.current?.click();
+                  setShowImagePicker(false);
                 }}
                 style={{
                   padding: '12px 24px',
@@ -378,28 +395,26 @@ const ParentDashboard = ({ familyId, onChildrenUpdated, onLogout, onViewChild })
                   cursor: 'pointer'
                 }}
               >
-                {t('parent.profile.upload', { defaultValue: 'העלה תמונה' })}
+                {t('parent.profile.replace', { defaultValue: 'החלף תמונה' })}
               </button>
-              {parentProfileImage && (
-                <button
-                  onClick={() => {
-                    handleRemoveImage();
-                    setShowImagePicker(false);
-                  }}
-                  style={{
-                    padding: '12px 24px',
-                    borderRadius: '12px',
-                    background: '#EF4444',
-                    color: 'white',
-                    border: 'none',
-                    fontSize: '16px',
-                    fontWeight: 600,
-                    cursor: 'pointer'
-                  }}
-                >
-                  {t('parent.profile.remove', { defaultValue: 'מחק תמונה' })}
-                </button>
-              )}
+              <button
+                onClick={() => {
+                  handleRemoveImage();
+                  setShowImagePicker(false);
+                }}
+                style={{
+                  padding: '12px 24px',
+                  borderRadius: '12px',
+                  background: '#EF4444',
+                  color: 'white',
+                  border: 'none',
+                  fontSize: '16px',
+                  fontWeight: 600,
+                  cursor: 'pointer'
+                }}
+              >
+                {t('parent.profile.remove', { defaultValue: 'מחק תמונה' })}
+              </button>
             </div>
           </div>
         </div>
