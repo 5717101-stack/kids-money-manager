@@ -690,41 +690,46 @@ const ChildView = ({ childId, familyId, onBackToParent, onLogout }) => {
       </div>
 
       {/* My History - Scrollable */}
-      <div className="fintech-card">
-        <h2 style={{ marginBottom: '16px' }}>{t('child.history.title', { defaultValue: 'ההיסטוריה שלי' })}</h2>
-        {transactions.length === 0 ? (
-          <div className="no-transactions-message">
-            {t('child.history.noTransactions', { defaultValue: 'אין עסקאות' })}
-          </div>
-        ) : (
-          <div style={{ 
-            maxHeight: '300px', 
-            overflowY: 'auto',
-            overflowX: 'hidden',
-            paddingRight: '8px',
-            WebkitOverflowScrolling: 'touch'
-          }}>
-            <div className="transactions-list-simple">
+      <div className="fintech-card history-card">
+        <div className="history-header">
+          <h2>{t('child.history.title', { defaultValue: 'ההיסטוריה שלי' })}</h2>
+        </div>
+        <div className="history-content">
+          {transactions.length === 0 ? (
+            <div className="no-transactions-message">
+              {t('child.history.noTransactions', { defaultValue: 'אין עסקאות' })}
+            </div>
+          ) : (
+            <div className="transactions-list-container">
               {transactions.map((transaction, index) => (
-                <div key={index} className={`transaction-item-simple ${transaction.type === 'deposit' ? 'positive' : 'negative'}`}>
-                  <div className="transaction-main-simple">
-                    <span className="transaction-description-simple">
-                      {transaction.description || transaction.category || t('child.history.transaction', { defaultValue: 'עסקה' })}
-                    </span>
-                    <span className="transaction-amount-simple">
-                      {transaction.type === 'deposit' ? '+' : '-'}₪{Math.abs(transaction.amount || 0).toFixed(2)}
-                    </span>
+                <div key={index} className={`transaction-item ${transaction.type === 'deposit' ? 'positive' : 'negative'}`}>
+                  <div className="transaction-icon">
+                    {transaction.type === 'deposit' ? '📈' : '📉'}
                   </div>
-                  {transaction.date && (
-                    <div className="transaction-date-simple">
-                      {new Date(transaction.date).toLocaleDateString(i18n.language === 'he' ? 'he-IL' : 'en-US')}
+                  <div className="transaction-details">
+                    <div className="transaction-main">
+                      <span className="transaction-description">
+                        {transaction.description || transaction.category || t('child.history.transaction', { defaultValue: 'עסקה' })}
+                      </span>
+                      <span className={`transaction-amount ${transaction.type === 'deposit' ? 'positive' : 'negative'}`}>
+                        {transaction.type === 'deposit' ? '+' : '-'}₪{Math.abs(transaction.amount || 0).toFixed(2)}
+                      </span>
                     </div>
-                  )}
+                    {transaction.date && (
+                      <div className="transaction-date">
+                        {new Date(transaction.date).toLocaleDateString(i18n.language === 'he' ? 'he-IL' : 'en-US', { 
+                          day: '2-digit', 
+                          month: '2-digit', 
+                          year: 'numeric' 
+                        })}
+                      </div>
+                    )}
+                  </div>
                 </div>
               ))}
             </div>
-          </div>
-        )}
+          )}
+        </div>
       </div>
 
       {/* Goal Modal */}
