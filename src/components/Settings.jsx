@@ -63,7 +63,14 @@ const Settings = ({ familyId, onClose, onLogout, activeTab: externalActiveTab, h
           return [];
         }),
         getData(familyId).catch(err => {
-          console.error('Error loading children data:', err);
+          console.error('[SETTINGS] Error loading children data:', err);
+          console.error('[SETTINGS] Error details:', {
+            message: err?.message,
+            stack: err?.stack,
+            name: err?.name,
+            error: err
+          });
+          // Return empty children object to prevent crash
           return { children: {} };
         }),
         getFamilyInfo(familyId).catch(err => {
@@ -96,9 +103,20 @@ const Settings = ({ familyId, onClose, onLogout, activeTab: externalActiveTab, h
       });
       setAllowanceStates(states);
     } catch (error) {
-      console.error('Error loading settings data:', error);
+      console.error('[SETTINGS] Error loading settings data:', error);
+      console.error('[SETTINGS] Error details:', {
+        message: error?.message,
+        stack: error?.stack,
+        name: error?.name,
+        error: error
+      });
+      // Set empty data to prevent white screen
+      setCategories([]);
+      setAllData({ children: {} });
+      setFamilyInfo(null);
+      setAllowanceStates({});
       // Don't show alert if it's just a network error - let user retry
-      if (!error.message?.includes('Failed to fetch')) {
+      if (!error.message?.includes('Failed to fetch') && !error.message?.includes('aborted')) {
         alert(t('parent.settings.alerts.loadDataError', { defaultValue: 'שגיאה בטעינת הנתונים' }) + ': ' + (error.message || 'Unknown error'));
       }
     } finally {

@@ -142,10 +142,32 @@ export const getData = async (familyId) => {
   if (!familyId) {
     throw new Error('Family ID is required');
   }
-  const response = await apiCall(`/families/${familyId}/children`);
-  return {
-    children: response.children
-  };
+  try {
+    const response = await apiCall(`/families/${familyId}/children`);
+    // Ensure response has children property
+    if (!response || typeof response !== 'object') {
+      console.error('[API] Invalid response from getData:', response);
+      return { children: {} };
+    }
+    // Ensure children is an object (not array)
+    if (Array.isArray(response.children)) {
+      // Convert array to object if needed
+      const childrenObj = {};
+      response.children.forEach((child, index) => {
+        if (child._id) {
+          childrenObj[child._id] = child;
+        }
+      });
+      return { children: childrenObj };
+    }
+    return {
+      children: response.children || {}
+    };
+  } catch (error) {
+    console.error('[API] Error in getData:', error);
+    // Return empty children object instead of throwing
+    return { children: {} };
+  }
 };
 
 // Get child data
