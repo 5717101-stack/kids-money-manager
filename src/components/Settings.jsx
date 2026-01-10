@@ -989,12 +989,30 @@ const Settings = ({ familyId, onClose, onLogout, activeTab: externalActiveTab, h
                             setEditingChild(null);
                             setEditChildName('');
                             setEditChildPhone('');
-                            alert(t('parent.settings.updateChildSuccess', { defaultValue: 'ילד עודכן בהצלחה!' }));
-                            if (onClose) {
-                              setTimeout(() => {
-                                onClose();
-                              }, 500);
-                            }
+                            
+                            // Show success message without alert
+                            const successMsg = t('parent.settings.updateChildSuccess', { defaultValue: 'ילד עודכן בהצלחה!' });
+                            // Use a simple notification instead of alert
+                            const notification = document.createElement('div');
+                            notification.textContent = successMsg;
+                            notification.style.cssText = `
+                              position: fixed;
+                              top: 20px;
+                              right: 20px;
+                              background: linear-gradient(135deg, #10B981 0%, #059669 100%);
+                              color: white;
+                              padding: 16px 24px;
+                              border-radius: 12px;
+                              box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3);
+                              z-index: 10005;
+                              font-weight: 600;
+                              animation: slideIn 0.3s ease;
+                            `;
+                            document.body.appendChild(notification);
+                            setTimeout(() => {
+                              notification.style.animation = 'slideOut 0.3s ease';
+                              setTimeout(() => notification.remove(), 300);
+                            }, 2000);
                           } catch (error) {
                             const errorMessage = error.message || 'שגיאה לא ידועה';
                             alert(t('parent.settings.updateChildError', { defaultValue: 'שגיאה בעדכון ילד' }) + ': ' + errorMessage);
@@ -1064,12 +1082,32 @@ const Settings = ({ familyId, onClose, onLogout, activeTab: externalActiveTab, h
                                   defaultValue: 'הילד נמחק והועבר לארכיון בהצלחה',
                                   name: childName
                                 }).replace(/\{name\}/g, childName);
-                                alert(successMessage);
-                                if (onClose) {
-                                  setTimeout(() => {
-                                    onClose();
-                                  }, 500);
-                                }
+                                
+                                // Show success notification
+                                const notification = document.createElement('div');
+                                notification.textContent = successMessage;
+                                const isRTL = i18n.language === 'he';
+                                const animationName = isRTL ? 'slideInRTL' : 'slideIn';
+                                const animationOutName = isRTL ? 'slideOutRTL' : 'slideOut';
+                                const rightOrLeft = isRTL ? 'left' : 'right';
+                                notification.style.cssText = `
+                                  position: fixed;
+                                  top: 20px;
+                                  ${rightOrLeft}: 20px;
+                                  background: linear-gradient(135deg, #6366F1 0%, #8B5CF6 100%);
+                                  color: white;
+                                  padding: 16px 24px;
+                                  border-radius: 12px;
+                                  box-shadow: 0 4px 12px rgba(99, 102, 241, 0.3);
+                                  z-index: 10005;
+                                  font-weight: 600;
+                                  animation: ${animationName} 0.3s ease;
+                                `;
+                                document.body.appendChild(notification);
+                                setTimeout(() => {
+                                  notification.style.animation = `${animationOutName} 0.3s ease`;
+                                  setTimeout(() => notification.remove(), 300);
+                                }, 3000);
                               } catch (error) {
                                 alert(t('parent.settings.deleteChildError', { defaultValue: 'שגיאה במחיקת הילד' }) + ': ' + (error.message || 'Unknown error'));
                               }
