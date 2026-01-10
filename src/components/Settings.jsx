@@ -26,7 +26,6 @@ const Settings = ({ familyId, onClose, onLogout, activeTab: externalActiveTab, h
   const [allowanceStates, setAllowanceStates] = useState({});
   const [uploadingImages, setUploadingImages] = useState({});
   const fileInputRefs = useRef({});
-  const [showChildJoin, setShowChildJoin] = useState(false);
   const [newChildName, setNewChildName] = useState('');
   const [newChildPhone, setNewChildPhone] = useState('');
   const [creatingChild, setCreatingChild] = useState(false);
