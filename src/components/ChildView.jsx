@@ -140,11 +140,11 @@ const ChildView = ({ childId, familyId, onBackToParent, onLogout }) => {
         const trans = await getChildTransactions(familyId, childId, transactionLimit);
         setTransactions(trans);
       } else {
-        setError('ילד לא נמצא');
+        setError(t('child.dashboard.childNotFound', { defaultValue: 'Child not found' }));
       }
     } catch (error) {
       console.error('Error loading child data:', error);
-      setError(error.message || 'שגיאה בטעינת נתוני הילד');
+      setError(error.message || t('child.dashboard.loadError', { defaultValue: 'Error loading child data' }));
       throw error; // Re-throw to be caught by useEffect
     }
   }, [familyId, childId]);
