@@ -3192,6 +3192,91 @@ app.delete('/api/admin/families/:familyId/children/:childId', async (req, res) =
   }
 });
 
+// Archive a child - move to archive collection instead of deleting
+app.post('/api/families/:familyId/children/:childId/archive', async (req, res) => {
+  const timestamp = new Date().toISOString();
+  console.log(`\n[ARCHIVE-CHILD] ========================================`);
+  console.log(`[ARCHIVE-CHILD] 📦 ARCHIVE CHILD REQUEST`);
+  console.log(`[ARCHIVE-CHILD] ========================================`);
+  console.log(`[ARCHIVE-CHILD] Timestamp: ${timestamp}`);
+  console.log(`[ARCHIVE-CHILD] Family ID: ${req.params.familyId}`);
+  console.log(`[ARCHIVE-CHILD] Child ID: ${req.params.childId}`);
+  console.log(`[ARCHIVE-CHILD] ========================================\n`);
+  
+  try {
+    if (!db) {
+      console.error(`[ARCHIVE-CHILD] ❌ No database connection`);
+      return res.status(500).json({ error: 'אין חיבור למסד הנתונים' });
+    }
+    
+    const { familyId, childId } = req.params;
+    const family = await getFamilyById(familyId);
+    
+    if (!family) {
+      console.error(`[ARCHIVE-CHILD] ❌ Family not found: ${familyId}`);
+      return res.status(404).json({ error: 'משפחה לא נמצאה' });
+    }
+    
+    const child = family.children?.find(c => c._id === childId);
+    if (!child) {
+      console.error(`[ARCHIVE-CHILD] ❌ Child not found: ${childId}`);
+      return res.status(404).json({ error: 'ילד לא נמצא' });
+    }
+    
+    console.log(`[ARCHIVE-CHILD] Archiving child: ${childId} (${child.name || 'no name'})`);
+    
+    // Create archived child document with all data
+    const archivedChild = {
+      ...child,
+      archivedAt: new Date().toISOString(),
+      archivedFromFamily: familyId,
+      familyPhoneNumber: family.phoneNumber
+    };
+    
+    // Save to archive collection
+    await db.collection('archived_children').insertOne(archivedChild);
+    console.log(`[ARCHIVE-CHILD] ✅ Child saved to archive`);
+    
+    // Remove child from family
+    family.children = family.children.filter(c => c._id !== childId);
+    
+    // Remove child from all categories' activeFor arrays
+    if (family.categories) {
+      family.categories.forEach(category => {
+        if (category.activeFor) {
+          category.activeFor = category.activeFor.filter(id => id !== childId);
+        }
+      });
+    }
+    
+    // Update family in database
+    await db.collection('families').updateOne(
+      { _id: familyId },
+      { 
+        $set: { 
+          children: family.children,
+          categories: family.categories
+        }
+      }
+    );
+    
+    // Invalidate cache
+    invalidateFamilyCache(familyId);
+    
+    console.log(`[ARCHIVE-CHILD] ✅ Child archived successfully`);
+    res.json({
+      success: true,
+      message: 'ילד הועבר לארכיון בהצלחה'
+    });
+  } catch (error) {
+    console.error(`[ARCHIVE-CHILD] ❌ Error:`, error);
+    res.status(500).json({ 
+      error: 'שגיאה בהעברת הילד לארכיון',
+      details: error.message 
+    });
+  }
+});
+
 // Admin endpoint - Delete all users and data
 app.delete('/api/admin/delete-all-users', async (req, res) => {
   const timestamp = new Date().toISOString();

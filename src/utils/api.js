@@ -468,3 +468,18 @@ export const deleteChild = async (familyId, childId) => {
     method: 'DELETE'
   });
 };
+
+export const archiveChild = async (familyId, childId) => {
+  if (!familyId || !childId) {
+    throw new Error('Family ID and Child ID are required');
+  }
+  try {
+    const response = await apiCall(`/families/${familyId}/children/${childId}/archive`, {
+      method: 'POST'
+    });
+    return response;
+  } catch (error) {
+    console.error('archiveChild error:', error);
+    throw new Error(error.message || 'Failed to archive child');
+  }
+};

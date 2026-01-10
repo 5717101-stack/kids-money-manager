@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
-import { getCategories, addCategory, updateCategory, deleteCategory, getData, updateProfileImage, updateWeeklyAllowance, payWeeklyAllowance, createChild, updateChild, getFamilyInfo, updateParentInfo, addParent } from '../utils/api';
+import { getCategories, addCategory, updateCategory, deleteCategory, getData, updateProfileImage, updateWeeklyAllowance, payWeeklyAllowance, createChild, updateChild, getFamilyInfo, updateParentInfo, addParent, archiveChild } from '../utils/api';
 import { smartCompressImage } from '../utils/imageCompression';
 import ChildJoin from './ChildJoin';
 
@@ -796,21 +796,31 @@ const Settings = ({ familyId, onClose, onLogout, activeTab: externalActiveTab, h
                     <div style={{ display: 'flex', gap: '8px', flexShrink: 0 }}>
                       <button
                         onClick={() => {
-                          setEditingChild({ childId, childName: child.name, phoneNumber: child.phoneNumber || '' });
-                          setEditChildName(child.name);
-                          setEditChildPhone(child.phoneNumber || '');
+                          if (editingChild && editingChild.childId === childId) {
+                            setEditingChild(null);
+                            setEditChildName('');
+                            setEditChildPhone('');
+                          } else {
+                            setEditingChild({ childId, childName: child.name, phoneNumber: child.phoneNumber || '' });
+                            setEditChildName(child.name);
+                            setEditChildPhone(child.phoneNumber || '');
+                          }
                         }}
                         style={{
                           padding: '8px 16px',
                           borderRadius: '8px',
                           border: '1px solid rgba(0,0,0,0.1)',
-                          background: 'white',
+                          background: (editingChild && editingChild.childId === childId) ? 'var(--primary)' : 'white',
+                          color: (editingChild && editingChild.childId === childId) ? 'white' : 'var(--text-main)',
                           fontSize: '14px',
                           fontWeight: 500,
                           cursor: 'pointer'
                         }}
                       >
-                        {t('common.edit', { defaultValue: 'ערוך' })}
+                        {(editingChild && editingChild.childId === childId) 
+                          ? t('common.cancel', { defaultValue: 'ביטול' })
+                          : t('common.edit', { defaultValue: 'ערוך' })
+                        }
                       </button>
                       <button
                         onClick={() => {
@@ -933,6 +943,140 @@ const Settings = ({ familyId, onClose, onLogout, activeTab: externalActiveTab, h
                           </div>
                         </div>
                       </div>
+                    </div>
+                  )}
+                  {editingChild && editingChild.childId === childId && (
+                    <div style={{
+                      marginTop: '12px',
+                      padding: '20px',
+                      background: 'white',
+                      borderRadius: '16px',
+                      boxShadow: '0 2px 10px rgba(0,0,0,0.05)',
+                      border: '1px solid rgba(99, 102, 241, 0.2)'
+                    }}>
+                      <form
+                        onSubmit={async (e) => {
+                          e.preventDefault();
+                          if (!editChildName.trim()) {
+                            alert(t('parent.settings.enterChildName', { defaultValue: 'אנא הכנס שם ילד' }));
+                            return;
+                          }
+                          if (!editChildPhone.trim()) {
+                            alert(t('parent.settings.enterChildPhone', { defaultValue: 'אנא הכנס מספר טלפון לילד' }));
+                            return;
+                          }
+                          
+                          setUpdatingChild(true);
+                          try {
+                            const result = await updateChild(familyId, editingChild.childId, editChildName.trim(), editChildPhone.trim());
+                            
+                            if (result?.child) {
+                              setAllData(prev => {
+                                const updated = { ...prev };
+                                if (updated.children && updated.children[editingChild.childId]) {
+                                  updated.children[editingChild.childId] = {
+                                    ...updated.children[editingChild.childId],
+                                    name: result.child.name,
+                                    phoneNumber: result.child.phoneNumber
+                                  };
+                                }
+                                return updated;
+                              });
+                            }
+                            
+                            await loadData();
+                            
+                            setEditingChild(null);
+                            setEditChildName('');
+                            setEditChildPhone('');
+                            alert(t('parent.settings.updateChildSuccess', { defaultValue: 'ילד עודכן בהצלחה!' }));
+                            if (onClose) {
+                              setTimeout(() => {
+                                onClose();
+                              }, 500);
+                            }
+                          } catch (error) {
+                            const errorMessage = error.message || 'שגיאה לא ידועה';
+                            alert(t('parent.settings.updateChildError', { defaultValue: 'שגיאה בעדכון ילד' }) + ': ' + errorMessage);
+                          } finally {
+                            setUpdatingChild(false);
+                          }
+                        }}
+                        style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}
+                      >
+                        <div className="allowance-config-group">
+                          <label className="allowance-label">{t('parent.settings.childName', { defaultValue: 'שם הילד' })}</label>
+                          <input
+                            type="text"
+                            value={editChildName}
+                            onChange={(e) => setEditChildName(e.target.value)}
+                            className="allowance-input"
+                            placeholder={t('parent.settings.enterChildName', { defaultValue: 'הכנס שם ילד' })}
+                            required
+                          />
+                        </div>
+                        
+                        <div className="allowance-config-group">
+                          <label className="allowance-label">{t('parent.settings.childPhone', { defaultValue: 'מספר טלפון' })}</label>
+                          <input
+                            type="tel"
+                            value={editChildPhone}
+                            onChange={(e) => setEditChildPhone(e.target.value)}
+                            className="allowance-input"
+                            placeholder={t('parent.settings.enterChildPhone', { defaultValue: 'הכנס מספר טלפון' })}
+                            style={{ direction: 'ltr', textAlign: 'left' }}
+                            required
+                          />
+                        </div>
+                        
+                        <div className="allowance-actions">
+                          <button
+                            type="submit"
+                            className="update-allowance-button"
+                            disabled={updatingChild}
+                          >
+                            {updatingChild 
+                              ? t('common.saving', { defaultValue: 'שומר...' })
+                              : t('common.save', { defaultValue: 'שמור' })
+                            }
+                          </button>
+                          
+                          <button
+                            type="button"
+                            onClick={async () => {
+                              if (!confirm(t('parent.settings.deleteChildConfirm', { 
+                                defaultValue: 'האם אתה בטוח שברצונך למחוק את {name}? פעולה זו תעביר את כל הנתונים לארכיון ולא ניתן לבטל אותה.',
+                                name: child.name
+                              }).replace('{name}', child.name))) {
+                                return;
+                              }
+                              
+                              try {
+                                await archiveChild(familyId, childId);
+                                await loadData();
+                                setEditingChild(null);
+                                setEditChildName('');
+                                setEditChildPhone('');
+                                alert(t('parent.settings.deleteChildSuccess', { 
+                                  defaultValue: 'הילד נמחק והועבר לארכיון בהצלחה',
+                                  name: child.name
+                                }).replace('{name}', child.name));
+                                if (onClose) {
+                                  setTimeout(() => {
+                                    onClose();
+                                  }, 500);
+                                }
+                              } catch (error) {
+                                alert(t('parent.settings.deleteChildError', { defaultValue: 'שגיאה במחיקת הילד' }) + ': ' + (error.message || 'Unknown error'));
+                              }
+                            }}
+                            className="pay-allowance-button"
+                            style={{ background: '#EF4444' }}
+                          >
+                            🗑️ {t('parent.settings.deleteChild', { defaultValue: 'מחק ילד' })}
+                          </button>
+                        </div>
+                      </form>
                     </div>
                   )}
                 </div>
