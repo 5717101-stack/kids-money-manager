@@ -43,6 +43,7 @@ const Settings = ({ familyId, onClose, onLogout, activeTab: externalActiveTab, h
   const [parentPhoneModal, setParentPhoneModal] = useState(null); // { parentIndex, parentName, phoneNumber, createdAt, lastLogin }
   const [newParentName, setNewParentName] = useState('');
   const [newParentPhone, setNewParentPhone] = useState('');
+  const [showChildJoin, setShowChildJoin] = useState(false);
 
   useEffect(() => {
     loadData();
@@ -801,7 +802,9 @@ const Settings = ({ familyId, onClose, onLogout, activeTab: externalActiveTab, h
             )}
             
             <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-              {Object.entries(allData.children || {}).map(([childId, child]) => (
+              {Object.entries(allData.children || {})
+                .filter(([childId, child]) => child && childId) // Filter out null/undefined children
+                .map(([childId, child]) => (
                 <div key={childId}>
                   <div 
                     style={{
@@ -815,10 +818,10 @@ const Settings = ({ familyId, onClose, onLogout, activeTab: externalActiveTab, h
                       gap: '12px'
                     }}
                   >
-                    {child.profileImage && (
+                    {child?.profileImage && (
                       <img 
                         src={child.profileImage} 
-                        alt={child.name} 
+                        alt={child?.name || 'ילד'} 
                         style={{
                           width: '50px',
                           height: '50px',
@@ -826,12 +829,16 @@ const Settings = ({ familyId, onClose, onLogout, activeTab: externalActiveTab, h
                           objectFit: 'cover',
                           flexShrink: 0
                         }}
+                        onError={(e) => {
+                          console.error('[SETTINGS] Error loading child profile image:', e);
+                          e.target.style.display = 'none';
+                        }}
                       />
                     )}
                     <div style={{ flex: 1 }}>
-                      <h3 style={{ margin: 0, fontSize: '16px', fontWeight: 600 }}>{child.name}</h3>
+                      <h3 style={{ margin: 0, fontSize: '16px', fontWeight: 600 }}>{child?.name || 'ילד ללא שם'}</h3>
                       <p style={{ margin: '4px 0 0 0', fontSize: '14px', color: 'var(--text-muted)' }}>
-                        {t('parent.settings.balance', { defaultValue: 'יתרה' })}: ₪{((child.balance || 0) + (child.cashBoxBalance || 0)).toFixed(2)}
+                        {t('parent.settings.balance', { defaultValue: 'יתרה' })}: ₪{((child?.balance || 0) + (child?.cashBoxBalance || 0)).toFixed(2)}
                       </p>
                     </div>
                     <div style={{ display: 'flex', gap: '8px', flexShrink: 0 }}>
@@ -846,9 +853,9 @@ const Settings = ({ familyId, onClose, onLogout, activeTab: externalActiveTab, h
                             if (childPhoneModal && childPhoneModal.childId === childId) {
                               setChildPhoneModal(null);
                             }
-                            setEditingChild({ childId, childName: child.name, phoneNumber: child.phoneNumber || '' });
-                            setEditChildName(child.name);
-                            setEditChildPhone(child.phoneNumber || '');
+                            setEditingChild({ childId, childName: child?.name || '', phoneNumber: child?.phoneNumber || '' });
+                            setEditChildName(child?.name || '');
+                            setEditChildPhone(child?.phoneNumber || '');
                           }
                         }}
                         style={{
@@ -880,10 +887,10 @@ const Settings = ({ familyId, onClose, onLogout, activeTab: externalActiveTab, h
                             }
                             setChildPhoneModal({ 
                               childId, 
-                              childName: child.name, 
-                              phoneNumber: child.phoneNumber || '',
-                              createdAt: child.createdAt,
-                              lastLogin: child.lastLogin || child.lastAccess
+                              childName: child?.name || '', 
+                              phoneNumber: child?.phoneNumber || '',
+                              createdAt: child?.createdAt,
+                              lastLogin: child?.lastLogin || child?.lastAccess
                             });
                           }
                         }}
