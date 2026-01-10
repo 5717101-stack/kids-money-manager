@@ -127,7 +127,7 @@ const PhoneLogin = ({ onOTPSent }) => {
         <div style={{ width: '44px' }}></div>
       </div>
 
-      <div className="content-area" style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', padding: '20px' }}>
+      <div className="content-area" style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', padding: '20px', paddingTop: '30vh' }}>
         <div className="fintech-card" style={{ maxWidth: '500px', width: '100%', margin: '0 auto' }}>
           <p style={{ fontSize: '14px', color: 'var(--text-muted)', marginBottom: '24px', textAlign: 'center' }}>
             {t('auth.phoneLogin.subtitle', { defaultValue: 'נשלח לך קוד אימות ב-SMS' })}
