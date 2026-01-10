@@ -106,13 +106,13 @@ body {
   border-radius: var(--card-radius);
 }
 
-/* Balance and Activity cards - same width as bottom nav */
+/* Balance and Activity cards - same width as child dashboard cards */
 .parent-dashboard-new .content-area > .fintech-card.balance-card,
 .parent-dashboard-new .content-area > .fintech-card.activity-card {
-  max-width: 560px !important;
-  width: calc(100% - 40px) !important;
-  margin-left: auto !important;
-  margin-right: auto !important;
+  width: 100% !important;
+  max-width: 100% !important;
+  margin-left: 0 !important;
+  margin-right: 0 !important;
 }
 
 /* Remove scrollbar visual but keep function */
