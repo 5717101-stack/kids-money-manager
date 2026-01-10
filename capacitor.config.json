@@ -1,6 +1,6 @@
 {
   "appId": "com.bachar.kidsmoneymanager",
-  "appName": "Kids Money Manager",
+  "appName": "Family Bank",
   "webDir": "dist",
   "server": {
     "androidScheme": "https",
