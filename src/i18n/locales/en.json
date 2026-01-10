@@ -232,6 +232,7 @@
       "deleteGoal": "Delete Goal",
       "invalidGoal": "Please enter goal name and valid amount",
       "error": "Error saving goal",
+      "errorDeleting": "Error deleting goal",
       "confirmDelete": "Are you sure you want to delete the savings goal?"
     },
     "profile": {
@@ -241,7 +242,9 @@
       "remove": "Remove Image",
       "invalidFile": "Please select an image file only",
       "fileTooLarge": "File size is too large. Please select an image smaller than 10MB",
-      "error": "Error updating profile picture"
+      "error": "Error updating profile picture",
+      "errorImageTooLarge": "Image is too large even after compression. Please select a smaller image.",
+      "errorRemoving": "Error removing image"
     },
     "history": {
       "title": "My History",

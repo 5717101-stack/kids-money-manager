@@ -184,7 +184,7 @@ const ChildView = ({ childId, familyId, onBackToParent, onLogout }) => {
       await updateCashBoxBalance(familyId, childId, newValue);
       await loadChildData();
     } catch (error) {
-      alert(t('child.dashboard.error', { defaultValue: 'שגיאה בעדכון יתרת הקופה' }) + ': ' + error.message);
+      alert(t('child.dashboard.error', { defaultValue: 'Error updating cash box balance' }) + ': ' + error.message);
       throw error;
     }
   };
@@ -201,7 +201,7 @@ const ChildView = ({ childId, familyId, onBackToParent, onLogout }) => {
       setShowGoalModal(false);
       setEditingGoal(false);
     } catch (error) {
-      alert(t('child.savingsGoal.error', { defaultValue: 'שגיאה בשמירת מטרה' }) + ': ' + error.message);
+      alert(t('child.savingsGoal.error', { defaultValue: 'Error saving goal' }) + ': ' + error.message);
     }
   };
 
@@ -216,7 +216,7 @@ const ChildView = ({ childId, familyId, onBackToParent, onLogout }) => {
       setGoalName('');
       setGoalAmount('');
     } catch (error) {
-      alert(t('child.savingsGoal.error', { defaultValue: 'שגיאה במחיקת מטרה' }) + ': ' + error.message);
+      alert(t('child.savingsGoal.errorDeleting', { defaultValue: 'Error deleting goal' }) + ': ' + error.message);
     }
   };
 
@@ -244,7 +244,7 @@ const ChildView = ({ childId, familyId, onBackToParent, onLogout }) => {
       
       // Check if compressed image is still too large (max 1MB base64)
       if (base64Image.length > 1024 * 1024) {
-        throw new Error(t('child.profile.error', { defaultValue: 'התמונה גדולה מדי גם לאחר דחיסה. אנא בחר תמונה קטנה יותר.' }));
+        throw new Error(t('child.profile.errorImageTooLarge', { defaultValue: 'Image is too large even after compression. Please select a smaller image.' }));
       }
       
       await updateProfileImage(familyId, childId, base64Image);
@@ -260,7 +260,7 @@ const ChildView = ({ childId, familyId, onBackToParent, onLogout }) => {
       await updateProfileImage(familyId, childId, null);
       await loadChildData();
     } catch (error) {
-      alert(t('child.profile.error', { defaultValue: 'שגיאה בהסרת תמונה' }) + ': ' + error.message);
+      alert(t('child.profile.errorRemoving', { defaultValue: 'Error removing image' }) + ': ' + error.message);
     }
   };
 
@@ -484,7 +484,7 @@ const ChildView = ({ childId, familyId, onBackToParent, onLogout }) => {
               ←
             </button>
           )}
-          <h1 className="header-title">{t('child.dashboard.error', { defaultValue: 'שגיאה' })}</h1>
+          <h1 className="header-title">{t('child.dashboard.error', { defaultValue: 'Error' })}</h1>
           <div style={{ width: '44px' }}></div>
         </div>
         <div className="content-area" style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', padding: '40px' }}>
