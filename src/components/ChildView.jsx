@@ -373,6 +373,20 @@ const ChildView = ({ childId, familyId, onBackToParent, onLogout }) => {
     }
   };
 
+  // Memoize calculations to avoid unnecessary recalculations
+  // IMPORTANT: All hooks must be called before any early returns
+  const totalBalance = useMemo(() => {
+    return (childData?.balance || 0) + (childData?.cashBoxBalance || 0);
+  }, [childData?.balance, childData?.cashBoxBalance]);
+  
+  const goalProgress = useMemo(() => {
+    if (!savingsGoal || !savingsGoal.targetAmount || savingsGoal.targetAmount <= 0) return 0;
+    return Math.min((totalBalance / savingsGoal.targetAmount) * 100, 100);
+  }, [savingsGoal, totalBalance]);
+
+  // Check if user is a parent (logged in as parent)
+  const isParent = typeof window !== 'undefined' && sessionStorage.getItem('parentLoggedIn') === 'true';
+
   // Show loading state
   if (loading) {
     return (
@@ -456,19 +470,6 @@ const ChildView = ({ childId, familyId, onBackToParent, onLogout }) => {
       </div>
     );
   }
-
-  // Memoize calculations to avoid unnecessary recalculations
-  const totalBalance = useMemo(() => {
-    return (childData?.balance || 0) + (childData?.cashBoxBalance || 0);
-  }, [childData?.balance, childData?.cashBoxBalance]);
-  
-  const goalProgress = useMemo(() => {
-    if (!savingsGoal || !savingsGoal.targetAmount || savingsGoal.targetAmount <= 0) return 0;
-    return Math.min((totalBalance / savingsGoal.targetAmount) * 100, 100);
-  }, [savingsGoal, totalBalance]);
-
-  // Check if user is a parent (logged in as parent)
-  const isParent = typeof window !== 'undefined' && sessionStorage.getItem('parentLoggedIn') === 'true';
 
   return (
     <div className="app-layout" dir={i18n.language === 'he' ? 'rtl' : 'ltr'}>
