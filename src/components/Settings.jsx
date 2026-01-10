@@ -45,6 +45,7 @@ const Settings = ({ familyId, onClose, onLogout, activeTab: externalActiveTab, h
   const [parentPhoneModal, setParentPhoneModal] = useState(null); // { parentIndex, parentName, phoneNumber, createdAt, lastLogin }
   const [newParentName, setNewParentName] = useState('');
   const [newParentPhone, setNewParentPhone] = useState('');
+  const newParentNameInputRef = useRef(null);
   const [showChildJoin, setShowChildJoin] = useState(false);
 
   useEffect(() => {
@@ -1016,39 +1017,6 @@ const Settings = ({ familyId, onClose, onLogout, activeTab: externalActiveTab, h
                   
                   setCreatingChild(true);
                   
-                  // Show loading indicator - clean spinner without box
-                  const loadingIndicator = document.createElement('div');
-                  loadingIndicator.id = 'child-saving-indicator';
-                  loadingIndicator.innerHTML = `
-                    <div style="
-                      position: fixed;
-                      top: 50%;
-                      left: 50%;
-                      transform: translate(-50%, -50%);
-                      z-index: 10006;
-                      display: flex;
-                      flex-direction: column;
-                      align-items: center;
-                      gap: 16px;
-                    ">
-                      <div style="
-                        width: 48px;
-                        height: 48px;
-                        border: 4px solid rgba(99, 102, 241, 0.2);
-                        border-top-color: #6366F1;
-                        border-radius: 50%;
-                        animation: spin 0.8s linear infinite;
-                      "></div>
-                      <div style="
-                        color: #6366F1;
-                        font-size: 16px;
-                        font-weight: 600;
-                        letter-spacing: 0.5px;
-                      ">${t('common.saving', { defaultValue: 'שומר...' })}</div>
-                    </div>
-                  `;
-                  document.body.appendChild(loadingIndicator);
-                  
                   try {
                     console.log('[CREATE-CHILD] Calling createChild API...');
                     const result = await createChild(familyId, newChildName.trim(), newChildPhone.trim());
@@ -1820,39 +1788,6 @@ const Settings = ({ familyId, onClose, onLogout, activeTab: externalActiveTab, h
                       return;
                     }
                     try {
-                      // Show loading indicator - clean spinner without box (before setting state)
-                      const loadingIndicator = document.createElement('div');
-                      loadingIndicator.id = 'parent-saving-indicator';
-                      loadingIndicator.innerHTML = `
-                        <div style="
-                          position: fixed;
-                          top: 50%;
-                          left: 50%;
-                          transform: translate(-50%, -50%);
-                          z-index: 10006;
-                          display: flex;
-                          flex-direction: column;
-                          align-items: center;
-                          gap: 16px;
-                        ">
-                          <div style="
-                            width: 48px;
-                            height: 48px;
-                            border: 4px solid rgba(99, 102, 241, 0.2);
-                            border-top-color: #6366F1;
-                            border-radius: 50%;
-                            animation: spin 0.8s linear infinite;
-                          "></div>
-                          <div style="
-                            color: #6366F1;
-                            font-size: 16px;
-                            font-weight: 600;
-                            letter-spacing: 0.5px;
-                          ">${t('common.saving', { defaultValue: 'שומר...' })}</div>
-                        </div>
-                      `;
-                      document.body.appendChild(loadingIndicator);
-                      
                       setUpdatingParent(true);
                       await addParent(familyId, newParentName.trim(), newParentPhone.trim());
                       
@@ -1862,10 +1797,6 @@ const Settings = ({ familyId, onClose, onLogout, activeTab: externalActiveTab, h
                       setAddingParent(false);
                       setNewParentName('');
                       setNewParentPhone('');
-                      
-                      // Remove loading indicator
-                      const indicator = document.getElementById('parent-saving-indicator');
-                      if (indicator) indicator.remove();
                       
                       // Show success notification at bottom
                       const notification = document.createElement('div');
