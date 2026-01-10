@@ -673,7 +673,7 @@ const ChildView = ({ childId, familyId, onBackToParent, onLogout }) => {
           <div className="chart-loading">
             {t('common.loading', { defaultValue: 'טוען...' })}
           </div>
-        ) : (
+        ) : expensesByCategory && expensesByCategory.length > 0 ? (
           <ExpensePieChart
             expensesByCategory={expensesByCategory}
             title={expensesPeriod === 'week' 
@@ -682,6 +682,10 @@ const ChildView = ({ childId, familyId, onBackToParent, onLogout }) => {
             }
             days={expensesPeriod === 'week' ? 7 : 30}
           />
+        ) : (
+          <div className="no-expenses-message">
+            {t('child.expenses.noExpenses', { defaultValue: 'אין הוצאות בתקופה זו' })}
+          </div>
         )}
       </div>
 

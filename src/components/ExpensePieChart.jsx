@@ -109,40 +109,7 @@ const ExpensePieChart = ({ expensesByCategory, title, days }) => {
     },
     plugins: {
       legend: {
-        position: 'bottom',
-        rtl: true,
-        labels: {
-          padding: 24,
-          font: {
-            size: 16,
-            weight: '700',
-            family: '-apple-system, BlinkMacSystemFont, "Segoe UI", "Roboto", "Oxygen", "Ubuntu", "Cantarell", "Fira Sans", "Droid Sans", "Helvetica Neue", "Arial", "Noto Sans Hebrew", sans-serif'
-          },
-          usePointStyle: true,
-          pointStyle: 'circle',
-          boxWidth: 16,
-          boxHeight: 16,
-          generateLabels: function(chart) {
-            const data = chart.data;
-            if (data.labels.length && data.datasets.length) {
-              return data.labels.map((label, i) => {
-                const dataset = data.datasets[0];
-                const value = dataset.data[i];
-                const total = dataset.data.reduce((a, b) => a + b, 0);
-                const percentage = ((value / total) * 100).toFixed(1);
-                return {
-                  text: `${label} - ₪${value.toFixed(2)} (${percentage}%)`,
-                  fillStyle: dataset.backgroundColor[i],
-                  strokeStyle: dataset.borderColor[i],
-                  lineWidth: dataset.borderWidth,
-                  hidden: false,
-                  index: i
-                };
-              });
-            }
-            return [];
-          }
-        }
+        display: false // Hide default legend - we'll show custom list
       },
       tooltip: {
         rtl: true,
@@ -202,11 +169,33 @@ const ExpensePieChart = ({ expensesByCategory, title, days }) => {
     }
   };
 
+  // Calculate total and percentages for display
+  const total = data.reduce((a, b) => a + b, 0);
+  const categoriesWithDetails = expensesByCategory.map((item, index) => ({
+    category: item.category,
+    amount: item.amount,
+    percentage: ((item.amount / total) * 100).toFixed(1),
+    color: colors[index]
+  })).sort((a, b) => b.amount - a.amount); // Sort by amount descending
+
   return (
-    <div className="chart-container">
-      <h3>{title}</h3>
-      <div className="chart-wrapper">
-        <Pie data={chartData} options={options} />
+    <div className="expense-distribution-container">
+      <div className="expense-chart-wrapper">
+        <div className="expense-pie-chart">
+          <Pie data={chartData} options={options} />
+        </div>
+      </div>
+      <div className="expense-categories-list">
+        {categoriesWithDetails.map((item, index) => (
+          <div key={index} className="expense-category-item">
+            <div className="category-color-indicator" style={{ backgroundColor: item.color }}></div>
+            <div className="category-info">
+              <div className="category-name">{item.category}</div>
+              <div className="category-amount">₪{item.amount.toFixed(2)}</div>
+            </div>
+            <div className="category-percentage">{item.percentage}%</div>
+          </div>
+        ))}
       </div>
     </div>
   );
