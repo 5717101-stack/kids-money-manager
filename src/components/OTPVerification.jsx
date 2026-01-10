@@ -256,8 +256,11 @@ const OTPVerification = ({ phoneNumber, isExistingFamily, onVerified, onBack }) 
 
       <div className="content-area" style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', padding: '20px' }}>
         <div className="fintech-card" style={{ maxWidth: '500px', width: '100%', margin: '0 auto' }}>
-          <p style={{ fontSize: '14px', color: 'var(--text-muted)', marginBottom: '24px', textAlign: 'center', direction: 'ltr', unicodeBidi: 'bidi-override' }}>
-            {t('auth.otpVerification.sentTo', { defaultValue: 'נשלח ל' })} {phoneNumber.startsWith('+') ? phoneNumber : `+${phoneNumber}`}
+          <p style={{ fontSize: '14px', color: 'var(--text-muted)', marginBottom: '24px', textAlign: 'center' }}>
+            {t('auth.otpVerification.sentTo', { defaultValue: 'נשלח ל' })}{' '}
+            <span style={{ direction: 'ltr', display: 'inline-block' }}>
+              {phoneNumber.startsWith('+') ? phoneNumber : `+${phoneNumber}`}
+            </span>
           </p>
 
           <form onSubmit={handleSubmit} onPaste={handlePaste} style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>

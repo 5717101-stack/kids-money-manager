@@ -837,7 +837,10 @@ const Settings = ({ familyId, onClose, onLogout, activeTab: externalActiveTab, h
                           cursor: 'pointer'
                         }}
                       >
-                        {t('parent.settings.viewDetails', { defaultValue: 'הצג פרטים' })}
+                        {(childPhoneModal && childPhoneModal.childId === childId) 
+                          ? t('parent.settings.closeDetails', { defaultValue: 'סגור פרטים' })
+                          : t('parent.settings.viewDetails', { defaultValue: 'הצג פרטים' })
+                        }
                       </button>
                     </div>
                   </div>
@@ -854,8 +857,13 @@ const Settings = ({ familyId, onClose, onLogout, activeTab: externalActiveTab, h
                         <div>
                           <p className="password-label" style={{ marginBottom: '8px' }}>{t('parent.settings.childDetails.phoneNumber', { defaultValue: 'מספר טלפון להרשמה' })}:</p>
                           <div className="password-display-container">
-                            <div className="password-display" id="phone-display" style={{ flex: 1 }}>
-                              {childPhoneModal.phoneNumber || t('parent.settings.noPhoneNumber', { defaultValue: 'לא מוגדר' })}
+                            <div className="password-display" id="phone-display" style={{ flex: 1, direction: 'ltr', textAlign: 'left' }}>
+                              {childPhoneModal.phoneNumber 
+                                ? (childPhoneModal.phoneNumber.startsWith('+') 
+                                    ? childPhoneModal.phoneNumber 
+                                    : `+${childPhoneModal.phoneNumber}`)
+                                : t('parent.settings.noPhoneNumber', { defaultValue: 'לא מוגדר' })
+                              }
                             </div>
                             {childPhoneModal.phoneNumber && (
                               <button 
