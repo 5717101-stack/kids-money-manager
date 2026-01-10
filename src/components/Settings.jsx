@@ -1221,13 +1221,16 @@ const Settings = ({ familyId, onClose, onLogout, activeTab: externalActiveTab, h
                             
                             // Show success message without alert
                             const successMsg = t('parent.settings.updateChildSuccess', { defaultValue: 'ילד עודכן בהצלחה!' });
-                            // Use a simple notification instead of alert
+                            const isRTL = i18n.language === 'he';
+                            const animationName = isRTL ? 'slideInRTL' : 'slideIn';
+                            const animationOutName = isRTL ? 'slideOutRTL' : 'slideOut';
+                            const rightOrLeft = isRTL ? 'left' : 'right';
                             const notification = document.createElement('div');
                             notification.textContent = successMsg;
                             notification.style.cssText = `
                               position: fixed;
-                              top: 20px;
-                              right: 20px;
+                              bottom: 100px;
+                              ${rightOrLeft}: 20px;
                               background: linear-gradient(135deg, #10B981 0%, #059669 100%);
                               color: white;
                               padding: 16px 24px;
@@ -1235,11 +1238,12 @@ const Settings = ({ familyId, onClose, onLogout, activeTab: externalActiveTab, h
                               box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3);
                               z-index: 10005;
                               font-weight: 600;
-                              animation: slideIn 0.3s ease;
+                              animation: ${animationName} 0.3s ease;
+                              max-width: calc(100% - 40px);
                             `;
                             document.body.appendChild(notification);
                             setTimeout(() => {
-                              notification.style.animation = 'slideOut 0.3s ease';
+                              notification.style.animation = `${animationOutName} 0.3s ease`;
                               setTimeout(() => notification.remove(), 300);
                             }, 2000);
                           } catch (error) {
@@ -1321,22 +1325,23 @@ const Settings = ({ familyId, onClose, onLogout, activeTab: externalActiveTab, h
                                 const rightOrLeft = isRTL ? 'left' : 'right';
                                 notification.style.cssText = `
                                   position: fixed;
-                                  top: 20px;
+                                  bottom: 100px;
                                   ${rightOrLeft}: 20px;
-                                  background: linear-gradient(135deg, #6366F1 0%, #8B5CF6 100%);
+                                  background: linear-gradient(135deg, #10B981 0%, #059669 100%);
                                   color: white;
                                   padding: 16px 24px;
                                   border-radius: 12px;
-                                  box-shadow: 0 4px 12px rgba(99, 102, 241, 0.3);
+                                  box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3);
                                   z-index: 10005;
                                   font-weight: 600;
                                   animation: ${animationName} 0.3s ease;
+                                  max-width: calc(100% - 40px);
                                 `;
                                 document.body.appendChild(notification);
                                 setTimeout(() => {
                                   notification.style.animation = `${animationOutName} 0.3s ease`;
                                   setTimeout(() => notification.remove(), 300);
-                                }, 3000);
+                                }, 2000);
                               } catch (error) {
                                 alert(t('parent.settings.deleteChildError', { defaultValue: 'שגיאה במחיקת הילד' }) + ': ' + (error.message || 'Unknown error'));
                               }
