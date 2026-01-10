@@ -40,6 +40,7 @@ const ParentDashboard = ({ familyId, onChildrenUpdated, onLogout, onViewChild })
     }
     return 5;
   });
+  const [chartReloadKey, setChartReloadKey] = useState(0);
 
   useEffect(() => {
     loadData();

@@ -44,6 +44,7 @@ const ChildView = ({ childId, familyId, onBackToParent, onLogout }) => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [showGuide, setShowGuide] = useState(false);
+  const [chartReloadKey, setChartReloadKey] = useState(0);
 
   useEffect(() => {
     // Reset loading and error when childId or familyId changes

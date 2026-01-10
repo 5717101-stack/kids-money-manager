@@ -9,6 +9,7 @@ import ChildView from './components/ChildView';
 import ChildPasswordLogin from './components/ChildPasswordLogin';
 import JoinParentScreen from './components/JoinParentScreen';
 import JoinChildScreen from './components/JoinChildScreen';
+import { getData, getChild } from './utils/api';
 
 const App = () => {
   const { t, i18n } = useTranslation();
@@ -57,12 +58,8 @@ const App = () => {
 
   const loadChildren = async (fId) => {
     try {
-      const response = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3001/api'}/families/${fId}/children`);
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
-      const data = await response.json();
-      if (data.children) {
+      const data = await getData(fId);
+      if (data && data.children) {
         const childrenList = Object.values(data.children);
         setChildren(childrenList);
         if (childrenList.length > 0 && !view.startsWith('child')) {
@@ -97,17 +94,16 @@ const App = () => {
 
   const loadChildData = async (fId, childId) => {
     try {
-      const apiUrl = import.meta.env.VITE_API_URL || 'https://kids-money-manager-server.onrender.com/api';
-      const response = await fetch(`${apiUrl}/families/${fId}/children/${childId}`);
-      const data = await response.json();
+      const data = await getChild(fId, childId);
       if (data) {
         const childData = { ...data, _id: childId };
         setCurrentChild(childData);
         console.log('[APP] Child data loaded:', childData);
         return childData;
       }
+      return null;
     } catch (error) {
-      console.error('Error loading child data:', error);
+      console.error('Error loading child data:', error?.message || error?.toString() || error);
       return null;
     }
   };
