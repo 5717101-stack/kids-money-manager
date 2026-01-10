@@ -85,6 +85,39 @@ const PhoneLogin = ({ onOTPSent }) => {
 
   return (
     <div className="app-layout" dir={i18n.language === 'he' ? 'rtl' : 'ltr'}>
+      {/* Language Toggle Button */}
+      <button
+        onClick={() => {
+          const newLang = i18n.language === 'he' ? 'en' : 'he';
+          i18n.changeLanguage(newLang);
+        }}
+        style={{
+          position: 'fixed',
+          top: '20px',
+          right: i18n.language === 'he' ? '20px' : 'auto',
+          left: i18n.language === 'he' ? 'auto' : '20px',
+          width: '44px',
+          height: '44px',
+          borderRadius: '50%',
+          background: 'var(--primary-gradient)',
+          border: 'none',
+          color: 'white',
+          fontSize: '20px',
+          cursor: 'pointer',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          boxShadow: '0 2px 8px rgba(0,0,0,0.15)',
+          zIndex: 10000,
+          transition: 'transform 0.2s'
+        }}
+        onMouseEnter={(e) => e.currentTarget.style.transform = 'scale(1.1)'}
+        onMouseLeave={(e) => e.currentTarget.style.transform = 'scale(1)'}
+        title={t('common.language', { defaultValue: 'שפה' })}
+      >
+        {i18n.language === 'he' ? '🇮🇱' : '🇬🇧'}
+      </button>
+
       <div className="app-header">
         <div style={{ width: '44px' }}></div>
         <h1 className="header-title">
