@@ -129,7 +129,12 @@
         "addSuccess": "Parent added successfully!",
         "addError": "Error adding parent",
         "updateSuccess": "Parent info updated successfully!",
-        "updateError": "Error updating parent info"
+        "updateError": "Error updating parent info",
+        "deleteParent": "Delete Parent",
+        "deleteParentConfirm": "Are you sure you want to delete {name}? This action will move all data to archive and cannot be undone.",
+        "deleteParentSuccess": "Parent {name} deleted and moved to archive successfully",
+        "deleteParentError": "Error deleting parent",
+        "cannotDeleteMainParent": "Cannot delete the main parent"
       },
       "passwordModal": {
         "title": "Password for {name}",

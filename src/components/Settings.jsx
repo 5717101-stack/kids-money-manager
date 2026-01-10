@@ -1897,9 +1897,9 @@ const Settings = ({ familyId, onClose, onLogout, activeTab: externalActiveTab, h
                           display: 'inline-block',
                           animation: 'pulse 1.5s ease-in-out infinite'
                         }}>
-                          {t('common.saving', { defaultValue: 'שומר...' })}
+                          {t('common.saving', { defaultValue: 'Saving...' })}
                         </span>
-                      ) : t('common.save', { defaultValue: 'שמור' })}
+                      ) : t('common.save', { defaultValue: 'Save' })}
                     </button>
                     <button
                       type="button"
@@ -2277,7 +2277,7 @@ const Settings = ({ familyId, onClose, onLogout, activeTab: externalActiveTab, h
                                       position: fixed;
                                       bottom: 100px;
                                       ${rightOrLeft}: 20px;
-                                      background: linear-gradient(135deg, #6366F1 0%, #8B5CF6 100%);
+                                      background: linear-gradient(135deg, #10B981 0%, #059669 100%);
                                       color: white;
                                       padding: 16px 24px;
                                       border-radius: 12px;
