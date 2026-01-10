@@ -1193,6 +1193,11 @@ body {
   background: #F3F4F6;
 }
 
+.expense-category-item.selected {
+  background: rgba(99, 102, 241, 0.1);
+  border: 1px solid var(--primary);
+}
+
 .category-color-indicator {
   width: 12px;
   height: 12px;

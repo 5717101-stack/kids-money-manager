@@ -21,6 +21,7 @@ const ParentDashboard = ({ familyId, onChildrenUpdated, onLogout, onViewChild })
   const [pendingActionType, setPendingActionType] = useState(null); // 'deposit' or 'expense'
   const [selectedChild, setSelectedChild] = useState(null); // Store selected child object
   const [recentTransactions, setRecentTransactions] = useState([]);
+  const [filteredCategory, setFilteredCategory] = useState(null); // Category to filter transactions
   const [totalFamilyBalance, setTotalFamilyBalance] = useState(0);
   const [familyPhoneNumber, setFamilyPhoneNumber] = useState('');
   const [parentName, setParentName] = useState('');
@@ -468,6 +469,8 @@ const ParentDashboard = ({ familyId, onChildrenUpdated, onLogout, onViewChild })
         familyId={familyId}
         children={childrenList}
         categories={categories}
+        onCategorySelect={setFilteredCategory}
+        selectedCategory={filteredCategory}
       />
 
       {/* Recent Activity */}
@@ -505,30 +508,43 @@ const ParentDashboard = ({ familyId, onChildrenUpdated, onLogout, onViewChild })
           </div>
         </div>
         <div className="activity-content">
-          {recentTransactions.length === 0 ? (
-            <div className="no-activity-message">
-              {t('parent.dashboard.noActivity', { defaultValue: 'אין פעילות אחרונה' })}
-            </div>
-          ) : (
-            <div className="activity-list-container">
-              {recentTransactions.map((transaction, index) => (
-                <div key={index} className="activity-item">
-                  <div className="activity-main">
-                    <span className="activity-child-name">{transaction.childName}:</span>
-                    <span className={`activity-amount ${transaction.type === 'deposit' ? 'positive' : 'negative'}`}>
-                      {transaction.type === 'deposit' ? '+' : '-'}₪{Math.abs(transaction.amount || 0).toFixed(2)}
-                    </span>
-                  </div>
-                  {transaction.description && (
-                    <div className="activity-description">{transaction.description}</div>
-                  )}
-                  {transaction.category && (
-                    <div className="activity-category">{transaction.category}</div>
-                  )}
+          {(() => {
+            const filtered = filteredCategory 
+              ? recentTransactions.filter(t => t.category === filteredCategory)
+              : recentTransactions;
+            
+            if (filtered.length === 0) {
+              return (
+                <div className="no-activity-message">
+                  {filteredCategory 
+                    ? t('parent.dashboard.noActivityForCategory', { category: filteredCategory, defaultValue: `אין פעילות בקטגוריה "${filteredCategory}"` })
+                    : t('parent.dashboard.noActivity', { defaultValue: 'אין פעילות אחרונה' })
+                  }
                 </div>
-              ))}
-            </div>
-          )}
+              );
+            }
+            
+            return (
+              <div className="activity-list-container">
+                {filtered.map((transaction, index) => (
+                  <div key={index} className="activity-item">
+                    <div className="activity-main">
+                      <span className="activity-child-name">{transaction.childName}:</span>
+                      <span className={`activity-amount ${transaction.type === 'deposit' ? 'positive' : 'negative'}`}>
+                        {transaction.type === 'deposit' ? '+' : '-'}₪{Math.abs(transaction.amount || 0).toFixed(2)}
+                      </span>
+                    </div>
+                    {transaction.description && (
+                      <div className="activity-description">{transaction.description}</div>
+                    )}
+                    {transaction.category && (
+                      <div className="activity-category">{transaction.category}</div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            );
+          })()}
         </div>
       </div>
 

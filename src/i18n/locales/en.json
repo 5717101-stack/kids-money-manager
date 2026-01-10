@@ -38,6 +38,7 @@
       "recordExpense": "Record Expense",
       "recentActivity": "Recent Activity",
       "noActivity": "No recent activity",
+      "noActivityForCategory": "No activity in category \"{category}\"",
       "selectChild": "Select Child",
       "amount": "Amount",
       "description": "Description",

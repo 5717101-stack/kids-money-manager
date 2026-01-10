@@ -39,6 +39,7 @@
       "selectChild": "בחר ילד",
       "recentActivity": "פעילות אחרונה",
       "noActivity": "אין פעילות אחרונה",
+      "noActivityForCategory": "אין פעילות בקטגוריה \"{category}\"",
       "selectChild": "בחר ילד",
       "amount": "סכום",
       "description": "תיאור",
