@@ -65,6 +65,19 @@ const Settings = ({ familyId, onClose, onLogout, activeTab: externalActiveTab, h
     }
   }, [showChildJoin]);
 
+  // Auto-focus on parent name input when form opens
+  useEffect(() => {
+    if (addingParent && newParentNameInputRef.current) {
+      // Small delay to ensure the input is rendered
+      const timer = setTimeout(() => {
+        if (newParentNameInputRef.current) {
+          newParentNameInputRef.current.focus();
+        }
+      }, 100);
+      return () => clearTimeout(timer);
+    }
+  }, [addingParent]);
+
   const loadData = async () => {
     try {
       setLoading(true);
