@@ -94,7 +94,7 @@ const PhoneLogin = ({ onOTPSent }) => {
         }}
         style={{
           position: 'fixed',
-          top: 'calc(35vh + 20px)',
+          top: 'calc(max(16px, env(safe-area-inset-top)) + 20px)',
           right: i18n.language === 'he' ? '20px' : 'auto',
           left: i18n.language === 'he' ? 'auto' : '20px',
           width: '44px',
