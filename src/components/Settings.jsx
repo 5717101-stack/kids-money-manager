@@ -1464,8 +1464,13 @@ const Settings = ({ familyId, onClose, onLogout, activeTab: externalActiveTab, h
                     }, 2000);
                     
                     // Notify parent component to refresh children list (without closing the page)
-                    if (onChildrenUpdated) {
-                      await onChildrenUpdated();
+                    if (onChildrenUpdated && typeof onChildrenUpdated === 'function') {
+                      try {
+                        await onChildrenUpdated();
+                      } catch (err) {
+                        console.warn('[CREATE-CHILD] Error calling onChildrenUpdated:', err);
+                        // Don't fail the whole operation if this callback fails
+                      }
                     }
                   } catch (error) {
                     console.error('[CREATE-CHILD] ========================================');
