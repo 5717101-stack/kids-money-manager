@@ -42,6 +42,7 @@ const ChildView = ({ childId, familyId, onBackToParent, onLogout }) => {
   const [calculatorFromTransaction, setCalculatorFromTransaction] = useState(false); // Track if calculator opened from transaction modal
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [showGuide, setShowGuide] = useState(false);
 
   useEffect(() => {
     // Reset loading and error when childId or familyId changes
@@ -88,6 +89,11 @@ const ChildView = ({ childId, familyId, onBackToParent, onLogout }) => {
     };
     
     loadData();
+    
+    // Check if guide should be shown on first visit
+    if (!localStorage.getItem('guideSeen_child')) {
+      setShowGuide(true);
+    }
     
     // Refresh every 15 seconds to show updated balance (reduced frequency for better performance)
     const interval = setInterval(() => {
@@ -623,7 +629,15 @@ const ChildView = ({ childId, familyId, onBackToParent, onLogout }) => {
             </div>
           )}
           <button
-            onClick={() => setShowImagePicker(true)}
+            onClick={() => {
+              if (childData?.profileImage) {
+                // If image exists, open modal with options
+                setShowImagePicker(true);
+              } else {
+                // If no image, open file picker directly
+                fileInputRef.current?.click();
+              }
+            }}
             style={{
               position: 'absolute',
               bottom: 0,
@@ -928,46 +942,85 @@ const ChildView = ({ childId, familyId, onBackToParent, onLogout }) => {
       )}
 
       {/* Image Picker Modal */}
-      {showImagePicker && (
+      {showImagePicker && childData?.profileImage && (
         <div className="modal-overlay" onClick={() => setShowImagePicker(false)}>
-          <div className="modal-content image-picker-modal" onClick={(e) => e.stopPropagation()}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
             <div className="modal-header">
-              <h2>{t('child.profile.changePicture', { defaultValue: 'שנה תמונת פרופיל' })}</h2>
-              <button className="modal-close" onClick={() => setShowImagePicker(false)}>✕</button>
+              <h2>{t('child.profile.changePicture', { defaultValue: 'שנה תמונה' })}</h2>
+              <button className="close-button" onClick={() => setShowImagePicker(false)}>✕</button>
             </div>
-            <div className="modal-body">
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept="image/*"
-                style={{ display: 'none' }}
-                onChange={(e) => {
-                  const file = e.target.files?.[0];
-                  if (file) {
-                    handleImageUpload(file);
-                  }
+            <div style={{ padding: '20px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+              <button
+                onClick={() => {
+                  fileInputRef.current?.click();
+                  setShowImagePicker(false);
                 }}
-              />
-              <div className="image-picker-actions">
-                <button 
-                  className="upload-button"
-                  onClick={() => fileInputRef.current?.click()}
-                >
-                  {t('child.profile.upload', { defaultValue: 'העלה תמונה' })}
-                </button>
-                {childData.profileImage && (
-                  <button 
-                    className="remove-button"
-                    onClick={handleRemoveImage}
-                  >
-                    {t('child.profile.remove', { defaultValue: 'הסר תמונה' })}
-                  </button>
-                )}
-              </div>
+                style={{
+                  padding: '12px 24px',
+                  borderRadius: '12px',
+                  background: 'var(--primary-gradient)',
+                  color: 'white',
+                  border: 'none',
+                  fontSize: '16px',
+                  fontWeight: 600,
+                  cursor: 'pointer'
+                }}
+              >
+                {t('parent.profile.replace', { defaultValue: 'החלף תמונה' })}
+              </button>
+              <button
+                onClick={() => {
+                  handleRemoveImage();
+                  setShowImagePicker(false);
+                }}
+                style={{
+                  padding: '12px 24px',
+                  borderRadius: '12px',
+                  background: '#EF4444',
+                  color: 'white',
+                  border: 'none',
+                  fontSize: '16px',
+                  fontWeight: 600,
+                  cursor: 'pointer'
+                }}
+              >
+                {t('parent.profile.remove', { defaultValue: 'מחק תמונה' })}
+              </button>
             </div>
           </div>
         </div>
       )}
+
+      {/* Hidden file input */}
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="image/*"
+        style={{ display: 'none' }}
+        onChange={async (e) => {
+          const file = e.target.files?.[0];
+          if (!file) return;
+
+          try {
+            // Compress image before upload
+            const base64Image = await smartCompressImage(file);
+            
+            try {
+              await updateProfileImage(familyId, childId, base64Image);
+              await loadChildData();
+            } catch (error) {
+              alert(t('child.profile.error', { defaultValue: 'שגיאה בעדכון תמונת הפרופיל' }) + ': ' + error.message);
+            }
+          } catch (error) {
+            alert(t('child.profile.error', { defaultValue: 'שגיאה בעדכון תמונת הפרופיל' }) + ': ' + error.message);
+          }
+          
+          // Reset file input so same file can be selected again
+          if (fileInputRef.current) {
+            fileInputRef.current.value = '';
+          }
+        }}
+      />
 
       {/* Calculator Overlay */}
       {showCalculator && (
@@ -1152,6 +1205,14 @@ const ChildView = ({ childId, familyId, onBackToParent, onLogout }) => {
           <span>{t('child.dashboard.recordExpense', { defaultValue: 'הוצאה' })}</span>
         </button>
       </div>
+
+      {/* Guide Modal */}
+      {showGuide && (
+        <Guide 
+          userType="child" 
+          onClose={() => setShowGuide(false)} 
+        />
+      )}
     </div>
   );
 };

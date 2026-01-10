@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import Settings from './Settings';
-import LanguageToggle from './LanguageToggle';
 import { APP_VERSION } from '../constants';
 
 const Sidebar = ({ isOpen, onClose, familyId, onLogout, onChildrenUpdated, onMenuItemClick, childrenList = [], onChildDashboardClick }) => {
@@ -155,12 +154,60 @@ const Sidebar = ({ isOpen, onClose, familyId, onLogout, onChildrenUpdated, onMen
                 )}
               </div>
             ))}
-            
-            {/* Language Toggle */}
-            <div className="sidebar-language-toggle">
-              <LanguageToggle />
-            </div>
           </nav>
+        </div>
+
+        {/* Bottom actions - Language and Guide */}
+        <div style={{ marginTop: 'auto', paddingTop: '20px', borderTop: '1px solid rgba(0,0,0,0.1)', display: 'flex', gap: '12px', justifyContent: 'center', paddingBottom: '20px' }}>
+          <button
+            onClick={() => {
+              // Toggle language
+              const newLang = i18n.language === 'he' ? 'en' : 'he';
+              i18n.changeLanguage(newLang);
+            }}
+            style={{
+              width: '48px',
+              height: '48px',
+              borderRadius: '50%',
+              background: 'var(--primary-gradient)',
+              border: 'none',
+              color: 'white',
+              fontSize: '20px',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              boxShadow: '0 2px 8px rgba(0,0,0,0.1)'
+            }}
+            title={t('common.language', { defaultValue: 'שפה' })}
+          >
+            {i18n.language === 'he' ? '🇮🇱' : '🇬🇧'}
+          </button>
+          <button
+            onClick={() => {
+              if (onMenuItemClick) {
+                onMenuItemClick('guide');
+              }
+              onClose();
+            }}
+            style={{
+              width: '48px',
+              height: '48px',
+              borderRadius: '50%',
+              background: 'var(--primary-gradient)',
+              border: 'none',
+              color: 'white',
+              fontSize: '20px',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              boxShadow: '0 2px 8px rgba(0,0,0,0.1)'
+            }}
+            title={t('guide.title', { defaultValue: 'מדריך' })}
+          >
+            ❓
+          </button>
         </div>
 
         <div style={{ marginTop: 'auto', paddingTop: '30px', borderTop: '1px solid rgba(0,0,0,0.1)' }}>

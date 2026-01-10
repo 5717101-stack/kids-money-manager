@@ -7,6 +7,7 @@ import QuickActionModal from './QuickActionModal';
 import Settings from './Settings';
 import DeleteFamilyProfile from './DeleteFamilyProfile';
 import ExpensesPieChart from './ExpensesPieChart';
+import Guide from './Guide';
 
 const ParentDashboard = ({ familyId, onChildrenUpdated, onLogout, onViewChild }) => {
   const { t, i18n } = useTranslation();
@@ -14,8 +15,9 @@ const ParentDashboard = ({ familyId, onChildrenUpdated, onLogout, onViewChild })
   const [categories, setCategories] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showSidebar, setShowSidebar] = useState(false);
-  const [currentView, setCurrentView] = useState('dashboard'); // 'dashboard', 'categories', 'profileImages', 'allowances', 'children', 'parents', 'deleteFamily'
+  const [currentView, setCurrentView] = useState('dashboard'); // 'dashboard', 'categories', 'profileImages', 'allowances', 'children', 'parents', 'deleteFamily', 'guide'
   const [showQuickAction, setShowQuickAction] = useState(false);
+  const [showGuide, setShowGuide] = useState(false);
   const [quickActionType, setQuickActionType] = useState('deposit'); // 'deposit' or 'expense'
   const [showChildSelector, setShowChildSelector] = useState(false);
   const [pendingActionType, setPendingActionType] = useState(null); // 'deposit' or 'expense'
@@ -44,6 +46,13 @@ const ParentDashboard = ({ familyId, onChildrenUpdated, onLogout, onViewChild })
     const interval = setInterval(loadData, 15000); // Refresh every 15 seconds (reduced for better performance)
     return () => clearInterval(interval);
   }, [familyId, activityLimit]);
+
+  // Check if guide should be shown on first visit
+  useEffect(() => {
+    if (currentView === 'dashboard' && !localStorage.getItem('guideSeen_parent')) {
+      setShowGuide(true);
+    }
+  }, [currentView]);
 
   const loadData = async () => {
     if (!familyId) return;
@@ -614,7 +623,11 @@ const ParentDashboard = ({ familyId, onChildrenUpdated, onLogout, onViewChild })
         }}
         onMenuItemClick={(tab) => {
           setShowSidebar(false);
-          setCurrentView(tab);
+          if (tab === 'guide') {
+            setShowGuide(true);
+          } else {
+            setCurrentView(tab);
+          }
         }}
         familyId={familyId}
         onLogout={onLogout}
@@ -759,6 +772,17 @@ const ParentDashboard = ({ familyId, onChildrenUpdated, onLogout, onViewChild })
             sessionStorage.removeItem('selectedChildId');
           }}
           onComplete={handleQuickActionComplete}
+        />
+      )}
+
+      {/* Guide Modal */}
+      {showGuide && (
+        <Guide 
+          userType="parent" 
+          onClose={() => {
+            setShowGuide(false);
+            setCurrentView('dashboard');
+          }} 
         />
       )}
     </div>

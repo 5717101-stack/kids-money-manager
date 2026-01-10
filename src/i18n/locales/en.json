@@ -26,7 +26,8 @@
     "back": "Back",
     "settings": "Settings",
     "saving": "Saving...",
-    "optional": "Optional"
+    "optional": "Optional",
+    "language": "Language"
   },
   "parent": {
     "dashboard": {
@@ -228,6 +229,65 @@
     "passwordPlaceholder": "Enter password",
     "login": "Login",
     "wrongPassword": "Wrong password. Please try again."
+  },
+  "guide": {
+    "title": "Guide",
+    "previous": "Previous",
+    "next": "Next",
+    "finish": "Finish",
+    "skip": "Skip",
+    "parent": {
+      "welcome": {
+        "title": "Welcome!",
+        "content": "Kids Money Manager allows you to manage your children's money in a convenient and secure way."
+      },
+      "dashboard": {
+        "title": "Parent Dashboard",
+        "content": "In the dashboard you can see the total balance of all children, recent activity, and expenses chart by categories."
+      },
+      "transactions": {
+        "title": "Adding Transactions",
+        "content": "Use the bottom buttons to add money or record expenses. Select a child from the center button."
+      },
+      "categories": {
+        "title": "Expense Categories",
+        "content": "You can create custom expense categories. Clicking on a category in the chart will show only its expenses."
+      },
+      "children": {
+        "title": "Managing Children",
+        "content": "Add new children, view their access codes, and update children's information."
+      },
+      "allowances": {
+        "title": "Allowances",
+        "content": "Set up automatic allowances that will be added to children's balance at the frequency you choose."
+      }
+    },
+    "child": {
+      "welcome": {
+        "title": "Hello!",
+        "content": "Welcome to your money management app! Here you can see your balance and manage your money."
+      },
+      "balance": {
+        "title": "Balance",
+        "content": "At the top you'll see your total balance, including money with parents and money in the physical cash box."
+      },
+      "transactions": {
+        "title": "Adding Transactions",
+        "content": "Use the bottom buttons to add income or record expenses. The center button is a calculator."
+      },
+      "history": {
+        "title": "History",
+        "content": "In the \"My History\" section you'll see all your transactions. You can filter by category or limit the number of displays."
+      },
+      "goals": {
+        "title": "Savings Goals",
+        "content": "Set a savings goal to track your progress. You'll see how much is left to save to reach your target."
+      },
+      "expenses": {
+        "title": "Expenses Chart",
+        "content": "The chart shows your expenses by categories. Clicking on a category will show only its expenses in history."
+      }
+    }
   },
   "auth": {
     "phoneNumber": "Phone Number",
