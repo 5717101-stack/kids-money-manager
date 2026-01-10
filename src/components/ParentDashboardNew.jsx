@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
-import { getData, getCategories, getChildTransactions, addTransaction } from '../utils/api';
+import { getData, getCategories, getChildTransactions, addTransaction, getFamilyInfo, updateParentProfileImage } from '../utils/api';
+import { smartCompressImage } from '../utils/imageCompression';
 import Sidebar from './Sidebar';
 import QuickActionModal from './QuickActionModal';
 import Settings from './Settings';
@@ -20,6 +21,10 @@ const ParentDashboard = ({ familyId, onChildrenUpdated, onLogout, onViewChild })
   const [recentTransactions, setRecentTransactions] = useState([]);
   const [totalFamilyBalance, setTotalFamilyBalance] = useState(0);
   const [familyPhoneNumber, setFamilyPhoneNumber] = useState('');
+  const [parentName, setParentName] = useState('');
+  const [parentProfileImage, setParentProfileImage] = useState(null);
+  const [showImagePicker, setShowImagePicker] = useState(false);
+  const fileInputRef = React.useRef(null);
 
   useEffect(() => {
     loadData();
@@ -30,9 +35,10 @@ const ParentDashboard = ({ familyId, onChildrenUpdated, onLogout, onViewChild })
   const loadData = async () => {
     if (!familyId) return;
     try {
-      const [dataResult, categoriesResult] = await Promise.allSettled([
+      const [dataResult, categoriesResult, familyInfoResult] = await Promise.allSettled([
         getData(familyId),
-        getCategories(familyId)
+        getCategories(familyId),
+        getFamilyInfo(familyId)
       ]);
 
       if (dataResult.status === 'fulfilled' && dataResult.value) {
@@ -41,6 +47,12 @@ const ParentDashboard = ({ familyId, onChildrenUpdated, onLogout, onViewChild })
         // Get family phone number from sessionStorage
         const savedPhone = sessionStorage.getItem('phoneNumber') || '';
         setFamilyPhoneNumber(savedPhone);
+        
+        // Load parent info
+        if (familyInfoResult.status === 'fulfilled' && familyInfoResult.value) {
+          setParentName(familyInfoResult.value.parentName || '');
+          setParentProfileImage(familyInfoResult.value.parentProfileImage || null);
+        }
         
         // Calculate total family balance
         const children = Object.values(dataResult.value.children || {});
@@ -202,7 +214,7 @@ const ParentDashboard = ({ familyId, onChildrenUpdated, onLogout, onViewChild })
   const getPageTitle = () => {
     switch (currentView) {
       case 'dashboard':
-        return t('parent.dashboard.title', { defaultValue: 'ממשק הורים' });
+        return parentName || t('parent.dashboard.title', { defaultValue: 'ממשק הורים' });
       case 'categories':
         return t('parent.settings.categories.title', { defaultValue: 'קטגוריות' });
       case 'profileImages':
@@ -214,7 +226,43 @@ const ParentDashboard = ({ familyId, onChildrenUpdated, onLogout, onViewChild })
       case 'parents':
         return t('parent.settings.parents.title', { defaultValue: 'ניהול הורים' });
       default:
-        return t('parent.dashboard.title', { defaultValue: 'ממשק הורים' });
+        return parentName || t('parent.dashboard.title', { defaultValue: 'ממשק הורים' });
+    }
+  };
+
+  const handleImageUpload = async (event) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    try {
+      // Compress image before upload
+      const compressedImage = await smartCompressImage(file);
+      
+      // Convert to base64
+      const reader = new FileReader();
+      reader.onloadend = async () => {
+        const base64Image = reader.result;
+        try {
+          await updateParentProfileImage(familyId, base64Image);
+          setParentProfileImage(base64Image);
+          await loadData(); // Reload to get updated data
+        } catch (error) {
+          alert(t('parent.profile.error', { defaultValue: 'שגיאה בעדכון תמונת הפרופיל' }) + ': ' + error.message);
+        }
+      };
+      reader.readAsDataURL(compressedImage);
+    } catch (error) {
+      alert(t('parent.profile.error', { defaultValue: 'שגיאה בעדכון תמונת הפרופיל' }) + ': ' + error.message);
+    }
+  };
+
+  const handleRemoveImage = async () => {
+    try {
+      await updateParentProfileImage(familyId, null);
+      setParentProfileImage(null);
+      await loadData(); // Reload to get updated data
+    } catch (error) {
+      alert(t('parent.profile.error', { defaultValue: 'שגיאה בהסרת תמונה' }) + ': ' + error.message);
     }
   };
 
@@ -238,7 +286,128 @@ const ParentDashboard = ({ familyId, onChildrenUpdated, onLogout, onViewChild })
 
       {/* Content based on current view */}
       {currentView === 'dashboard' && (
-        <div className="content-area">
+        <div className="content-area" style={{ flex: 1, overflowY: 'auto', paddingBottom: '120px', minHeight: 0 }}>
+      {/* Profile Image Section */}
+      <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '20px', paddingTop: '10px' }}>
+        <div style={{ position: 'relative' }}>
+          {parentProfileImage ? (
+            <img 
+              src={parentProfileImage} 
+              alt={parentName}
+              loading="lazy"
+              decoding="async"
+              style={{
+                width: '120px',
+                height: '120px',
+                borderRadius: '50%',
+                objectFit: 'cover',
+                border: '4px solid white',
+                boxShadow: '0 4px 12px rgba(0,0,0,0.1)'
+              }}
+            />
+          ) : (
+            <div style={{
+              width: '120px',
+              height: '120px',
+              borderRadius: '50%',
+              background: 'var(--primary-gradient)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              fontSize: '48px',
+              color: 'white',
+              fontWeight: 700,
+              border: '4px solid white',
+              boxShadow: '0 4px 12px rgba(0,0,0,0.1)'
+            }}>
+              {parentName?.charAt(0)?.toUpperCase() || 'ה'}
+            </div>
+          )}
+          <button
+            onClick={() => setShowImagePicker(true)}
+            style={{
+              position: 'absolute',
+              bottom: 0,
+              right: 0,
+              width: '36px',
+              height: '36px',
+              borderRadius: '50%',
+              background: 'var(--primary)',
+              border: '3px solid white',
+              color: 'white',
+              fontSize: '18px',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              boxShadow: '0 2px 8px rgba(0,0,0,0.2)'
+            }}
+            title={parentProfileImage ? t('parent.profile.changePicture', { defaultValue: 'שנה תמונה' }) : t('parent.profile.upload', { defaultValue: 'העלה תמונה' })}
+          >
+            {parentProfileImage ? '✏️' : '+'}
+          </button>
+        </div>
+      </div>
+
+      {/* Hidden file input */}
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="image/*"
+        style={{ display: 'none' }}
+        onChange={handleImageUpload}
+      />
+
+      {/* Image picker modal */}
+      {showImagePicker && (
+        <div className="modal-overlay" onClick={() => setShowImagePicker(false)}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <h2>{t('parent.profile.changePicture', { defaultValue: 'שנה תמונה' })}</h2>
+              <button className="close-button" onClick={() => setShowImagePicker(false)}>✕</button>
+            </div>
+            <div style={{ padding: '20px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+              <button
+                onClick={() => {
+                  fileInputRef.current?.click();
+                }}
+                style={{
+                  padding: '12px 24px',
+                  borderRadius: '12px',
+                  background: 'var(--primary-gradient)',
+                  color: 'white',
+                  border: 'none',
+                  fontSize: '16px',
+                  fontWeight: 600,
+                  cursor: 'pointer'
+                }}
+              >
+                {t('parent.profile.upload', { defaultValue: 'העלה תמונה' })}
+              </button>
+              {parentProfileImage && (
+                <button
+                  onClick={() => {
+                    handleRemoveImage();
+                    setShowImagePicker(false);
+                  }}
+                  style={{
+                    padding: '12px 24px',
+                    borderRadius: '12px',
+                    background: '#EF4444',
+                    color: 'white',
+                    border: 'none',
+                    fontSize: '16px',
+                    fontWeight: 600,
+                    cursor: 'pointer'
+                  }}
+                >
+                  {t('parent.profile.remove', { defaultValue: 'מחק תמונה' })}
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Total Family Balance Card */}
       <div className="fintech-card">

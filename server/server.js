@@ -2454,6 +2454,32 @@ app.put('/api/families/:familyId/children/:childId/profile-image', async (req, r
   }
 });
 
+// Update parent profile image
+app.put('/api/families/:familyId/parent/profile-image', async (req, res) => {
+  try {
+    const { familyId } = req.params;
+    const { profileImage } = req.body;
+    
+    const family = await getFamilyById(familyId);
+    if (!family) {
+      return res.status(404).json({ error: 'משפחה לא נמצאה' });
+    }
+    
+    if (db) {
+      await db.collection('families').updateOne(
+        { _id: familyId },
+        { $set: { parentProfileImage: profileImage || null } }
+      );
+      invalidateFamilyCache(familyId);
+    }
+    
+    res.json({ success: true, profileImage: profileImage || null });
+  } catch (error) {
+    console.error('Error updating parent profile image:', error);
+    res.status(500).json({ error: 'Failed to update parent profile image' });
+  }
+});
+
 // Update weekly allowance
 // Savings Goal endpoints
 app.get('/api/families/:familyId/children/:childId/savings-goal', async (req, res) => {
@@ -2843,6 +2869,7 @@ app.get('/api/families/:familyId', async (req, res) => {
       _id: family._id,
       phoneNumber: family.phoneNumber,
       parentName: family.parentName || 'הורה1',
+      parentProfileImage: family.parentProfileImage || null,
       parents: parents,
       createdAt: family.createdAt,
       lastLoginAt: family.lastLoginAt

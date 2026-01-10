@@ -421,6 +421,23 @@ export const updateParentInfo = async (familyId, name, phoneNumber, isMain = tru
   return response;
 };
 
+// Update parent profile image
+export const updateParentProfileImage = async (familyId, profileImage) => {
+  if (!familyId) {
+    throw new Error('Family ID is required');
+  }
+  try {
+    const response = await apiCall(`/families/${familyId}/parent/profile-image`, {
+      method: 'PUT',
+      body: JSON.stringify({ profileImage })
+    });
+    return response;
+  } catch (error) {
+    console.error('updateParentProfileImage error:', error);
+    throw new Error(error.message || 'Failed to update parent profile image');
+  }
+};
+
 export const addParent = async (familyId, name, phoneNumber) => {
   if (!familyId) {
     throw new Error('Family ID is required');
