@@ -1309,6 +1309,7 @@ const Settings = ({ familyId, onClose, onLogout, activeTab: externalActiveTab, h
                 </button>
               </form>
             </div>
+            )}
           </div>
         )}
       </div>
