@@ -209,7 +209,7 @@
       "recordExpense": "Expense",
       "backToParent": "Back to Parents Dashboard",
       "noData": "No data",
-      "error": "Error",
+      "error": "Error updating cash box balance",
       "childNotFound": "Child not found",
       "loadError": "Error loading data",
       "confirmLogout": "Are you sure you want to logout?",
@@ -233,9 +233,6 @@
       "invalidGoal": "Please enter goal name and valid amount",
       "error": "Error saving goal",
       "confirmDelete": "Are you sure you want to delete the savings goal?"
-    },
-    "dashboard": {
-      "error": "Error updating cash box balance"
     },
     "profile": {
       "title": "Profile Picture",

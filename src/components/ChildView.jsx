@@ -792,10 +792,12 @@ const ChildView = ({ childId, familyId, onBackToParent, onLogout }) => {
         ) : expensesByCategory && expensesByCategory.length > 0 ? (
           <ExpensePieChart
             expensesByCategory={expensesByCategory}
-            title={expensesPeriod === 'week' 
-              ? t('child.expenses.week', { defaultValue: 'הוצאות - שבוע אחרון' })
-              : t('child.expenses.month', { defaultValue: 'הוצאות - חודש אחרון' })
-            }
+            title={t('child.expenses.chartTitle', { 
+              period: expensesPeriod === 'week' 
+                ? t('child.expenses.week', { defaultValue: 'Last Week' })
+                : t('child.expenses.month', { defaultValue: 'Last Month' }),
+              defaultValue: 'Expenses - {period}'
+            })}
             days={expensesPeriod === 'week' ? 7 : 30}
             onCategorySelect={setFilteredCategory}
             selectedCategory={filteredCategory}
