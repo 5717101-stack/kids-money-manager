@@ -1504,25 +1504,29 @@ const Settings = ({ familyId, onClose, onLogout, activeTab: externalActiveTab, h
                           top: 50%;
                           left: 50%;
                           transform: translate(-50%, -50%);
-                          background: rgba(0, 0, 0, 0.7);
+                          background: rgba(0, 0, 0, 0.85);
+                          backdrop-filter: blur(10px);
                           color: white;
-                          padding: 20px 30px;
-                          border-radius: 16px;
+                          padding: 24px 32px;
+                          border-radius: 20px;
                           z-index: 10006;
                           display: flex;
+                          flex-direction: column;
                           align-items: center;
-                          gap: 12px;
+                          gap: 16px;
                           font-weight: 600;
+                          min-width: 200px;
+                          box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
                         ">
                           <div style="
-                            width: 20px;
-                            height: 20px;
-                            border: 3px solid rgba(255, 255, 255, 0.3);
+                            width: 40px;
+                            height: 40px;
+                            border: 4px solid rgba(255, 255, 255, 0.2);
                             border-top-color: white;
                             border-radius: 50%;
                             animation: spin 0.8s linear infinite;
                           "></div>
-                          ${t('common.saving', { defaultValue: 'שומר...' })}
+                          <div style="font-size: 16px;">${t('common.saving', { defaultValue: 'שומר...' })}</div>
                         </div>
                       `;
                       document.body.appendChild(loadingIndicator);
@@ -1820,25 +1824,29 @@ const Settings = ({ familyId, onClose, onLogout, activeTab: externalActiveTab, h
                                   top: 50%;
                                   left: 50%;
                                   transform: translate(-50%, -50%);
-                                  background: rgba(0, 0, 0, 0.7);
+                                  background: rgba(0, 0, 0, 0.85);
+                                  backdrop-filter: blur(10px);
                                   color: white;
-                                  padding: 20px 30px;
-                                  border-radius: 16px;
+                                  padding: 24px 32px;
+                                  border-radius: 20px;
                                   z-index: 10006;
                                   display: flex;
+                                  flex-direction: column;
                                   align-items: center;
-                                  gap: 12px;
+                                  gap: 16px;
                                   font-weight: 600;
+                                  min-width: 200px;
+                                  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
                                 ">
                                   <div style="
-                                    width: 20px;
-                                    height: 20px;
-                                    border: 3px solid rgba(255, 255, 255, 0.3);
+                                    width: 40px;
+                                    height: 40px;
+                                    border: 4px solid rgba(255, 255, 255, 0.2);
                                     border-top-color: white;
                                     border-radius: 50%;
                                     animation: spin 0.8s linear infinite;
                                   "></div>
-                                  ${t('common.saving', { defaultValue: 'שומר...' })}
+                                  <div style="font-size: 16px;">${t('common.saving', { defaultValue: 'שומר...' })}</div>
                                 </div>
                               `;
                               document.body.appendChild(loadingIndicator);
