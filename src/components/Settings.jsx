@@ -1374,7 +1374,7 @@ const Settings = ({ familyId, onClose, onLogout, activeTab: externalActiveTab, h
                             textAlign: 'center'
                           }}>
                             {childPhoneModal.createdAt 
-                              ? new Date(childPhoneModal.createdAt).toLocaleDateString('he-IL', { 
+                              ? new Date(childPhoneModal.createdAt).toLocaleDateString(i18n.language === 'he' ? 'he-IL' : 'en-US', { 
                                   year: 'numeric', 
                                   month: 'long', 
                                   day: 'numeric',
@@ -1398,7 +1398,7 @@ const Settings = ({ familyId, onClose, onLogout, activeTab: externalActiveTab, h
                             textAlign: 'center'
                           }}>
                             {childPhoneModal.lastLogin 
-                              ? new Date(childPhoneModal.lastLogin).toLocaleDateString('he-IL', { 
+                              ? new Date(childPhoneModal.lastLogin).toLocaleDateString(i18n.language === 'he' ? 'he-IL' : 'en-US', { 
                                   year: 'numeric', 
                                   month: 'long', 
                                   day: 'numeric',
@@ -2024,62 +2024,92 @@ const Settings = ({ familyId, onClose, onLogout, activeTab: externalActiveTab, h
                     </div>
                     
                     {parentPhoneModal && parentPhoneModal.parentIndex === index && (
-                      <div className="child-details-expanded">
-                        <div className="child-detail-item">
-                          <p className="child-detail-label">{t('parent.settings.childDetails.phoneNumber', { defaultValue: 'מספר טלפון להרשמה' })}:</p>
-                          <div className="child-detail-value phone-number">
-                            <span style={{ direction: 'ltr', textAlign: 'left', display: 'inline-block' }}>
-                              {parentPhoneModal.phoneNumber ? (parentPhoneModal.phoneNumber.startsWith('+') ? parentPhoneModal.phoneNumber : `+${parentPhoneModal.phoneNumber}`) : t('parent.settings.noPhoneNumber', { defaultValue: 'לא מוגדר' })}
-                            </span>
-                            {parentPhoneModal.phoneNumber && (
-                              <button
-                                className="copy-button"
-                                onClick={() => {
-                                  navigator.clipboard.writeText(parentPhoneModal.phoneNumber);
-                                  const btn = document.querySelector('.copy-button');
-                                  const originalText = btn.textContent;
-                                  btn.textContent = '✅ ' + t('parent.settings.passwordModal.copied', { defaultValue: 'הועתק!' });
-                                  setTimeout(() => {
-                                    btn.textContent = originalText;
-                                  }, 2000);
-                                }}
-                                title={t('parent.settings.phoneModal.copyPhone', { defaultValue: 'העתק מספר טלפון' })}
-                              >
-                                📋
-                              </button>
-                            )}
+                      <div style={{
+                        marginTop: '12px',
+                        padding: '20px',
+                        background: 'white',
+                        borderRadius: '16px',
+                        boxShadow: '0 2px 10px rgba(0,0,0,0.05)',
+                        border: '1px solid rgba(99, 102, 241, 0.2)'
+                      }}>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+                          <div>
+                            <p className="password-label" style={{ marginBottom: '8px' }}>{t('parent.settings.childDetails.phoneNumber', { defaultValue: 'מספר טלפון להרשמה' })}:</p>
+                            <div className="password-display-container">
+                              <div className="password-display" id="phone-display" style={{ flex: 1, direction: 'ltr', textAlign: 'left' }}>
+                                {parentPhoneModal.phoneNumber 
+                                  ? (parentPhoneModal.phoneNumber.startsWith('+') 
+                                      ? parentPhoneModal.phoneNumber 
+                                      : `+${parentPhoneModal.phoneNumber}`)
+                                  : t('parent.settings.noPhoneNumber', { defaultValue: 'לא מוגדר' })
+                                }
+                              </div>
+                              {parentPhoneModal.phoneNumber && (
+                                <button 
+                                  className="copy-button"
+                                  onClick={() => {
+                                    navigator.clipboard.writeText(parentPhoneModal.phoneNumber);
+                                    const btn = document.querySelector('.copy-button');
+                                    const originalText = btn.textContent;
+                                    btn.textContent = '✅ ' + t('parent.settings.passwordModal.copied', { defaultValue: 'הועתק!' });
+                                    setTimeout(() => {
+                                      btn.textContent = originalText;
+                                    }, 2000);
+                                  }}
+                                  title={t('parent.settings.phoneModal.copyPhone', { defaultValue: 'העתק מספר טלפון' })}
+                                >
+                                  📋 {t('parent.settings.passwordModal.copy', { defaultValue: 'העתק' })}
+                                </button>
+                              )}
+                            </div>
                           </div>
-                        </div>
-                        
-                        <div className="child-detail-item">
-                          <p className="child-detail-label">{t('parent.settings.childDetails.firstLogin', { defaultValue: 'כניסה ראשונה' })}:</p>
-                          <div className="login-date-card first-login">
-                            {parentPhoneModal.createdAt
-                              ? new Date(parentPhoneModal.createdAt).toLocaleDateString('he-IL', {
-                                  year: 'numeric',
-                                  month: 'long',
-                                  day: 'numeric',
-                                  hour: '2-digit',
-                                  minute: '2-digit'
-                                })
-                              : t('parent.settings.notAvailable', { defaultValue: 'לא זמין' })
-                            }
+                          
+                          <div>
+                            <p className="password-label" style={{ marginBottom: '8px' }}>{t('parent.settings.childDetails.firstLogin', { defaultValue: 'כניסה ראשונה' })}:</p>
+                            <div style={{ 
+                              padding: '16px', 
+                              background: 'linear-gradient(135deg, #6366F1 0%, #8B5CF6 100%)', 
+                              borderRadius: '12px', 
+                              color: 'white',
+                              fontSize: '16px',
+                              fontWeight: 600,
+                              textAlign: 'center'
+                            }}>
+                              {parentPhoneModal.createdAt 
+                                ? new Date(parentPhoneModal.createdAt).toLocaleDateString(i18n.language === 'he' ? 'he-IL' : 'en-US', { 
+                                    year: 'numeric', 
+                                    month: 'long', 
+                                    day: 'numeric',
+                                    hour: '2-digit',
+                                    minute: '2-digit'
+                                  })
+                                : t('parent.settings.notAvailable', { defaultValue: 'לא זמין' })
+                              }
+                            </div>
                           </div>
-                        </div>
-                        
-                        <div className="child-detail-item">
-                          <p className="child-detail-label">{t('parent.settings.childDetails.lastLogin', { defaultValue: 'כניסה אחרונה' })}:</p>
-                          <div className="login-date-card last-login">
-                            {parentPhoneModal.lastLogin
-                              ? new Date(parentPhoneModal.lastLogin).toLocaleDateString('he-IL', {
-                                  year: 'numeric',
-                                  month: 'long',
-                                  day: 'numeric',
-                                  hour: '2-digit',
-                                  minute: '2-digit'
-                                })
-                              : t('parent.settings.neverLoggedIn', { defaultValue: 'מעולם לא נכנס' })
-                            }
+                          
+                          <div>
+                            <p className="password-label" style={{ marginBottom: '8px' }}>{t('parent.settings.childDetails.lastLogin', { defaultValue: 'כניסה אחרונה' })}:</p>
+                            <div style={{ 
+                              padding: '16px', 
+                              background: 'linear-gradient(135deg, #10B981 0%, #059669 100%)', 
+                              borderRadius: '12px', 
+                              color: 'white',
+                              fontSize: '16px',
+                              fontWeight: 600,
+                              textAlign: 'center'
+                            }}>
+                              {parentPhoneModal.lastLogin 
+                                ? new Date(parentPhoneModal.lastLogin).toLocaleDateString(i18n.language === 'he' ? 'he-IL' : 'en-US', { 
+                                    year: 'numeric', 
+                                    month: 'long', 
+                                    day: 'numeric',
+                                    hour: '2-digit',
+                                    minute: '2-digit'
+                                  })
+                                : t('parent.settings.neverLoggedIn', { defaultValue: 'מעולם לא נכנס' })
+                              }
+                            </div>
                           </div>
                         </div>
                       </div>
