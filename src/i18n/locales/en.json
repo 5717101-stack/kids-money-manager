@@ -210,6 +210,8 @@
       "backToParent": "Back to Parents Dashboard",
       "noData": "No data",
       "error": "Error",
+      "childNotFound": "Child not found",
+      "loadError": "Error loading data",
       "confirmLogout": "Are you sure you want to logout?",
       "deleteFamily": "Delete Family Profile"
     },
@@ -249,7 +251,10 @@
       "recentTransactions": "Recent Transactions",
       "noTransactions": "No transactions",
       "noTransactionsForCategory": "No transactions in category \"{category}\"",
-      "transaction": "Transaction"
+      "transaction": "Transaction",
+      "last5": "Last 5",
+      "last20": "Last 20",
+      "all": "All"
     },
     "expenses": {
       "title": "Expenses Distribution",
@@ -258,15 +263,9 @@
       "chartTitle": "Expenses - {period}",
       "noExpenses": "No expenses in this period"
     },
-    "history": {
-      "title": "My History",
-      "recentTransactions": "Recent Transactions",
-      "noTransactions": "No transactions",
-      "noTransactionsForCategory": "No transactions in category \"{category}\"",
-      "transaction": "Transaction",
-      "last5": "Last 5",
-      "last20": "Last 20",
-      "all": "All"
+    "calculator": {
+      "title": "Calculator",
+      "useResult": "Use Result"
     }
   },
   "parentLogin": {

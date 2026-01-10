@@ -253,7 +253,7 @@ const ParentDashboard = ({ familyId, onChildrenUpdated, onLogout, onViewChild })
             animation: 'spin 0.8s linear infinite'
           }}></div>
           <div style={{ color: 'var(--text-muted)', fontSize: '16px', fontWeight: 500 }}>
-            טוען נתונים...
+            {t('common.loading', { defaultValue: 'Loading...' })}
           </div>
         </div>
       </div>

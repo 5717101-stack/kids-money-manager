@@ -74,7 +74,7 @@ const ChildView = ({ childId, familyId, onBackToParent, onLogout }) => {
           setTransactions(trans);
           setError(null);
         } else {
-          setError('ילד לא נמצא');
+          setError(t('child.dashboard.childNotFound', { defaultValue: 'Child not found' }));
         }
         
         setSavingsGoal(goal);
@@ -84,7 +84,7 @@ const ChildView = ({ childId, familyId, onBackToParent, onLogout }) => {
         }
       } catch (err) {
         console.error('Error loading child data:', err);
-        setError(err.message || 'שגיאה בטעינת הנתונים');
+        setError(err.message || t('child.dashboard.loadError', { defaultValue: 'Error loading data' }));
       } finally {
         setLoading(false);
       }
