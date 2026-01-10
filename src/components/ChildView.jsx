@@ -29,6 +29,7 @@ const ChildView = ({ childId, familyId, onBackToParent, onLogout }) => {
   const [calculatorValue, setCalculatorValue] = useState('0');
   const [calculatorHistory, setCalculatorHistory] = useState('');
   const [calculatorResult, setCalculatorResult] = useState(null);
+  const [calculatorFromTransaction, setCalculatorFromTransaction] = useState(false); // Track if calculator opened from transaction modal
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
@@ -258,6 +259,7 @@ const ChildView = ({ childId, familyId, onBackToParent, onLogout }) => {
     setCalculatorValue('0');
     setCalculatorHistory('');
     setCalculatorResult(null);
+    setCalculatorFromTransaction(false); // Main calculator, not from transaction modal
   };
 
   const handleCalculatorInput = (value) => {
@@ -311,13 +313,36 @@ const ChildView = ({ childId, familyId, onBackToParent, onLogout }) => {
     }
 
     // Handle numbers and decimal
-    if (calculatorHistory === '' || ['+', '-', '*', '/'].includes(calculatorHistory.slice(-1))) {
-      setCalculatorHistory(calculatorHistory + value);
-      setCalculatorValue(value);
+    // If current value is "0" and user enters a number, replace "0" instead of appending
+    if (calculatorHistory === '' || ['+', '-', '*', '/', '×'].includes(calculatorHistory.slice(-1))) {
+      // Starting a new number - if current value is "0", replace it
+      if (calculatorValue === '0' && /[0-9]/.test(value)) {
+        setCalculatorHistory(value);
+        setCalculatorValue(value);
+      } else {
+        setCalculatorHistory(calculatorHistory + value);
+        setCalculatorValue(value);
+      }
     } else {
-      const newHistory = calculatorHistory + value;
-      setCalculatorHistory(newHistory);
-      setCalculatorValue(newHistory.match(/[\d.]+$/)?.[0] || value);
+      // Continuing a number
+      // Check if the displayed value is "0" - if so, replace it
+      if (calculatorValue === '0' && /[0-9]/.test(value)) {
+        // Find where the current number starts and replace it
+        const lastNumberMatch = calculatorHistory.match(/[\d.]+$/);
+        if (lastNumberMatch && lastNumberMatch[0] === '0') {
+          const newHistory = calculatorHistory.slice(0, -1) + value;
+          setCalculatorHistory(newHistory);
+          setCalculatorValue(value);
+        } else {
+          const newHistory = calculatorHistory + value;
+          setCalculatorHistory(newHistory);
+          setCalculatorValue(newHistory.match(/[\d.]+$/)?.[0] || value);
+        }
+      } else {
+        const newHistory = calculatorHistory + value;
+        setCalculatorHistory(newHistory);
+        setCalculatorValue(newHistory.match(/[\d.]+$/)?.[0] || value);
+      }
     }
   };
 
@@ -863,7 +888,7 @@ const ChildView = ({ childId, familyId, onBackToParent, onLogout }) => {
               <button className="calc-btn calc-btn-number calc-btn-zero" onClick={() => handleCalculatorInput('0')}>0</button>
               <button className="calc-btn calc-btn-number" onClick={() => handleCalculatorInput('.')}>.</button>
             </div>
-            {calculatorResult !== null && (
+            {calculatorResult !== null && calculatorFromTransaction && (
               <button className="calculator-use-result" onClick={useCalculatorResult}>
                 {t('child.calculator.useResult', { defaultValue: 'השתמש בתוצאה' })}: {calculatorResult}
               </button>
@@ -906,9 +931,11 @@ const ChildView = ({ childId, familyId, onBackToParent, onLogout }) => {
                     className="calculator-button-small"
                     onClick={() => {
                       setShowCalculator(true);
-                      setCalculatorValue(transactionAmount || '0');
-                      setCalculatorHistory(transactionAmount || '0');
+                      const initialValue = transactionAmount || '0';
+                      setCalculatorValue(initialValue);
+                      setCalculatorHistory(initialValue);
                       setCalculatorResult(null);
+                      setCalculatorFromTransaction(true); // Mark that calculator opened from transaction modal
                     }}
                     title={t('child.calculator.title', { defaultValue: 'מחשבון' })}
                   >
