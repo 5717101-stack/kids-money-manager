@@ -450,6 +450,12 @@ const ChildView = ({ childId, familyId, onBackToParent, onLogout }) => {
               className="menu-btn"
               onClick={onBackToParent}
               title={t('child.dashboard.backToParent', { defaultValue: 'חזור לממשק הורים' })}
+              style={{ 
+                fontSize: '20px',
+                position: 'absolute',
+                [i18n.language === 'he' ? 'right' : 'left']: '20px',
+                transform: i18n.language === 'he' ? 'scaleX(-1)' : 'none' // Flip arrow for RTL
+              }}
             >
               ←
             </button>
@@ -536,6 +542,12 @@ const ChildView = ({ childId, familyId, onBackToParent, onLogout }) => {
             onClick={onBackToParent}
             title={t('child.dashboard.backToParent', { defaultValue: 'חזור לממשק הורים' })}
             aria-label={t('child.dashboard.backToParent', { defaultValue: 'חזור לממשק הורים' })}
+            style={{ 
+              fontSize: '20px',
+              position: 'absolute',
+              [i18n.language === 'he' ? 'right' : 'left']: '20px',
+              transform: i18n.language === 'he' ? 'scaleX(-1)' : 'none' // Flip arrow for RTL
+            }}
           >
             ←
           </button>
