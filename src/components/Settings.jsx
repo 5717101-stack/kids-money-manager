@@ -1164,7 +1164,14 @@ const Settings = ({ familyId, onClose, onLogout, activeTab: externalActiveTab, h
                     transition: '0.2s'
                   }}
                 >
-                  {creatingChild ? t('common.saving', { defaultValue: 'שומר...' }) : t('common.save', { defaultValue: 'שמור' })}
+                  {creatingChild ? (
+                    <span style={{
+                      display: 'inline-block',
+                      animation: 'pulse 1.5s ease-in-out infinite'
+                    }}>
+                      {t('common.saving', { defaultValue: 'שומר...' })}
+                    </span>
+                  ) : t('common.save', { defaultValue: 'שמור' })}
                 </button>
               </form>
               </div>
@@ -1869,10 +1876,14 @@ const Settings = ({ familyId, onClose, onLogout, activeTab: externalActiveTab, h
                       className="update-allowance-button"
                       disabled={updatingParent || !newParentName.trim() || !newParentPhone.trim()}
                     >
-                      {updatingParent 
-                        ? t('common.saving', { defaultValue: 'שומר...' })
-                        : t('common.save', { defaultValue: 'שמור' })
-                      }
+                      {updatingParent ? (
+                        <span style={{
+                          display: 'inline-block',
+                          animation: 'pulse 1.5s ease-in-out infinite'
+                        }}>
+                          {t('common.saving', { defaultValue: 'שומר...' })}
+                        </span>
+                      ) : t('common.save', { defaultValue: 'שמור' })}
                     </button>
                     <button
                       type="button"
@@ -2077,48 +2088,11 @@ const Settings = ({ familyId, onClose, onLogout, activeTab: externalActiveTab, h
                             try {
                               setUpdatingParent(true);
                               
-                              // Show loading indicator - clean spinner without box
-                              const loadingIndicator = document.createElement('div');
-                              loadingIndicator.id = 'parent-saving-indicator';
-                              loadingIndicator.innerHTML = `
-                                <div style="
-                                  position: fixed;
-                                  top: 50%;
-                                  left: 50%;
-                                  transform: translate(-50%, -50%);
-                                  z-index: 10006;
-                                  display: flex;
-                                  flex-direction: column;
-                                  align-items: center;
-                                  gap: 16px;
-                                ">
-                                  <div style="
-                                    width: 48px;
-                                    height: 48px;
-                                    border: 4px solid rgba(99, 102, 241, 0.2);
-                                    border-top-color: #6366F1;
-                                    border-radius: 50%;
-                                    animation: spin 0.8s linear infinite;
-                                  "></div>
-                                  <div style="
-                                    color: #6366F1;
-                                    font-size: 16px;
-                                    font-weight: 600;
-                                    letter-spacing: 0.5px;
-                                  ">${t('common.saving', { defaultValue: 'שומר...' })}</div>
-                                </div>
-                              `;
-                              document.body.appendChild(loadingIndicator);
-                              
                               await updateParentInfo(familyId, editParentName.trim(), editParentPhone.trim(), parent.isMain);
                               await loadData();
                               setEditingParent(null);
                               setEditParentName('');
                               setEditParentPhone('');
-                              
-                              // Remove loading indicator
-                              const indicator = document.getElementById('parent-saving-indicator');
-                              if (indicator) indicator.remove();
                               
                               // Show success notification at bottom
                               const notification = document.createElement('div');
@@ -2147,8 +2121,6 @@ const Settings = ({ familyId, onClose, onLogout, activeTab: externalActiveTab, h
                                 setTimeout(() => notification.remove(), 300);
                               }, 2000);
                             } catch (error) {
-                              const indicator = document.getElementById('parent-saving-indicator');
-                              if (indicator) indicator.remove();
                               alert(t('parent.settings.parents.updateError', { defaultValue: 'שגיאה בעדכון פרטי ההורה' }) + ': ' + error.message);
                             } finally {
                               setUpdatingParent(false);
@@ -2188,10 +2160,14 @@ const Settings = ({ familyId, onClose, onLogout, activeTab: externalActiveTab, h
                               className="update-allowance-button"
                               disabled={updatingParent}
                             >
-                              {updatingParent 
-                                ? t('common.saving', { defaultValue: 'שומר...' })
-                                : t('common.save', { defaultValue: 'שמור' })
-                              }
+                              {updatingParent ? (
+                                <span style={{
+                                  display: 'inline-block',
+                                  animation: 'pulse 1.5s ease-in-out infinite'
+                                }}>
+                                  {t('common.saving', { defaultValue: 'שומר...' })}
+                                </span>
+                              ) : t('common.save', { defaultValue: 'שמור' })}
                             </button>
                             {!parent.isMain && (
                               <button
