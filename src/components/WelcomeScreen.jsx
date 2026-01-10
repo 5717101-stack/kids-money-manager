@@ -175,7 +175,7 @@ const WelcomeScreen = ({ onSelectCreate, onSelectJoinAsParent, onSelectJoinAsChi
   };
 
   return (
-    <div className="welcome-screen">
+    <div className="welcome-screen" style={{ position: 'relative', width: '100%', height: '100vh' }}>
       {/* Language Toggle Button */}
       <button
         onClick={() => {
@@ -183,7 +183,7 @@ const WelcomeScreen = ({ onSelectCreate, onSelectJoinAsParent, onSelectJoinAsChi
           i18n.changeLanguage(newLang);
         }}
         style={{
-          position: 'absolute',
+          position: 'fixed',
           top: '20px',
           right: i18n.language === 'he' ? '20px' : 'auto',
           left: i18n.language === 'he' ? 'auto' : '20px',
@@ -199,7 +199,7 @@ const WelcomeScreen = ({ onSelectCreate, onSelectJoinAsParent, onSelectJoinAsChi
           alignItems: 'center',
           justifyContent: 'center',
           boxShadow: '0 2px 8px rgba(0,0,0,0.15)',
-          zIndex: 100,
+          zIndex: 10000,
           transition: 'transform 0.2s'
         }}
         onMouseEnter={(e) => e.currentTarget.style.transform = 'scale(1.1)'}

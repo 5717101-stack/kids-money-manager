@@ -127,7 +127,8 @@ const PhoneLogin = ({ onOTPSent }) => {
                     style={{
                       position: 'absolute',
                       top: '100%',
-                      [i18n.language === 'he' ? 'right' : 'left']: 0,
+                      right: i18n.language === 'he' ? 0 : 'auto',
+                      left: i18n.language === 'he' ? 'auto' : 0,
                       marginTop: '8px',
                       background: 'white',
                       borderRadius: '12px',
@@ -137,7 +138,8 @@ const PhoneLogin = ({ onOTPSent }) => {
                       overflowY: 'auto',
                       zIndex: 1000,
                       minWidth: '250px',
-                      width: 'auto'
+                      width: 'auto',
+                      transform: i18n.language === 'he' ? 'none' : 'none'
                     }}
                   >
                     {COUNTRY_CODES.map((country) => (
