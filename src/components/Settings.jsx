@@ -2208,7 +2208,20 @@ const Settings = ({ familyId, onClose, onLogout, activeTab: externalActiveTab, h
                                   }
                                   
                                   try {
-                                    await archiveParent(familyId, index, false);
+                                    // Calculate the correct parentIndex for additionalParents array
+                                    // If there's a main parent (index 0), additionalParents start at index 1 in the parents array
+                                    // So we need to subtract 1 from the index to get the correct additionalParents index
+                                    // If there's no main parent, the index is already correct
+                                    const hasMainParent = familyInfo.parents && familyInfo.parents.length > 0 && familyInfo.parents[0]?.isMain;
+                                    const parentIndex = hasMainParent ? index - 1 : index;
+                                    
+                                    // Verify this is not the main parent
+                                    if (parent.isMain) {
+                                      alert(t('parent.settings.deleteParentError', { defaultValue: 'שגיאה במחיקת הורה' }) + ': ' + t('parent.settings.cannotDeleteMainParent', { defaultValue: 'לא ניתן למחוק את ההורה הראשי' }));
+                                      return;
+                                    }
+                                    
+                                    await archiveParent(familyId, parentIndex, false);
                                     await loadData();
                                     setEditingParent(null);
                                     setEditParentName('');

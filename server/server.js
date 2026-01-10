@@ -3130,12 +3130,28 @@ app.post('/api/families/:familyId/parent/archive', async (req, res) => {
       return res.status(400).json({ error: 'לא ניתן למחוק את ההורה הראשי' });
     } else {
       // Archive additional parent
-      if (!family.additionalParents || !family.additionalParents[parentIndex]) {
-        console.error(`[ARCHIVE-PARENT] ❌ Parent not found at index: ${parentIndex}`);
-        return res.status(404).json({ error: 'הורה לא נמצא' });
+      // Validate parentIndex
+      if (parentIndex === undefined || parentIndex === null) {
+        console.error(`[ARCHIVE-PARENT] ❌ parentIndex is required for additional parent`);
+        console.error(`[ARCHIVE-PARENT] Received parentIndex: ${parentIndex}, isMain: ${isMain}`);
+        return res.status(400).json({ error: 'parentIndex נדרש למחיקת הורה נוסף' });
+      }
+      
+      if (!family.additionalParents || !Array.isArray(family.additionalParents)) {
+        console.error(`[ARCHIVE-PARENT] ❌ No additional parents array found`);
+        console.error(`[ARCHIVE-PARENT] Family has additionalParents: ${!!family.additionalParents}, type: ${typeof family.additionalParents}`);
+        return res.status(404).json({ error: 'אין הורים נוספים במשפחה' });
+      }
+      
+      if (parentIndex < 0 || parentIndex >= family.additionalParents.length) {
+        console.error(`[ARCHIVE-PARENT] ❌ Parent index out of range`);
+        console.error(`[ARCHIVE-PARENT] Requested index: ${parentIndex}, Available parents: ${family.additionalParents.length}`);
+        console.error(`[ARCHIVE-PARENT] Available parent indices: 0-${family.additionalParents.length - 1}`);
+        return res.status(404).json({ error: `הורה לא נמצא באינדקס ${parentIndex}. יש ${family.additionalParents.length} הורים נוספים (אינדקסים 0-${family.additionalParents.length - 1})` });
       }
       
       parent = family.additionalParents[parentIndex];
+      console.log(`[ARCHIVE-PARENT] ✅ Found parent at index ${parentIndex}: ${parent.name || 'no name'}`);
     }
     
     console.log(`[ARCHIVE-PARENT] Archiving parent: ${parent.name || 'no name'}`);
