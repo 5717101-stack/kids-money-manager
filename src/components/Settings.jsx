@@ -2224,9 +2224,9 @@ const Settings = ({ familyId, onClose, onLogout, activeTab: externalActiveTab, h
                                   display: 'inline-block',
                                   animation: 'pulse 1.5s ease-in-out infinite'
                                 }}>
-                                  {t('common.saving', { defaultValue: 'שומר...' })}
+                                  {t('common.saving', { defaultValue: 'Saving...' })}
                                 </span>
-                              ) : t('common.save', { defaultValue: 'שמור' })}
+                              ) : t('common.save', { defaultValue: 'Save' })}
                             </button>
                             {!parent.isMain && (
                               <button
@@ -2234,7 +2234,7 @@ const Settings = ({ familyId, onClose, onLogout, activeTab: externalActiveTab, h
                                 onClick={async () => {
                                   const parentName = parent.name || t('parent.settings.parent', { defaultValue: 'הורה' });
                                   const confirmMessage = t('parent.settings.deleteParentConfirm', { 
-                                    defaultValue: 'האם אתה בטוח שברצונך למחוק את {name}? פעולה זו תעביר את כל הנתונים לארכיון ולא ניתן לבטל אותה.',
+                                    defaultValue: 'Are you sure you want to delete {name}? This action will move all data to archive and cannot be undone.',
                                     name: parentName
                                   }).replace(/\{name\}/g, parentName);
                                   
@@ -2252,7 +2252,7 @@ const Settings = ({ familyId, onClose, onLogout, activeTab: externalActiveTab, h
                                     
                                     // Verify this is not the main parent
                                     if (parent.isMain) {
-                                      alert(t('parent.settings.deleteParentError', { defaultValue: 'שגיאה במחיקת הורה' }) + ': ' + t('parent.settings.cannotDeleteMainParent', { defaultValue: 'לא ניתן למחוק את ההורה הראשי' }));
+                                      alert(t('parent.settings.deleteParentError', { defaultValue: 'Error deleting parent' }) + ': ' + t('parent.settings.cannotDeleteMainParent', { defaultValue: 'Cannot delete the main parent' }));
                                       return;
                                     }
                                     
@@ -2265,7 +2265,7 @@ const Settings = ({ familyId, onClose, onLogout, activeTab: externalActiveTab, h
                                     // Show success notification
                                     const notification = document.createElement('div');
                                     const successMessage = t('parent.settings.deleteParentSuccess', { 
-                                      defaultValue: 'הורה נמחק והועבר לארכיון בהצלחה',
+                                      defaultValue: 'Parent {name} deleted and moved to archive successfully',
                                       name: parentName
                                     }).replace(/\{name\}/g, parentName);
                                     notification.textContent = successMessage;
@@ -2293,13 +2293,13 @@ const Settings = ({ familyId, onClose, onLogout, activeTab: externalActiveTab, h
                                       setTimeout(() => notification.remove(), 300);
                                     }, 3000);
                                   } catch (error) {
-                                    alert(t('parent.settings.deleteParentError', { defaultValue: 'שגיאה במחיקת הורה' }) + ': ' + (error.message || 'Unknown error'));
+                                    alert(t('parent.settings.deleteParentError', { defaultValue: 'Error deleting parent' }) + ': ' + (error.message || 'Unknown error'));
                                   }
                                 }}
                                 className="pay-allowance-button"
                                 style={{ background: '#EF4444' }}
                               >
-                                🗑️ {t('parent.settings.deleteParent', { defaultValue: 'מחק הורה' })}
+                                🗑️ {t('parent.settings.deleteParent', { defaultValue: 'Delete Parent' })}
                               </button>
                             )}
                           </div>
