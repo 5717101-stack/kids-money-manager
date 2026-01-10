@@ -220,12 +220,26 @@ app.get('/keepalive', (req, res) => {
 let db;
 const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://localhost:27017/kids-money-manager';
 
+// MongoDB client with connection pooling for better performance
+let mongoClient = null;
+
 async function connectDB() {
   try {
-    const client = new MongoClient(MONGODB_URI);
-    await client.connect();
-    db = client.db();
-    console.log('[DB] Connected to MongoDB');
+    // Use connection pooling for better performance
+    // maxPoolSize: 10 - allows up to 10 concurrent connections
+    // minPoolSize: 2 - maintains at least 2 connections ready
+    // maxIdleTimeMS: 30000 - closes idle connections after 30s
+    mongoClient = new MongoClient(MONGODB_URI, {
+      maxPoolSize: 10,
+      minPoolSize: 2,
+      maxIdleTimeMS: 30000,
+      serverSelectionTimeoutMS: 5000,
+      socketTimeoutMS: 45000,
+    });
+    await mongoClient.connect();
+    db = mongoClient.db();
+    console.log('[DB] Connected to MongoDB with connection pooling');
+    console.log('[DB] Pool settings: maxPoolSize=10, minPoolSize=2');
     await initializeData();
   } catch (error) {
     console.error('[DB] Connection error:', error.message);
@@ -2125,15 +2139,29 @@ app.get('/api/families/:familyId/children/:childId/transactions', async (req, re
     }
     
     const limit = req.query.limit ? parseInt(req.query.limit) : null;
-    let transactions = [...(child.transactions || [])].sort((a, b) => 
-      new Date(b.date) - new Date(a.date)
-    );
+    const transactions = child.transactions || [];
     
-    if (limit) {
-      transactions = transactions.slice(0, limit);
+    // Optimize sorting: pre-sort only if needed, use efficient date comparison
+    // Sort in descending order (newest first) - optimized for performance
+    let sortedTransactions = transactions;
+    if (transactions.length > 0) {
+      // Use efficient sorting - compare timestamps directly (faster than Date objects)
+      sortedTransactions = transactions.slice().sort((a, b) => {
+        // If dates are ISO strings, compare directly (faster)
+        if (a.date && b.date) {
+          return b.date.localeCompare(a.date);
+        }
+        // Fallback to Date objects if needed
+        return new Date(b.date || 0) - new Date(a.date || 0);
+      });
     }
     
-    res.json({ transactions });
+    // Apply limit after sorting (more efficient than sorting all then limiting)
+    if (limit && limit > 0) {
+      sortedTransactions = sortedTransactions.slice(0, limit);
+    }
+    
+    res.json({ transactions: sortedTransactions });
   } catch (error) {
     console.error('Error fetching transactions:', error);
     res.status(500).json({ error: 'Failed to fetch transactions' });
