@@ -97,22 +97,19 @@ body {
   overflow-x: visible !important;
 }
 
-.parent-dashboard-new .content-area > .fintech-card {
-  width: 100%;
-  max-width: 100%;
-  margin-left: 0;
-  margin-right: 0;
-  box-sizing: border-box;
-  border-radius: var(--card-radius);
-}
-
-/* Balance and Activity cards - same width as child dashboard cards */
+/* Remove any width restrictions on fintech cards in parent dashboard - match child dashboard exactly */
+.parent-dashboard-new .content-area > .fintech-card,
 .parent-dashboard-new .content-area > .fintech-card.balance-card,
 .parent-dashboard-new .content-area > .fintech-card.activity-card {
   width: 100% !important;
   max-width: 100% !important;
+  min-width: 0 !important;
   margin-left: 0 !important;
   margin-right: 0 !important;
+  box-sizing: border-box !important;
+  border-radius: var(--card-radius);
+  padding: 24px !important;
+  flex-shrink: 0 !important;
 }
 
 /* Remove scrollbar visual but keep function */
