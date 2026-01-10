@@ -143,7 +143,13 @@ body {
   position: fixed;
   top: max(16px, env(safe-area-inset-top));
   right: 20px;
+  left: auto;
   z-index: 10001; /* Above sidebar and other elements */
+}
+
+[dir="ltr"] .menu-btn-top-right {
+  right: auto;
+  left: 20px;
 }
 
 /* --- Scrollable Content Area --- */

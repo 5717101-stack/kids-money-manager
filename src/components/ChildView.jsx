@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { getChild, getChildTransactions, updateCashBoxBalance, getSavingsGoal, updateSavingsGoal, deleteSavingsGoal, updateProfileImage, getExpensesByCategory, addTransaction, getCategories } from '../utils/api';
 import { smartCompressImage } from '../utils/imageCompression';
 import ExpensePieChart from './ExpensePieChart';
+import Guide from './Guide';
 
 const ChildView = ({ childId, familyId, onBackToParent, onLogout }) => {
   const { t, i18n } = useTranslation();
@@ -409,7 +410,10 @@ const ChildView = ({ childId, familyId, onBackToParent, onLogout }) => {
       
       // Reload data to show updated balance
       await loadChildData();
-      await loadExpensesByCategory();
+      // Only reload expenses chart if it was an expense
+      if (transactionType === 'expense') {
+        setChartReloadKey(prev => prev + 1);
+      }
     } catch (error) {
       alert(t('parent.dashboard.error', { defaultValue: 'שגיאה' }) + ': ' + error.message);
     } finally {
@@ -1136,7 +1140,7 @@ const ChildView = ({ childId, familyId, onBackToParent, onLogout }) => {
               )}
 
               <div className="form-group">
-                <label>{t('parent.dashboard.description', { defaultValue: 'תיאור' })} (אופציונלי):</label>
+                <label>{t('parent.dashboard.description', { defaultValue: 'תיאור' })} ({t('common.optional', { defaultValue: 'אופציונלי' })}):</label>
                 <input
                   type="text"
                   value={transactionDescription}

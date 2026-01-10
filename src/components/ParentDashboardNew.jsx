@@ -126,6 +126,8 @@ const ParentDashboard = ({ familyId, onChildrenUpdated, onLogout, onViewChild })
 
   const handleQuickActionComplete = async () => {
     await loadData();
+    // Force chart reload when transaction is added
+    setChartReloadKey(prev => prev + 1);
     if (onChildrenUpdated) {
       await onChildrenUpdated();
     }
@@ -480,6 +482,7 @@ const ParentDashboard = ({ familyId, onChildrenUpdated, onLogout, onViewChild })
         categories={categories}
         onCategorySelect={setFilteredCategory}
         selectedCategory={filteredCategory}
+        forceReload={chartReloadKey}
       />
 
       {/* Recent Activity */}

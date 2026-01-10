@@ -66,7 +66,7 @@ const getCategoryColor = (category) => {
   return color;
 };
 
-const ExpensesPieChart = ({ familyId, children, categories, onCategorySelect, selectedCategory }) => {
+const ExpensesPieChart = ({ familyId, children, categories, onCategorySelect, selectedCategory, forceReload }) => {
   const { t, i18n } = useTranslation();
   const [timeFilter, setTimeFilter] = useState('week'); // 'week' or 'month'
   const [loading, setLoading] = useState(true);
@@ -152,7 +152,10 @@ const ExpensesPieChart = ({ familyId, children, categories, onCategorySelect, se
     };
 
     loadExpenses();
-  }, [familyId, children, timeFilter, t]);
+    // Only reload when timeFilter changes, when children list changes (new child added), or when forceReload is triggered
+    // Don't reload automatically on interval - only when explicitly needed
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [familyId, timeFilter, t, forceReload]);
 
   // Prepare chart data
   const chartData = useMemo(() => {

@@ -58,6 +58,9 @@ const App = () => {
   const loadChildren = async (fId) => {
     try {
       const response = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3001/api'}/families/${fId}/children`);
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
       const data = await response.json();
       if (data.children) {
         const childrenList = Object.values(data.children);
@@ -67,7 +70,7 @@ const App = () => {
         }
       }
     } catch (error) {
-      console.error('Error loading children:', error);
+      console.error('Error loading children:', error?.message || error?.toString() || error);
     }
   };
 
