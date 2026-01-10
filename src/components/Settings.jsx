@@ -1927,6 +1927,67 @@ const Settings = ({ familyId, onClose, onLogout, activeTab: externalActiveTab, h
                                 : t('common.save', { defaultValue: 'שמור' })
                               }
                             </button>
+                            {!parent.isMain && (
+                              <button
+                                type="button"
+                                onClick={async () => {
+                                  const parentName = parent.name || t('parent.settings.parent', { defaultValue: 'הורה' });
+                                  const confirmMessage = t('parent.settings.deleteParentConfirm', { 
+                                    defaultValue: 'האם אתה בטוח שברצונך למחוק את {name}? פעולה זו תעביר את כל הנתונים לארכיון ולא ניתן לבטל אותה.',
+                                    name: parentName
+                                  }).replace(/\{name\}/g, parentName);
+                                  
+                                  if (!confirm(confirmMessage)) {
+                                    return;
+                                  }
+                                  
+                                  try {
+                                    await archiveParent(familyId, index, false);
+                                    await loadData();
+                                    setEditingParent(null);
+                                    setEditParentName('');
+                                    setEditParentPhone('');
+                                    
+                                    // Show success notification
+                                    const notification = document.createElement('div');
+                                    const successMessage = t('parent.settings.deleteParentSuccess', { 
+                                      defaultValue: 'הורה נמחק והועבר לארכיון בהצלחה',
+                                      name: parentName
+                                    }).replace(/\{name\}/g, parentName);
+                                    notification.textContent = successMessage;
+                                    const isRTL = i18n.language === 'he';
+                                    const animationName = isRTL ? 'slideInRTL' : 'slideIn';
+                                    const animationOutName = isRTL ? 'slideOutRTL' : 'slideOut';
+                                    const rightOrLeft = isRTL ? 'left' : 'right';
+                                    notification.style.cssText = `
+                                      position: fixed;
+                                      bottom: 100px;
+                                      ${rightOrLeft}: 20px;
+                                      background: linear-gradient(135deg, #6366F1 0%, #8B5CF6 100%);
+                                      color: white;
+                                      padding: 16px 24px;
+                                      border-radius: 12px;
+                                      box-shadow: 0 4px 12px rgba(99, 102, 241, 0.3);
+                                      z-index: 10005;
+                                      font-weight: 600;
+                                      animation: ${animationName} 0.3s ease;
+                                      max-width: calc(100% - 40px);
+                                    `;
+                                    document.body.appendChild(notification);
+                                    setTimeout(() => {
+                                      notification.style.animation = `${animationOutName} 0.3s ease`;
+                                      setTimeout(() => notification.remove(), 300);
+                                    }, 3000);
+                                  } catch (error) {
+                                    alert(t('parent.settings.deleteParentError', { defaultValue: 'שגיאה במחיקת הורה' }) + ': ' + (error.message || 'Unknown error'));
+                                  }
+                                }}
+                                className="pay-allowance-button"
+                                style={{ background: '#EF4444' }}
+                              >
+                                🗑️ {t('parent.settings.deleteParent', { defaultValue: 'מחק הורה' })}
+                              </button>
+                            )}
                           </div>
                         </form>
                       </div>
