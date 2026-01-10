@@ -11,9 +11,14 @@ const OTPVerification = ({ phoneNumber, isExistingFamily, onVerified, onBack }) 
   const [resendTimer, setResendTimer] = useState(60);
   const [sendingOTP, setSendingOTP] = useState(true);
   const [otpSent, setOtpSent] = useState(false);
+  const timerStartedRef = useRef(false);
   const inputRefs = useRef([]);
 
   useEffect(() => {
+    // Only start timer if it hasn't started yet
+    if (timerStartedRef.current) return;
+    
+    timerStartedRef.current = true;
     const timer = setInterval(() => {
       setResendTimer(prev => {
         if (prev <= 1) {
@@ -94,8 +99,12 @@ const OTPVerification = ({ phoneNumber, isExistingFamily, onVerified, onBack }) 
         // OTP sent successfully
         setOtpSent(true);
         setSendingOTP(false);
-        setCanResend(false);
-        setResendTimer(60);
+        // Don't reset timer if it's already running - let it continue from where it was
+        // Only reset if canResend is true (meaning timer already finished)
+        if (canResend) {
+          setCanResend(false);
+          setResendTimer(60);
+        }
       } catch (error) {
         setError(error.message || t('auth.phoneLogin.sendError', { defaultValue: 'שגיאה בשליחת קוד אימות' }));
         setSendingOTP(false);
