@@ -40,6 +40,12 @@ const Sidebar = ({ isOpen, onClose, familyId, onLogout, onChildrenUpdated, onMen
       id: 'parents',
       label: t('sidebar.parents', { defaultValue: 'הגדרת הורים' }),
       icon: '👨‍👩‍👧‍👦'
+    },
+    {
+      id: 'deleteFamily',
+      label: t('sidebar.deleteFamily', { defaultValue: 'מחיקת פרופיל משפחתי' }),
+      icon: '🗑️',
+      danger: true
     }
   ];
 
@@ -95,7 +101,8 @@ const Sidebar = ({ isOpen, onClose, familyId, onLogout, onChildrenUpdated, onMen
                   style={{
                     padding: '12px 16px',
                     borderRadius: '12px',
-                    transition: 'background 0.2s'
+                    transition: 'background 0.2s',
+                    color: item.danger ? '#EF4444' : 'inherit'
                   }}
                   onMouseEnter={(e) => {
                     if (activeTab !== item.id) {

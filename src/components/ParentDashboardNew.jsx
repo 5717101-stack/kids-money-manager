@@ -5,6 +5,7 @@ import { smartCompressImage } from '../utils/imageCompression';
 import Sidebar from './Sidebar';
 import QuickActionModal from './QuickActionModal';
 import Settings from './Settings';
+import DeleteFamilyProfile from './DeleteFamilyProfile';
 
 const ParentDashboard = ({ familyId, onChildrenUpdated, onLogout, onViewChild }) => {
   const { t, i18n } = useTranslation();
@@ -12,7 +13,7 @@ const ParentDashboard = ({ familyId, onChildrenUpdated, onLogout, onViewChild })
   const [categories, setCategories] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showSidebar, setShowSidebar] = useState(false);
-  const [currentView, setCurrentView] = useState('dashboard'); // 'dashboard', 'categories', 'profileImages', 'allowances', 'children', 'parents'
+  const [currentView, setCurrentView] = useState('dashboard'); // 'dashboard', 'categories', 'profileImages', 'allowances', 'children', 'parents', 'deleteFamily'
   const [showQuickAction, setShowQuickAction] = useState(false);
   const [quickActionType, setQuickActionType] = useState('deposit'); // 'deposit' or 'expense'
   const [showChildSelector, setShowChildSelector] = useState(false);
@@ -260,6 +261,8 @@ const ParentDashboard = ({ familyId, onChildrenUpdated, onLogout, onViewChild })
         return t('parent.settings.manageChildren', { defaultValue: 'ניהול ילדים' });
       case 'parents':
         return t('parent.settings.parents.title', { defaultValue: 'ניהול הורים' });
+      case 'deleteFamily':
+        return t('deleteFamily.title', { defaultValue: 'מחיקת פרופיל משפחתי' });
       default:
         return parentName || t('parent.dashboard.title', { defaultValue: 'ממשק הורים' });
     }
@@ -601,7 +604,7 @@ const ParentDashboard = ({ familyId, onChildrenUpdated, onLogout, onViewChild })
       />
 
       {/* Settings Content (not modal) */}
-      {currentView !== 'dashboard' && (
+      {currentView !== 'dashboard' && currentView !== 'deleteFamily' && (
         <div className="content-area">
           <Settings 
             familyId={familyId}
@@ -620,6 +623,23 @@ const ParentDashboard = ({ familyId, onChildrenUpdated, onLogout, onViewChild })
             onChildrenUpdated={onChildrenUpdated}
           />
         </div>
+      )}
+
+      {/* Delete Family Profile */}
+      {currentView === 'deleteFamily' && (
+        <DeleteFamilyProfile
+          familyId={familyId}
+          onDeleteComplete={() => {
+            // Clear session storage and logout
+            sessionStorage.clear();
+            if (onLogout) {
+              onLogout();
+            }
+          }}
+          onCancel={() => {
+            setCurrentView('dashboard');
+          }}
+        />
       )}
 
       {/* Bottom Navigation Bar - Always visible for parent */}

@@ -3450,6 +3450,111 @@ app.post('/api/families/:familyId/children/:childId/archive', async (req, res) =
   }
 });
 
+// Archive entire family - move to archive collection and release phone numbers
+app.post('/api/families/:familyId/archive', async (req, res) => {
+  const timestamp = new Date().toISOString();
+  console.log(`\n[ARCHIVE-FAMILY] ========================================`);
+  console.log(`[ARCHIVE-FAMILY] 📦 ARCHIVE FAMILY REQUEST`);
+  console.log(`[ARCHIVE-FAMILY] ========================================`);
+  console.log(`[ARCHIVE-FAMILY] Timestamp: ${timestamp}`);
+  console.log(`[ARCHIVE-FAMILY] Family ID: ${req.params.familyId}`);
+  console.log(`[ARCHIVE-FAMILY] ========================================\n`);
+  
+  try {
+    if (!db) {
+      console.error(`[ARCHIVE-FAMILY] ❌ No database connection`);
+      return res.status(500).json({ error: 'אין חיבור למסד הנתונים' });
+    }
+    
+    const { familyId } = req.params;
+    const family = await getFamilyById(familyId);
+    
+    if (!family) {
+      console.error(`[ARCHIVE-FAMILY] ❌ Family not found: ${familyId}`);
+      return res.status(404).json({ error: 'משפחה לא נמצאה' });
+    }
+    
+    console.log(`[ARCHIVE-FAMILY] Archiving family: ${familyId} (${family.phoneNumber || 'no phone'})`);
+    
+    // Create archived family document with all data
+    const archivedFamily = {
+      ...family,
+      archivedAt: new Date().toISOString(),
+      archivedFamilyId: familyId
+    };
+    
+    // Save to archive collection
+    await db.collection('archived_families').insertOne(archivedFamily);
+    console.log(`[ARCHIVE-FAMILY] ✅ Family saved to archive`);
+    
+    // Archive all children separately (for easier querying)
+    if (family.children && Array.isArray(family.children)) {
+      for (const child of family.children) {
+        const archivedChild = {
+          ...child,
+          archivedAt: new Date().toISOString(),
+          archivedFromFamily: familyId,
+          familyPhoneNumber: family.phoneNumber
+        };
+        await db.collection('archived_children').insertOne(archivedChild);
+      }
+      console.log(`[ARCHIVE-FAMILY] ✅ Archived ${family.children.length} children`);
+    }
+    
+    // Archive all parents separately
+    if (family.additionalParents && Array.isArray(family.additionalParents)) {
+      for (const parent of family.additionalParents) {
+        const archivedParent = {
+          ...parent,
+          archivedAt: new Date().toISOString(),
+          archivedFromFamily: familyId,
+          familyPhoneNumber: family.phoneNumber
+        };
+        await db.collection('archived_parents').insertOne(archivedParent);
+      }
+      console.log(`[ARCHIVE-FAMILY] ✅ Archived ${family.additionalParents.length} additional parents`);
+    }
+    
+    // Archive main parent
+    if (family.phoneNumber) {
+      const archivedMainParent = {
+        phoneNumber: family.phoneNumber,
+        name: family.parentName || 'הורה ראשי',
+        archivedAt: new Date().toISOString(),
+        archivedFromFamily: familyId,
+        familyPhoneNumber: family.phoneNumber
+      };
+      await db.collection('archived_parents').insertOne(archivedMainParent);
+      console.log(`[ARCHIVE-FAMILY] ✅ Archived main parent`);
+    }
+    
+    // Delete family from main collection (this releases phone numbers)
+    await db.collection('families').deleteOne({ _id: familyId });
+    console.log(`[ARCHIVE-FAMILY] ✅ Family deleted from main collection`);
+    
+    // Delete OTP codes for this family
+    await db.collection('otpCodes').deleteMany({ familyId });
+    console.log(`[ARCHIVE-FAMILY] ✅ OTP codes deleted`);
+    
+    // Invalidate cache
+    invalidateFamilyCache(familyId);
+    
+    console.log(`[ARCHIVE-FAMILY] ✅ Family archived successfully`);
+    console.log(`[ARCHIVE-FAMILY] Phone numbers released for reuse`);
+    
+    res.json({
+      success: true,
+      message: 'הפרופיל המשפחתי נמחק והועבר לארכיון בהצלחה'
+    });
+  } catch (error) {
+    console.error(`[ARCHIVE-FAMILY] ❌ Error:`, error);
+    res.status(500).json({ 
+      error: 'שגיאה בהעברת הפרופיל המשפחתי לארכיון',
+      details: error.message 
+    });
+  }
+});
+
 // Admin endpoint - Delete all users and data
 app.delete('/api/admin/delete-all-users', async (req, res) => {
   const timestamp = new Date().toISOString();

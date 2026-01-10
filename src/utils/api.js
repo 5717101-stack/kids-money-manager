@@ -573,3 +573,22 @@ export const archiveParent = async (familyId, parentIndex, isMain) => {
     throw new Error(error.message || 'Failed to archive parent');
   }
 };
+
+// Archive entire family
+export const archiveFamily = async (familyId) => {
+  if (!familyId) {
+    throw new Error('Family ID is required');
+  }
+  try {
+    const response = await apiCall(`/families/${familyId}/archive`, {
+      method: 'POST'
+    }, { useCache: false });
+    
+    // Clear all cache
+    invalidateFamilyCache(familyId);
+    
+    return response;
+  } catch (error) {
+    throw new Error(error.message || 'Failed to archive family');
+  }
+};

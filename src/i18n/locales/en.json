@@ -304,6 +304,25 @@
     "allowances": "Allowances",
     "children": "Children",
     "parents": "Parents",
-    "confirmLogout": "Are you sure you want to logout?"
+    "confirmLogout": "Are you sure you want to logout?",
+    "deleteFamily": "Delete Family Profile"
+  },
+  "deleteFamily": {
+    "title": "Delete Family Profile",
+    "warning": "Deleting the family profile will delete all data and all family members associated with this profile. There is no way to recover the profile or the history of actions.",
+    "whatWillBeDeleted": "What will be deleted:",
+    "deleteChildren": "All children and their data",
+    "deleteParents": "All parents and their data",
+    "deleteTransactions": "All history of actions and transactions",
+    "deleteCategories": "All categories and settings",
+    "deleteGoals": "All goals and savings",
+    "phoneNote": "Phone numbers that were in use will now be active for use by other profiles.",
+    "deleteButton": "Delete Family Profile",
+    "confirmTitle": "Are you sure?",
+    "confirmMessage": "This action cannot be undone. All data will be permanently deleted.",
+    "confirmDelete": "Yes, Delete",
+    "deleting": "Deleting...",
+    "success": "Family profile deleted successfully",
+    "error": "Error deleting family profile"
   }
 }
