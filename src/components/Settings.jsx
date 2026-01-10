@@ -1044,10 +1044,13 @@ const Settings = ({ familyId, onClose, onLogout, activeTab: externalActiveTab, h
                           <button
                             type="button"
                             onClick={async () => {
-                              if (!confirm(t('parent.settings.deleteChildConfirm', { 
+                              const childName = child?.name || t('parent.settings.child', { defaultValue: 'ילד' });
+                              const confirmMessage = t('parent.settings.deleteChildConfirm', { 
                                 defaultValue: 'האם אתה בטוח שברצונך למחוק את {name}? פעולה זו תעביר את כל הנתונים לארכיון ולא ניתן לבטל אותה.',
-                                name: child.name
-                              }).replace('{name}', child.name))) {
+                                name: childName
+                              }).replace(/\{name\}/g, childName);
+                              
+                              if (!confirm(confirmMessage)) {
                                 return;
                               }
                               
@@ -1057,10 +1060,11 @@ const Settings = ({ familyId, onClose, onLogout, activeTab: externalActiveTab, h
                                 setEditingChild(null);
                                 setEditChildName('');
                                 setEditChildPhone('');
-                                alert(t('parent.settings.deleteChildSuccess', { 
+                                const successMessage = t('parent.settings.deleteChildSuccess', { 
                                   defaultValue: 'הילד נמחק והועבר לארכיון בהצלחה',
-                                  name: child.name
-                                }).replace('{name}', child.name));
+                                  name: childName
+                                }).replace(/\{name\}/g, childName);
+                                alert(successMessage);
                                 if (onClose) {
                                   setTimeout(() => {
                                     onClose();
