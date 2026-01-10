@@ -69,7 +69,7 @@ const getCategoryColor = (category) => {
   return color;
 };
 
-const ExpensePieChart = ({ expensesByCategory, title, days }) => {
+const ExpensePieChart = ({ expensesByCategory, title, days, onCategorySelect, selectedCategory }) => {
   if (!expensesByCategory || expensesByCategory.length === 0) {
     return (
       <div className="chart-container">
@@ -148,7 +148,20 @@ const ExpensePieChart = ({ expensesByCategory, title, days }) => {
       </div>
       <div className="expense-categories-list">
         {categoriesWithDetails.map((item, index) => (
-          <div key={index} className="expense-category-item">
+          <div 
+            key={index} 
+            className={`expense-category-item ${selectedCategory === item.category ? 'selected' : ''}`}
+            onClick={() => {
+              if (onCategorySelect) {
+                if (selectedCategory === item.category) {
+                  onCategorySelect(null);
+                } else {
+                  onCategorySelect(item.category);
+                }
+              }
+            }}
+            style={{ cursor: onCategorySelect ? 'pointer' : 'default' }}
+          >
             <div className="category-color-indicator" style={{ backgroundColor: item.color }}></div>
             <div className="category-info">
               <div className="category-name">{item.category}</div>

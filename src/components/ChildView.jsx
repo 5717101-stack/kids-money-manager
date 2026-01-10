@@ -18,6 +18,16 @@ const ChildView = ({ childId, familyId, onBackToParent, onLogout }) => {
   const [expensesPeriod, setExpensesPeriod] = useState('month'); // 'week' or 'month'
   const [expensesByCategory, setExpensesByCategory] = useState([]);
   const [loadingExpenses, setLoadingExpenses] = useState(false);
+  const [filteredCategory, setFilteredCategory] = useState(null); // Category to filter transactions
+  const [historyLimit, setHistoryLimit] = useState(() => {
+    // Load from localStorage or default to 5
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('childHistoryLimit');
+      if (saved === 'all') return null;
+      return saved ? parseInt(saved, 10) : 5;
+    }
+    return 5;
+  });
   const [showCalculator, setShowCalculator] = useState(false);
   const [showTransactionModal, setShowTransactionModal] = useState(false);
   const [transactionType, setTransactionType] = useState('deposit'); // 'deposit' or 'expense'
@@ -48,9 +58,11 @@ const ChildView = ({ childId, familyId, onBackToParent, onLogout }) => {
       
       try {
         // Load child data and transactions in parallel
+        // Load more transactions if limit is null (all) or if limit is higher
+        const transactionLimit = historyLimit === null ? 50 : Math.max(historyLimit, 10);
         const [child, trans, goal] = await Promise.all([
           getChild(familyId, childId),
-          getChildTransactions(familyId, childId, 10),
+          getChildTransactions(familyId, childId, transactionLimit),
           getSavingsGoal(familyId, childId)
         ]);
         
@@ -87,7 +99,7 @@ const ChildView = ({ childId, familyId, onBackToParent, onLogout }) => {
     }, 15000);
     return () => clearInterval(interval);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [childId, familyId]);
+  }, [childId, familyId, historyLimit]);
 
   // Load expenses when period changes or on initial load
   useEffect(() => {
@@ -115,8 +127,9 @@ const ChildView = ({ childId, familyId, onBackToParent, onLogout }) => {
       if (child) {
         setChildData(child);
         setError(null);
-        // Show last 10 transactions
-        const trans = await getChildTransactions(familyId, childId, 10);
+        // Load transactions based on limit
+        const transactionLimit = historyLimit === null ? 50 : Math.max(historyLimit, 10);
+        const trans = await getChildTransactions(familyId, childId, transactionLimit);
         setTransactions(trans);
       } else {
         setError('ילד לא נמצא');
@@ -765,6 +778,8 @@ const ChildView = ({ childId, familyId, onBackToParent, onLogout }) => {
               : t('child.expenses.month', { defaultValue: 'הוצאות - חודש אחרון' })
             }
             days={expensesPeriod === 'week' ? 7 : 30}
+            onCategorySelect={setFilteredCategory}
+            selectedCategory={filteredCategory}
           />
         ) : (
           <div className="no-expenses-message">
@@ -775,44 +790,92 @@ const ChildView = ({ childId, familyId, onBackToParent, onLogout }) => {
 
       {/* My History - Scrollable */}
       <div className="fintech-card history-card">
-        <div className="history-header">
+        <div className="history-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px' }}>
           <h2>{t('child.history.title', { defaultValue: 'ההיסטוריה שלי' })}</h2>
+          <div className="activity-limit-selector">
+            <button
+              className={`activity-limit-btn ${historyLimit === 5 ? 'active' : ''}`}
+              onClick={() => {
+                setHistoryLimit(5);
+                localStorage.setItem('childHistoryLimit', '5');
+                loadChildData();
+              }}
+            >
+              5
+            </button>
+            <button
+              className={`activity-limit-btn ${historyLimit === 20 ? 'active' : ''}`}
+              onClick={() => {
+                setHistoryLimit(20);
+                localStorage.setItem('childHistoryLimit', '20');
+                loadChildData();
+              }}
+            >
+              20
+            </button>
+            <button
+              className={`activity-limit-btn ${historyLimit === null ? 'active' : ''}`}
+              onClick={() => {
+                setHistoryLimit(null);
+                localStorage.setItem('childHistoryLimit', 'all');
+                loadChildData();
+              }}
+            >
+              {t('parent.dashboard.all', { defaultValue: 'הכל' })}
+            </button>
+          </div>
         </div>
         <div className="history-content">
-          {transactions.length === 0 ? (
-            <div className="no-transactions-message">
-              {t('child.history.noTransactions', { defaultValue: 'אין עסקאות' })}
-            </div>
-          ) : (
-            <div className="transactions-list-container">
-              {transactions.map((transaction, index) => (
-                <div key={index} className={`transaction-item ${transaction.type === 'deposit' ? 'positive' : 'negative'}`}>
-                  <div className="transaction-icon">
-                    {transaction.type === 'deposit' ? '📈' : '📉'}
-                  </div>
-                  <div className="transaction-details">
-                    <div className="transaction-main">
-                      <span className="transaction-description">
-                        {transaction.description || transaction.category || t('child.history.transaction', { defaultValue: 'עסקה' })}
-                      </span>
-                      <span className={`transaction-amount ${transaction.type === 'deposit' ? 'positive' : 'negative'}`}>
-                        {transaction.type === 'deposit' ? '+' : '-'}₪{Math.abs(transaction.amount || 0).toFixed(2)}
-                      </span>
-                    </div>
-                    {transaction.date && (
-                      <div className="transaction-date">
-                        {new Date(transaction.date).toLocaleDateString(i18n.language === 'he' ? 'he-IL' : 'en-US', { 
-                          day: '2-digit', 
-                          month: '2-digit', 
-                          year: 'numeric' 
-                        })}
-                      </div>
-                    )}
-                  </div>
+          {(() => {
+            const filtered = filteredCategory 
+              ? transactions.filter(t => t.category === filteredCategory)
+              : transactions;
+            
+            // Apply limit if not null
+            const limited = historyLimit === null ? filtered : filtered.slice(0, historyLimit);
+            
+            if (limited.length === 0) {
+              return (
+                <div className="no-transactions-message">
+                  {filteredCategory 
+                    ? t('child.history.noTransactionsForCategory', { category: filteredCategory, defaultValue: `אין עסקאות בקטגוריה "${filteredCategory}"` })
+                    : t('child.history.noTransactions', { defaultValue: 'אין עסקאות' })
+                  }
                 </div>
-              ))}
-            </div>
-          )}
+              );
+            }
+            
+            return (
+              <div className="transactions-list-container">
+                {limited.map((transaction, index) => (
+                  <div key={index} className={`transaction-item ${transaction.type === 'deposit' ? 'positive' : 'negative'}`}>
+                    <div className="transaction-icon">
+                      {transaction.type === 'deposit' ? '📈' : '📉'}
+                    </div>
+                    <div className="transaction-details">
+                      <div className="transaction-main">
+                        <span className="transaction-description">
+                          {transaction.description || transaction.category || t('child.history.transaction', { defaultValue: 'עסקה' })}
+                        </span>
+                        <span className={`transaction-amount ${transaction.type === 'deposit' ? 'positive' : 'negative'}`}>
+                          {transaction.type === 'deposit' ? '+' : '-'}₪{Math.abs(transaction.amount || 0).toFixed(2)}
+                        </span>
+                      </div>
+                      {transaction.date && (
+                        <div className="transaction-date">
+                          {new Date(transaction.date).toLocaleDateString(i18n.language === 'he' ? 'he-IL' : 'en-US', { 
+                            day: '2-digit', 
+                            month: '2-digit', 
+                            year: 'numeric' 
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            );
+          })()}
         </div>
       </div>
 

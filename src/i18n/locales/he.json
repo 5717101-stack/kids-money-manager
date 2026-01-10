@@ -237,6 +237,7 @@
       "title": "ההיסטוריה שלי",
       "recentTransactions": "עסקאות אחרונות",
       "noTransactions": "אין עסקאות",
+      "noTransactionsForCategory": "אין עסקאות בקטגוריה \"{category}\"",
       "transaction": "עסקה"
     },
     "expenses": {

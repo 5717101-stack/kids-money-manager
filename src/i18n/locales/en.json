@@ -211,6 +211,7 @@
       "title": "My History",
       "recentTransactions": "Recent Transactions",
       "noTransactions": "No transactions",
+      "noTransactionsForCategory": "No transactions in category \"{category}\"",
       "transaction": "Transaction"
     },
     "expenses": {
