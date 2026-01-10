@@ -27,10 +27,13 @@
     "settings": "Settings",
     "saving": "Saving...",
     "optional": "Optional",
-    "language": "Language"
+    "language": "Language",
+    "retry": "Retry",
+    "calculator": "Calculator"
   },
   "parent": {
     "dashboard": {
+      "title": "Parents Dashboard",
       "familyName": "Family",
       "totalBalance": "Total Family Balance",
       "children": "Children",
@@ -56,6 +59,14 @@
       "total": "Total",
       "all": "All",
       "balanceDetail": "Balance Detail by Children"
+    },
+    "profile": {
+      "title": "Profile Picture",
+      "changePicture": "Change Picture",
+      "upload": "Upload Image",
+      "replace": "Replace Image",
+      "remove": "Remove Image",
+      "error": "Error updating profile image"
     },
     "settings": {
       "title": "Settings",
@@ -177,7 +188,12 @@
       "balance": "Balance",
       "cashBox": "Cash Box",
       "totalBalance": "Total Balance",
-      "myBalance": "My Balance:"
+      "myBalance": "My Balance:",
+      "backToParent": "Back to Parents Dashboard",
+      "noData": "No data",
+      "error": "Error",
+      "confirmLogout": "Are you sure you want to logout?",
+      "deleteFamily": "Delete Family Profile"
     },
     "savingsGoal": {
       "title": "Savings Goal",
@@ -186,10 +202,12 @@
       "goalName": "Goal Name",
       "goalNamePlaceholder": "e.g., New LEGO Set",
       "targetAmount": "Target Amount",
+      "target": "Target",
       "progress": "Progress",
       "achieved": "Achieved",
       "of": "of",
       "missing": "Missing",
+      "saved": "Saved",
       "noGoal": "No savings goal",
       "deleteGoal": "Delete Goal",
       "invalidGoal": "Please enter goal name and valid amount",
@@ -219,7 +237,18 @@
       "title": "Expenses Distribution",
       "week": "Last Week",
       "month": "Last Month",
-      "chartTitle": "Expenses - {period}"
+      "chartTitle": "Expenses - {period}",
+      "noExpenses": "No expenses in this period"
+    },
+    "history": {
+      "title": "My History",
+      "recentTransactions": "Recent Transactions",
+      "noTransactions": "No transactions",
+      "noTransactionsForCategory": "No transactions in category \"{category}\"",
+      "transaction": "Transaction",
+      "last5": "Last 5",
+      "last20": "Last 20",
+      "all": "All"
     }
   },
   "parentLogin": {
@@ -376,9 +405,13 @@
     "categories": "Categories",
     "allowances": "Allowances",
     "children": "Children",
+    "childrenSettings": "Children Settings",
+    "childrenDashboard": "Children Dashboard",
+    "noChildren": "No children",
     "parents": "Parents",
     "confirmLogout": "Are you sure you want to logout?",
-    "deleteFamily": "Delete Family Profile"
+    "deleteFamily": "Delete Family Profile",
+    "guide": "Guide"
   },
   "deleteFamily": {
     "title": "Delete Family Profile",
