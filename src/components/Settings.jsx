@@ -30,6 +30,7 @@ const Settings = ({ familyId, onClose, onLogout, activeTab: externalActiveTab, h
   const [newChildName, setNewChildName] = useState('');
   const [newChildPhone, setNewChildPhone] = useState('');
   const [creatingChild, setCreatingChild] = useState(false);
+  const newChildNameInputRef = useRef(null);
   const [childPhoneModal, setChildPhoneModal] = useState(null); // { childId, childName, phoneNumber, createdAt, lastLogin }
   const [editingChild, setEditingChild] = useState(null); // { childId, childName, phoneNumber }
   const [editChildName, setEditChildName] = useState('');
@@ -49,6 +50,19 @@ const Settings = ({ familyId, onClose, onLogout, activeTab: externalActiveTab, h
   useEffect(() => {
     loadData();
   }, []);
+
+  // Auto-focus on child name input when form opens
+  useEffect(() => {
+    if (showChildJoin && newChildNameInputRef.current) {
+      // Small delay to ensure the input is rendered
+      const timer = setTimeout(() => {
+        if (newChildNameInputRef.current) {
+          newChildNameInputRef.current.focus();
+        }
+      }, 100);
+      return () => clearTimeout(timer);
+    }
+  }, [showChildJoin]);
 
   const loadData = async () => {
     try {
@@ -956,6 +970,12 @@ const Settings = ({ familyId, onClose, onLogout, activeTab: externalActiveTab, h
                   setShowChildJoin(true);
                   setNewChildName('');
                   setNewChildPhone('');
+                  // Focus on name input after form opens
+                  setTimeout(() => {
+                    if (newChildNameInputRef.current) {
+                      newChildNameInputRef.current.focus();
+                    }
+                  }, 100);
                 }}
                 style={{
                   padding: '12px 24px',
@@ -1368,14 +1388,7 @@ const Settings = ({ familyId, onClose, onLogout, activeTab: externalActiveTab, h
                 boxShadow: '0 2px 10px rgba(0,0,0,0.05)',
                 border: '1px solid rgba(99, 102, 241, 0.2)',
                 marginBottom: '16px'
-              }}
-              onAnimationEnd={() => {
-                // Focus on name input when form appears
-                if (newChildNameInputRef.current) {
-                  newChildNameInputRef.current.focus();
-                }
-              }}
-              >
+              }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
                   <h3 style={{ fontSize: '18px', fontWeight: 600, margin: 0 }}>{t('parent.settings.addChild', { defaultValue: 'הוסף ילד חדש' })}</h3>
                   <button
@@ -1498,10 +1511,12 @@ const Settings = ({ familyId, onClose, onLogout, activeTab: externalActiveTab, h
                 style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}
               >
                 <input
+                  ref={newChildNameInputRef}
                   type="text"
                   value={newChildName}
                   onChange={(e) => setNewChildName(e.target.value)}
                   placeholder={t('parent.settings.childName', { defaultValue: 'שם הילד' })}
+                  autoFocus
                   style={{
                     width: '100%',
                     height: '50px',
