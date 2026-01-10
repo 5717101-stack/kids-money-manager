@@ -297,6 +297,7 @@
     "saturday": "Saturday"
   },
   "sidebar": {
+    "dashboard": "Parents Dashboard",
     "title": "Settings",
     "profile": "Profile",
     "categories": "Categories",

@@ -12,7 +12,7 @@ const Sidebar = ({ isOpen, onClose, familyId, onLogout, onChildrenUpdated, onMen
   const menuItems = [
     {
       id: 'dashboard',
-      label: t('sidebar.dashboard', { defaultValue: 'ממשק הורים' }),
+      label: t('sidebar.dashboard', { defaultValue: 'דשבורד הורים' }),
       icon: '🏠'
     },
     {
