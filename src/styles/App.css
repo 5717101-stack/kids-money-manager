@@ -107,11 +107,12 @@ body {
 }
 
 /* Balance and Activity cards - same width as bottom nav */
-.parent-dashboard-new .balance-card,
-.parent-dashboard-new .activity-card {
-  max-width: 560px;
-  margin-left: auto;
-  margin-right: auto;
+.parent-dashboard-new .content-area > .fintech-card.balance-card,
+.parent-dashboard-new .content-area > .fintech-card.activity-card {
+  max-width: 560px !important;
+  width: calc(100% - 40px) !important;
+  margin-left: auto !important;
+  margin-right: auto !important;
 }
 
 /* Remove scrollbar visual but keep function */
