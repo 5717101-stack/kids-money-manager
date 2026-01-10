@@ -93,7 +93,7 @@ const PhoneLogin = ({ onOTPSent }) => {
         }}
         style={{
           position: 'fixed',
-          top: '60px',
+          top: '100px',
           right: i18n.language === 'he' ? '20px' : 'auto',
           left: i18n.language === 'he' ? 'auto' : '20px',
           width: '44px',
@@ -158,11 +158,11 @@ const PhoneLogin = ({ onOTPSent }) => {
                   <div 
                     dir={i18n.language === 'he' ? 'rtl' : 'ltr'}
                     style={{
-                      position: 'absolute',
-                      top: '100%',
-                      right: i18n.language === 'he' ? 0 : 'auto',
-                      left: i18n.language === 'he' ? 'auto' : 0,
-                      marginTop: '8px',
+                      position: 'fixed',
+                      top: '50%',
+                      left: '50%',
+                      transform: 'translate(-50%, -50%)',
+                      marginTop: '0',
                       background: 'white',
                       borderRadius: '12px',
                       border: '1px solid rgba(0,0,0,0.1)',
@@ -172,7 +172,7 @@ const PhoneLogin = ({ onOTPSent }) => {
                       zIndex: 1000,
                       minWidth: '250px',
                       width: 'auto',
-                      maxWidth: i18n.language === 'he' ? 'calc(100vw - 20px)' : '90vw'
+                      maxWidth: '90vw'
                     }}
                   >
                     {COUNTRY_CODES.map((country) => (
