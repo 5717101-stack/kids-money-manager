@@ -269,6 +269,9 @@
     "otpVerification": {
       "title": "אימות קוד",
       "subtitle": "נשלח קוד ל-{phone}",
+      "sentTo": "נשלח ל",
+      "sendingTo": "שולח ל",
+      "sending": "שולח קוד אימות...",
       "enterFullCode": "אנא הכנס קוד מלא",
       "verify": "אימות",
       "verifying": "מאמת...",

@@ -111,7 +111,7 @@ const DeleteFamilyProfile = ({ familyId, onDeleteComplete, onCancel }) => {
   };
 
   return (
-    <div className="app-layout" style={{ padding: '20px' }}>
+    <div className="app-layout" style={{ padding: '20px', paddingBottom: '140px' }}>
       <div className="fintech-card" style={{ maxWidth: '600px', margin: '0 auto' }}>
         <h2 style={{ fontSize: '24px', fontWeight: 700, marginBottom: '24px', color: '#EF4444' }}>
           {t('deleteFamily.title', { defaultValue: 'מחיקת פרופיל משפחתי' })}

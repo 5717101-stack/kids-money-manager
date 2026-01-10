@@ -9,6 +9,8 @@ const OTPVerification = ({ phoneNumber, isExistingFamily, onVerified, onBack }) 
   const [error, setError] = useState('');
   const [canResend, setCanResend] = useState(false);
   const [resendTimer, setResendTimer] = useState(60);
+  const [sendingOTP, setSendingOTP] = useState(true);
+  const [otpSent, setOtpSent] = useState(false);
   const inputRefs = useRef([]);
 
   useEffect(() => {
@@ -24,6 +26,85 @@ const OTPVerification = ({ phoneNumber, isExistingFamily, onVerified, onBack }) 
 
     return () => clearInterval(timer);
   }, []);
+
+  // Send OTP when component mounts
+  useEffect(() => {
+    const sendOTP = async () => {
+      if (!phoneNumber || otpSent) return;
+      
+      setSendingOTP(true);
+      setError('');
+      
+      try {
+        // For iOS, always use Render URL directly
+        let apiUrl;
+        if (typeof window !== 'undefined' && window.Capacitor?.isNativePlatform()) {
+          apiUrl = 'https://kids-money-manager-server.onrender.com/api';
+        } else {
+          apiUrl = import.meta.env.VITE_API_URL || 'https://kids-money-manager-server.onrender.com/api';
+        }
+        
+        const url = `${apiUrl}/auth/send-otp`;
+        const requestBody = { phoneNumber };
+        
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 30000);
+        
+        let response;
+        try {
+          response = await fetch(url, {
+            method: 'POST',
+            mode: 'cors',
+            credentials: 'omit',
+            headers: {
+              'Content-Type': 'application/json',
+              'Accept': 'application/json',
+            },
+            body: JSON.stringify(requestBody),
+            signal: controller.signal
+          });
+          clearTimeout(timeoutId);
+        } catch (fetchError) {
+          clearTimeout(timeoutId);
+          
+          if (fetchError.name === 'TypeError' && (fetchError.message === 'Load failed' || fetchError.message.includes('Failed to fetch'))) {
+            const errorMsg = typeof window !== 'undefined' && window.Capacitor?.isNativePlatform() 
+              ? t('auth.phoneLogin.networkErrorIOS', { defaultValue: 'שגיאת רשת ב-iOS: לא ניתן להתחבר לשרת. ודא שהשרת רץ ונגיש.' })
+              : t('auth.phoneLogin.networkError', { defaultValue: 'שגיאת רשת: לא ניתן להתחבר לשרת. בדוק את חיבור האינטרנט או נסה שוב מאוחר יותר.' });
+            setError(errorMsg);
+            setSendingOTP(false);
+            return;
+          }
+          if (fetchError.name === 'AbortError') {
+            setError(t('auth.phoneLogin.timeoutError', { defaultValue: 'הבקשה בוטלה: השרת לא הגיב בזמן. נסה שוב.' }));
+            setSendingOTP(false);
+            return;
+          }
+          throw fetchError;
+        }
+
+        const data = await response.json();
+
+        if (!response.ok) {
+          setError(data.error || t('auth.phoneLogin.sendError', { defaultValue: 'שגיאה בשליחת קוד אימות' }));
+          setSendingOTP(false);
+          return;
+        }
+
+        // OTP sent successfully
+        setOtpSent(true);
+        setSendingOTP(false);
+        setCanResend(false);
+        setResendTimer(60);
+      } catch (error) {
+        setError(error.message || t('auth.phoneLogin.sendError', { defaultValue: 'שגיאה בשליחת קוד אימות' }));
+        setSendingOTP(false);
+      }
+    };
+
+    sendOTP();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [phoneNumber]);
 
 
   const handleOTPChange = (index, value) => {
@@ -233,6 +314,11 @@ const OTPVerification = ({ phoneNumber, isExistingFamily, onVerified, onBack }) 
       if (!response.ok) {
         throw new Error(data.error || t('auth.otpVerification.resendError', { defaultValue: 'שגיאה בשליחת קוד מחדש' }));
       }
+      
+      // OTP resent successfully
+      setOtpSent(true);
+      setCanResend(false);
+      setResendTimer(60);
     } catch (error) {
       setError(error.message || t('auth.otpVerification.resendError', { defaultValue: 'שגיאה בשליחת קוד מחדש' }));
     }
@@ -260,12 +346,32 @@ const OTPVerification = ({ phoneNumber, isExistingFamily, onVerified, onBack }) 
 
       <div className="content-area" style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', padding: '20px' }}>
         <div className="fintech-card" style={{ maxWidth: '500px', width: '100%', margin: '0 auto' }}>
-          <p style={{ fontSize: '14px', color: 'var(--text-muted)', marginBottom: '24px', textAlign: 'center' }}>
-            {t('auth.otpVerification.sentTo', { defaultValue: 'נשלח ל' })}{' '}
-            <span style={{ direction: 'ltr', display: 'inline-block' }}>
-              {phoneNumber.startsWith('+') ? phoneNumber : `+${phoneNumber}`}
-            </span>
-          </p>
+          {sendingOTP ? (
+            <div style={{ textAlign: 'center', marginBottom: '24px' }}>
+              <div style={{
+                width: '32px',
+                height: '32px',
+                border: '3px solid rgba(99, 102, 241, 0.2)',
+                borderTopColor: '#6366F1',
+                borderRadius: '50%',
+                animation: 'spin 0.8s linear infinite',
+                margin: '0 auto 12px'
+              }}></div>
+              <p style={{ fontSize: '14px', color: 'var(--text-muted)' }}>
+                {t('auth.otpVerification.sending', { defaultValue: 'שולח קוד אימות...' })}
+              </p>
+            </div>
+          ) : (
+            <p style={{ fontSize: '14px', color: 'var(--text-muted)', marginBottom: '24px', textAlign: 'center' }}>
+              {otpSent 
+                ? t('auth.otpVerification.sentTo', { defaultValue: 'נשלח ל' })
+                : t('auth.otpVerification.sendingTo', { defaultValue: 'שולח ל' })
+              }{' '}
+              <span style={{ direction: 'ltr', display: 'inline-block' }}>
+                {phoneNumber.startsWith('+') ? phoneNumber : `+${phoneNumber}`}
+              </span>
+            </p>
+          )}
 
           <form onSubmit={handleSubmit} onPaste={handlePaste} style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
             <div style={{ display: 'flex', gap: '12px', justifyContent: 'center' }} dir="ltr">

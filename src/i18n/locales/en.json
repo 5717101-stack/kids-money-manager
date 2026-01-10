@@ -251,6 +251,9 @@
     "otpVerification": {
       "title": "Verify Code",
       "subtitle": "Code sent to {phone}",
+      "sentTo": "Sent to",
+      "sendingTo": "Sending to",
+      "sending": "Sending verification code...",
       "enterFullCode": "Please enter full code",
       "verify": "Verify",
       "verifying": "Verifying...",
