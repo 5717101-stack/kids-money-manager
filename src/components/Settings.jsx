@@ -1432,6 +1432,40 @@ const Settings = ({ familyId, onClose, onLogout, activeTab: externalActiveTab, h
                   }
                   
                   setCreatingChild(true);
+                  
+                  // Show loading indicator - clean spinner without box
+                  const loadingIndicator = document.createElement('div');
+                  loadingIndicator.id = 'child-saving-indicator';
+                  loadingIndicator.innerHTML = `
+                    <div style="
+                      position: fixed;
+                      top: 50%;
+                      left: 50%;
+                      transform: translate(-50%, -50%);
+                      z-index: 10006;
+                      display: flex;
+                      flex-direction: column;
+                      align-items: center;
+                      gap: 16px;
+                    ">
+                      <div style="
+                        width: 48px;
+                        height: 48px;
+                        border: 4px solid rgba(99, 102, 241, 0.2);
+                        border-top-color: #6366F1;
+                        border-radius: 50%;
+                        animation: spin 0.8s linear infinite;
+                      "></div>
+                      <div style="
+                        color: #6366F1;
+                        font-size: 16px;
+                        font-weight: 600;
+                        letter-spacing: 0.5px;
+                      ">${t('common.saving', { defaultValue: 'שומר...' })}</div>
+                    </div>
+                  `;
+                  document.body.appendChild(loadingIndicator);
+                  
                   try {
                     console.log('[CREATE-CHILD] Calling createChild API...');
                     const result = await createChild(familyId, newChildName.trim(), newChildPhone.trim());
@@ -1455,6 +1489,10 @@ const Settings = ({ familyId, onClose, onLogout, activeTab: externalActiveTab, h
                     invalidateFamilyCache(familyId);
                     await loadData();
                     console.log('[CREATE-CHILD] ✅ Data reloaded');
+                    
+                    // Remove loading indicator
+                    const childIndicator = document.getElementById('child-saving-indicator');
+                    if (childIndicator) childIndicator.remove();
                     
                     // Close the form
                     setShowChildJoin(false);
@@ -1503,6 +1541,11 @@ const Settings = ({ familyId, onClose, onLogout, activeTab: externalActiveTab, h
                     console.error('[CREATE-CHILD] Error Stack:', error.stack);
                     console.error('[CREATE-CHILD] Full Error:', error);
                     console.error('[CREATE-CHILD] ========================================');
+                    
+                    // Remove loading indicator
+                    const childIndicator = document.getElementById('child-saving-indicator');
+                    if (childIndicator) childIndicator.remove();
+                    
                     alert(t('parent.settings.createChildError', { defaultValue: 'שגיאה ביצירת ילד' }) + ': ' + error.message);
                   } finally {
                     setCreatingChild(false);
@@ -1779,7 +1822,7 @@ const Settings = ({ familyId, onClose, onLogout, activeTab: externalActiveTab, h
                     try {
                       setUpdatingParent(true);
                       
-                      // Show loading indicator
+                      // Show loading indicator - clean spinner without box
                       const loadingIndicator = document.createElement('div');
                       loadingIndicator.id = 'parent-saving-indicator';
                       loadingIndicator.innerHTML = `
@@ -1788,34 +1831,34 @@ const Settings = ({ familyId, onClose, onLogout, activeTab: externalActiveTab, h
                           top: 50%;
                           left: 50%;
                           transform: translate(-50%, -50%);
-                          background: linear-gradient(135deg, #6366F1 0%, #8B5CF6 100%);
-                          backdrop-filter: blur(10px);
-                          color: white;
-                          padding: 28px 36px;
-                          border-radius: 24px;
                           z-index: 10006;
                           display: flex;
                           flex-direction: column;
                           align-items: center;
-                          gap: 20px;
-                          font-weight: 600;
-                          min-width: 220px;
-                          box-shadow: 0 12px 40px rgba(99, 102, 241, 0.4);
+                          gap: 16px;
                         ">
                           <div style="
                             width: 48px;
                             height: 48px;
-                            border: 5px solid rgba(255, 255, 255, 0.3);
-                            border-top-color: white;
+                            border: 4px solid rgba(99, 102, 241, 0.2);
+                            border-top-color: #6366F1;
                             border-radius: 50%;
                             animation: spin 0.8s linear infinite;
                           "></div>
-                          <div style="font-size: 17px; letter-spacing: 0.5px;">${t('common.saving', { defaultValue: 'שומר...' })}</div>
+                          <div style="
+                            color: #6366F1;
+                            font-size: 16px;
+                            font-weight: 600;
+                            letter-spacing: 0.5px;
+                          ">${t('common.saving', { defaultValue: 'שומר...' })}</div>
                         </div>
                       `;
                       document.body.appendChild(loadingIndicator);
                       
                       await addParent(familyId, newParentName.trim(), newParentPhone.trim());
+                      
+                      // Invalidate cache to ensure fresh data
+                      invalidateFamilyCache(familyId);
                       await loadData();
                       setAddingParent(false);
                       setNewParentName('');

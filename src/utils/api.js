@@ -518,7 +518,11 @@ export const addParent = async (familyId, name, phoneNumber) => {
   const response = await apiCall(`/families/${familyId}/parent`, {
     method: 'POST',
     body: JSON.stringify({ name, phoneNumber })
-  });
+  }, { useCache: false });
+  
+  // Invalidate cache for family data after adding parent
+  invalidateFamilyCache(familyId);
+  
   return response;
 };
 
