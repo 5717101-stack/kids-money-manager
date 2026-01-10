@@ -1451,7 +1451,8 @@ const Settings = ({ familyId, onClose, onLogout, activeTab: externalActiveTab, h
                               });
                             }
                             
-                            await loadData();
+                            // Invalidate cache for future loads - no need to reload everything now
+                            invalidateFamilyCache(familyId);
                             
                             setEditingChild(null);
                             setEditChildName('');
@@ -1661,8 +1662,8 @@ const Settings = ({ familyId, onClose, onLogout, activeTab: externalActiveTab, h
                       });
                     }
                     
-                    // Reload data from server to ensure consistency
-                    await loadData();
+                    // Invalidate cache for future loads - no need to reload everything now
+                    invalidateFamilyCache(familyId);
                     
                     setEditingChild(null);
                     setEditChildName('');
