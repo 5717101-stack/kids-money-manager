@@ -119,7 +119,7 @@ const PhoneLogin = ({ onOTPSent }) => {
         {i18n.language === 'he' ? '🇮🇱' : '🇬🇧'}
       </button>
 
-      <div className="app-header" style={{ paddingTop: '35vh' }}>
+      <div className="app-header" style={{ position: 'fixed', top: 0, left: 0, right: 0, zIndex: 9999, background: 'transparent', paddingTop: 'max(16px, env(safe-area-inset-top))', paddingBottom: '16px' }}>
         <div style={{ width: '44px' }}></div>
         <h1 className="header-title">
           {t('auth.phoneLogin.title', { defaultValue: 'הכנס מספר טלפון' })}
@@ -127,7 +127,7 @@ const PhoneLogin = ({ onOTPSent }) => {
         <div style={{ width: '44px' }}></div>
       </div>
 
-      <div className="content-area" style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', padding: '20px', paddingTop: '20px' }}>
+      <div className="content-area" style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', padding: '20px', paddingTop: 'calc(80px + max(16px, env(safe-area-inset-top)))', minHeight: '100vh', position: 'relative' }}>
         <div className="fintech-card" style={{ maxWidth: '500px', width: '100%', margin: '0 auto' }}>
           <p style={{ fontSize: '14px', color: 'var(--text-muted)', marginBottom: '24px', textAlign: 'center' }}>
             {t('auth.phoneLogin.subtitle', { defaultValue: 'נשלח לך קוד אימות ב-SMS' })}
