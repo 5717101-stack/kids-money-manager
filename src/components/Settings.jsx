@@ -1041,10 +1041,6 @@ const Settings = ({ familyId, onClose, onLogout, activeTab: externalActiveTab, h
                     await loadData();
                     console.log('[CREATE-CHILD] ✅ Data reloaded');
                     
-                    // Remove loading indicator
-                    const childIndicator = document.getElementById('child-saving-indicator');
-                    if (childIndicator) childIndicator.remove();
-                    
                     // Close the form
                     setShowChildJoin(false);
                     
@@ -1092,10 +1088,6 @@ const Settings = ({ familyId, onClose, onLogout, activeTab: externalActiveTab, h
                     console.error('[CREATE-CHILD] Error Stack:', error.stack);
                     console.error('[CREATE-CHILD] Full Error:', error);
                     console.error('[CREATE-CHILD] ========================================');
-                    
-                    // Remove loading indicator
-                    const childIndicator = document.getElementById('child-saving-indicator');
-                    if (childIndicator) childIndicator.remove();
                     
                     alert(t('parent.settings.createChildError', { defaultValue: 'שגיאה ביצירת ילד' }) + ': ' + error.message);
                   } finally {
@@ -1825,8 +1817,6 @@ const Settings = ({ familyId, onClose, onLogout, activeTab: externalActiveTab, h
                         setTimeout(() => notification.remove(), 300);
                       }, 2000);
                     } catch (error) {
-                      const indicator = document.getElementById('parent-saving-indicator');
-                      if (indicator) indicator.remove();
                       alert(t('parent.settings.parents.addError', { defaultValue: 'שגיאה בהוספת הורה' }) + ': ' + (error.message || 'Unknown error'));
                     } finally {
                       setUpdatingParent(false);
@@ -1837,11 +1827,13 @@ const Settings = ({ familyId, onClose, onLogout, activeTab: externalActiveTab, h
                   <div className="allowance-config-group">
                     <label className="allowance-label">{t('parent.settings.parents.name', { defaultValue: 'שם' })}</label>
                     <input
+                      ref={newParentNameInputRef}
                       type="text"
                       value={newParentName}
                       onChange={(e) => setNewParentName(e.target.value)}
                       placeholder={t('parent.settings.parents.namePlaceholder', { defaultValue: 'שם ההורה' })}
                       className="allowance-input"
+                      autoFocus
                       required
                     />
                   </div>
