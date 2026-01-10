@@ -39,6 +39,15 @@ body {
   margin: 0 auto;
   position: relative;
   background: transparent;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+/* Ensure parent dashboard layout doesn't restrict content width */
+.parent-dashboard-new.app-layout {
+  width: 100% !important;
+  max-width: 600px !important;
+  box-sizing: border-box !important;
 }
 
 /* --- Header & Top Bar --- */
