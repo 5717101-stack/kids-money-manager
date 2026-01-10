@@ -1,3 +1,6 @@
+// Import cache utilities
+import { getCached, setCached, clearCache, invalidateFamilyCache, invalidateChildCache } from './cache.js';
+
 // Get API URL - check if we're in production, development, or mobile app
 const getApiUrl = () => {
   // Production API URL (Render)
@@ -6,7 +9,6 @@ const getApiUrl = () => {
   // If we're in a mobile app (Capacitor)
   if (typeof window !== 'undefined' && window.Capacitor?.isNativePlatform()) {
     // In native app, always use Render URL directly
-    console.log('[API] Using Render API URL for native app:', PRODUCTION_API);
     return PRODUCTION_API;
   }
   
@@ -21,15 +23,25 @@ const getApiUrl = () => {
   }
   
   // Fallback
-  console.warn('[API] VITE_API_URL not set, using Render fallback:', PRODUCTION_API);
   return PRODUCTION_API;
 };
 
 const API_BASE_URL = getApiUrl();
 
-// Helper function for API calls
-async function apiCall(endpoint, options = {}) {
+// Helper function for API calls with caching
+async function apiCall(endpoint, options = {}, cacheOptions = {}) {
   const url = `${API_BASE_URL}${endpoint}`;
+  const method = options.method || 'GET';
+  const useCache = cacheOptions.useCache !== false && method === 'GET';
+  const cacheTTL = cacheOptions.cacheTTL || (5 * 60 * 1000); // 5 minutes default
+  
+  // Check cache for GET requests
+  if (useCache) {
+    const cached = getCached(endpoint, cacheTTL);
+    if (cached !== null) {
+      return cached;
+    }
+  }
   
   // Create AbortController for timeout
   const controller = new AbortController();
@@ -39,7 +51,7 @@ async function apiCall(endpoint, options = {}) {
     let response;
     try {
       const fetchOptions = {
-        method: options.method || 'GET',
+        method,
         mode: 'cors',
         credentials: 'omit',
         headers: {
@@ -56,26 +68,10 @@ async function apiCall(endpoint, options = {}) {
         fetchOptions.body = typeof options.body === 'string' ? options.body : JSON.stringify(options.body);
       }
       
-      console.log('[API] Fetch options:', {
-        method: fetchOptions.method,
-        url: url,
-        hasBody: !!fetchOptions.body,
-        bodyType: typeof fetchOptions.body,
-        bodyPreview: fetchOptions.body ? (typeof fetchOptions.body === 'string' ? fetchOptions.body.substring(0, 100) : JSON.stringify(fetchOptions.body).substring(0, 100)) : 'none'
-      });
-      
       response = await fetch(url, fetchOptions);
       clearTimeout(timeoutId);
     } catch (fetchError) {
       clearTimeout(timeoutId);
-      console.error('[API] Fetch error details:', {
-        name: fetchError.name,
-        message: fetchError.message,
-        stack: fetchError.stack,
-        url: url,
-        isNative: typeof window !== 'undefined' && window.Capacitor?.isNativePlatform(),
-        apiBaseUrl: API_BASE_URL
-      });
       
       // Handle specific iOS/WebView errors
       if (fetchError.name === 'TypeError' && (fetchError.message === 'Load failed' || fetchError.message.includes('Failed to fetch'))) {
@@ -102,24 +98,22 @@ async function apiCall(endpoint, options = {}) {
       } catch (e) {
         errorData = { error: `HTTP error! status: ${response.status}` };
       }
-      console.error('[API] Response error:', {
-        status: response.status,
-        statusText: response.statusText,
-        error: errorData,
-        url: url
-      });
       throw new Error(errorData.error || `HTTP error! status: ${response.status}`);
     }
 
-    return await response.json();
+    const data = await response.json();
+    
+    // Cache successful GET responses
+    if (useCache && data) {
+      setCached(endpoint, data, cacheTTL);
+    }
+    
+    return data;
   } catch (error) {
-    console.error('[API] API call error:', {
-      url,
-      error: error.message,
-      apiBaseUrl: API_BASE_URL,
-      envVar: import.meta.env.VITE_API_URL,
-      isNative: typeof window !== 'undefined' && window.Capacitor?.isNativePlatform()
-    });
+    // Only log errors in development
+    if (import.meta.env.DEV) {
+      console.error('[API] Error:', endpoint, error.message);
+    }
     
     // Don't override the error if it's already a custom error message
     if (error.message && (error.message.includes('שגיאת רשת') || error.message.includes('הבקשה בוטלה'))) {
@@ -137,16 +131,18 @@ async function apiCall(endpoint, options = {}) {
   }
 }
 
-// Get all children data for a family
+// Get all children data for a family (with cache)
 export const getData = async (familyId) => {
   if (!familyId) {
     throw new Error('Family ID is required');
   }
   try {
-    const response = await apiCall(`/families/${familyId}/children`);
+    const response = await apiCall(`/families/${familyId}/children`, {}, { 
+      useCache: true, 
+      cacheTTL: 2 * 60 * 1000 // 2 minutes cache
+    });
     // Ensure response has children property
     if (!response || typeof response !== 'object') {
-      console.error('[API] Invalid response from getData:', response);
       return { children: {} };
     }
     // Ensure children is an object (not array)
@@ -164,18 +160,20 @@ export const getData = async (familyId) => {
       children: response.children || {}
     };
   } catch (error) {
-    console.error('[API] Error in getData:', error);
     // Return empty children object instead of throwing
     return { children: {} };
   }
 };
 
-// Get child data
+// Get child data (with cache)
 export const getChild = async (familyId, childId) => {
   if (!familyId || !childId) {
     throw new Error('Family ID and Child ID are required');
   }
-  const response = await apiCall(`/families/${familyId}/children/${childId}`);
+  const response = await apiCall(`/families/${familyId}/children/${childId}`, {}, {
+    useCache: true,
+    cacheTTL: 1 * 60 * 1000 // 1 minute cache
+  });
   return {
     name: response.name,
     balance: response.balance || 0,
@@ -191,36 +189,24 @@ export const getChild = async (familyId, childId) => {
 
 // Update child (name and phone number)
 export const updateChild = async (familyId, childId, name, phoneNumber) => {
-  console.log('[UPDATE-CHILD-API] Starting updateChild:', {
-    familyId,
-    childId,
-    name: name.trim(),
-    phoneNumber: phoneNumber.trim()
-  });
-  
   if (!familyId || !childId || !name || !phoneNumber) {
-    const error = 'Family ID, Child ID, name, and phone number are required';
-    console.error('[UPDATE-CHILD-API] Validation error:', error);
-    throw new Error(error);
+    throw new Error('Family ID, Child ID, name, and phone number are required');
   }
   
   try {
     const requestBody = { name: name.trim(), phoneNumber: phoneNumber.trim() };
-    console.log('[UPDATE-CHILD-API] Request body:', requestBody);
     
     const response = await apiCall(`/families/${familyId}/children/${childId}`, {
       method: 'PUT',
       body: requestBody
-    });
+    }, { useCache: false });
     
-    console.log('[UPDATE-CHILD-API] Response received:', response);
+    // Invalidate cache for this child and family
+    invalidateChildCache(familyId, childId);
+    invalidateFamilyCache(familyId);
+    
     return response;
   } catch (error) {
-    console.error('[UPDATE-CHILD-API] Error in updateChild:', {
-      error: error,
-      message: error.message,
-      stack: error.stack
-    });
     throw error;
   }
 };
@@ -240,30 +226,40 @@ export const addTransaction = async (familyId, childId, type, amount, descriptio
         description: description || '',
         category: category || null
       })
-    });
+    }, { useCache: false });
+    
+    // Invalidate cache for this child and family
+    invalidateChildCache(familyId, childId);
+    invalidateFamilyCache(familyId);
+    
     return response.transaction;
   } catch (error) {
-    console.error('addTransaction error:', error);
     throw new Error(error.message || 'Failed to add transaction');
   }
 };
 
-// Get transactions for a child (optionally limited)
+// Get transactions for a child (optionally limited, with cache)
 export const getChildTransactions = async (familyId, childId, limit = null) => {
   if (!familyId || !childId) {
     throw new Error('Family ID and Child ID are required');
   }
   const params = limit ? `?limit=${limit}` : '';
-  const response = await apiCall(`/families/${familyId}/children/${childId}/transactions${params}`);
+  const response = await apiCall(`/families/${familyId}/children/${childId}/transactions${params}`, {}, {
+    useCache: true,
+    cacheTTL: 1 * 60 * 1000 // 1 minute cache
+  });
   return response.transactions || [];
 };
 
-// Get expenses by category for a child
+// Get expenses by category for a child (with cache)
 export const getExpensesByCategory = async (familyId, childId, days = 30) => {
   if (!familyId || !childId) {
     throw new Error('Family ID and Child ID are required');
   }
-  const response = await apiCall(`/families/${familyId}/children/${childId}/expenses-by-category?days=${days}`);
+  const response = await apiCall(`/families/${familyId}/children/${childId}/expenses-by-category?days=${days}`, {}, {
+    useCache: true,
+    cacheTTL: 2 * 60 * 1000 // 2 minutes cache
+  });
   return response.expensesByCategory || [];
 };
 
@@ -278,20 +274,27 @@ export const updateCashBoxBalance = async (familyId, childId, cashBoxBalance) =>
       body: JSON.stringify({
         cashBoxBalance: parseFloat(cashBoxBalance)
       })
-    });
+    }, { useCache: false });
+    
+    // Invalidate cache
+    invalidateChildCache(familyId, childId);
+    invalidateFamilyCache(familyId);
+    
     return response;
   } catch (error) {
-    console.error('updateCashBoxBalance error:', error);
     throw new Error(error.message || 'Failed to update cash box balance');
   }
 };
 
-// Categories API
+// Categories API (with cache)
 export const getCategories = async (familyId) => {
   if (!familyId) {
     throw new Error('Family ID is required');
   }
-  const response = await apiCall(`/families/${familyId}/categories`);
+  const response = await apiCall(`/families/${familyId}/categories`, {}, {
+    useCache: true,
+    cacheTTL: 5 * 60 * 1000 // 5 minutes cache (categories don't change often)
+  });
   return response.categories || [];
 };
 
@@ -302,7 +305,11 @@ export const addCategory = async (familyId, name, activeFor = []) => {
   const response = await apiCall(`/families/${familyId}/categories`, {
     method: 'POST',
     body: JSON.stringify({ name, activeFor })
-  });
+  }, { useCache: false });
+  
+  // Invalidate categories cache
+  clearCache(`/families/${familyId}/categories`);
+  
   return response.category;
 };
 
@@ -313,7 +320,11 @@ export const updateCategory = async (familyId, categoryId, name, activeFor) => {
   const response = await apiCall(`/families/${familyId}/categories/${categoryId}`, {
     method: 'PUT',
     body: JSON.stringify({ name, activeFor })
-  });
+  }, { useCache: false });
+  
+  // Invalidate categories cache
+  clearCache(`/families/${familyId}/categories`);
+  
   return response;
 };
 
@@ -323,7 +334,11 @@ export const deleteCategory = async (familyId, categoryId) => {
   }
   const response = await apiCall(`/families/${familyId}/categories/${categoryId}`, {
     method: 'DELETE'
-  });
+  }, { useCache: false });
+  
+  // Invalidate categories cache
+  clearCache(`/families/${familyId}/categories`);
+  
   return response;
 };
 
@@ -336,10 +351,14 @@ export const updateProfileImage = async (familyId, childId, profileImage) => {
     const response = await apiCall(`/families/${familyId}/children/${childId}/profile-image`, {
       method: 'PUT',
       body: JSON.stringify({ profileImage })
-    });
+    }, { useCache: false });
+    
+    // Invalidate cache
+    invalidateChildCache(familyId, childId);
+    invalidateFamilyCache(familyId);
+    
     return response;
   } catch (error) {
-    console.error('updateProfileImage error:', error);
     throw error;
   }
 };
@@ -357,7 +376,12 @@ export const updateWeeklyAllowance = async (familyId, childId, weeklyAllowance, 
       allowanceDay: allowanceDay !== undefined ? parseInt(allowanceDay) : 1,
       allowanceTime: allowanceTime || '08:00'
     })
-  });
+  }, { useCache: false });
+  
+  // Invalidate cache
+  invalidateChildCache(familyId, childId);
+  invalidateFamilyCache(familyId);
+  
   return response;
 };
 
@@ -393,12 +417,15 @@ export const getChildPassword = async (familyId, childId) => {
   return response.password;
 };
 
-// Savings Goals API
+// Savings Goals API (with cache)
 export const getSavingsGoal = async (familyId, childId) => {
   if (!familyId || !childId) {
     throw new Error('Family ID and Child ID are required');
   }
-  const response = await apiCall(`/families/${familyId}/children/${childId}/savings-goal`);
+  const response = await apiCall(`/families/${familyId}/children/${childId}/savings-goal`, {}, {
+    useCache: true,
+    cacheTTL: 2 * 60 * 1000 // 2 minutes cache
+  });
   return response.savingsGoal;
 };
 
@@ -409,7 +436,12 @@ export const updateSavingsGoal = async (familyId, childId, name, targetAmount) =
   const response = await apiCall(`/families/${familyId}/children/${childId}/savings-goal`, {
     method: 'PUT',
     body: JSON.stringify({ name, targetAmount: parseFloat(targetAmount) })
-  });
+  }, { useCache: false });
+  
+  // Invalidate cache
+  clearCache(`/families/${familyId}/children/${childId}/savings-goal`);
+  invalidateChildCache(familyId, childId);
+  
   return response.savingsGoal;
 };
 
@@ -419,16 +451,24 @@ export const deleteSavingsGoal = async (familyId, childId) => {
   }
   const response = await apiCall(`/families/${familyId}/children/${childId}/savings-goal`, {
     method: 'DELETE'
-  });
+  }, { useCache: false });
+  
+  // Invalidate cache
+  clearCache(`/families/${familyId}/children/${childId}/savings-goal`);
+  invalidateChildCache(familyId, childId);
+  
   return response;
 };
 
-// Family/Parents API
+// Family/Parents API (with cache)
 export const getFamilyInfo = async (familyId) => {
   if (!familyId) {
     throw new Error('Family ID is required');
   }
-  const response = await apiCall(`/families/${familyId}`);
+  const response = await apiCall(`/families/${familyId}`, {}, {
+    useCache: true,
+    cacheTTL: 5 * 60 * 1000 // 5 minutes cache
+  });
   return response;
 };
 
@@ -452,10 +492,14 @@ export const updateParentProfileImage = async (familyId, profileImage) => {
     const response = await apiCall(`/families/${familyId}/parent/profile-image`, {
       method: 'PUT',
       body: JSON.stringify({ profileImage })
-    });
+    }, { useCache: false });
+    
+    // Invalidate cache
+    clearCache(`/families/${familyId}`);
+    invalidateFamilyCache(familyId);
+    
     return response;
   } catch (error) {
-    console.error('updateParentProfileImage error:', error);
     throw new Error(error.message || 'Failed to update parent profile image');
   }
 };
@@ -498,10 +542,14 @@ export const archiveChild = async (familyId, childId) => {
   try {
     const response = await apiCall(`/families/${familyId}/children/${childId}/archive`, {
       method: 'POST'
-    });
+    }, { useCache: false });
+    
+    // Invalidate all related cache
+    invalidateChildCache(familyId, childId);
+    invalidateFamilyCache(familyId);
+    
     return response;
   } catch (error) {
-    console.error('archiveChild error:', error);
     throw new Error(error.message || 'Failed to archive child');
   }
 };
@@ -514,10 +562,14 @@ export const archiveParent = async (familyId, parentIndex, isMain) => {
     const response = await apiCall(`/families/${familyId}/parent/archive`, {
       method: 'POST',
       body: JSON.stringify({ parentIndex, isMain })
-    });
+    }, { useCache: false });
+    
+    // Invalidate cache
+    clearCache(`/families/${familyId}`);
+    invalidateFamilyCache(familyId);
+    
     return response;
   } catch (error) {
-    console.error('archiveParent error:', error);
     throw new Error(error.message || 'Failed to archive parent');
   }
 };
