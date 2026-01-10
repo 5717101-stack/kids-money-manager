@@ -151,6 +151,33 @@ const Settings = ({ familyId, onClose, onLogout, activeTab: externalActiveTab, h
         cat._id === categoryId ? { ...cat, name, activeFor } : cat
       ));
       setEditingCategory(null);
+      
+      // Show success notification
+      const notification = document.createElement('div');
+      notification.textContent = t('parent.settings.alerts.updateCategorySuccess', { defaultValue: 'קטגוריה עודכנה בהצלחה!' });
+      const isRTL = i18n.language === 'he';
+      const animationName = isRTL ? 'slideInRTL' : 'slideIn';
+      const animationOutName = isRTL ? 'slideOutRTL' : 'slideOut';
+      const rightOrLeft = isRTL ? 'left' : 'right';
+      notification.style.cssText = `
+        position: fixed;
+        bottom: 100px;
+        ${rightOrLeft}: 20px;
+        background: linear-gradient(135deg, #10B981 0%, #059669 100%);
+        color: white;
+        padding: 16px 24px;
+        border-radius: 12px;
+        box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3);
+        z-index: 10005;
+        font-weight: 600;
+        animation: ${animationName} 0.3s ease;
+        max-width: calc(100% - 40px);
+      `;
+      document.body.appendChild(notification);
+      setTimeout(() => {
+        notification.style.animation = `${animationOutName} 0.3s ease`;
+        setTimeout(() => notification.remove(), 300);
+      }, 2000);
     } catch (error) {
       alert(t('parent.settings.alerts.updateCategoryError', { defaultValue: 'שגיאה בעדכון קטגוריה' }) + ': ' + error.message);
     }
@@ -165,6 +192,33 @@ const Settings = ({ familyId, onClose, onLogout, activeTab: externalActiveTab, h
     try {
       await deleteCategory(familyId, categoryId);
       setCategories(categories.filter(cat => cat._id !== categoryId));
+      
+      // Show success notification
+      const notification = document.createElement('div');
+      notification.textContent = t('parent.settings.alerts.deleteCategorySuccess', { defaultValue: 'קטגוריה נמחקה בהצלחה!' });
+      const isRTL = i18n.language === 'he';
+      const animationName = isRTL ? 'slideInRTL' : 'slideIn';
+      const animationOutName = isRTL ? 'slideOutRTL' : 'slideOut';
+      const rightOrLeft = isRTL ? 'left' : 'right';
+      notification.style.cssText = `
+        position: fixed;
+        bottom: 100px;
+        ${rightOrLeft}: 20px;
+        background: linear-gradient(135deg, #10B981 0%, #059669 100%);
+        color: white;
+        padding: 16px 24px;
+        border-radius: 12px;
+        box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3);
+        z-index: 10005;
+        font-weight: 600;
+        animation: ${animationName} 0.3s ease;
+        max-width: calc(100% - 40px);
+      `;
+      document.body.appendChild(notification);
+      setTimeout(() => {
+        notification.style.animation = `${animationOutName} 0.3s ease`;
+        setTimeout(() => notification.remove(), 300);
+      }, 2000);
     } catch (error) {
       alert(t('parent.settings.alerts.deleteCategoryError', { defaultValue: 'שגיאה במחיקת קטגוריה' }) + ': ' + error.message);
     }
@@ -178,7 +232,33 @@ const Settings = ({ familyId, onClose, onLogout, activeTab: externalActiveTab, h
         setUploadingImages(prev => ({ ...prev, [childId]: true }));
         await updateProfileImage(familyId, childId, null);
         await loadData();
-        alert(t('parent.settings.alerts.removeImageSuccess', { defaultValue: 'תמונת הפרופיל הוסרה בהצלחה!' }));
+        
+        // Show success notification
+        const notification = document.createElement('div');
+        notification.textContent = t('parent.settings.alerts.removeImageSuccess', { defaultValue: 'תמונת הפרופיל הוסרה בהצלחה!' });
+        const isRTL = i18n.language === 'he';
+        const animationName = isRTL ? 'slideInRTL' : 'slideIn';
+        const animationOutName = isRTL ? 'slideOutRTL' : 'slideOut';
+        const rightOrLeft = isRTL ? 'left' : 'right';
+        notification.style.cssText = `
+          position: fixed;
+          bottom: 100px;
+          ${rightOrLeft}: 20px;
+          background: linear-gradient(135deg, #10B981 0%, #059669 100%);
+          color: white;
+          padding: 16px 24px;
+          border-radius: 12px;
+          box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3);
+          z-index: 10005;
+          font-weight: 600;
+          animation: ${animationName} 0.3s ease;
+          max-width: calc(100% - 40px);
+        `;
+        document.body.appendChild(notification);
+        setTimeout(() => {
+          notification.style.animation = `${animationOutName} 0.3s ease`;
+          setTimeout(() => notification.remove(), 300);
+        }, 2000);
       } catch (error) {
         console.error('Error removing profile image:', error);
         alert(t('parent.settings.alerts.removeImageError', { defaultValue: 'שגיאה בהסרת תמונת הפרופיל' }) + ': ' + (error.message || 'Unknown error'));
@@ -279,7 +359,32 @@ const Settings = ({ familyId, onClose, onLogout, activeTab: externalActiveTab, h
         // Don't show error to user, just log it
       }
       
-      alert(t('parent.settings.alerts.updateImageSuccess', { defaultValue: 'תמונת הפרופיל עודכנה בהצלחה!' }));
+      // Show success notification
+      const notification = document.createElement('div');
+      notification.textContent = t('parent.settings.alerts.updateImageSuccess', { defaultValue: 'תמונת הפרופיל עודכנה בהצלחה!' });
+      const isRTL = i18n.language === 'he';
+      const animationName = isRTL ? 'slideInRTL' : 'slideIn';
+      const animationOutName = isRTL ? 'slideOutRTL' : 'slideOut';
+      const rightOrLeft = isRTL ? 'left' : 'right';
+      notification.style.cssText = `
+        position: fixed;
+        bottom: 100px;
+        ${rightOrLeft}: 20px;
+        background: linear-gradient(135deg, #10B981 0%, #059669 100%);
+        color: white;
+        padding: 16px 24px;
+        border-radius: 12px;
+        box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3);
+        z-index: 10005;
+        font-weight: 600;
+        animation: ${animationName} 0.3s ease;
+        max-width: calc(100% - 40px);
+      `;
+      document.body.appendChild(notification);
+      setTimeout(() => {
+        notification.style.animation = `${animationOutName} 0.3s ease`;
+        setTimeout(() => notification.remove(), 300);
+      }, 2000);
     } catch (error) {
       console.error('Error updating profile image:', error);
       console.error('Error details:', {
@@ -308,7 +413,33 @@ const Settings = ({ familyId, onClose, onLogout, activeTab: externalActiveTab, h
     try {
       await updateWeeklyAllowance(familyId, childId, allowance, allowanceType, allowanceDay, allowanceTime);
       await loadData();
-      alert(t('parent.settings.alerts.updateAllowanceSuccess', { defaultValue: 'דמי הכיס עודכנו בהצלחה!' }));
+      
+      // Show success notification
+      const notification = document.createElement('div');
+      notification.textContent = t('parent.settings.alerts.updateAllowanceSuccess', { defaultValue: 'דמי הכיס עודכנו בהצלחה!' });
+      const isRTL = i18n.language === 'he';
+      const animationName = isRTL ? 'slideInRTL' : 'slideIn';
+      const animationOutName = isRTL ? 'slideOutRTL' : 'slideOut';
+      const rightOrLeft = isRTL ? 'left' : 'right';
+      notification.style.cssText = `
+        position: fixed;
+        bottom: 100px;
+        ${rightOrLeft}: 20px;
+        background: linear-gradient(135deg, #10B981 0%, #059669 100%);
+        color: white;
+        padding: 16px 24px;
+        border-radius: 12px;
+        box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3);
+        z-index: 10005;
+        font-weight: 600;
+        animation: ${animationName} 0.3s ease;
+        max-width: calc(100% - 40px);
+      `;
+      document.body.appendChild(notification);
+      setTimeout(() => {
+        notification.style.animation = `${animationOutName} 0.3s ease`;
+        setTimeout(() => notification.remove(), 300);
+      }, 2000);
     } catch (error) {
       alert(t('parent.settings.alerts.updateAllowanceError', { defaultValue: 'שגיאה בעדכון דמי הכיס' }) + ': ' + error.message);
     }
@@ -328,12 +459,52 @@ const Settings = ({ familyId, onClose, onLogout, activeTab: externalActiveTab, h
 
   if (loading) {
     if (inSidebar) {
-      return <div className="loading">{t('common.loading', { defaultValue: 'טוען...' })}</div>;
+      return (
+        <div style={{
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          justifyContent: 'center',
+          padding: '40px 20px',
+          gap: '20px'
+        }}>
+          <div style={{
+            width: '48px',
+            height: '48px',
+            border: '5px solid rgba(99, 102, 241, 0.2)',
+            borderTopColor: '#6366F1',
+            borderRadius: '50%',
+            animation: 'spin 0.8s linear infinite'
+          }}></div>
+          <div style={{ color: 'var(--text-muted)', fontSize: '16px', fontWeight: 500 }}>
+            {t('common.loading', { defaultValue: 'טוען...' })}
+          </div>
+        </div>
+      );
     }
     return (
       <div className="modal-overlay" onClick={onClose} dir={i18n.language === 'he' ? 'rtl' : 'ltr'}>
         <div className="modal-content settings-container" onClick={(e) => e.stopPropagation()} dir={i18n.language === 'he' ? 'rtl' : 'ltr'}>
-          <div className="loading">{t('common.loading', { defaultValue: 'טוען...' })}</div>
+          <div style={{
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: '60px 20px',
+            gap: '20px'
+          }}>
+            <div style={{
+              width: '48px',
+              height: '48px',
+              border: '5px solid rgba(99, 102, 241, 0.2)',
+              borderTopColor: '#6366F1',
+              borderRadius: '50%',
+              animation: 'spin 0.8s linear infinite'
+            }}></div>
+            <div style={{ color: 'var(--text-muted)', fontSize: '16px', fontWeight: 500 }}>
+              {t('common.loading', { defaultValue: 'טוען...' })}
+            </div>
+          </div>
         </div>
       </div>
     );
@@ -1404,7 +1575,33 @@ const Settings = ({ familyId, onClose, onLogout, activeTab: externalActiveTab, h
                     setEditingChild(null);
                     setEditChildName('');
                     setEditChildPhone('');
-                    alert(t('parent.settings.updateChildSuccess', { defaultValue: 'ילד עודכן בהצלחה!' }));
+                    
+                    // Show success notification
+                    const notification = document.createElement('div');
+                    notification.textContent = t('parent.settings.updateChildSuccess', { defaultValue: 'ילד עודכן בהצלחה!' });
+                    const isRTL = i18n.language === 'he';
+                    const animationName = isRTL ? 'slideInRTL' : 'slideIn';
+                    const animationOutName = isRTL ? 'slideOutRTL' : 'slideOut';
+                    const rightOrLeft = isRTL ? 'left' : 'right';
+                    notification.style.cssText = `
+                      position: fixed;
+                      bottom: 100px;
+                      ${rightOrLeft}: 20px;
+                      background: linear-gradient(135deg, #10B981 0%, #059669 100%);
+                      color: white;
+                      padding: 16px 24px;
+                      border-radius: 12px;
+                      box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3);
+                      z-index: 10005;
+                      font-weight: 600;
+                      animation: ${animationName} 0.3s ease;
+                      max-width: calc(100% - 40px);
+                    `;
+                    document.body.appendChild(notification);
+                    setTimeout(() => {
+                      notification.style.animation = `${animationOutName} 0.3s ease`;
+                      setTimeout(() => notification.remove(), 300);
+                    }, 2000);
                     if (onClose) {
                       setTimeout(() => {
                         onClose();
@@ -1529,29 +1726,29 @@ const Settings = ({ familyId, onClose, onLogout, activeTab: externalActiveTab, h
                           top: 50%;
                           left: 50%;
                           transform: translate(-50%, -50%);
-                          background: rgba(0, 0, 0, 0.85);
+                          background: linear-gradient(135deg, #6366F1 0%, #8B5CF6 100%);
                           backdrop-filter: blur(10px);
                           color: white;
-                          padding: 24px 32px;
-                          border-radius: 20px;
+                          padding: 28px 36px;
+                          border-radius: 24px;
                           z-index: 10006;
                           display: flex;
                           flex-direction: column;
                           align-items: center;
-                          gap: 16px;
+                          gap: 20px;
                           font-weight: 600;
-                          min-width: 200px;
-                          box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+                          min-width: 220px;
+                          box-shadow: 0 12px 40px rgba(99, 102, 241, 0.4);
                         ">
                           <div style="
-                            width: 40px;
-                            height: 40px;
-                            border: 4px solid rgba(255, 255, 255, 0.2);
+                            width: 48px;
+                            height: 48px;
+                            border: 5px solid rgba(255, 255, 255, 0.3);
                             border-top-color: white;
                             border-radius: 50%;
                             animation: spin 0.8s linear infinite;
                           "></div>
-                          <div style="font-size: 16px;">${t('common.saving', { defaultValue: 'שומר...' })}</div>
+                          <div style="font-size: 17px; letter-spacing: 0.5px;">${t('common.saving', { defaultValue: 'שומר...' })}</div>
                         </div>
                       `;
                       document.body.appendChild(loadingIndicator);
@@ -1849,29 +2046,29 @@ const Settings = ({ familyId, onClose, onLogout, activeTab: externalActiveTab, h
                                   top: 50%;
                                   left: 50%;
                                   transform: translate(-50%, -50%);
-                                  background: rgba(0, 0, 0, 0.85);
+                                  background: linear-gradient(135deg, #6366F1 0%, #8B5CF6 100%);
                                   backdrop-filter: blur(10px);
                                   color: white;
-                                  padding: 24px 32px;
-                                  border-radius: 20px;
+                                  padding: 28px 36px;
+                                  border-radius: 24px;
                                   z-index: 10006;
                                   display: flex;
                                   flex-direction: column;
                                   align-items: center;
-                                  gap: 16px;
+                                  gap: 20px;
                                   font-weight: 600;
-                                  min-width: 200px;
-                                  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+                                  min-width: 220px;
+                                  box-shadow: 0 12px 40px rgba(99, 102, 241, 0.4);
                                 ">
                                   <div style="
-                                    width: 40px;
-                                    height: 40px;
-                                    border: 4px solid rgba(255, 255, 255, 0.2);
+                                    width: 48px;
+                                    height: 48px;
+                                    border: 5px solid rgba(255, 255, 255, 0.3);
                                     border-top-color: white;
                                     border-radius: 50%;
                                     animation: spin 0.8s linear infinite;
                                   "></div>
-                                  <div style="font-size: 16px;">${t('common.saving', { defaultValue: 'שומר...' })}</div>
+                                  <div style="font-size: 17px; letter-spacing: 0.5px;">${t('common.saving', { defaultValue: 'שומר...' })}</div>
                                 </div>
                               `;
                               document.body.appendChild(loadingIndicator);

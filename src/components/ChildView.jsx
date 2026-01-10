@@ -416,7 +416,26 @@ const ChildView = ({ childId, familyId, onBackToParent, onLogout }) => {
   if (loading) {
     return (
       <div className="child-view-loading" dir={i18n.language === 'he' ? 'rtl' : 'ltr'}>
-        <div className="loading">{t('common.loading', { defaultValue: 'טוען...' })}</div>
+        <div style={{
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          justifyContent: 'center',
+          padding: '60px 20px',
+          gap: '20px'
+        }}>
+          <div style={{
+            width: '48px',
+            height: '48px',
+            border: '5px solid rgba(99, 102, 241, 0.2)',
+            borderTopColor: '#6366F1',
+            borderRadius: '50%',
+            animation: 'spin 0.8s linear infinite'
+          }}></div>
+          <div style={{ color: 'var(--text-muted)', fontSize: '16px', fontWeight: 500 }}>
+            {t('common.loading', { defaultValue: 'טוען...' })}
+          </div>
+        </div>
       </div>
     );
   }
