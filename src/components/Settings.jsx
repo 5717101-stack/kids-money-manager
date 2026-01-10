@@ -1521,10 +1521,14 @@ const Settings = ({ familyId, onClose, onLogout, activeTab: externalActiveTab, h
                             className="update-allowance-button"
                             disabled={updatingChild}
                           >
-                            {updatingChild 
-                              ? t('common.saving', { defaultValue: 'שומר...' })
-                              : t('common.save', { defaultValue: 'שמור' })
-                            }
+                            {updatingChild ? (
+                              <span style={{
+                                display: 'inline-block',
+                                animation: 'pulse 1.5s ease-in-out infinite'
+                              }}>
+                                {t('common.saving', { defaultValue: 'שומר...' })}
+                              </span>
+                            ) : t('common.save', { defaultValue: 'שמור' })}
                           </button>
                           
                           <button
