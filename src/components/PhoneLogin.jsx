@@ -172,7 +172,7 @@ const PhoneLogin = ({ onOTPSent }) => {
                       zIndex: 1000,
                       minWidth: '250px',
                       width: 'auto',
-                      maxWidth: '90vw'
+                      maxWidth: i18n.language === 'he' ? 'calc(100vw - 20px)' : '90vw'
                     }}
                   >
                     {COUNTRY_CODES.map((country) => (
