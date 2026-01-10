@@ -585,7 +585,7 @@ const ChildView = ({ childId, familyId, onBackToParent, onLogout }) => {
         )}
       </div>
       
-      <div className="content-area" style={{ flex: 1, overflowY: 'auto', paddingBottom: '120px', minHeight: 0 }}>
+      <div className="content-area" style={{ flex: 1, overflowY: 'auto', paddingBottom: 'calc(90px + env(safe-area-inset-bottom))', minHeight: 0 }}>
       {/* Profile Image Section */}
       <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '20px', paddingTop: '10px' }}>
         <div style={{ position: 'relative' }}>
