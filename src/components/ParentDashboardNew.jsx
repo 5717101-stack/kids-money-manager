@@ -365,7 +365,6 @@ const ParentDashboard = ({ familyId, onChildrenUpdated, onLogout, onViewChild })
         ref={fileInputRef}
         type="file"
         accept="image/*"
-        capture="environment"
         style={{ display: 'none' }}
         onChange={handleImageUpload}
       />
