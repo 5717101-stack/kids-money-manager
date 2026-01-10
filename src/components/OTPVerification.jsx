@@ -235,6 +235,8 @@ const OTPVerification = ({ phoneNumber, isExistingFamily, onVerified, onBack }) 
         throw new Error(data.error || t('auth.otpVerification.invalidCode', { defaultValue: 'קוד אימות שגוי' }));
       }
 
+      // Don't reset timer on successful verification - let it continue from where it was
+      // The component will unmount anyway, so the timer will be cleaned up
       onVerified(data.familyId, data.phoneNumber, data.isNewFamily, data.isChild, data.childId, data.isAdditionalParent);
     } catch (error) {
       console.error('Error verifying OTP:', error);
