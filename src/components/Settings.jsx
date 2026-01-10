@@ -619,6 +619,14 @@ const Settings = ({ familyId, onClose, onLogout, activeTab: externalActiveTab, h
                 }
               };
 
+              const hasChanges = () => {
+                const currentState = allowanceStates[childId] || state;
+                return currentState.amount !== (child?.weeklyAllowance || 0) || 
+                       currentState.type !== (child?.allowanceType || 'weekly') ||
+                       currentState.day !== (child?.allowanceDay !== undefined ? child.allowanceDay : 1) ||
+                       currentState.time !== (child?.allowanceTime || '08:00');
+              };
+
               return (
                 <div key={childId} className="fintech-card allowance-item">
                   <div className="allowance-item-header">
@@ -637,18 +645,20 @@ const Settings = ({ familyId, onClose, onLogout, activeTab: externalActiveTab, h
                   <div className="allowance-config-group">
                     <label className="allowance-label">{t('parent.settings.allowance.amount', { defaultValue: 'סכום קצבה' })}</label>
                     <div className="allowance-input-group">
+                      <span className="currency-label">₪</span>
                       <input
                         type="number"
                         inputMode="decimal"
                         step="0.01"
                         min="0"
-                        value={state.amount}
-                        onChange={(e) => updateState({ amount: parseFloat(e.target.value) || 0 })}
-                        onBlur={saveChanges}
+                        value={state.amount === 0 ? '' : state.amount}
+                        onChange={(e) => {
+                          const val = e.target.value === '' ? 0 : parseFloat(e.target.value) || 0;
+                          updateState({ amount: val });
+                        }}
                         className="allowance-input"
                         placeholder="0.00"
                       />
-                      <span className="currency-label">₪</span>
                     </div>
                   </div>
 
@@ -661,8 +671,7 @@ const Settings = ({ familyId, onClose, onLogout, activeTab: externalActiveTab, h
                         onClick={() => {
                           const newDay = state.day === 0 ? 1 : state.day;
                           updateState({ type: 'weekly', day: newDay });
-                        setTimeout(saveChanges, 0);
-                      }}
+                        }}
                       >
                         {t('parent.settings.allowance.weekly', { defaultValue: 'שבועי' })}
                       </button>
@@ -672,7 +681,6 @@ const Settings = ({ familyId, onClose, onLogout, activeTab: externalActiveTab, h
                         onClick={() => {
                           const newDay = state.day === 0 ? 1 : state.day;
                           updateState({ type: 'monthly', day: newDay });
-                          setTimeout(saveChanges, 0);
                         }}
                       >
                         {t('parent.settings.allowance.monthly', { defaultValue: 'חודשי' })}
@@ -692,7 +700,6 @@ const Settings = ({ familyId, onClose, onLogout, activeTab: externalActiveTab, h
                         value={state.day}
                         onChange={(e) => {
                           updateState({ day: parseInt(e.target.value) });
-                          setTimeout(saveChanges, 0);
                         }}
                         className="allowance-select"
                       >
@@ -705,7 +712,6 @@ const Settings = ({ familyId, onClose, onLogout, activeTab: externalActiveTab, h
                         value={state.day}
                         onChange={(e) => {
                           updateState({ day: parseInt(e.target.value) });
-                          setTimeout(saveChanges, 0);
                         }}
                         className="allowance-select"
                       >
@@ -725,32 +731,43 @@ const Settings = ({ familyId, onClose, onLogout, activeTab: externalActiveTab, h
                       value={state.time}
                       onChange={(e) => {
                         updateState({ time: e.target.value });
-                        setTimeout(saveChanges, 0);
                       }}
                       className="allowance-input allowance-time-input"
                     />
                   </div>
 
-                  {(child?.weeklyAllowance || 0) > 0 && (
-                    <button
-                      className="pay-allowance-button"
-                      onClick={async () => {
-                        if (!familyId) return;
-                        try {
-                          await payWeeklyAllowance(familyId, childId);
-                          await loadData();
-                          alert(t('parent.settings.allowance.paid', { 
-                            defaultValue: 'דמי כיס שולמו ל{name}!',
-                            name: child?.name || t('parent.settings.child', { defaultValue: 'ילד' })
-                          }));
-                        } catch (error) {
-                          alert(t('parent.settings.allowance.error', { defaultValue: 'שגיאה בתשלום דמי הכיס' }) + ': ' + (error.message || 'Unknown error'));
-                        }
-                      }}
-                    >
-                      💰 {t('parent.settings.allowance.payNow', { defaultValue: 'שלם דמי כיס עכשיו' })}
-                    </button>
-                  )}
+                  <div className="allowance-actions">
+                    {hasChanges() && (
+                      <button
+                        className="update-allowance-button"
+                        onClick={() => {
+                          saveChanges();
+                        }}
+                      >
+                        {t('parent.settings.allowance.update', { defaultValue: 'עדכן הגדרות' })}
+                      </button>
+                    )}
+                    {(child?.weeklyAllowance || 0) > 0 && (
+                      <button
+                        className="pay-allowance-button"
+                        onClick={async () => {
+                          if (!familyId) return;
+                          try {
+                            await payWeeklyAllowance(familyId, childId);
+                            await loadData();
+                            alert(t('parent.settings.allowance.paid', { 
+                              defaultValue: 'דמי כיס שולמו ל{name}!',
+                              name: child?.name || t('parent.settings.child', { defaultValue: 'ילד' })
+                            }));
+                          } catch (error) {
+                            alert(t('parent.settings.allowance.error', { defaultValue: 'שגיאה בתשלום דמי הכיס' }) + ': ' + (error.message || 'Unknown error'));
+                          }
+                        }}
+                      >
+                        💰 {t('parent.settings.allowance.payNow', { defaultValue: 'שלם דמי כיס עכשיו' })}
+                      </button>
+                    )}
+                  </div>
                 </div>
               );
             })}
