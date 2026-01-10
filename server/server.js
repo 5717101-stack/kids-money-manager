@@ -1571,6 +1571,18 @@ app.post('/api/auth/verify-otp', async (req, res) => {
       }
     }
     
+    // Update lastLoginAt for the family
+    if (db && family) {
+      const now = new Date().toISOString();
+      await db.collection('families').updateOne(
+        { _id: family._id },
+        { $set: { lastLoginAt: now } }
+      );
+      // Also update the family object in memory for immediate return
+      family.lastLoginAt = now;
+      invalidateFamilyCache(family._id);
+    }
+    
     // Remove OTP
     otpStore.delete(normalizedPhone);
     

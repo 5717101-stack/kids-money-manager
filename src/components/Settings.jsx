@@ -760,6 +760,26 @@ const Settings = ({ familyId, onClose, onLogout, activeTab: externalActiveTab, h
           <div className="children-section" style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
             {!asPage && <h2 style={{ fontSize: '20px', fontWeight: 700, margin: 0 }}>{t('parent.settings.manageChildren', { defaultValue: 'ניהול ילדים' })}</h2>}
             
+            {!showChildJoin && (
+              <button
+                className="add-child-button"
+                onClick={() => setShowChildJoin(true)}
+                style={{
+                  padding: '12px 24px',
+                  borderRadius: '12px',
+                  border: '2px dashed rgba(99, 102, 241, 0.3)',
+                  background: 'white',
+                  color: 'var(--primary)',
+                  fontSize: '16px',
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                  alignSelf: 'flex-start'
+                }}
+              >
+                + {t('parent.settings.addChild', { defaultValue: 'הוסף ילד' })}
+              </button>
+            )}
+            
             <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
               {Object.entries(allData.children || {}).map(([childId, child]) => (
                 <div key={childId}>
@@ -1136,9 +1156,37 @@ const Settings = ({ familyId, onClose, onLogout, activeTab: externalActiveTab, h
               ))}
             </div>
 
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-              <h3 style={{ fontSize: '18px', fontWeight: 600, margin: 0 }}>{t('parent.settings.addChild', { defaultValue: 'הוסף ילד חדש' })}</h3>
-              <form
+            {showChildJoin && (
+              <div style={{
+                background: 'white',
+                padding: '24px',
+                borderRadius: '16px',
+                boxShadow: '0 2px 10px rgba(0,0,0,0.05)',
+                border: '1px solid rgba(99, 102, 241, 0.2)',
+                marginBottom: '16px'
+              }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+                  <h3 style={{ fontSize: '18px', fontWeight: 600, margin: 0 }}>{t('parent.settings.addChild', { defaultValue: 'הוסף ילד חדש' })}</h3>
+                  <button
+                    onClick={() => setShowChildJoin(false)}
+                    style={{
+                      background: 'none',
+                      border: 'none',
+                      fontSize: '24px',
+                      color: 'var(--text-muted)',
+                      cursor: 'pointer',
+                      padding: '0',
+                      width: '32px',
+                      height: '32px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center'
+                    }}
+                  >
+                    ×
+                  </button>
+                </div>
+                <form
                 onSubmit={async (e) => {
                   e.preventDefault();
                   console.log('[CREATE-CHILD] ========================================');
@@ -1581,9 +1629,6 @@ const Settings = ({ familyId, onClose, onLogout, activeTab: externalActiveTab, h
                             </span>
                           )}
                         </div>
-                        <p style={{ margin: 0, fontSize: '14px', color: 'var(--text-muted)', direction: 'ltr', textAlign: 'left' }}>
-                          {parent.phoneNumber ? (parent.phoneNumber.startsWith('+') ? parent.phoneNumber : `+${parent.phoneNumber}`) : t('parent.settings.noPhoneNumber', { defaultValue: 'לא מוגדר' })}
-                        </p>
                       </div>
                       <div style={{ display: 'flex', gap: '8px', flexShrink: 0 }}>
                         <button
@@ -1662,7 +1707,9 @@ const Settings = ({ familyId, onClose, onLogout, activeTab: externalActiveTab, h
                         <div className="child-detail-item">
                           <p className="child-detail-label">{t('parent.settings.childDetails.phoneNumber', { defaultValue: 'מספר טלפון להרשמה' })}:</p>
                           <div className="child-detail-value phone-number">
-                            {parentPhoneModal.phoneNumber ? (parentPhoneModal.phoneNumber.startsWith('+') ? parentPhoneModal.phoneNumber : `+${parentPhoneModal.phoneNumber}`) : t('parent.settings.noPhoneNumber', { defaultValue: 'לא מוגדר' })}
+                            <span style={{ direction: 'ltr', textAlign: 'left', display: 'inline-block' }}>
+                              {parentPhoneModal.phoneNumber ? (parentPhoneModal.phoneNumber.startsWith('+') ? parentPhoneModal.phoneNumber : `+${parentPhoneModal.phoneNumber}`) : t('parent.settings.noPhoneNumber', { defaultValue: 'לא מוגדר' })}
+                            </span>
                             {parentPhoneModal.phoneNumber && (
                               <button
                                 className="copy-button"
