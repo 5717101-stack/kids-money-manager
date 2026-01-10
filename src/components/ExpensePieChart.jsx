@@ -112,46 +112,7 @@ const ExpensePieChart = ({ expensesByCategory, title, days }) => {
         display: false // Hide default legend - we'll show custom list
       },
       tooltip: {
-        rtl: true,
-        backgroundColor: 'rgba(15, 23, 42, 0.95)',
-        padding: 20,
-        titleFont: {
-          size: 18,
-          weight: '700',
-          family: '-apple-system, BlinkMacSystemFont, "Segoe UI", "Roboto", sans-serif'
-        },
-        bodyFont: {
-          size: 16,
-          weight: '600',
-          family: '-apple-system, BlinkMacSystemFont, "Segoe UI", "Roboto", sans-serif'
-        },
-        borderColor: 'rgba(255, 255, 255, 0.3)',
-        borderWidth: 2,
-        cornerRadius: 16,
-        displayColors: true,
-        boxPadding: 12,
-        callbacks: {
-          title: function(context) {
-            return context[0].label || '';
-          },
-          label: function(context) {
-            const label = context.label || '';
-            const value = context.parsed || 0;
-            const total = context.dataset.data.reduce((a, b) => a + b, 0);
-            const percentage = ((value / total) * 100).toFixed(1);
-            return `💰 סכום: ₪${value.toFixed(2)}`;
-          },
-          afterLabel: function(context) {
-            const value = context.parsed || 0;
-            const total = context.dataset.data.reduce((a, b) => a + b, 0);
-            const percentage = ((value / total) * 100).toFixed(1);
-            return `📊 אחוז: ${percentage}%`;
-          },
-          footer: function(tooltipItems) {
-            const total = tooltipItems.reduce((sum, item) => sum + item.parsed, 0);
-            return `━━━━━━━━━━━━━━\n💵 סה"כ: ₪${total.toFixed(2)}`;
-          }
-        }
+        enabled: false // Disable tooltip on click/hover
       }
     },
     elements: {
