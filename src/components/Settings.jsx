@@ -737,28 +737,31 @@ const Settings = ({ familyId, onClose, onLogout, activeTab: externalActiveTab, h
                   </div>
 
                   <div className="allowance-actions">
-                    {hasChanges() && (
-                      <button
-                        className="update-allowance-button"
-                        onClick={() => {
+                    <button
+                      className={`update-allowance-button ${!hasChanges() ? 'disabled' : ''}`}
+                      onClick={() => {
+                        if (hasChanges()) {
                           saveChanges();
-                        }}
-                      >
-                        {t('parent.settings.allowance.update', { defaultValue: 'עדכן הגדרות' })}
-                      </button>
-                    )}
-                    {(child?.weeklyAllowance || 0) > 0 && (
+                        }
+                      }}
+                      disabled={!hasChanges()}
+                    >
+                      {t('parent.settings.allowance.update', { defaultValue: 'עדכן הגדרות' })}
+                    </button>
+                    {(state.amount || 0) > 0 && (
                       <button
                         className="pay-allowance-button"
                         onClick={async () => {
                           if (!familyId) return;
+                          const childName = child?.name || t('parent.settings.child', { defaultValue: 'ילד' });
                           try {
                             await payWeeklyAllowance(familyId, childId);
                             await loadData();
-                            alert(t('parent.settings.allowance.paid', { 
+                            const paidMessage = t('parent.settings.allowance.paid', { 
                               defaultValue: 'דמי כיס שולמו ל{name}!',
-                              name: child?.name || t('parent.settings.child', { defaultValue: 'ילד' })
-                            }));
+                              name: childName
+                            });
+                            alert(paidMessage.replace(/\{name\}/g, childName));
                           } catch (error) {
                             alert(t('parent.settings.allowance.error', { defaultValue: 'שגיאה בתשלום דמי הכיס' }) + ': ' + (error.message || 'Unknown error'));
                           }
