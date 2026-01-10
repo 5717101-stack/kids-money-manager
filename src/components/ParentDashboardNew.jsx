@@ -617,6 +617,7 @@ const ParentDashboard = ({ familyId, onChildrenUpdated, onLogout, onViewChild })
             hideTabs={true}
             inSidebar={false}
             asPage={true}
+            onChildrenUpdated={onChildrenUpdated}
           />
         </div>
       )}

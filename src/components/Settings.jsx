@@ -1428,12 +1428,39 @@ const Settings = ({ familyId, onClose, onLogout, activeTab: externalActiveTab, h
                     await loadData();
                     console.log('[CREATE-CHILD] ✅ Data reloaded');
                     
-                    // Notify parent component to refresh children list
-                    if (onClose) {
-                      // Call onClose to trigger refresh in ParentDashboard
-                      setTimeout(() => {
-                        onClose();
-                      }, 500);
+                    // Close the form
+                    setShowChildJoin(false);
+                    
+                    // Show success notification
+                    const notification = document.createElement('div');
+                    notification.textContent = t('parent.settings.createChildSuccess', { defaultValue: 'ילד נוסף בהצלחה!' });
+                    const isRTL = i18n.language === 'he';
+                    const animationName = isRTL ? 'slideInRTL' : 'slideIn';
+                    const animationOutName = isRTL ? 'slideOutRTL' : 'slideOut';
+                    const rightOrLeft = isRTL ? 'left' : 'right';
+                    notification.style.cssText = `
+                      position: fixed;
+                      bottom: 100px;
+                      ${rightOrLeft}: 20px;
+                      background: linear-gradient(135deg, #10B981 0%, #059669 100%);
+                      color: white;
+                      padding: 16px 24px;
+                      border-radius: 12px;
+                      box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3);
+                      z-index: 10005;
+                      font-weight: 600;
+                      animation: ${animationName} 0.3s ease;
+                      max-width: calc(100% - 40px);
+                    `;
+                    document.body.appendChild(notification);
+                    setTimeout(() => {
+                      notification.style.animation = `${animationOutName} 0.3s ease`;
+                      setTimeout(() => notification.remove(), 300);
+                    }, 2000);
+                    
+                    // Notify parent component to refresh children list (without closing the page)
+                    if (onChildrenUpdated) {
+                      await onChildrenUpdated();
                     }
                   } catch (error) {
                     console.error('[CREATE-CHILD] ========================================');
