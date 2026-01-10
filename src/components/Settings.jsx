@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { getCategories, addCategory, updateCategory, deleteCategory, getData, updateProfileImage, updateWeeklyAllowance, payWeeklyAllowance, createChild, updateChild, getFamilyInfo, updateParentInfo, addParent, archiveChild, archiveParent } from '../utils/api';
 import { smartCompressImage } from '../utils/imageCompression';
+import { invalidateFamilyCache } from '../utils/cache';
 
 const CHILD_COLORS = {
   child1: '#3b82f6', // כחול
@@ -1367,7 +1368,14 @@ const Settings = ({ familyId, onClose, onLogout, activeTab: externalActiveTab, h
                 boxShadow: '0 2px 10px rgba(0,0,0,0.05)',
                 border: '1px solid rgba(99, 102, 241, 0.2)',
                 marginBottom: '16px'
-              }}>
+              }}
+              onAnimationEnd={() => {
+                // Focus on name input when form appears
+                if (newChildNameInputRef.current) {
+                  newChildNameInputRef.current.focus();
+                }
+              }}
+              >
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
                   <h3 style={{ fontSize: '18px', fontWeight: 600, margin: 0 }}>{t('parent.settings.addChild', { defaultValue: 'הוסף ילד חדש' })}</h3>
                   <button
