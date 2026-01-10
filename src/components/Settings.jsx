@@ -42,6 +42,7 @@ const Settings = ({ familyId, onClose, onLogout, activeTab: externalActiveTab, h
   const [editParentPhone, setEditParentPhone] = useState('');
   const [updatingParent, setUpdatingParent] = useState(false);
   const [addingParent, setAddingParent] = useState(false);
+  const [parentPhoneModal, setParentPhoneModal] = useState(null); // { parentIndex, parentName, phoneNumber, createdAt, lastLogin }
   const [newParentName, setNewParentName] = useState('');
   const [newParentPhone, setNewParentPhone] = useState('');
 
@@ -801,6 +802,10 @@ const Settings = ({ familyId, onClose, onLogout, activeTab: externalActiveTab, h
                             setEditChildName('');
                             setEditChildPhone('');
                           } else {
+                            // Close details if open
+                            if (childPhoneModal && childPhoneModal.childId === childId) {
+                              setChildPhoneModal(null);
+                            }
                             setEditingChild({ childId, childName: child.name, phoneNumber: child.phoneNumber || '' });
                             setEditChildName(child.name);
                             setEditChildPhone(child.phoneNumber || '');
@@ -827,6 +832,12 @@ const Settings = ({ familyId, onClose, onLogout, activeTab: externalActiveTab, h
                           if (childPhoneModal && childPhoneModal.childId === childId) {
                             setChildPhoneModal(null);
                           } else {
+                            // Close edit if open
+                            if (editingChild && editingChild.childId === childId) {
+                              setEditingChild(null);
+                              setEditChildName('');
+                              setEditChildPhone('');
+                            }
                             setChildPhoneModal({ 
                               childId, 
                               childName: child.name, 
@@ -1403,69 +1414,117 @@ const Settings = ({ familyId, onClose, onLogout, activeTab: externalActiveTab, h
         )}
 
         {activeTab === 'parents' && (
-          <div className="parents-section">
-            <div className="parents-header">
-              {!asPage && <h2>{t('parent.settings.parents.title', { defaultValue: 'ניהול הורים' })}</h2>}
-              {!addingParent && (
-                <button
-                  className="add-parent-button"
-                  onClick={() => {
-                    setAddingParent(true);
-                    setNewParentName('');
-                    setNewParentPhone('');
-                  }}
-                >
-                  + {t('parent.settings.parents.addParent', { defaultValue: 'הוסף הורה' })}
-                </button>
-              )}
-            </div>
+          <div className="children-section" style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+            {!asPage && <h2 style={{ fontSize: '20px', fontWeight: 700, margin: 0 }}>{t('parent.settings.parents.title', { defaultValue: 'ניהול הורים' })}</h2>}
+            
+            {!addingParent && (
+              <button
+                className="add-child-button"
+                onClick={() => {
+                  setAddingParent(true);
+                  setNewParentName('');
+                  setNewParentPhone('');
+                }}
+                style={{
+                  padding: '12px 24px',
+                  borderRadius: '12px',
+                  border: '2px dashed rgba(99, 102, 241, 0.3)',
+                  background: 'white',
+                  color: 'var(--primary)',
+                  fontSize: '16px',
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                  alignSelf: 'flex-start'
+                }}
+              >
+                + {t('parent.settings.parents.addParent', { defaultValue: 'הוסף הורה' })}
+              </button>
+            )}
             
             {addingParent && (
-              <div className="parent-item parent-item-new">
-                <div className="parent-edit">
-                  <div className="form-group">
-                    <label>{t('parent.settings.parents.name', { defaultValue: 'שם' })}:</label>
+              <div style={{
+                background: 'white',
+                padding: '20px',
+                borderRadius: '16px',
+                boxShadow: '0 2px 10px rgba(0,0,0,0.05)',
+                border: '1px solid rgba(99, 102, 241, 0.2)'
+              }}>
+                <form
+                  onSubmit={async (e) => {
+                    e.preventDefault();
+                    if (!newParentName.trim() || !newParentPhone.trim()) {
+                      alert(t('parent.settings.parents.fillAllFields', { defaultValue: 'אנא מלא את כל השדות' }));
+                      return;
+                    }
+                    try {
+                      setUpdatingParent(true);
+                      await addParent(familyId, newParentName.trim(), newParentPhone.trim());
+                      await loadData();
+                      setAddingParent(false);
+                      setNewParentName('');
+                      setNewParentPhone('');
+                      
+                      // Show success notification
+                      const notification = document.createElement('div');
+                      notification.textContent = t('parent.settings.parents.addSuccess', { defaultValue: 'הורה נוסף בהצלחה!' });
+                      const isRTL = i18n.language === 'he';
+                      const animationName = isRTL ? 'slideInRTL' : 'slideIn';
+                      const animationOutName = isRTL ? 'slideOutRTL' : 'slideOut';
+                      const rightOrLeft = isRTL ? 'left' : 'right';
+                      notification.style.cssText = `
+                        position: fixed;
+                        top: 20px;
+                        ${rightOrLeft}: 20px;
+                        background: linear-gradient(135deg, #10B981 0%, #059669 100%);
+                        color: white;
+                        padding: 16px 24px;
+                        border-radius: 12px;
+                        box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3);
+                        z-index: 10005;
+                        font-weight: 600;
+                        animation: ${animationName} 0.3s ease;
+                      `;
+                      document.body.appendChild(notification);
+                      setTimeout(() => {
+                        notification.style.animation = `${animationOutName} 0.3s ease`;
+                        setTimeout(() => notification.remove(), 300);
+                      }, 2000);
+                    } catch (error) {
+                      alert(t('parent.settings.parents.addError', { defaultValue: 'שגיאה בהוספת הורה' }) + ': ' + (error.message || 'Unknown error'));
+                    } finally {
+                      setUpdatingParent(false);
+                    }
+                  }}
+                  style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}
+                >
+                  <div className="allowance-config-group">
+                    <label className="allowance-label">{t('parent.settings.parents.name', { defaultValue: 'שם' })}</label>
                     <input
                       type="text"
                       value={newParentName}
                       onChange={(e) => setNewParentName(e.target.value)}
                       placeholder={t('parent.settings.parents.namePlaceholder', { defaultValue: 'שם ההורה' })}
-                      className="parent-input"
+                      className="allowance-input"
+                      required
                     />
                   </div>
-                  <div className="form-group">
-                    <label>{t('parent.settings.parents.phone', { defaultValue: 'טלפון' })}:</label>
+                  <div className="allowance-config-group">
+                    <label className="allowance-label">{t('parent.settings.parents.phone', { defaultValue: 'טלפון' })}</label>
                     <input
                       type="tel"
                       inputMode="numeric"
                       value={newParentPhone}
                       onChange={(e) => setNewParentPhone(e.target.value)}
                       placeholder={t('parent.settings.parents.phonePlaceholder', { defaultValue: 'מספר טלפון' })}
-                      className="parent-input"
+                      className="allowance-input"
+                      style={{ direction: 'ltr', textAlign: 'left' }}
+                      required
                     />
                   </div>
-                  <div className="parent-actions">
+                  <div className="allowance-actions">
                     <button
-                      className="save-button"
-                      onClick={async () => {
-                        if (!newParentName.trim() || !newParentPhone.trim()) {
-                          alert(t('parent.settings.parents.fillAllFields', { defaultValue: 'אנא מלא את כל השדות' }));
-                          return;
-                        }
-                        try {
-                          setUpdatingParent(true);
-                          await addParent(familyId, newParentName.trim(), newParentPhone.trim());
-                          await loadData();
-                          setAddingParent(false);
-                          setNewParentName('');
-                          setNewParentPhone('');
-                          alert(t('parent.settings.parents.addSuccess', { defaultValue: 'הורה נוסף בהצלחה!' }));
-                        } catch (error) {
-                          alert(t('parent.settings.parents.addError', { defaultValue: 'שגיאה בהוספת הורה' }) + ': ' + (error.message || 'Unknown error'));
-                        } finally {
-                          setUpdatingParent(false);
-                        }
-                      }}
+                      type="submit"
+                      className="update-allowance-button"
                       disabled={updatingParent || !newParentName.trim() || !newParentPhone.trim()}
                     >
                       {updatingParent 
@@ -1474,114 +1533,298 @@ const Settings = ({ familyId, onClose, onLogout, activeTab: externalActiveTab, h
                       }
                     </button>
                     <button
-                      className="cancel-button"
+                      type="button"
                       onClick={() => {
                         setAddingParent(false);
                         setNewParentName('');
                         setNewParentPhone('');
                       }}
+                      className="pay-allowance-button"
+                      style={{ background: '#6B7280' }}
                     >
                       {t('common.cancel', { defaultValue: 'ביטול' })}
                     </button>
                   </div>
-                </div>
+                </form>
               </div>
             )}
             
             {familyInfo && familyInfo.parents && familyInfo.parents.length > 0 ? (
-              <div className="parents-list">
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
                 {familyInfo.parents.map((parent, index) => (
-                  <div key={index} className="parent-item">
-                    {editingParent === index ? (
-                      <div className="parent-edit">
-                        <div className="form-group">
-                          <label>{t('parent.settings.parents.name', { defaultValue: 'שם' })}:</label>
-                          <input
-                            type="text"
-                            value={editParentName}
-                            onChange={(e) => setEditParentName(e.target.value)}
-                            placeholder={t('parent.settings.parents.namePlaceholder', { defaultValue: 'שם ההורה' })}
-                            className="parent-input"
-                          />
+                  <div key={index}>
+                    <div 
+                      style={{
+                        background: 'white',
+                        padding: '16px',
+                        borderRadius: '16px',
+                        boxShadow: '0 2px 10px rgba(0,0,0,0.05)',
+                        display: 'flex',
+                        flexDirection: 'row',
+                        alignItems: 'center',
+                        gap: '12px'
+                      }}
+                    >
+                      <div style={{ flex: 1 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
+                          <h3 style={{ margin: 0, fontSize: '16px', fontWeight: 600 }}>{parent.name || 'הורה1'}</h3>
+                          {parent.isMain && (
+                            <span style={{
+                              padding: '4px 8px',
+                              borderRadius: '8px',
+                              background: 'linear-gradient(135deg, #6366F1 0%, #8B5CF6 100%)',
+                              color: 'white',
+                              fontSize: '12px',
+                              fontWeight: 600
+                            }}>
+                              {t('parent.settings.parents.mainParent', { defaultValue: 'הורה ראשי' })}
+                            </span>
+                          )}
                         </div>
-                        <div className="form-group">
-                          <label>{t('parent.settings.parents.phone', { defaultValue: 'טלפון' })}:</label>
-                          <input
-                            type="tel"
-                            inputMode="numeric"
-                            value={editParentPhone}
-                            onChange={(e) => setEditParentPhone(e.target.value)}
-                            placeholder={t('parent.settings.parents.phonePlaceholder', { defaultValue: 'מספר טלפון' })}
-                            className="parent-input"
-                          />
-                        </div>
-                        <div className="parent-actions">
-                          <button
-                            className="save-button"
-                            onClick={async () => {
-                              try {
-                                setUpdatingParent(true);
-                                await updateParentInfo(familyId, editParentName, editParentPhone, parent.isMain);
-                                await loadData();
-                                setEditingParent(null);
-                                setEditParentName('');
-                                setEditParentPhone('');
-                                alert(t('parent.settings.parents.updateSuccess', { defaultValue: 'פרטי ההורה עודכנו בהצלחה!' }));
-                              } catch (error) {
-                                alert(t('parent.settings.parents.updateError', { defaultValue: 'שגיאה בעדכון פרטי ההורה' }) + ': ' + error.message);
-                              } finally {
-                                setUpdatingParent(false);
-                              }
-                            }}
-                            disabled={updatingParent}
-                          >
-                            {updatingParent 
-                              ? t('common.saving', { defaultValue: 'שומר...' })
-                              : t('common.save', { defaultValue: 'שמור' })
-                            }
-                          </button>
-                          <button
-                            className="cancel-button"
-                            onClick={() => {
+                        <p style={{ margin: 0, fontSize: '14px', color: 'var(--text-muted)', direction: 'ltr', textAlign: 'left' }}>
+                          {parent.phoneNumber ? (parent.phoneNumber.startsWith('+') ? parent.phoneNumber : `+${parent.phoneNumber}`) : t('parent.settings.noPhoneNumber', { defaultValue: 'לא מוגדר' })}
+                        </p>
+                      </div>
+                      <div style={{ display: 'flex', gap: '8px', flexShrink: 0 }}>
+                        <button
+                          onClick={() => {
+                            if (editingParent === index) {
                               setEditingParent(null);
                               setEditParentName('');
                               setEditParentPhone('');
-                            }}
-                          >
-                            {t('common.cancel', { defaultValue: 'ביטול' })}
-                          </button>
-                        </div>
-                      </div>
-                    ) : (
-                      <div className="parent-display">
-                        <div className="parent-info">
-                          <div className="parent-name">
-                            <strong>{parent.name || 'הורה1'}</strong>
-                            {parent.isMain && (
-                              <span className="main-parent-badge">
-                                {t('parent.settings.parents.mainParent', { defaultValue: 'הורה ראשי' })}
-                              </span>
-                            )}
-                          </div>
-                          <div className="parent-phone">{parent.phoneNumber || 'לא זמין'}</div>
-                        </div>
-                        <button
-                          className="edit-button"
-                          onClick={() => {
-                            setEditingParent(index);
-                            setEditParentName(parent.name || 'הורה1');
-                            setEditParentPhone(parent.phoneNumber || '');
+                            } else {
+                              // Close details if open
+                              if (parentPhoneModal && parentPhoneModal.parentIndex === index) {
+                                setParentPhoneModal(null);
+                              }
+                              setEditingParent(index);
+                              setEditParentName(parent.name || 'הורה1');
+                              setEditParentPhone(parent.phoneNumber || '');
+                            }
+                          }}
+                          style={{
+                            padding: '8px 16px',
+                            borderRadius: '8px',
+                            border: '1px solid rgba(0,0,0,0.1)',
+                            background: (editingParent === index) ? 'var(--primary)' : 'white',
+                            color: (editingParent === index) ? 'white' : 'var(--text-main)',
+                            fontSize: '14px',
+                            fontWeight: 500,
+                            cursor: 'pointer'
                           }}
                         >
-                          {t('common.edit', { defaultValue: 'ערוך' })}
+                          {(editingParent === index) 
+                            ? t('common.cancel', { defaultValue: 'ביטול' })
+                            : t('common.edit', { defaultValue: 'ערוך' })
+                          }
                         </button>
+                        <button
+                          onClick={() => {
+                            if (parentPhoneModal && parentPhoneModal.parentIndex === index) {
+                              setParentPhoneModal(null);
+                            } else {
+                              // Close edit if open
+                              if (editingParent === index) {
+                              setEditingParent(null);
+                              setEditParentName('');
+                              setEditParentPhone('');
+                            }
+                              setParentPhoneModal({ 
+                                parentIndex: index,
+                                parentName: parent.name || 'הורה1', 
+                                phoneNumber: parent.phoneNumber || '',
+                                createdAt: familyInfo.createdAt,
+                                lastLogin: familyInfo.lastLoginAt
+                              });
+                            }
+                          }}
+                          style={{
+                            padding: '8px 16px',
+                            borderRadius: '8px',
+                            border: '1px solid rgba(0,0,0,0.1)',
+                            background: (parentPhoneModal && parentPhoneModal.parentIndex === index) ? 'var(--primary)' : 'white',
+                            color: (parentPhoneModal && parentPhoneModal.parentIndex === index) ? 'white' : 'var(--text-main)',
+                            fontSize: '14px',
+                            fontWeight: 500,
+                            cursor: 'pointer'
+                          }}
+                        >
+                          {(parentPhoneModal && parentPhoneModal.parentIndex === index) 
+                            ? t('parent.settings.closeDetails', { defaultValue: 'סגור פרטים' })
+                            : t('parent.settings.viewDetails', { defaultValue: 'הצג פרטים' })
+                          }
+                        </button>
+                      </div>
+                    </div>
+                    
+                    {parentPhoneModal && parentPhoneModal.parentIndex === index && (
+                      <div className="child-details-expanded">
+                        <div className="child-detail-item">
+                          <p className="child-detail-label">{t('parent.settings.childDetails.phoneNumber', { defaultValue: 'מספר טלפון להרשמה' })}:</p>
+                          <div className="child-detail-value phone-number">
+                            {parentPhoneModal.phoneNumber ? (parentPhoneModal.phoneNumber.startsWith('+') ? parentPhoneModal.phoneNumber : `+${parentPhoneModal.phoneNumber}`) : t('parent.settings.noPhoneNumber', { defaultValue: 'לא מוגדר' })}
+                            {parentPhoneModal.phoneNumber && (
+                              <button
+                                className="copy-button"
+                                onClick={() => {
+                                  navigator.clipboard.writeText(parentPhoneModal.phoneNumber);
+                                  const btn = document.querySelector('.copy-button');
+                                  const originalText = btn.textContent;
+                                  btn.textContent = '✅ ' + t('parent.settings.passwordModal.copied', { defaultValue: 'הועתק!' });
+                                  setTimeout(() => {
+                                    btn.textContent = originalText;
+                                  }, 2000);
+                                }}
+                                title={t('parent.settings.phoneModal.copyPhone', { defaultValue: 'העתק מספר טלפון' })}
+                              >
+                                📋
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                        
+                        <div className="child-detail-item">
+                          <p className="child-detail-label">{t('parent.settings.childDetails.firstLogin', { defaultValue: 'כניסה ראשונה' })}:</p>
+                          <div className="login-date-card first-login">
+                            {parentPhoneModal.createdAt
+                              ? new Date(parentPhoneModal.createdAt).toLocaleDateString('he-IL', {
+                                  year: 'numeric',
+                                  month: 'long',
+                                  day: 'numeric',
+                                  hour: '2-digit',
+                                  minute: '2-digit'
+                                })
+                              : t('parent.settings.notAvailable', { defaultValue: 'לא זמין' })
+                            }
+                          </div>
+                        </div>
+                        
+                        <div className="child-detail-item">
+                          <p className="child-detail-label">{t('parent.settings.childDetails.lastLogin', { defaultValue: 'כניסה אחרונה' })}:</p>
+                          <div className="login-date-card last-login">
+                            {parentPhoneModal.lastLogin
+                              ? new Date(parentPhoneModal.lastLogin).toLocaleDateString('he-IL', {
+                                  year: 'numeric',
+                                  month: 'long',
+                                  day: 'numeric',
+                                  hour: '2-digit',
+                                  minute: '2-digit'
+                                })
+                              : t('parent.settings.neverLoggedIn', { defaultValue: 'מעולם לא נכנס' })
+                            }
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                    
+                    {editingParent === index && (
+                      <div style={{
+                        marginTop: '12px',
+                        padding: '20px',
+                        background: 'white',
+                        borderRadius: '16px',
+                        boxShadow: '0 2px 10px rgba(0,0,0,0.05)',
+                        border: '1px solid rgba(99, 102, 241, 0.2)'
+                      }}>
+                        <form
+                          onSubmit={async (e) => {
+                            e.preventDefault();
+                            if (!editParentName.trim() || !editParentPhone.trim()) {
+                              alert(t('parent.settings.parents.fillAllFields', { defaultValue: 'אנא מלא את כל השדות' }));
+                              return;
+                            }
+                            try {
+                              setUpdatingParent(true);
+                              await updateParentInfo(familyId, editParentName.trim(), editParentPhone.trim(), parent.isMain);
+                              await loadData();
+                              setEditingParent(null);
+                              setEditParentName('');
+                              setEditParentPhone('');
+                              
+                              // Show success notification
+                              const notification = document.createElement('div');
+                              notification.textContent = t('parent.settings.parents.updateSuccess', { defaultValue: 'פרטי ההורה עודכנו בהצלחה!' });
+                              const isRTL = i18n.language === 'he';
+                              const animationName = isRTL ? 'slideInRTL' : 'slideIn';
+                              const animationOutName = isRTL ? 'slideOutRTL' : 'slideOut';
+                              const rightOrLeft = isRTL ? 'left' : 'right';
+                              notification.style.cssText = `
+                                position: fixed;
+                                top: 20px;
+                                ${rightOrLeft}: 20px;
+                                background: linear-gradient(135deg, #10B981 0%, #059669 100%);
+                                color: white;
+                                padding: 16px 24px;
+                                border-radius: 12px;
+                                box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3);
+                                z-index: 10005;
+                                font-weight: 600;
+                                animation: ${animationName} 0.3s ease;
+                              `;
+                              document.body.appendChild(notification);
+                              setTimeout(() => {
+                                notification.style.animation = `${animationOutName} 0.3s ease`;
+                                setTimeout(() => notification.remove(), 300);
+                              }, 2000);
+                            } catch (error) {
+                              alert(t('parent.settings.parents.updateError', { defaultValue: 'שגיאה בעדכון פרטי ההורה' }) + ': ' + error.message);
+                            } finally {
+                              setUpdatingParent(false);
+                            }
+                          }}
+                          style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}
+                        >
+                          <div className="allowance-config-group">
+                            <label className="allowance-label">{t('parent.settings.parents.name', { defaultValue: 'שם' })}</label>
+                            <input
+                              type="text"
+                              value={editParentName}
+                              onChange={(e) => setEditParentName(e.target.value)}
+                              className="allowance-input"
+                              placeholder={t('parent.settings.parents.namePlaceholder', { defaultValue: 'שם ההורה' })}
+                              required
+                            />
+                          </div>
+                          
+                          <div className="allowance-config-group">
+                            <label className="allowance-label">{t('parent.settings.parents.phone', { defaultValue: 'טלפון' })}</label>
+                            <input
+                              type="tel"
+                              inputMode="numeric"
+                              value={editParentPhone}
+                              onChange={(e) => setEditParentPhone(e.target.value)}
+                              className="allowance-input"
+                              placeholder={t('parent.settings.parents.phonePlaceholder', { defaultValue: 'מספר טלפון' })}
+                              style={{ direction: 'ltr', textAlign: 'left' }}
+                              required
+                            />
+                          </div>
+                          
+                          <div className="allowance-actions">
+                            <button
+                              type="submit"
+                              className="update-allowance-button"
+                              disabled={updatingParent}
+                            >
+                              {updatingParent 
+                                ? t('common.saving', { defaultValue: 'שומר...' })
+                                : t('common.save', { defaultValue: 'שמור' })
+                              }
+                            </button>
+                          </div>
+                        </form>
                       </div>
                     )}
                   </div>
                 ))}
               </div>
             ) : (
-              <div className="no-parents-message">
+              <div style={{
+                padding: '40px 20px',
+                textAlign: 'center',
+                color: 'var(--text-muted)',
+                fontSize: '16px'
+              }}>
                 {t('parent.settings.parents.noParents', { defaultValue: 'אין הורים רשומים' })}
               </div>
             )}

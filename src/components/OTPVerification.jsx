@@ -244,9 +244,13 @@ const OTPVerification = ({ phoneNumber, isExistingFamily, onVerified, onBack }) 
         <button 
           className="menu-btn"
           onClick={onBack}
-          style={{ fontSize: '20px' }}
+          style={{ 
+            fontSize: '20px',
+            position: 'absolute',
+            [i18n.language === 'he' ? 'right' : 'left']: '20px'
+          }}
         >
-          ←
+          {i18n.language === 'he' ? '→' : '←'}
         </button>
         <h1 className="header-title">
           {t('auth.otpVerification.title', { defaultValue: 'אימות קוד' })}
