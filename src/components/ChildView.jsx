@@ -620,29 +620,26 @@ const ChildView = ({ childId, familyId, onBackToParent, onLogout }) => {
         </div>
 
         {savingsGoal ? (
-          <div className="savings-goal-display-linear">
-            <div className="goal-info-header">
-              <div className="goal-name">{savingsGoal.name}</div>
-              <div className="goal-progress-percentage">{goalProgress.toFixed(0)}%</div>
+          <div className="savings-goal-display-compact">
+            <div className="goal-main-info">
+              <div className="goal-name-compact">{savingsGoal.name}</div>
+              <div className="goal-target-prominent">
+                <span className="goal-target-label">{t('child.savingsGoal.target', { defaultValue: 'יעד' })}:</span>
+                <span className="goal-target-amount">₪{savingsGoal.targetAmount.toFixed(2)}</span>
+              </div>
             </div>
-            <div className="linear-progress-container">
+            <div className="linear-progress-container-compact">
               <div 
                 className="linear-progress-bar"
                 style={{ width: `${goalProgress}%` }}
               />
             </div>
-            <div className="goal-info-footer">
-              <div className="goal-amount">
-                <span className="goal-label">{t('child.savingsGoal.saved', { defaultValue: 'נחסך' })}:</span>
-                <span className="goal-value">₪{totalBalance.toFixed(2)}</span>
-              </div>
-              <div className="goal-remaining">
-                <span className="goal-label">{t('child.savingsGoal.missing', { defaultValue: 'חסר' })}:</span>
-                <span className="goal-value">₪{Math.max(0, savingsGoal.targetAmount - totalBalance).toFixed(2)}</span>
-              </div>
-              <div className="goal-target">
-                <span className="goal-label">{t('child.savingsGoal.target', { defaultValue: 'יעד' })}:</span>
-                <span className="goal-value">₪{savingsGoal.targetAmount.toFixed(2)}</span>
+            <div className="goal-progress-info">
+              <div className="goal-progress-text">
+                <span className="goal-progress-percentage-compact">{goalProgress.toFixed(0)}%</span>
+                <span className="goal-progress-details">
+                  {t('child.savingsGoal.saved', { defaultValue: 'נחסך' })}: ₪{totalBalance.toFixed(2)} • {t('child.savingsGoal.missing', { defaultValue: 'חסר' })}: ₪{Math.max(0, savingsGoal.targetAmount - totalBalance).toFixed(2)}
+                </span>
               </div>
             </div>
           </div>

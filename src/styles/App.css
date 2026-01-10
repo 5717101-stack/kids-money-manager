@@ -847,35 +847,48 @@ body {
   opacity: 0.9;
 }
 
-.savings-goal-display-linear {
+.savings-goal-display-compact {
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 12px;
 }
 
-.goal-info-header {
+.goal-main-info {
   display: flex;
-  justify-content: space-between;
-  align-items: center;
+  flex-direction: column;
+  gap: 8px;
 }
 
-.goal-name {
-  font-size: 18px;
+.goal-name-compact {
+  font-size: 16px;
   font-weight: 600;
   color: var(--text-main);
 }
 
-.goal-progress-percentage {
-  font-size: 20px;
-  font-weight: 700;
-  color: var(--primary);
+.goal-target-prominent {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
 }
 
-.linear-progress-container {
+.goal-target-label {
+  font-size: 14px;
+  color: var(--text-muted);
+  font-weight: 500;
+}
+
+.goal-target-amount {
+  font-size: 28px;
+  font-weight: 700;
+  color: var(--primary);
+  line-height: 1.2;
+}
+
+.linear-progress-container-compact {
   width: 100%;
-  height: 24px;
+  height: 20px;
   background: #E5E7EB;
-  border-radius: 12px;
+  border-radius: 10px;
   overflow: hidden;
   position: relative;
 }
@@ -883,7 +896,7 @@ body {
 .linear-progress-bar {
   height: 100%;
   background: var(--primary-gradient);
-  border-radius: 12px;
+  border-radius: 10px;
   transition: width 0.5s ease;
   position: relative;
   overflow: hidden;
@@ -914,32 +927,29 @@ body {
   }
 }
 
-.goal-info-footer {
-  display: flex;
-  justify-content: space-between;
-  gap: 16px;
-  flex-wrap: wrap;
-}
-
-.goal-amount,
-.goal-remaining,
-.goal-target {
+.goal-progress-info {
   display: flex;
   flex-direction: column;
   gap: 4px;
-  flex: 1;
-  min-width: 100px;
 }
 
-.goal-label {
-  font-size: 12px;
+.goal-progress-text {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.goal-progress-percentage-compact {
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--primary);
+}
+
+.goal-progress-details {
+  font-size: 13px;
   color: var(--text-muted);
-}
-
-.goal-value {
-  font-size: 16px;
-  font-weight: 600;
-  color: var(--text-main);
+  flex: 1;
 }
 
 .no-goal-message {
