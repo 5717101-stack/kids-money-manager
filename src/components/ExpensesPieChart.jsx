@@ -3,6 +3,7 @@ import { Pie } from 'react-chartjs-2';
 import { Chart as ChartJS, ArcElement, Tooltip, Legend } from 'chart.js';
 import { useTranslation } from 'react-i18next';
 import { getChildTransactions } from '../utils/api';
+import { getCached, setCached } from '../utils/cache';
 
 ChartJS.register(ArcElement, Tooltip, Legend);
 
@@ -91,15 +92,28 @@ const ExpensesPieChart = ({ familyId, children, categories, onCategorySelect, se
 
   // Load expenses from all children (with caching)
   useEffect(() => {
+    let isMounted = true;
+    
     const loadExpenses = async () => {
+      // Always set loading to false if no data
       if (!familyId || !children || children.length === 0) {
-        setLoading(false);
-        setExpensesByCategory([]);
+        if (isMounted) {
+          setLoading(false);
+          setExpensesByCategory([]);
+        }
         return;
       }
 
       // Create cache key based on familyId, children IDs, and timeFilter
-      const childrenIds = children.map(c => c._id).sort().join(',');
+      const childrenIds = children.map(c => c._id || c.id).filter(Boolean).sort().join(',');
+      if (!childrenIds) {
+        if (isMounted) {
+          setLoading(false);
+          setExpensesByCategory([]);
+        }
+        return;
+      }
+      
       const cacheKey = `expenses_chart_${familyId}_${childrenIds}_${timeFilter}`;
       const cacheTTL = 10 * 60 * 1000; // 10 minutes cache
 
@@ -109,11 +123,16 @@ const ExpensesPieChart = ({ familyId, children, categories, onCategorySelect, se
       
       // Check cache first (unless force reload or children changed)
       if (!forceReloadChanged && !childrenChanged) {
-        const cached = getCached(cacheKey, cacheTTL);
-        if (cached !== null) {
-          setExpensesByCategory(cached);
-          setLoading(false);
-          return;
+        try {
+          const cached = getCached(cacheKey, cacheTTL);
+          if (cached !== null && isMounted) {
+            setExpensesByCategory(cached);
+            setLoading(false);
+            return;
+          }
+        } catch (cacheError) {
+          console.warn('Cache read error:', cacheError);
+          // Continue to load from API
         }
       }
 
@@ -122,21 +141,35 @@ const ExpensesPieChart = ({ familyId, children, categories, onCategorySelect, se
       childrenIdsRef.current = childrenIds;
 
       try {
-        setLoading(true);
+        if (isMounted) {
+          setLoading(true);
+        }
+        
         const { startDate, endDate } = getDateRange();
         const allExpenses = [];
 
         // Load transactions from all children
         for (const child of children) {
+          if (!isMounted) break;
+          
           try {
+            const childId = child._id || child.id;
+            if (!childId) continue;
+            
             // Load more transactions to ensure we get all expenses in the date range
-            const transactions = await getChildTransactions(familyId, child._id, 100);
+            const transactions = await getChildTransactions(familyId, childId, 100);
+            
+            if (!isMounted) break;
             
             // Filter expenses within date range
-            const childExpenses = transactions.filter(t => {
-              if (t.type !== 'expense') return false;
-              const transactionDate = new Date(t.date || t.createdAt);
-              return transactionDate >= startDate && transactionDate <= endDate;
+            const childExpenses = (transactions || []).filter(t => {
+              if (!t || t.type !== 'expense') return false;
+              try {
+                const transactionDate = new Date(t.date || t.createdAt);
+                return transactionDate >= startDate && transactionDate <= endDate;
+              } catch (dateError) {
+                return false;
+              }
             });
 
             // Add child info to each expense
@@ -144,13 +177,16 @@ const ExpensesPieChart = ({ familyId, children, categories, onCategorySelect, se
               allExpenses.push({
                 ...expense,
                 childName: child.name,
-                childId: child._id
+                childId: childId
               });
             });
           } catch (err) {
-            console.error(`Error loading expenses for ${child.name}:`, err);
+            console.error(`Error loading expenses for ${child.name || childId}:`, err);
+            // Continue with other children
           }
         }
+
+        if (!isMounted) return;
 
         // Group expenses by category
         const categoryTotals = {};
@@ -169,17 +205,32 @@ const ExpensesPieChart = ({ familyId, children, categories, onCategorySelect, se
         })).sort((a, b) => b.amount - a.amount); // Sort by amount descending
 
         // Cache the result
-        setCached(cacheKey, expensesArray, cacheTTL);
-        setExpensesByCategory(expensesArray);
+        try {
+          setCached(cacheKey, expensesArray, cacheTTL);
+        } catch (cacheError) {
+          console.warn('Cache write error:', cacheError);
+        }
+        
+        if (isMounted) {
+          setExpensesByCategory(expensesArray);
+        }
       } catch (error) {
         console.error('Error loading expenses:', error);
-        setExpensesByCategory([]);
+        if (isMounted) {
+          setExpensesByCategory([]);
+        }
       } finally {
-        setLoading(false);
+        if (isMounted) {
+          setLoading(false);
+        }
       }
     };
 
     loadExpenses();
+    
+    return () => {
+      isMounted = false;
+    };
     // Only reload when timeFilter changes, when children list changes (new child added), or when forceReload is triggered
     // Don't reload automatically on interval - only when explicitly needed
     // eslint-disable-next-line react-hooks/exhaustive-deps
