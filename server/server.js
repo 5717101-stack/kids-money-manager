@@ -2191,6 +2191,8 @@ app.post('/api/families/:familyId/transactions', async (req, res) => {
           }
         }
       );
+      // Invalidate cache to ensure fresh data on next request
+      invalidateFamilyCache(familyId);
     }
     
     res.json({ transaction, balance, updated: true });
