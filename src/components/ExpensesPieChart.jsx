@@ -86,7 +86,10 @@ const ExpensesPieChart = ({ familyId, children, categories, onCategorySelect, se
     return { startDate, endDate: now };
   };
 
-  // Load expenses from all children
+  const lastForceReloadRef = useRef(forceReload);
+  const childrenIdsRef = useRef(children?.map(c => c._id).join(',') || '');
+
+  // Load expenses from all children (with caching)
   useEffect(() => {
     const loadExpenses = async () => {
       if (!familyId || !children || children.length === 0) {
@@ -94,6 +97,29 @@ const ExpensesPieChart = ({ familyId, children, categories, onCategorySelect, se
         setExpensesByCategory([]);
         return;
       }
+
+      // Create cache key based on familyId, children IDs, and timeFilter
+      const childrenIds = children.map(c => c._id).sort().join(',');
+      const cacheKey = `expenses_chart_${familyId}_${childrenIds}_${timeFilter}`;
+      const cacheTTL = 10 * 60 * 1000; // 10 minutes cache
+
+      // Check if we need to reload (forceReload changed or children changed)
+      const forceReloadChanged = lastForceReloadRef.current !== forceReload;
+      const childrenChanged = childrenIdsRef.current !== childrenIds;
+      
+      // Check cache first (unless force reload or children changed)
+      if (!forceReloadChanged && !childrenChanged) {
+        const cached = getCached(cacheKey, cacheTTL);
+        if (cached !== null) {
+          setExpensesByCategory(cached);
+          setLoading(false);
+          return;
+        }
+      }
+
+      // Update refs
+      lastForceReloadRef.current = forceReload;
+      childrenIdsRef.current = childrenIds;
 
       try {
         setLoading(true);
@@ -142,6 +168,8 @@ const ExpensesPieChart = ({ familyId, children, categories, onCategorySelect, se
           amount: categoryTotals[category]
         })).sort((a, b) => b.amount - a.amount); // Sort by amount descending
 
+        // Cache the result
+        setCached(cacheKey, expensesArray, cacheTTL);
         setExpensesByCategory(expensesArray);
       } catch (error) {
         console.error('Error loading expenses:', error);
@@ -155,7 +183,7 @@ const ExpensesPieChart = ({ familyId, children, categories, onCategorySelect, se
     // Only reload when timeFilter changes, when children list changes (new child added), or when forceReload is triggered
     // Don't reload automatically on interval - only when explicitly needed
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [familyId, timeFilter, t, forceReload]);
+  }, [familyId, timeFilter, t, forceReload, children]);
 
   // Prepare chart data
   const chartData = useMemo(() => {

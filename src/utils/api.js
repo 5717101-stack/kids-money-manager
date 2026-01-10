@@ -252,6 +252,7 @@ export const getChildTransactions = async (familyId, childId, limit = null) => {
 };
 
 // Get expenses by category for a child (with cache)
+// Get expenses by category (with caching)
 export const getExpensesByCategory = async (familyId, childId, days = 30) => {
   if (!familyId || !childId) {
     throw new Error('Family ID and Child ID are required');

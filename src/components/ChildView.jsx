@@ -1,7 +1,8 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { getChild, getChildTransactions, updateCashBoxBalance, getSavingsGoal, updateSavingsGoal, deleteSavingsGoal, updateProfileImage, getExpensesByCategory, addTransaction, getCategories } from '../utils/api';
 import { smartCompressImage } from '../utils/imageCompression';
+import { getCached, setCached } from '../utils/cache';
 import ExpensePieChart from './ExpensePieChart';
 import Guide from './Guide';
 
@@ -163,13 +164,38 @@ const ChildView = ({ childId, familyId, onBackToParent, onLogout }) => {
     }
   }, [familyId, childId]);
 
+  const lastChartReloadKeyRef = useRef(chartReloadKey);
+  
   const loadExpensesByCategory = async () => {
     if (!familyId || !childId) return;
+    
+    const days = expensesPeriod === 'week' ? 7 : 30;
+    const cacheKey = `expenses_by_category_${familyId}_${childId}_${days}`;
+    const cacheTTL = 10 * 60 * 1000; // 10 minutes cache
+    
+    // Check if we need to reload (chartReloadKey changed means new expense was added)
+    const chartReloadChanged = lastChartReloadKeyRef.current !== chartReloadKey;
+    
+    // Check cache first (unless force reload)
+    if (!chartReloadChanged) {
+      const cached = getCached(cacheKey, cacheTTL);
+      if (cached !== null) {
+        setExpensesByCategory(cached);
+        setLoadingExpenses(false);
+        return;
+      }
+    }
+    
+    // Update ref
+    lastChartReloadKeyRef.current = chartReloadKey;
+    
     try {
       setLoadingExpenses(true);
-      const days = expensesPeriod === 'week' ? 7 : 30;
       const expenses = await getExpensesByCategory(familyId, childId, days);
       setExpensesByCategory(expenses || []);
+      
+      // Cache the result
+      setCached(cacheKey, expenses || [], cacheTTL);
     } catch (error) {
       console.error('Error loading expenses by category:', error);
       setExpensesByCategory([]);
