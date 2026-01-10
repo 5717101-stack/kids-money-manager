@@ -106,6 +106,14 @@ body {
   border-radius: var(--card-radius);
 }
 
+/* Balance and Activity cards - same width as bottom nav */
+.parent-dashboard-new .balance-card,
+.parent-dashboard-new .activity-card {
+  max-width: 560px;
+  margin-left: auto;
+  margin-right: auto;
+}
+
 /* Remove scrollbar visual but keep function */
 .content-area::-webkit-scrollbar { display: none; }
 
@@ -1128,6 +1136,117 @@ body {
   flex-shrink: 0;
   min-width: 45px;
   text-align: left;
+}
+
+/* Activity Card - Fixed height with internal scrolling */
+.activity-card {
+  display: flex;
+  flex-direction: column;
+  height: 320px; /* Fixed height */
+  padding: 0;
+  overflow: hidden;
+}
+
+.activity-header {
+  padding: 20px 24px 16px 24px;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.08);
+  flex-shrink: 0;
+}
+
+.activity-header h2 {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--text-main);
+}
+
+.activity-content {
+  flex: 1;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.no-activity-message {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  padding: 40px 20px;
+  color: var(--text-muted);
+  font-size: 15px;
+  text-align: center;
+}
+
+.activity-list-container {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 12px 24px 24px 24px;
+  -webkit-overflow-scrolling: touch;
+  min-height: 0;
+}
+
+.activity-list-container::-webkit-scrollbar {
+  width: 6px;
+}
+
+.activity-list-container::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.activity-list-container::-webkit-scrollbar-thumb {
+  background: #D1D5DB;
+  border-radius: 3px;
+}
+
+.activity-list-container::-webkit-scrollbar-thumb:hover {
+  background: #9CA3AF;
+}
+
+.activity-item {
+  padding: 12px 0;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.06);
+}
+
+.activity-item:last-child {
+  border-bottom: none;
+}
+
+.activity-main {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+}
+
+.activity-child-name {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text-main);
+}
+
+.activity-amount {
+  font-size: 16px;
+  font-weight: 600;
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
+.activity-amount.positive {
+  color: #10B981;
+}
+
+.activity-amount.negative {
+  color: #EF4444;
+}
+
+.activity-description,
+.activity-category {
+  font-size: 12px;
+  color: var(--text-muted);
+  margin-top: 4px;
 }
 
 /* History Card - Redesigned */

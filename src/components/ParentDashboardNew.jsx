@@ -25,6 +25,7 @@ const ParentDashboard = ({ familyId, onChildrenUpdated, onLogout, onViewChild })
   const [parentProfileImage, setParentProfileImage] = useState(null);
   const [showImagePicker, setShowImagePicker] = useState(false);
   const fileInputRef = React.useRef(null);
+  const [showBalanceDetail, setShowBalanceDetail] = useState(false);
 
   useEffect(() => {
     loadData();
@@ -54,10 +55,10 @@ const ParentDashboard = ({ familyId, onChildrenUpdated, onLogout, onViewChild })
           setParentProfileImage(familyInfoResult.value.parentProfileImage || null);
         }
         
-        // Calculate total family balance
+        // Calculate total family balance (only balance with parents, not cashBoxBalance)
         const children = Object.values(dataResult.value.children || {});
         const total = children.reduce((sum, child) => {
-          return sum + (child.balance || 0) + (child.cashBoxBalance || 0);
+          return sum + (child.balance || 0);
         }, 0);
         setTotalFamilyBalance(total);
 
@@ -411,39 +412,95 @@ const ParentDashboard = ({ familyId, onChildrenUpdated, onLogout, onViewChild })
       )}
 
       {/* Total Family Balance Card */}
-      <div className="fintech-card">
+      <div className="fintech-card balance-card" onClick={() => setShowBalanceDetail(true)} style={{ cursor: 'pointer' }}>
         <div className="label-text">{t('parent.dashboard.totalBalance', { defaultValue: 'יתרה כוללת' })}</div>
         <div className="big-balance">₪{totalFamilyBalance.toFixed(2)}</div>
       </div>
 
       {/* Recent Activity */}
-      <div className="fintech-card">
-        <h2 style={{ fontSize: '18px', fontWeight: 600, marginBottom: '16px', marginTop: 0 }}>{t('parent.dashboard.recentActivity', { defaultValue: 'פעילות אחרונה' })}</h2>
-        {recentTransactions.length === 0 ? (
-          <div style={{ textAlign: 'center', padding: '20px', color: 'var(--text-muted)' }}>
-            {t('parent.dashboard.noActivity', { defaultValue: 'אין פעילות אחרונה' })}
-          </div>
-        ) : (
-          <div>
-            {recentTransactions.map((transaction, index) => (
-              <div key={index} style={{ padding: '12px 0', borderBottom: index < recentTransactions.length - 1 ? '1px solid var(--border)' : 'none' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <span style={{ fontSize: '14px', fontWeight: 500 }}>{transaction.childName}:</span>
-                  <span style={{ fontSize: '16px', fontWeight: 600, color: transaction.type === 'deposit' ? '#10B981' : '#EF4444' }}>
-                    {transaction.type === 'deposit' ? '+' : '-'}₪{Math.abs(transaction.amount || 0).toFixed(2)}
-                  </span>
+      <div className="fintech-card activity-card">
+        <div className="activity-header">
+          <h2>{t('parent.dashboard.recentActivity', { defaultValue: 'פעילות אחרונה' })}</h2>
+        </div>
+        <div className="activity-content">
+          {recentTransactions.length === 0 ? (
+            <div className="no-activity-message">
+              {t('parent.dashboard.noActivity', { defaultValue: 'אין פעילות אחרונה' })}
+            </div>
+          ) : (
+            <div className="activity-list-container">
+              {recentTransactions.map((transaction, index) => (
+                <div key={index} className="activity-item">
+                  <div className="activity-main">
+                    <span className="activity-child-name">{transaction.childName}:</span>
+                    <span className={`activity-amount ${transaction.type === 'deposit' ? 'positive' : 'negative'}`}>
+                      {transaction.type === 'deposit' ? '+' : '-'}₪{Math.abs(transaction.amount || 0).toFixed(2)}
+                    </span>
+                  </div>
+                  {transaction.description && (
+                    <div className="activity-description">{transaction.description}</div>
+                  )}
+                  {transaction.category && (
+                    <div className="activity-category">{transaction.category}</div>
+                  )}
                 </div>
-                {transaction.description && (
-                  <div style={{ fontSize: '12px', color: 'var(--text-muted)', marginTop: '4px' }}>{transaction.description}</div>
-                )}
-                {transaction.category && (
-                  <div style={{ fontSize: '12px', color: 'var(--text-muted)', marginTop: '4px' }}>{transaction.category}</div>
-                )}
-              </div>
-            ))}
-          </div>
-        )}
+              ))}
+            </div>
+          )}
+        </div>
       </div>
+
+      {/* Balance Detail Modal */}
+      {showBalanceDetail && (
+        <div className="modal-overlay" onClick={() => setShowBalanceDetail(false)}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <h2>{t('parent.dashboard.balanceDetail', { defaultValue: 'פירוט יתרה לפי ילדים' })}</h2>
+              <button className="close-button" onClick={() => setShowBalanceDetail(false)}>✕</button>
+            </div>
+            <div style={{ padding: '20px' }}>
+              {childrenList.length === 0 ? (
+                <div style={{ textAlign: 'center', padding: '20px', color: 'var(--text-muted)' }}>
+                  {t('parent.dashboard.noChildren', { defaultValue: 'אין ילדים' })}
+                </div>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                  {childrenList.map((child) => (
+                    <div key={child._id} style={{ 
+                      display: 'flex', 
+                      justifyContent: 'space-between', 
+                      alignItems: 'center',
+                      padding: '12px',
+                      background: '#F9FAFB',
+                      borderRadius: '12px'
+                    }}>
+                      <span style={{ fontSize: '16px', fontWeight: 600 }}>{child.name}</span>
+                      <span style={{ fontSize: '18px', fontWeight: 700, color: 'var(--primary)' }}>
+                        ₪{(child.balance || 0).toFixed(2)}
+                      </span>
+                    </div>
+                  ))}
+                  <div style={{ 
+                    display: 'flex', 
+                    justifyContent: 'space-between', 
+                    alignItems: 'center',
+                    padding: '16px',
+                    marginTop: '8px',
+                    background: 'var(--primary-gradient)',
+                    borderRadius: '12px',
+                    color: 'white'
+                  }}>
+                    <span style={{ fontSize: '18px', fontWeight: 700 }}>{t('parent.dashboard.total', { defaultValue: 'סה"כ' })}</span>
+                    <span style={{ fontSize: '24px', fontWeight: 700 }}>
+                      ₪{totalFamilyBalance.toFixed(2)}
+                    </span>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
         </div>
       )}
 
