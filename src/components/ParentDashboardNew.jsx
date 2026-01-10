@@ -236,22 +236,16 @@ const ParentDashboard = ({ familyId, onChildrenUpdated, onLogout, onViewChild })
     if (!file) return;
 
     try {
-      // Compress image before upload
-      const compressedImage = await smartCompressImage(file);
+      // Compress image before upload - smartCompressImage already returns base64 string
+      const base64Image = await smartCompressImage(file);
       
-      // Convert to base64
-      const reader = new FileReader();
-      reader.onloadend = async () => {
-        const base64Image = reader.result;
-        try {
-          await updateParentProfileImage(familyId, base64Image);
-          setParentProfileImage(base64Image);
-          await loadData(); // Reload to get updated data
-        } catch (error) {
-          alert(t('parent.profile.error', { defaultValue: 'שגיאה בעדכון תמונת הפרופיל' }) + ': ' + error.message);
-        }
-      };
-      reader.readAsDataURL(compressedImage);
+      try {
+        await updateParentProfileImage(familyId, base64Image);
+        setParentProfileImage(base64Image);
+        await loadData(); // Reload to get updated data
+      } catch (error) {
+        alert(t('parent.profile.error', { defaultValue: 'שגיאה בעדכון תמונת הפרופיל' }) + ': ' + error.message);
+      }
     } catch (error) {
       alert(t('parent.profile.error', { defaultValue: 'שגיאה בעדכון תמונת הפרופיל' }) + ': ' + error.message);
     }

@@ -1,7 +1,7 @@
 {
   "name": "kids-money-manager",
   "private": true,
-  "version": "3.4.97",
+  "version": "3.4.98",
   "type": "module",
   "scripts": {
     "dev": "vite",
