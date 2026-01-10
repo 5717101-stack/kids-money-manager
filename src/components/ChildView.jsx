@@ -29,17 +29,63 @@ const ChildView = ({ childId, familyId, onBackToParent, onLogout }) => {
   const [calculatorValue, setCalculatorValue] = useState('0');
   const [calculatorHistory, setCalculatorHistory] = useState('');
   const [calculatorResult, setCalculatorResult] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
 
   useEffect(() => {
-    loadChildData();
-    loadSavingsGoal();
+    // Reset loading and error when childId or familyId changes
+    setLoading(true);
+    setError(null);
+    setChildData(null);
+    
+    // Load data
+    const loadData = async () => {
+      if (!familyId || !childId) {
+        setLoading(false);
+        return;
+      }
+      
+      try {
+        // Load child data and transactions in parallel
+        const [child, trans, goal] = await Promise.all([
+          getChild(familyId, childId),
+          getChildTransactions(familyId, childId, 10),
+          getSavingsGoal(familyId, childId)
+        ]);
+        
+        if (child) {
+          setChildData(child);
+          setTransactions(trans);
+          setError(null);
+        } else {
+          setError('ילד לא נמצא');
+        }
+        
+        setSavingsGoal(goal);
+        if (goal) {
+          setGoalName(goal.name || '');
+          setGoalAmount(goal.targetAmount?.toString() || '');
+        }
+      } catch (err) {
+        console.error('Error loading child data:', err);
+        setError(err.message || 'שגיאה בטעינת הנתונים');
+      } finally {
+        setLoading(false);
+      }
+    };
+    
+    loadData();
+    
     // Refresh every 15 seconds to show updated balance (reduced frequency for better performance)
     const interval = setInterval(() => {
-      loadChildData();
-      loadSavingsGoal();
-      // Don't reload expenses chart automatically - only when period changes
+      if (familyId && childId && !loading) {
+        loadChildData();
+        loadSavingsGoal();
+        // Don't reload expenses chart automatically - only when period changes
+      }
     }, 15000);
     return () => clearInterval(interval);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [childId, familyId]);
 
   // Load expenses when period changes or on initial load
@@ -67,12 +113,17 @@ const ChildView = ({ childId, familyId, onBackToParent, onLogout }) => {
       const child = await getChild(familyId, childId);
       if (child) {
         setChildData(child);
+        setError(null);
         // Show last 10 transactions
         const trans = await getChildTransactions(familyId, childId, 10);
         setTransactions(trans);
+      } else {
+        setError('ילד לא נמצא');
       }
     } catch (error) {
       console.error('Error loading child data:', error);
+      setError(error.message || 'שגיאה בטעינת נתוני הילד');
+      throw error; // Re-throw to be caught by useEffect
     }
   }, [familyId, childId]);
 
@@ -322,10 +373,86 @@ const ChildView = ({ childId, familyId, onBackToParent, onLogout }) => {
     }
   };
 
-  if (!childData) {
+  // Show loading state
+  if (loading) {
     return (
       <div className="child-view-loading" dir={i18n.language === 'he' ? 'rtl' : 'ltr'}>
         <div className="loading">{t('common.loading', { defaultValue: 'טוען...' })}</div>
+      </div>
+    );
+  }
+  
+  // Show error state
+  if (error && !childData) {
+    return (
+      <div className="app-layout" dir={i18n.language === 'he' ? 'rtl' : 'ltr'}>
+        <div className="app-header">
+          {isParent && onBackToParent && (
+            <button 
+              className="menu-btn"
+              onClick={onBackToParent}
+              title={t('child.dashboard.backToParent', { defaultValue: 'חזור לממשק הורים' })}
+            >
+              ←
+            </button>
+          )}
+          <h1 className="header-title">{t('child.dashboard.error', { defaultValue: 'שגיאה' })}</h1>
+          <div style={{ width: '44px' }}></div>
+        </div>
+        <div className="content-area" style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', padding: '40px' }}>
+          <div className="fintech-card" style={{ textAlign: 'center', maxWidth: '400px' }}>
+            <div style={{ fontSize: '48px', marginBottom: '20px' }}>⚠️</div>
+            <h2 style={{ marginBottom: '16px' }}>{error}</h2>
+            <button
+              onClick={() => {
+                setLoading(true);
+                setError(null);
+                loadChildData();
+                loadSavingsGoal();
+              }}
+              style={{
+                padding: '12px 24px',
+                borderRadius: '12px',
+                background: 'var(--primary-gradient)',
+                color: 'white',
+                border: 'none',
+                fontSize: '16px',
+                fontWeight: 600,
+                cursor: 'pointer',
+                marginTop: '20px'
+              }}
+            >
+              {t('common.retry', { defaultValue: 'נסה שוב' })}
+            </button>
+            {isParent && onBackToParent && (
+              <button
+                onClick={onBackToParent}
+                style={{
+                  padding: '12px 24px',
+                  borderRadius: '12px',
+                  background: 'transparent',
+                  color: 'var(--text-main)',
+                  border: '1px solid rgba(0,0,0,0.1)',
+                  fontSize: '16px',
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                  marginTop: '12px'
+                }}
+              >
+                {t('child.dashboard.backToParent', { defaultValue: 'חזור לממשק הורים' })}
+              </button>
+            )}
+          </div>
+        </div>
+      </div>
+    );
+  }
+  
+  // If no child data after loading, show error
+  if (!childData) {
+    return (
+      <div className="child-view-loading" dir={i18n.language === 'he' ? 'rtl' : 'ltr'}>
+        <div className="loading">{t('child.dashboard.noData', { defaultValue: 'אין נתונים' })}</div>
       </div>
     );
   }
