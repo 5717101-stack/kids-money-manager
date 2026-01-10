@@ -46,6 +46,7 @@ const PhoneLogin = ({ onOTPSent }) => {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
   const [showCountryList, setShowCountryList] = useState(false);
+  const phoneInputRef = useRef(null);
 
   const validatePhoneNumber = (phone) => {
     // Remove all non-digits
@@ -182,6 +183,12 @@ const PhoneLogin = ({ onOTPSent }) => {
                         onClick={() => {
                           setSelectedCountry(country);
                           setShowCountryList(false);
+                          // Focus on phone input after selecting country
+                          setTimeout(() => {
+                            if (phoneInputRef.current) {
+                              phoneInputRef.current.focus();
+                            }
+                          }, 100);
                         }}
                         style={{
                           width: '100%',
@@ -208,6 +215,7 @@ const PhoneLogin = ({ onOTPSent }) => {
                 )}
               </div>
               <input
+                ref={phoneInputRef}
                 type="tel"
                 value={phoneNumber}
                 onChange={(e) => {
