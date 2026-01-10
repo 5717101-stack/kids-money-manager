@@ -97,7 +97,8 @@ body {
   overflow-x: visible !important;
 }
 
-/* Remove any width restrictions on fintech cards in parent dashboard - match child dashboard exactly */
+/* Ensure fintech cards in parent dashboard have exact same width as child dashboard */
+/* Remove all width restrictions and ensure cards take full available width */
 .parent-dashboard-new .content-area > .fintech-card,
 .parent-dashboard-new .content-area > .fintech-card.balance-card,
 .parent-dashboard-new .content-area > .fintech-card.activity-card {
@@ -106,10 +107,15 @@ body {
   min-width: 0 !important;
   margin-left: 0 !important;
   margin-right: 0 !important;
+  margin-top: 0 !important;
+  margin-bottom: 20px !important;
   box-sizing: border-box !important;
-  border-radius: var(--card-radius);
+  border-radius: var(--card-radius) !important;
   padding: 24px !important;
   flex-shrink: 0 !important;
+  flex-grow: 0 !important;
+  display: block !important;
+  position: relative !important;
 }
 
 /* Remove scrollbar visual but keep function */
