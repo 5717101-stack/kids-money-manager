@@ -98,10 +98,13 @@ body {
 }
 
 /* Ensure fintech cards in parent dashboard have exact same width as child dashboard */
-/* Remove all width restrictions and ensure cards take full available width */
+/* Override ALL possible width restrictions */
 .parent-dashboard-new .content-area > .fintech-card,
 .parent-dashboard-new .content-area > .fintech-card.balance-card,
-.parent-dashboard-new .content-area > .fintech-card.activity-card {
+.parent-dashboard-new .content-area > .fintech-card.activity-card,
+.parent-dashboard-new .fintech-card,
+.parent-dashboard-new .balance-card,
+.parent-dashboard-new .activity-card {
   width: 100% !important;
   max-width: 100% !important;
   min-width: 0 !important;
@@ -116,6 +119,8 @@ body {
   flex-grow: 0 !important;
   display: block !important;
   position: relative !important;
+  left: 0 !important;
+  right: 0 !important;
 }
 
 /* Remove scrollbar visual but keep function */
