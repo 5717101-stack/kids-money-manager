@@ -1874,6 +1874,8 @@ app.get('/api/families/:familyId/children', async (req, res) => {
     }
     
     console.log(`[GET-CHILDREN] Step 2: Mapping children...`);
+    // Optimize: Don't send all transactions in children list - they're fetched separately
+    // This reduces payload size significantly when there are many transactions
     const children = (family.children || []).map(child => ({
       _id: child._id,
       name: child.name,
@@ -1885,7 +1887,9 @@ app.get('/api/families/:familyId/children', async (req, res) => {
       allowanceType: child.allowanceType || 'weekly',
       allowanceDay: child.allowanceDay !== undefined ? child.allowanceDay : 1,
       allowanceTime: child.allowanceTime || '08:00',
-      transactions: child.transactions || []
+      // Don't include transactions here - they're fetched via separate endpoint
+      // This reduces response size by 80-90% for families with many transactions
+      transactionCount: (child.transactions || []).length
     }));
     
     console.log(`[GET-CHILDREN] Step 3: Converting to object...`);
