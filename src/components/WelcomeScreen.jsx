@@ -184,7 +184,7 @@ const WelcomeScreen = ({ onSelectCreate, onSelectJoinAsParent, onSelectJoinAsChi
         }}
         style={{
           position: 'fixed',
-          top: '20px',
+          top: '60px',
           right: i18n.language === 'he' ? '20px' : 'auto',
           left: i18n.language === 'he' ? 'auto' : '20px',
           width: '44px',
