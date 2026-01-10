@@ -1048,11 +1048,14 @@ const Settings = ({ familyId, onClose, onLogout, activeTab: externalActiveTab, h
                     setNewChildName('');
                     setNewChildPhone('');
                     
-                    console.log('[CREATE-CHILD] Invalidating cache and reloading data...');
-                    // Force reload by clearing cache first
-                    invalidateFamilyCache(familyId);
-                    await loadData();
-                    console.log('[CREATE-CHILD] ✅ Data reloaded');
+                    // Update state directly with new child - no need to reload everything
+                    setAllData(prev => ({
+                      ...prev,
+                      children: {
+                        ...prev.children,
+                        [result.child._id]: result.child
+                      }
+                    }));
                     
                     // Close the form
                     setShowChildJoin(false);
@@ -1805,11 +1808,19 @@ const Settings = ({ familyId, onClose, onLogout, activeTab: externalActiveTab, h
                     }
                     try {
                       setUpdatingParent(true);
-                      await addParent(familyId, newParentName.trim(), newParentPhone.trim());
+                      const newParentResult = await addParent(familyId, newParentName.trim(), newParentPhone.trim());
                       
-                      // Invalidate cache to ensure fresh data
+                      // Update state directly with new parent - no need to reload everything
+                      if (newParentResult && familyInfo) {
+                        setFamilyInfo(prev => ({
+                          ...prev,
+                          parents: prev.parents ? [...prev.parents, newParentResult] : [newParentResult]
+                        }));
+                      }
+                      
+                      // Invalidate cache for future loads
                       invalidateFamilyCache(familyId);
-                      await loadData();
+                      
                       setAddingParent(false);
                       setNewParentName('');
                       setNewParentPhone('');
@@ -2092,8 +2103,21 @@ const Settings = ({ familyId, onClose, onLogout, activeTab: externalActiveTab, h
                             try {
                               setUpdatingParent(true);
                               
-                              await updateParentInfo(familyId, editParentName.trim(), editParentPhone.trim(), parent.isMain);
-                              await loadData();
+                              const updatedParentResult = await updateParentInfo(familyId, editParentName.trim(), editParentPhone.trim(), parent.isMain);
+                              
+                              // Update state directly with updated parent - no need to reload everything
+                              if (updatedParentResult && familyInfo) {
+                                setFamilyInfo(prev => ({
+                                  ...prev,
+                                  parents: prev.parents ? prev.parents.map((p, idx) => 
+                                    idx === index ? { ...p, name: editParentName.trim(), phoneNumber: editParentPhone.trim() } : p
+                                  ) : []
+                                }));
+                              }
+                              
+                              // Invalidate cache for future loads
+                              invalidateFamilyCache(familyId);
+                              
                               setEditingParent(null);
                               setEditParentName('');
                               setEditParentPhone('');
