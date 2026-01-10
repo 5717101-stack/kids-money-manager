@@ -22,11 +22,6 @@ const Sidebar = ({ isOpen, onClose, familyId, onLogout, onChildrenUpdated, onMen
       hasSubmenu: true
     },
     {
-      id: 'profileImages',
-      label: t('sidebar.profile', { defaultValue: 'פרופיל' }),
-      icon: '👤'
-    },
-    {
       id: 'categories',
       label: t('sidebar.categories', { defaultValue: 'קטגוריות' }),
       icon: '🏷️'
