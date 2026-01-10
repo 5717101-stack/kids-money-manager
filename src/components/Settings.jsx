@@ -1422,161 +1422,165 @@ const Settings = ({ familyId, onClose, onLogout, activeTab: externalActiveTab, h
 
 
       {editingChild && (
-        <div className="password-modal-overlay" onClick={() => {
+        <div className="modal-overlay" onClick={() => {
           setEditingChild(null);
           setEditChildName('');
           setEditChildPhone('');
         }}>
-          <div className="password-modal" onClick={(e) => e.stopPropagation()}>
-            <div className="password-modal-header">
+          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
               <h2>{t('parent.settings.editChildModal.title', { defaultValue: 'ערוך ילד' })}</h2>
-              <button className="close-button" onClick={() => {
+              <button className="modal-close" onClick={() => {
                 setEditingChild(null);
                 setEditChildName('');
                 setEditChildPhone('');
               }}>×</button>
             </div>
-            <div className="password-modal-content">
-              <form
-                onSubmit={async (e) => {
-                  e.preventDefault();
-                  if (!editChildName.trim()) {
-                    alert(t('parent.settings.enterChildName', { defaultValue: 'אנא הכנס שם ילד' }));
-                    return;
-                  }
-                  if (!editChildPhone.trim()) {
-                    alert(t('parent.settings.enterChildPhone', { defaultValue: 'אנא הכנס מספר טלפון לילד' }));
-                    return;
+            <form
+              onSubmit={async (e) => {
+                e.preventDefault();
+                if (!editChildName.trim()) {
+                  alert(t('parent.settings.enterChildName', { defaultValue: 'אנא הכנס שם ילד' }));
+                  return;
+                }
+                if (!editChildPhone.trim()) {
+                  alert(t('parent.settings.enterChildPhone', { defaultValue: 'אנא הכנס מספר טלפון לילד' }));
+                  return;
+                }
+                
+                setUpdatingChild(true);
+                try {
+                  console.log('[UPDATE-CHILD] Starting update:', {
+                    familyId,
+                    childId: editingChild.childId,
+                    name: editChildName.trim(),
+                    phoneNumber: editChildPhone.trim()
+                  });
+                  const result = await updateChild(familyId, editingChild.childId, editChildName.trim(), editChildPhone.trim());
+                  console.log('[UPDATE-CHILD] Update successful:', result);
+                  
+                  // Update local state immediately if we have the updated child data
+                  if (result?.child) {
+                    console.log('[UPDATE-CHILD] Updating local state with new data:', result.child);
+                    setAllData(prev => {
+                      const updated = { ...prev };
+                      if (updated.children && updated.children[editingChild.childId]) {
+                        updated.children[editingChild.childId] = {
+                          ...updated.children[editingChild.childId],
+                          name: result.child.name,
+                          phoneNumber: result.child.phoneNumber
+                        };
+                      }
+                      return updated;
+                    });
                   }
                   
-                  setUpdatingChild(true);
-                  try {
-                    console.log('[UPDATE-CHILD] Starting update:', {
-                      familyId,
-                      childId: editingChild.childId,
-                      name: editChildName.trim(),
-                      phoneNumber: editChildPhone.trim()
-                    });
-                    const result = await updateChild(familyId, editingChild.childId, editChildName.trim(), editChildPhone.trim());
-                    console.log('[UPDATE-CHILD] Update successful:', result);
-                    
-                    // Update local state immediately if we have the updated child data
-                    if (result?.child) {
-                      console.log('[UPDATE-CHILD] Updating local state with new data:', result.child);
-                      setAllData(prev => {
-                        const updated = { ...prev };
-                        if (updated.children && updated.children[editingChild.childId]) {
-                          updated.children[editingChild.childId] = {
-                            ...updated.children[editingChild.childId],
-                            name: result.child.name,
-                            phoneNumber: result.child.phoneNumber
-                          };
-                        }
-                        return updated;
-                      });
-                    }
-                    
-                    // Invalidate cache for future loads - no need to reload everything now
-                    invalidateFamilyCache(familyId);
-                    
+                  // Invalidate cache for future loads - no need to reload everything now
+                  invalidateFamilyCache(familyId);
+                  
+                  setEditingChild(null);
+                  setEditChildName('');
+                  setEditChildPhone('');
+                  
+                  // Show success notification
+                  const notification = document.createElement('div');
+                  notification.textContent = t('parent.settings.updateChildSuccess', { defaultValue: 'ילד עודכן בהצלחה!' });
+                  const isRTL = i18n.language === 'he';
+                  const animationName = isRTL ? 'slideInRTL' : 'slideIn';
+                  const animationOutName = isRTL ? 'slideOutRTL' : 'slideOut';
+                  const rightOrLeft = isRTL ? 'left' : 'right';
+                  notification.style.cssText = `
+                    position: fixed;
+                    bottom: 100px;
+                    ${rightOrLeft}: 20px;
+                    background: linear-gradient(135deg, #10B981 0%, #059669 100%);
+                    color: white;
+                    padding: 16px 24px;
+                    border-radius: 12px;
+                    box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3);
+                    z-index: 10005;
+                    font-weight: 600;
+                    animation: ${animationName} 0.3s ease;
+                    max-width: calc(100% - 40px);
+                  `;
+                  document.body.appendChild(notification);
+                  setTimeout(() => {
+                    notification.style.animation = `${animationOutName} 0.3s ease`;
+                    setTimeout(() => notification.remove(), 300);
+                  }, 2000);
+                  if (onClose) {
+                    setTimeout(() => {
+                      onClose();
+                    }, 500);
+                  }
+                } catch (error) {
+                  console.error('[UPDATE-CHILD] Error updating child:', {
+                    error: error,
+                    message: error.message,
+                    stack: error.stack,
+                    name: error.name
+                  });
+                  const errorMessage = error.message || 'שגיאה לא ידועה';
+                  alert(t('parent.settings.updateChildError', { defaultValue: 'שגיאה בעדכון ילד' }) + ': ' + errorMessage);
+                } finally {
+                  setUpdatingChild(false);
+                }
+              }}
+              className="quick-action-form"
+            >
+              <div className="form-group">
+                <label>{t('parent.settings.childName', { defaultValue: 'שם הילד' })}</label>
+                <input
+                  type="text"
+                  value={editChildName}
+                  onChange={(e) => setEditChildName(e.target.value)}
+                  placeholder={t('parent.settings.childName', { defaultValue: 'שם הילד' })}
+                  required
+                />
+              </div>
+              <div className="form-group">
+                <label>{t('parent.settings.childPhone', { defaultValue: 'מספר טלפון לילד' })}</label>
+                <input
+                  type="tel"
+                  value={editChildPhone}
+                  onChange={(e) => setEditChildPhone(e.target.value)}
+                  placeholder={t('parent.settings.childPhone', { defaultValue: 'מספר טלפון לילד' })}
+                  inputMode="numeric"
+                  style={{ direction: 'ltr', textAlign: 'left' }}
+                  required
+                />
+              </div>
+              <div className="modal-actions">
+                <button 
+                  type="button"
+                  className="cancel-button"
+                  onClick={() => {
                     setEditingChild(null);
                     setEditChildName('');
                     setEditChildPhone('');
-                    
-                    // Show success notification
-                    const notification = document.createElement('div');
-                    notification.textContent = t('parent.settings.updateChildSuccess', { defaultValue: 'ילד עודכן בהצלחה!' });
-                    const isRTL = i18n.language === 'he';
-                    const animationName = isRTL ? 'slideInRTL' : 'slideIn';
-                    const animationOutName = isRTL ? 'slideOutRTL' : 'slideOut';
-                    const rightOrLeft = isRTL ? 'left' : 'right';
-                    notification.style.cssText = `
-                      position: fixed;
-                      bottom: 100px;
-                      ${rightOrLeft}: 20px;
-                      background: linear-gradient(135deg, #10B981 0%, #059669 100%);
-                      color: white;
-                      padding: 16px 24px;
-                      border-radius: 12px;
-                      box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3);
-                      z-index: 10005;
-                      font-weight: 600;
-                      animation: ${animationName} 0.3s ease;
-                      max-width: calc(100% - 40px);
-                    `;
-                    document.body.appendChild(notification);
-                    setTimeout(() => {
-                      notification.style.animation = `${animationOutName} 0.3s ease`;
-                      setTimeout(() => notification.remove(), 300);
-                    }, 2000);
-                    if (onClose) {
-                      setTimeout(() => {
-                        onClose();
-                      }, 500);
-                    }
-                  } catch (error) {
-                    console.error('[UPDATE-CHILD] Error updating child:', {
-                      error: error,
-                      message: error.message,
-                      stack: error.stack,
-                      name: error.name
-                    });
-                    const errorMessage = error.message || 'שגיאה לא ידועה';
-                    alert(t('parent.settings.updateChildError', { defaultValue: 'שגיאה בעדכון ילד' }) + ': ' + errorMessage);
-                  } finally {
-                    setUpdatingChild(false);
-                  }
-                }}
-              >
-                <div className="form-group">
-                  <label>{t('parent.settings.childName', { defaultValue: 'שם הילד' })}:</label>
-                  <input
-                    type="text"
-                    value={editChildName}
-                    onChange={(e) => setEditChildName(e.target.value)}
-                    placeholder={t('parent.settings.childName', { defaultValue: 'שם הילד' })}
-                    className="child-name-input"
-                    required
-                  />
-                </div>
-                <div className="form-group">
-                  <label>{t('parent.settings.childPhone', { defaultValue: 'מספר טלפון לילד' })}:</label>
-                  <input
-                    type="tel"
-                    value={editChildPhone}
-                    onChange={(e) => setEditChildPhone(e.target.value)}
-                    placeholder={t('parent.settings.childPhone', { defaultValue: 'מספר טלפון לילד' })}
-                    className="child-name-input"
-                    inputMode="numeric"
-                    required
-                  />
-                </div>
-                <div className="password-modal-footer" style={{ marginTop: '20px', display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
-                    <button 
-                    type="button"
-                    className="password-close-button"
-                      onClick={() => {
-                      setEditingChild(null);
-                      setEditChildName('');
-                      setEditChildPhone('');
-                    }}
-                    disabled={updatingChild}
-                  >
-                    {t('common.cancel', { defaultValue: 'ביטול' })}
-                  </button>
-                  <button
-                    type="submit"
-                    className="child-password-button"
-                    disabled={updatingChild || !editChildName.trim() || !editChildPhone.trim()}
-                  >
-                    {updatingChild ? t('common.saving', { defaultValue: 'שומר...' }) : t('common.save', { defaultValue: 'שמור' })}
-                    </button>
-                  </div>
-              </form>
-            </div>
-          </div>
+                  }}
+                  disabled={updatingChild}
+                >
+                  {t('common.cancel', { defaultValue: 'ביטול' })}
+                </button>
+                <button
+                  type="submit"
+                  className="submit-button"
+                  disabled={updatingChild || !editChildName.trim() || !editChildPhone.trim()}
+                >
+                  {updatingChild ? (
+                    <span style={{
+                      display: 'inline-block',
+                      animation: 'pulse 1.5s ease-in-out infinite'
+                    }}>
+                      {t('common.saving', { defaultValue: 'שומר...' })}
+                    </span>
+                  ) : t('common.save', { defaultValue: 'שמור' })}
+                </button>
+              </div>
+            </form>
         </div>
-        )}
+      )}
 
         {activeTab === 'parents' && (
           <div className="children-section" style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
