@@ -483,3 +483,19 @@ export const archiveChild = async (familyId, childId) => {
     throw new Error(error.message || 'Failed to archive child');
   }
 };
+
+export const archiveParent = async (familyId, parentIndex, isMain) => {
+  if (!familyId) {
+    throw new Error('Family ID is required');
+  }
+  try {
+    const response = await apiCall(`/families/${familyId}/parent/archive`, {
+      method: 'POST',
+      body: JSON.stringify({ parentIndex, isMain })
+    });
+    return response;
+  } catch (error) {
+    console.error('archiveParent error:', error);
+    throw new Error(error.message || 'Failed to archive parent');
+  }
+};

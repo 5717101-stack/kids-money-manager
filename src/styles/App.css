@@ -63,6 +63,12 @@
   }
 }
 
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 /* --- Global Reset & Layout Fixes --- */
 * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
 

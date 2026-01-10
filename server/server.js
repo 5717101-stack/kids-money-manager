@@ -3026,15 +3026,128 @@ app.put('/api/families/:familyId/parent', async (req, res) => {
         { _id: familyId },
         { $set: updateData }
       );
+      invalidateFamilyCache(familyId);
     } else {
-      // Update additional parent (not implemented yet, but structure is ready)
-      // For now, we only support main parent
+      // Update additional parent
+      const { parentIndex } = req.body;
+      if (parentIndex !== undefined && family.additionalParents && family.additionalParents[parentIndex]) {
+        const updateData = {};
+        if (name !== undefined) {
+          family.additionalParents[parentIndex].name = name.trim();
+          updateData[`additionalParents.${parentIndex}.name`] = name.trim();
+        }
+        if (phoneNumber !== undefined) {
+          const normalizedPhone = normalizePhoneNumber(phoneNumber.trim());
+          family.additionalParents[parentIndex].phoneNumber = normalizedPhone;
+          updateData[`additionalParents.${parentIndex}.phoneNumber`] = normalizedPhone;
+        }
+        
+        if (Object.keys(updateData).length > 0) {
+          await db.collection('families').updateOne(
+            { _id: familyId },
+            { $set: updateData }
+          );
+          invalidateFamilyCache(familyId);
+        }
+      }
     }
     
     res.json({ success: true });
   } catch (error) {
     console.error('Error updating parent info:', error);
     res.status(500).json({ error: 'Failed to update parent info' });
+  }
+});
+
+// Archive a parent - move to archive collection instead of deleting
+app.post('/api/families/:familyId/parent/archive', async (req, res) => {
+  const timestamp = new Date().toISOString();
+  console.log(`\n[ARCHIVE-PARENT] ========================================`);
+  console.log(`[ARCHIVE-PARENT] 📦 ARCHIVE PARENT REQUEST`);
+  console.log(`[ARCHIVE-PARENT] ========================================`);
+  console.log(`[ARCHIVE-PARENT] Timestamp: ${timestamp}`);
+  console.log(`[ARCHIVE-PARENT] Family ID: ${req.params.familyId}`);
+  console.log(`[ARCHIVE-PARENT] Body: ${JSON.stringify(req.body)}`);
+  console.log(`[ARCHIVE-PARENT] ========================================\n`);
+  
+  try {
+    if (!db) {
+      console.error(`[ARCHIVE-PARENT] ❌ No database connection`);
+      return res.status(500).json({ error: 'אין חיבור למסד הנתונים' });
+    }
+    
+    const { familyId } = req.params;
+    const { parentIndex, isMain } = req.body;
+    const family = await getFamilyById(familyId);
+    
+    if (!family) {
+      console.error(`[ARCHIVE-PARENT] ❌ Family not found: ${familyId}`);
+      return res.status(404).json({ error: 'משפחה לא נמצאה' });
+    }
+    
+    let parent = null;
+    if (isMain) {
+      // Archive main parent
+      parent = {
+        phoneNumber: family.phoneNumber,
+        name: family.parentName || 'הורה1',
+        isMain: true
+      };
+      
+      // Cannot archive main parent - return error
+      return res.status(400).json({ error: 'לא ניתן למחוק את ההורה הראשי' });
+    } else {
+      // Archive additional parent
+      if (!family.additionalParents || !family.additionalParents[parentIndex]) {
+        console.error(`[ARCHIVE-PARENT] ❌ Parent not found at index: ${parentIndex}`);
+        return res.status(404).json({ error: 'הורה לא נמצא' });
+      }
+      
+      parent = family.additionalParents[parentIndex];
+    }
+    
+    console.log(`[ARCHIVE-PARENT] Archiving parent: ${parent.name || 'no name'}`);
+    
+    // Create archived parent document with all data
+    const archivedParent = {
+      ...parent,
+      archivedAt: new Date().toISOString(),
+      archivedFromFamily: familyId,
+      familyPhoneNumber: family.phoneNumber
+    };
+    
+    // Save to archive collection
+    await db.collection('archived_parents').insertOne(archivedParent);
+    console.log(`[ARCHIVE-PARENT] ✅ Parent saved to archive`);
+    
+    // Remove parent from family
+    if (isMain) {
+      // Should not happen, but handle it
+      return res.status(400).json({ error: 'לא ניתן למחוק את ההורה הראשי' });
+    } else {
+      family.additionalParents = family.additionalParents.filter((_, idx) => idx !== parentIndex);
+      
+      // Update family in database
+      await db.collection('families').updateOne(
+        { _id: familyId },
+        { $set: { additionalParents: family.additionalParents } }
+      );
+    }
+    
+    // Invalidate cache
+    invalidateFamilyCache(familyId);
+    
+    console.log(`[ARCHIVE-PARENT] ✅ Parent archived successfully`);
+    res.json({
+      success: true,
+      message: 'הורה הועבר לארכיון בהצלחה'
+    });
+  } catch (error) {
+    console.error(`[ARCHIVE-PARENT] ❌ Error:`, error);
+    res.status(500).json({ 
+      error: 'שגיאה בהעברת ההורה לארכיון',
+      details: error.message 
+    });
   }
 });
 

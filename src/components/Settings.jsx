@@ -1,8 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
-import { getCategories, addCategory, updateCategory, deleteCategory, getData, updateProfileImage, updateWeeklyAllowance, payWeeklyAllowance, createChild, updateChild, getFamilyInfo, updateParentInfo, addParent, archiveChild } from '../utils/api';
+import { getCategories, addCategory, updateCategory, deleteCategory, getData, updateProfileImage, updateWeeklyAllowance, payWeeklyAllowance, createChild, updateChild, getFamilyInfo, updateParentInfo, addParent, archiveChild, archiveParent } from '../utils/api';
 import { smartCompressImage } from '../utils/imageCompression';
-import ChildJoin from './ChildJoin';
 
 const CHILD_COLORS = {
   child1: '#3b82f6', // כחול
@@ -758,12 +757,16 @@ const Settings = ({ familyId, onClose, onLogout, activeTab: externalActiveTab, h
 
         {activeTab === 'children' && (
           <div className="children-section" style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-            {!asPage && <h2 style={{ fontSize: '20px', fontWeight: 700, margin: 0 }}>{t('parent.settings.manageChildren', { defaultValue: 'ניהול ילדים' })}</h2>}
+            {!asPage && <h2 style={{ fontSize: '20px', fontWeight: 700, margin: 0 }}>{t('parent.settings.manageChildren', { defaultValue: 'הגדרת ילדים' })}</h2>}
             
             {!showChildJoin && (
               <button
                 className="add-child-button"
-                onClick={() => setShowChildJoin(true)}
+                onClick={() => {
+                  setShowChildJoin(true);
+                  setNewChildName('');
+                  setNewChildPhone('');
+                }}
                 style={{
                   padding: '12px 24px',
                   borderRadius: '12px',
@@ -1314,21 +1317,6 @@ const Settings = ({ familyId, onClose, onLogout, activeTab: externalActiveTab, h
         )}
       </div>
 
-      {showChildJoin && (
-        <ChildJoin
-          familyId={familyId}
-          onJoined={async (child) => {
-            setShowChildJoin(false);
-            await loadData();
-            if (onClose) {
-              setTimeout(() => {
-                window.location.reload();
-              }, 1000);
-            }
-          }}
-          onCancel={() => setShowChildJoin(false)}
-        />
-      )}
 
 
       {editingChild && (
@@ -1464,7 +1452,7 @@ const Settings = ({ familyId, onClose, onLogout, activeTab: externalActiveTab, h
 
         {activeTab === 'parents' && (
           <div className="children-section" style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-            {!asPage && <h2 style={{ fontSize: '20px', fontWeight: 700, margin: 0 }}>{t('parent.settings.parents.title', { defaultValue: 'ניהול הורים' })}</h2>}
+            {!asPage && <h2 style={{ fontSize: '20px', fontWeight: 700, margin: 0 }}>{t('parent.settings.parents.title', { defaultValue: 'הגדרת הורים' })}</h2>}
             
             {!addingParent && (
               <button
@@ -1507,13 +1495,50 @@ const Settings = ({ familyId, onClose, onLogout, activeTab: externalActiveTab, h
                     }
                     try {
                       setUpdatingParent(true);
+                      
+                      // Show loading indicator
+                      const loadingIndicator = document.createElement('div');
+                      loadingIndicator.id = 'parent-saving-indicator';
+                      loadingIndicator.innerHTML = `
+                        <div style="
+                          position: fixed;
+                          top: 50%;
+                          left: 50%;
+                          transform: translate(-50%, -50%);
+                          background: rgba(0, 0, 0, 0.7);
+                          color: white;
+                          padding: 20px 30px;
+                          border-radius: 16px;
+                          z-index: 10006;
+                          display: flex;
+                          align-items: center;
+                          gap: 12px;
+                          font-weight: 600;
+                        ">
+                          <div style="
+                            width: 20px;
+                            height: 20px;
+                            border: 3px solid rgba(255, 255, 255, 0.3);
+                            border-top-color: white;
+                            border-radius: 50%;
+                            animation: spin 0.8s linear infinite;
+                          "></div>
+                          ${t('common.saving', { defaultValue: 'שומר...' })}
+                        </div>
+                      `;
+                      document.body.appendChild(loadingIndicator);
+                      
                       await addParent(familyId, newParentName.trim(), newParentPhone.trim());
                       await loadData();
                       setAddingParent(false);
                       setNewParentName('');
                       setNewParentPhone('');
                       
-                      // Show success notification
+                      // Remove loading indicator
+                      const indicator = document.getElementById('parent-saving-indicator');
+                      if (indicator) indicator.remove();
+                      
+                      // Show success notification at bottom
                       const notification = document.createElement('div');
                       notification.textContent = t('parent.settings.parents.addSuccess', { defaultValue: 'הורה נוסף בהצלחה!' });
                       const isRTL = i18n.language === 'he';
@@ -1522,7 +1547,7 @@ const Settings = ({ familyId, onClose, onLogout, activeTab: externalActiveTab, h
                       const rightOrLeft = isRTL ? 'left' : 'right';
                       notification.style.cssText = `
                         position: fixed;
-                        top: 20px;
+                        bottom: 100px;
                         ${rightOrLeft}: 20px;
                         background: linear-gradient(135deg, #10B981 0%, #059669 100%);
                         color: white;
@@ -1532,6 +1557,7 @@ const Settings = ({ familyId, onClose, onLogout, activeTab: externalActiveTab, h
                         z-index: 10005;
                         font-weight: 600;
                         animation: ${animationName} 0.3s ease;
+                        max-width: calc(100% - 40px);
                       `;
                       document.body.appendChild(notification);
                       setTimeout(() => {
@@ -1539,6 +1565,8 @@ const Settings = ({ familyId, onClose, onLogout, activeTab: externalActiveTab, h
                         setTimeout(() => notification.remove(), 300);
                       }, 2000);
                     } catch (error) {
+                      const indicator = document.getElementById('parent-saving-indicator');
+                      if (indicator) indicator.remove();
                       alert(t('parent.settings.parents.addError', { defaultValue: 'שגיאה בהוספת הורה' }) + ': ' + (error.message || 'Unknown error'));
                     } finally {
                       setUpdatingParent(false);
@@ -1783,13 +1811,50 @@ const Settings = ({ familyId, onClose, onLogout, activeTab: externalActiveTab, h
                             }
                             try {
                               setUpdatingParent(true);
+                              
+                              // Show loading indicator
+                              const loadingIndicator = document.createElement('div');
+                              loadingIndicator.id = 'parent-saving-indicator';
+                              loadingIndicator.innerHTML = `
+                                <div style="
+                                  position: fixed;
+                                  top: 50%;
+                                  left: 50%;
+                                  transform: translate(-50%, -50%);
+                                  background: rgba(0, 0, 0, 0.7);
+                                  color: white;
+                                  padding: 20px 30px;
+                                  border-radius: 16px;
+                                  z-index: 10006;
+                                  display: flex;
+                                  align-items: center;
+                                  gap: 12px;
+                                  font-weight: 600;
+                                ">
+                                  <div style="
+                                    width: 20px;
+                                    height: 20px;
+                                    border: 3px solid rgba(255, 255, 255, 0.3);
+                                    border-top-color: white;
+                                    border-radius: 50%;
+                                    animation: spin 0.8s linear infinite;
+                                  "></div>
+                                  ${t('common.saving', { defaultValue: 'שומר...' })}
+                                </div>
+                              `;
+                              document.body.appendChild(loadingIndicator);
+                              
                               await updateParentInfo(familyId, editParentName.trim(), editParentPhone.trim(), parent.isMain);
                               await loadData();
                               setEditingParent(null);
                               setEditParentName('');
                               setEditParentPhone('');
                               
-                              // Show success notification
+                              // Remove loading indicator
+                              const indicator = document.getElementById('parent-saving-indicator');
+                              if (indicator) indicator.remove();
+                              
+                              // Show success notification at bottom
                               const notification = document.createElement('div');
                               notification.textContent = t('parent.settings.parents.updateSuccess', { defaultValue: 'פרטי ההורה עודכנו בהצלחה!' });
                               const isRTL = i18n.language === 'he';
@@ -1798,7 +1863,7 @@ const Settings = ({ familyId, onClose, onLogout, activeTab: externalActiveTab, h
                               const rightOrLeft = isRTL ? 'left' : 'right';
                               notification.style.cssText = `
                                 position: fixed;
-                                top: 20px;
+                                bottom: 100px;
                                 ${rightOrLeft}: 20px;
                                 background: linear-gradient(135deg, #10B981 0%, #059669 100%);
                                 color: white;
@@ -1808,6 +1873,7 @@ const Settings = ({ familyId, onClose, onLogout, activeTab: externalActiveTab, h
                                 z-index: 10005;
                                 font-weight: 600;
                                 animation: ${animationName} 0.3s ease;
+                                max-width: calc(100% - 40px);
                               `;
                               document.body.appendChild(notification);
                               setTimeout(() => {
@@ -1815,6 +1881,8 @@ const Settings = ({ familyId, onClose, onLogout, activeTab: externalActiveTab, h
                                 setTimeout(() => notification.remove(), 300);
                               }, 2000);
                             } catch (error) {
+                              const indicator = document.getElementById('parent-saving-indicator');
+                              if (indicator) indicator.remove();
                               alert(t('parent.settings.parents.updateError', { defaultValue: 'שגיאה בעדכון פרטי ההורה' }) + ': ' + error.message);
                             } finally {
                               setUpdatingParent(false);

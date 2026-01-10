@@ -38,7 +38,7 @@ const Sidebar = ({ isOpen, onClose, familyId, onLogout, onChildrenUpdated, onMen
     },
     {
       id: 'parents',
-      label: t('sidebar.parents', { defaultValue: 'הורים' }),
+      label: t('sidebar.parents', { defaultValue: 'הגדרת הורים' }),
       icon: '👨‍👩‍👧‍👦'
     }
   ];
