@@ -761,80 +761,172 @@ const Settings = ({ familyId, onClose, onLogout, activeTab: externalActiveTab, h
             
             <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
               {Object.entries(allData.children || {}).map(([childId, child]) => (
-                <div 
-                  key={childId} 
-                  style={{
-                    background: 'white',
-                    padding: '16px',
-                    borderRadius: '16px',
-                    boxShadow: '0 2px 10px rgba(0,0,0,0.05)',
-                    display: 'flex',
-                    flexDirection: 'row',
-                    alignItems: 'center',
-                    gap: '12px'
-                  }}
-                >
-                  {child.profileImage && (
-                    <img 
-                      src={child.profileImage} 
-                      alt={child.name} 
-                      style={{
-                        width: '50px',
-                        height: '50px',
-                        borderRadius: '50%',
-                        objectFit: 'cover',
-                        flexShrink: 0
-                      }}
-                    />
+                <div key={childId}>
+                  <div 
+                    style={{
+                      background: 'white',
+                      padding: '16px',
+                      borderRadius: '16px',
+                      boxShadow: '0 2px 10px rgba(0,0,0,0.05)',
+                      display: 'flex',
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      gap: '12px'
+                    }}
+                  >
+                    {child.profileImage && (
+                      <img 
+                        src={child.profileImage} 
+                        alt={child.name} 
+                        style={{
+                          width: '50px',
+                          height: '50px',
+                          borderRadius: '50%',
+                          objectFit: 'cover',
+                          flexShrink: 0
+                        }}
+                      />
+                    )}
+                    <div style={{ flex: 1 }}>
+                      <h3 style={{ margin: 0, fontSize: '16px', fontWeight: 600 }}>{child.name}</h3>
+                      <p style={{ margin: '4px 0 0 0', fontSize: '14px', color: 'var(--text-muted)' }}>
+                        {t('parent.settings.balance', { defaultValue: 'יתרה' })}: ₪{((child.balance || 0) + (child.cashBoxBalance || 0)).toFixed(2)}
+                      </p>
+                    </div>
+                    <div style={{ display: 'flex', gap: '8px', flexShrink: 0 }}>
+                      <button
+                        onClick={() => {
+                          setEditingChild({ childId, childName: child.name, phoneNumber: child.phoneNumber || '' });
+                          setEditChildName(child.name);
+                          setEditChildPhone(child.phoneNumber || '');
+                        }}
+                        style={{
+                          padding: '8px 16px',
+                          borderRadius: '8px',
+                          border: '1px solid rgba(0,0,0,0.1)',
+                          background: 'white',
+                          fontSize: '14px',
+                          fontWeight: 500,
+                          cursor: 'pointer'
+                        }}
+                      >
+                        {t('common.edit', { defaultValue: 'ערוך' })}
+                      </button>
+                      <button
+                        onClick={() => {
+                          if (childPhoneModal && childPhoneModal.childId === childId) {
+                            setChildPhoneModal(null);
+                          } else {
+                            setChildPhoneModal({ 
+                              childId, 
+                              childName: child.name, 
+                              phoneNumber: child.phoneNumber || '',
+                              createdAt: child.createdAt,
+                              lastLogin: child.lastLogin || child.lastAccess
+                            });
+                          }
+                        }}
+                        style={{
+                          padding: '8px 16px',
+                          borderRadius: '8px',
+                          border: '1px solid rgba(0,0,0,0.1)',
+                          background: (childPhoneModal && childPhoneModal.childId === childId) ? 'var(--primary)' : 'white',
+                          color: (childPhoneModal && childPhoneModal.childId === childId) ? 'white' : 'var(--text-main)',
+                          fontSize: '14px',
+                          fontWeight: 500,
+                          cursor: 'pointer'
+                        }}
+                      >
+                        {t('parent.settings.viewDetails', { defaultValue: 'הצג פרטים' })}
+                      </button>
+                    </div>
+                  </div>
+                  {childPhoneModal && childPhoneModal.childId === childId && (
+                    <div style={{
+                      marginTop: '12px',
+                      padding: '20px',
+                      background: 'white',
+                      borderRadius: '16px',
+                      boxShadow: '0 2px 10px rgba(0,0,0,0.05)',
+                      border: '1px solid rgba(99, 102, 241, 0.2)'
+                    }}>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+                        <div>
+                          <p className="password-label" style={{ marginBottom: '8px' }}>{t('parent.settings.childDetails.phoneNumber', { defaultValue: 'מספר טלפון להרשמה' })}:</p>
+                          <div className="password-display-container">
+                            <div className="password-display" id="phone-display" style={{ flex: 1 }}>
+                              {childPhoneModal.phoneNumber || t('parent.settings.noPhoneNumber', { defaultValue: 'לא מוגדר' })}
+                            </div>
+                            {childPhoneModal.phoneNumber && (
+                              <button 
+                                className="copy-button"
+                                onClick={() => {
+                                  navigator.clipboard.writeText(childPhoneModal.phoneNumber);
+                                  const btn = document.querySelector('.copy-button');
+                                  const originalText = btn.textContent;
+                                  btn.textContent = '✅ ' + t('parent.settings.passwordModal.copied', { defaultValue: 'הועתק!' });
+                                  setTimeout(() => {
+                                    btn.textContent = originalText;
+                                  }, 2000);
+                                }}
+                                title={t('parent.settings.phoneModal.copyPhone', { defaultValue: 'העתק מספר טלפון' })}
+                              >
+                                📋 {t('parent.settings.passwordModal.copy', { defaultValue: 'העתק' })}
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                        
+                        <div>
+                          <p className="password-label" style={{ marginBottom: '8px' }}>{t('parent.settings.childDetails.firstLogin', { defaultValue: 'כניסה ראשונה' })}:</p>
+                          <div style={{ 
+                            padding: '16px', 
+                            background: 'linear-gradient(135deg, #6366F1 0%, #8B5CF6 100%)', 
+                            borderRadius: '12px', 
+                            color: 'white',
+                            fontSize: '16px',
+                            fontWeight: 600,
+                            textAlign: 'center'
+                          }}>
+                            {childPhoneModal.createdAt 
+                              ? new Date(childPhoneModal.createdAt).toLocaleDateString('he-IL', { 
+                                  year: 'numeric', 
+                                  month: 'long', 
+                                  day: 'numeric',
+                                  hour: '2-digit',
+                                  minute: '2-digit'
+                                })
+                              : t('parent.settings.notAvailable', { defaultValue: 'לא זמין' })
+                            }
+                          </div>
+                        </div>
+                        
+                        <div>
+                          <p className="password-label" style={{ marginBottom: '8px' }}>{t('parent.settings.childDetails.lastLogin', { defaultValue: 'כניסה אחרונה' })}:</p>
+                          <div style={{ 
+                            padding: '16px', 
+                            background: 'linear-gradient(135deg, #10B981 0%, #059669 100%)', 
+                            borderRadius: '12px', 
+                            color: 'white',
+                            fontSize: '16px',
+                            fontWeight: 600,
+                            textAlign: 'center'
+                          }}>
+                            {childPhoneModal.lastLogin 
+                              ? new Date(childPhoneModal.lastLogin).toLocaleDateString('he-IL', { 
+                                  year: 'numeric', 
+                                  month: 'long', 
+                                  day: 'numeric',
+                                  hour: '2-digit',
+                                  minute: '2-digit'
+                                })
+                              : t('parent.settings.neverLoggedIn', { defaultValue: 'מעולם לא נכנס' })
+                            }
+                          </div>
+                        </div>
+                      </div>
+                    </div>
                   )}
-                  <div style={{ flex: 1 }}>
-                    <h3 style={{ margin: 0, fontSize: '16px', fontWeight: 600 }}>{child.name}</h3>
-                    <p style={{ margin: '4px 0 0 0', fontSize: '14px', color: 'var(--text-muted)' }}>
-                      {t('parent.settings.balance', { defaultValue: 'יתרה' })}: ₪{((child.balance || 0) + (child.cashBoxBalance || 0)).toFixed(2)}
-                    </p>
-                  </div>
-                  <div style={{ display: 'flex', gap: '8px', flexShrink: 0 }}>
-                    <button
-                      onClick={() => {
-                        setEditingChild({ childId, childName: child.name, phoneNumber: child.phoneNumber || '' });
-                        setEditChildName(child.name);
-                        setEditChildPhone(child.phoneNumber || '');
-                      }}
-                      style={{
-                        padding: '8px 16px',
-                        borderRadius: '8px',
-                        border: '1px solid rgba(0,0,0,0.1)',
-                        background: 'white',
-                        fontSize: '14px',
-                        fontWeight: 500,
-                        cursor: 'pointer'
-                      }}
-                    >
-                      {t('common.edit', { defaultValue: 'ערוך' })}
-                    </button>
-                    <button
-                      onClick={() => {
-                        setChildPhoneModal({ 
-                          childId, 
-                          childName: child.name, 
-                          phoneNumber: child.phoneNumber || '',
-                          createdAt: child.createdAt,
-                          lastLogin: child.lastLogin || child.lastAccess
-                        });
-                      }}
-                      style={{
-                        padding: '8px 16px',
-                        borderRadius: '8px',
-                        border: '1px solid rgba(0,0,0,0.1)',
-                        background: 'white',
-                        fontSize: '14px',
-                        fontWeight: 500,
-                        cursor: 'pointer'
-                      }}
-                    >
-                      {t('parent.settings.viewDetails', { defaultValue: 'הצג פרטים' })}
-                    </button>
-                  </div>
                 </div>
               ))}
             </div>
@@ -984,82 +1076,6 @@ const Settings = ({ familyId, onClose, onLogout, activeTab: externalActiveTab, h
         />
       )}
 
-      {childPhoneModal && (
-        <div className="password-modal-overlay" onClick={() => setChildPhoneModal(null)}>
-          <div className="password-modal" onClick={(e) => e.stopPropagation()}>
-            <div className="password-modal-header">
-              <h2>{t('parent.settings.childDetails.title', { name: childPhoneModal.childName, defaultValue: 'פרטי {name}' })}</h2>
-              <button className="close-button" onClick={() => setChildPhoneModal(null)}>×</button>
-            </div>
-            <div className="password-modal-content">
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-                <div>
-                  <p className="password-label">{t('parent.settings.childDetails.phoneNumber', { defaultValue: 'מספר טלפון להרשמה' })}:</p>
-                  <div className="password-display-container">
-                    <div className="password-display" id="phone-display">
-                      {childPhoneModal.phoneNumber || t('parent.settings.noPhoneNumber', { defaultValue: 'לא מוגדר' })}
-                    </div>
-                    {childPhoneModal.phoneNumber && (
-                      <button 
-                        className="copy-button"
-                        onClick={() => {
-                          navigator.clipboard.writeText(childPhoneModal.phoneNumber);
-                          const btn = document.querySelector('.copy-button');
-                          const originalText = btn.textContent;
-                          btn.textContent = '✅ ' + t('parent.settings.passwordModal.copied', { defaultValue: 'הועתק!' });
-                          setTimeout(() => {
-                            btn.textContent = originalText;
-                          }, 2000);
-                        }}
-                        title={t('parent.settings.phoneModal.copyPhone', { defaultValue: 'העתק מספר טלפון' })}
-                      >
-                        📋 {t('parent.settings.passwordModal.copy', { defaultValue: 'העתק' })}
-                      </button>
-                    )}
-                  </div>
-                </div>
-                
-                <div>
-                  <p className="password-label">{t('parent.settings.childDetails.firstLogin', { defaultValue: 'כניסה ראשונה' })}:</p>
-                  <div className="password-display" style={{ padding: '12px', background: '#F3F4F6', borderRadius: '8px', marginTop: '8px' }}>
-                    {childPhoneModal.createdAt 
-                      ? new Date(childPhoneModal.createdAt).toLocaleDateString('he-IL', { 
-                          year: 'numeric', 
-                          month: 'long', 
-                          day: 'numeric',
-                          hour: '2-digit',
-                          minute: '2-digit'
-                        })
-                      : t('parent.settings.notAvailable', { defaultValue: 'לא זמין' })
-                    }
-                  </div>
-                </div>
-                
-                <div>
-                  <p className="password-label">{t('parent.settings.childDetails.lastLogin', { defaultValue: 'כניסה אחרונה' })}:</p>
-                  <div className="password-display" style={{ padding: '12px', background: '#F3F4F6', borderRadius: '8px', marginTop: '8px' }}>
-                    {childPhoneModal.lastLogin 
-                      ? new Date(childPhoneModal.lastLogin).toLocaleDateString('he-IL', { 
-                          year: 'numeric', 
-                          month: 'long', 
-                          day: 'numeric',
-                          hour: '2-digit',
-                          minute: '2-digit'
-                        })
-                      : t('parent.settings.neverLoggedIn', { defaultValue: 'מעולם לא נכנס' })
-                    }
-                  </div>
-                </div>
-              </div>
-            </div>
-            <div className="password-modal-footer">
-              <button className="password-close-button" onClick={() => setChildPhoneModal(null)}>
-                {t('parent.settings.passwordModal.close', { defaultValue: 'סגור' })}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
 
       {editingChild && (
         <div className="password-modal-overlay" onClick={() => {
