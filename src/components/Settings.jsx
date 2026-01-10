@@ -1429,7 +1429,9 @@ const Settings = ({ familyId, onClose, onLogout, activeTab: externalActiveTab, h
                     setNewChildName('');
                     setNewChildPhone('');
                     
-                    console.log('[CREATE-CHILD] Reloading data...');
+                    console.log('[CREATE-CHILD] Invalidating cache and reloading data...');
+                    // Force reload by clearing cache first
+                    invalidateFamilyCache(familyId);
                     await loadData();
                     console.log('[CREATE-CHILD] ✅ Data reloaded');
                     

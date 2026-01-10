@@ -404,7 +404,11 @@ export const createChild = async (familyId, name, phoneNumber) => {
   const response = await apiCall(`/families/${familyId}/children`, {
     method: 'POST',
     body: JSON.stringify({ name, phoneNumber })
-  });
+  }, { useCache: false });
+  
+  // Invalidate cache to ensure fresh data is loaded
+  invalidateFamilyCache(familyId);
+  
   return response;
 };
 
