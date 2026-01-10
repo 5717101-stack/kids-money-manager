@@ -270,19 +270,20 @@ const ParentDashboard = ({ familyId, onChildrenUpdated, onLogout, onViewChild })
     <div className="app-layout parent-dashboard-new" dir={i18n.language === 'he' ? 'rtl' : 'ltr'}>
       {/* Header */}
       <div className="app-header">
-        <button 
-          className="menu-btn" 
-          onClick={() => setShowSidebar(true)}
-          title={t('common.settings', { defaultValue: 'הגדרות' })}
-          aria-label={t('common.settings', { defaultValue: 'הגדרות' })}
-        >
-          ☰
-        </button>
         <h1 className="header-title">
           {getPageTitle()}
         </h1>
-        <div style={{ width: '44px' }}></div> {/* Spacer for centering */}
       </div>
+      
+      {/* Menu button in top right corner */}
+      <button 
+        className="menu-btn menu-btn-top-right" 
+        onClick={() => setShowSidebar(true)}
+        title={t('common.settings', { defaultValue: 'הגדרות' })}
+        aria-label={t('common.settings', { defaultValue: 'הגדרות' })}
+      >
+        ☰
+      </button>
 
       {/* Content based on current view */}
       {currentView === 'dashboard' && (
