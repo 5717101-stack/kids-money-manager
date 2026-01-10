@@ -673,11 +673,11 @@ const ChildView = ({ childId, familyId, onBackToParent, onLogout }) => {
         <div className="big-balance" style={{ marginBottom: '16px' }}>₪{totalBalance.toFixed(2)}</div>
         <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '14px', color: 'var(--text-muted)', paddingTop: '12px', borderTop: '1px solid rgba(0,0,0,0.1)' }}>
           <div>
-            <div style={{ fontSize: '12px', marginBottom: '4px' }}>יתרה אצל ההורים</div>
+            <div style={{ fontSize: '12px', marginBottom: '4px' }}>{t('child.dashboard.balanceWithParents', { defaultValue: 'יתרה אצל ההורים' })}</div>
             <div style={{ fontSize: '16px', fontWeight: 600, color: 'var(--text-main)' }}>₪{(childData?.balance || 0).toFixed(2)}</div>
           </div>
           <div style={{ textAlign: 'right' }}>
-            <div style={{ fontSize: '12px', marginBottom: '4px' }}>יתרה בקופה</div>
+            <div style={{ fontSize: '12px', marginBottom: '4px' }}>{t('child.dashboard.cashBoxBalance', { defaultValue: 'יתרה בקופה' })}</div>
             <div style={{ fontSize: '16px', fontWeight: 600, color: 'var(--text-main)' }}>₪{(childData?.cashBoxBalance || 0).toFixed(2)}</div>
           </div>
         </div>

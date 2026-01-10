@@ -83,6 +83,19 @@
       "childPhone": "Child Phone Number",
       "viewPhone": "View Phone",
       "noPhoneNumber": "This child has no phone number set",
+      "notAvailable": "Not available",
+      "neverLoggedIn": "Never logged in",
+      "viewDetails": "View Details",
+      "closeDetails": "Close Details",
+      "deleteChild": "Delete Child",
+      "deleteChildConfirm": "Are you sure you want to delete {name}? This action cannot be undone.",
+      "deleteChildSuccess": "Child {name} deleted successfully",
+      "deleteChildError": "Error deleting child",
+      "childDetails": {
+        "phoneNumber": "Registration Phone Number",
+        "firstLogin": "First Login",
+        "lastLogin": "Last Login"
+      },
     "phoneModal": {
       "title": "Phone Number for {name}",
       "phoneNumber": "Phone Number",
@@ -164,6 +177,7 @@
         "amount": "Allowance Amount",
         "time": "Time",
         "save": "Save Changes",
+        "update": "Update Settings",
         "paid": "Allowance paid to {name}!",
         "error": "Error paying allowance",
         "payNow": "Pay Allowance Now"
@@ -189,6 +203,10 @@
       "cashBox": "Cash Box",
       "totalBalance": "Total Balance",
       "myBalance": "My Balance:",
+      "balanceWithParents": "Balance with Parents",
+      "cashBoxBalance": "Cash Box Balance",
+      "addIncome": "Income",
+      "recordExpense": "Expense",
       "backToParent": "Back to Parents Dashboard",
       "noData": "No data",
       "error": "Error",
