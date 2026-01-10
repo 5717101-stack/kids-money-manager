@@ -838,7 +838,7 @@ const ChildView = ({ childId, familyId, onBackToParent, onLogout }) => {
               return (
                 <div className="no-transactions-message">
                   {filteredCategory 
-                    ? t('child.history.noTransactionsForCategory', { category: filteredCategory, defaultValue: `אין עסקאות בקטגוריה "${filteredCategory}"` })
+                    ? t('child.history.noTransactionsForCategory', { category: filteredCategory }).replace('{category}', filteredCategory)
                     : t('child.history.noTransactions', { defaultValue: 'אין עסקאות' })
                   }
                 </div>

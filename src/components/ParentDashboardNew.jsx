@@ -517,7 +517,7 @@ const ParentDashboard = ({ familyId, onChildrenUpdated, onLogout, onViewChild })
               return (
                 <div className="no-activity-message">
                   {filteredCategory 
-                    ? t('parent.dashboard.noActivityForCategory', { category: filteredCategory, defaultValue: `אין פעילות בקטגוריה "${filteredCategory}"` })
+                    ? t('parent.dashboard.noActivityForCategory', { category: filteredCategory }).replace('{category}', filteredCategory)
                     : t('parent.dashboard.noActivity', { defaultValue: 'אין פעילות אחרונה' })
                   }
                 </div>
