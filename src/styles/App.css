@@ -1236,6 +1236,189 @@ body {
   font-weight: 600;
 }
 
+/* Allowances Section - Modern Design */
+.allowances-section {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.allowance-info {
+  font-size: 14px;
+  color: var(--text-muted);
+  line-height: 1.5;
+  margin-bottom: 8px;
+  padding: 12px 16px;
+  background: rgba(99, 102, 241, 0.05);
+  border-radius: 12px;
+  border-left: 3px solid var(--primary);
+}
+
+.allowance-item {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.allowance-item-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.08);
+}
+
+.allowance-child-avatar {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  object-fit: cover;
+  border: 2px solid rgba(99, 102, 241, 0.2);
+  flex-shrink: 0;
+}
+
+.allowance-child-name {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--text-main);
+}
+
+.allowance-config-group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.allowance-label {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-muted);
+  margin: 0;
+}
+
+.allowance-input-group {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.allowance-input {
+  width: 100%;
+  padding: 12px 40px 12px 16px;
+  border: 2px solid rgba(0, 0, 0, 0.1);
+  border-radius: 12px;
+  font-size: 16px;
+  font-weight: 600;
+  background: white;
+  color: var(--text-main);
+  transition: all 0.2s ease;
+  box-sizing: border-box;
+}
+
+.allowance-input:focus {
+  outline: none;
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.1);
+}
+
+.allowance-time-input {
+  width: 140px !important;
+  padding: 12px 16px;
+}
+
+.currency-label {
+  position: absolute;
+  right: 16px;
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--primary);
+  pointer-events: none;
+}
+
+.frequency-toggle {
+  display: flex;
+  gap: 8px;
+  background: #F3F4F6;
+  padding: 4px;
+  border-radius: 12px;
+}
+
+.frequency-button {
+  flex: 1;
+  padding: 10px 16px;
+  border: none;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 600;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.frequency-button:hover {
+  background: rgba(255, 255, 255, 0.5);
+}
+
+.frequency-button.active {
+  background: white;
+  color: var(--primary);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.allowance-select {
+  width: 100%;
+  padding: 12px 40px 12px 16px;
+  border: 2px solid rgba(0, 0, 0, 0.1);
+  border-radius: 12px;
+  font-size: 16px;
+  font-weight: 500;
+  background: white;
+  color: var(--text-main);
+  cursor: pointer;
+  transition: all 0.2s ease;
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%236366F1' d='M6 9L1 4h10z'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 16px center;
+}
+
+[dir="rtl"] .allowance-select {
+  background-position: left 16px center;
+}
+
+.allowance-select:focus {
+  outline: none;
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.1);
+}
+
+.pay-allowance-button {
+  width: 100%;
+  padding: 14px 24px;
+  border: none;
+  border-radius: 12px;
+  background: var(--primary-gradient);
+  color: white;
+  font-size: 16px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  box-shadow: 0 4px 12px rgba(99, 102, 241, 0.3);
+  margin-top: 8px;
+}
+
+.pay-allowance-button:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 16px rgba(99, 102, 241, 0.4);
+}
+
+.pay-allowance-button:active {
+  transform: translateY(0);
+  box-shadow: 0 2px 8px rgba(99, 102, 241, 0.3);
+}
+
 .activity-content {
   flex: 1;
   overflow: hidden;

@@ -585,7 +585,7 @@ const Settings = ({ familyId, onClose, onLogout, activeTab: externalActiveTab, h
 
         {activeTab === 'allowances' && (
           <div className="allowances-section">
-            {!asPage && <h2>{t('parent.settings.allowance.title', { defaultValue: 'דמי כיס' })}</h2>}
+            {!asPage && <h2 style={{ fontSize: '20px', fontWeight: 700, marginBottom: '16px' }}>{t('parent.settings.allowance.title', { defaultValue: 'דמי כיס' })}</h2>}
             <p className="allowance-info">
               {t('parent.settings.allowance.description', { 
                 defaultValue: 'הגדר את הסכום, תדירות (שבועי/חודשי), יום/תאריך ושעה. הסכום יתווסף אוטומטית ליתרה אצל ההורים. ניתן גם לשלם ידנית באמצעות הכפתור למטה.' 
@@ -620,11 +620,22 @@ const Settings = ({ familyId, onClose, onLogout, activeTab: externalActiveTab, h
               };
 
               return (
-                <div key={childId} className="allowance-item">
-                  <h3>{child?.name || t('parent.settings.child', { defaultValue: 'ילד' })}</h3>
+                <div key={childId} className="fintech-card allowance-item">
+                  <div className="allowance-item-header">
+                    {child.profileImage && (
+                      <img 
+                        src={child.profileImage} 
+                        alt={child.name}
+                        className="allowance-child-avatar"
+                        loading="lazy"
+                        decoding="async"
+                      />
+                    )}
+                    <h3 className="allowance-child-name">{child?.name || t('parent.settings.child', { defaultValue: 'ילד' })}</h3>
+                  </div>
                   
                   <div className="allowance-config-group">
-                    <label className="allowance-label">{t('parent.settings.allowance.amount', { defaultValue: 'סכום קצבה' })}:</label>
+                    <label className="allowance-label">{t('parent.settings.allowance.amount', { defaultValue: 'סכום קצבה' })}</label>
                     <div className="allowance-input-group">
                       <input
                         type="number"
@@ -635,13 +646,14 @@ const Settings = ({ familyId, onClose, onLogout, activeTab: externalActiveTab, h
                         onChange={(e) => updateState({ amount: parseFloat(e.target.value) || 0 })}
                         onBlur={saveChanges}
                         className="allowance-input"
+                        placeholder="0.00"
                       />
                       <span className="currency-label">₪</span>
                     </div>
                   </div>
 
                   <div className="allowance-config-group">
-                    <label className="allowance-label">{t('parent.settings.allowance.frequency', { defaultValue: 'תדירות' })}:</label>
+                    <label className="allowance-label">{t('parent.settings.allowance.frequency', { defaultValue: 'תדירות' })}</label>
                     <div className="frequency-toggle">
                       <button
                         type="button"
@@ -673,7 +685,7 @@ const Settings = ({ familyId, onClose, onLogout, activeTab: externalActiveTab, h
                       {state.type === 'weekly' 
                         ? t('parent.settings.allowance.dayOfWeek', { defaultValue: 'יום בשבוע' })
                         : t('parent.settings.allowance.dateOfMonth', { defaultValue: 'תאריך בחודש' })
-                      }:
+                      }
                     </label>
                     {state.type === 'weekly' ? (
                       <select
@@ -707,7 +719,7 @@ const Settings = ({ familyId, onClose, onLogout, activeTab: externalActiveTab, h
                   </div>
 
                   <div className="allowance-config-group">
-                    <label className="allowance-label">{t('parent.settings.allowance.time', { defaultValue: 'שעה' })}:</label>
+                    <label className="allowance-label">{t('parent.settings.allowance.time', { defaultValue: 'שעה' })}</label>
                     <input
                       type="time"
                       value={state.time}
@@ -715,8 +727,7 @@ const Settings = ({ familyId, onClose, onLogout, activeTab: externalActiveTab, h
                         updateState({ time: e.target.value });
                         setTimeout(saveChanges, 0);
                       }}
-                      className="allowance-input"
-                      style={{ width: '120px' }}
+                      className="allowance-input allowance-time-input"
                     />
                   </div>
 
