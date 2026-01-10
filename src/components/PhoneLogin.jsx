@@ -122,21 +122,24 @@ const PhoneLogin = ({ onOTPSent }) => {
                   {selectedCountry.flag}
                 </button>
                 {showCountryList && (
-                  <div style={{
-                    position: 'absolute',
-                    top: '100%',
-                    [i18n.language === 'he' ? 'right' : 'left']: 0,
-                    marginTop: '8px',
-                    background: 'white',
-                    borderRadius: '12px',
-                    border: '1px solid rgba(0,0,0,0.1)',
-                    boxShadow: '0 10px 40px rgba(0,0,0,0.15)',
-                    maxHeight: '300px',
-                    overflowY: 'auto',
-                    zIndex: 1000,
-                    minWidth: '250px',
-                    width: 'auto'
-                  }}>
+                  <div 
+                    dir={i18n.language === 'he' ? 'rtl' : 'ltr'}
+                    style={{
+                      position: 'absolute',
+                      top: '100%',
+                      [i18n.language === 'he' ? 'right' : 'left']: 0,
+                      marginTop: '8px',
+                      background: 'white',
+                      borderRadius: '12px',
+                      border: '1px solid rgba(0,0,0,0.1)',
+                      boxShadow: '0 10px 40px rgba(0,0,0,0.15)',
+                      maxHeight: '300px',
+                      overflowY: 'auto',
+                      zIndex: 1000,
+                      minWidth: '250px',
+                      width: 'auto'
+                    }}
+                  >
                     {COUNTRY_CODES.map((country) => (
                       <button
                         key={country.code}
@@ -150,12 +153,13 @@ const PhoneLogin = ({ onOTPSent }) => {
                           padding: '12px 16px',
                           border: 'none',
                           background: 'transparent',
-                          textAlign: 'start',
+                          textAlign: i18n.language === 'he' ? 'right' : 'left',
                           cursor: 'pointer',
                           fontSize: '14px',
                           display: 'flex',
                           alignItems: 'center',
-                          gap: '12px'
+                          gap: '12px',
+                          flexDirection: i18n.language === 'he' ? 'row-reverse' : 'row'
                         }}
                         onMouseEnter={(e) => e.currentTarget.style.background = '#F3F4F6'}
                         onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
