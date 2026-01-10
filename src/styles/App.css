@@ -1190,6 +1190,10 @@ body {
   padding: 20px 24px 16px 24px;
   border-bottom: 1px solid rgba(0, 0, 0, 0.08);
   flex-shrink: 0;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
 }
 
 .activity-header h2 {
@@ -1197,6 +1201,39 @@ body {
   font-size: 18px;
   font-weight: 600;
   color: var(--text-main);
+  flex: 1;
+}
+
+.activity-limit-selector {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.activity-limit-btn {
+  padding: 6px 12px;
+  border-radius: 8px;
+  border: 1px solid rgba(0, 0, 0, 0.15);
+  background: white;
+  color: var(--text-main);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  min-width: 40px;
+  text-align: center;
+}
+
+.activity-limit-btn:hover {
+  background: #F3F4F6;
+  border-color: var(--primary);
+}
+
+.activity-limit-btn.active {
+  background: var(--primary-gradient);
+  color: white;
+  border-color: var(--primary);
+  font-weight: 600;
 }
 
 .activity-content {

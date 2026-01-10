@@ -26,12 +26,21 @@ const ParentDashboard = ({ familyId, onChildrenUpdated, onLogout, onViewChild })
   const [showImagePicker, setShowImagePicker] = useState(false);
   const fileInputRef = React.useRef(null);
   const [showBalanceDetail, setShowBalanceDetail] = useState(false);
+  const [activityLimit, setActivityLimit] = useState(() => {
+    // Load from localStorage or default to 5
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('parentActivityLimit');
+      if (saved === 'all') return null;
+      return saved ? parseInt(saved, 10) : 5;
+    }
+    return 5;
+  });
 
   useEffect(() => {
     loadData();
     const interval = setInterval(loadData, 15000); // Refresh every 15 seconds (reduced for better performance)
     return () => clearInterval(interval);
-  }, [familyId]);
+  }, [familyId, activityLimit]);
 
   const loadData = async () => {
     if (!familyId) return;
@@ -64,9 +73,12 @@ const ParentDashboard = ({ familyId, onChildrenUpdated, onLogout, onViewChild })
 
         // Load recent transactions from all children
         const allTransactions = [];
+        // If limit is null (all), load more transactions per child, otherwise use the limit
+        const perChildLimit = activityLimit === null ? 50 : Math.ceil(activityLimit / Math.max(children.length, 1));
+        
         for (const child of children) {
           try {
-            const trans = await getChildTransactions(familyId, child._id, 5);
+            const trans = await getChildTransactions(familyId, child._id, perChildLimit);
             trans.forEach(t => {
               allTransactions.push({
                 ...t,
@@ -78,9 +90,11 @@ const ParentDashboard = ({ familyId, onChildrenUpdated, onLogout, onViewChild })
             console.error(`Error loading transactions for ${child.name}:`, err);
           }
         }
-        // Sort by date (newest first) and take last 5
+        // Sort by date (newest first)
         allTransactions.sort((a, b) => new Date(b.date || b.createdAt) - new Date(a.date || a.createdAt));
-        setRecentTransactions(allTransactions.slice(0, 5));
+        // Apply limit if not null
+        const finalTransactions = activityLimit === null ? allTransactions : allTransactions.slice(0, activityLimit);
+        setRecentTransactions(finalTransactions);
       }
 
       if (categoriesResult.status === 'fulfilled') {
@@ -429,6 +443,35 @@ const ParentDashboard = ({ familyId, onChildrenUpdated, onLogout, onViewChild })
       <div className="fintech-card activity-card">
         <div className="activity-header">
           <h2>{t('parent.dashboard.recentActivity', { defaultValue: 'פעילות אחרונה' })}</h2>
+          <div className="activity-limit-selector">
+            <button
+              className={`activity-limit-btn ${activityLimit === 5 ? 'active' : ''}`}
+              onClick={() => {
+                setActivityLimit(5);
+                localStorage.setItem('parentActivityLimit', '5');
+              }}
+            >
+              5
+            </button>
+            <button
+              className={`activity-limit-btn ${activityLimit === 20 ? 'active' : ''}`}
+              onClick={() => {
+                setActivityLimit(20);
+                localStorage.setItem('parentActivityLimit', '20');
+              }}
+            >
+              20
+            </button>
+            <button
+              className={`activity-limit-btn ${activityLimit === null ? 'active' : ''}`}
+              onClick={() => {
+                setActivityLimit(null);
+                localStorage.setItem('parentActivityLimit', 'all');
+              }}
+            >
+              {t('parent.dashboard.all', { defaultValue: 'הכל' })}
+            </button>
+          </div>
         </div>
         <div className="activity-content">
           {recentTransactions.length === 0 ? (
