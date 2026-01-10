@@ -510,7 +510,18 @@ const ChildView = ({ childId, familyId, onBackToParent, onLogout }) => {
   if (!childData) {
     return (
       <div className="child-view-loading" dir={i18n.language === 'he' ? 'rtl' : 'ltr'}>
-        <div className="loading">{t('child.dashboard.noData', { defaultValue: 'אין נתונים' })}</div>
+        <div style={{
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          justifyContent: 'center',
+          padding: '60px 20px',
+          gap: '20px'
+        }}>
+          <div style={{ color: 'var(--text-muted)', fontSize: '16px', fontWeight: 500 }}>
+            {t('child.dashboard.noData', { defaultValue: 'אין נתונים' })}
+          </div>
+        </div>
       </div>
     );
   }
