@@ -1043,6 +1043,24 @@ async function processAllowancesForFamily(familyId) {
           invalidateFamilyCache(familyId);
         }
         
+        // Send push notification
+        const allowanceTypeText = allowanceType === 'weekly' ? 'שבועיים' : 'חודשיים';
+        const notificationTitle = 'דמי כיס התקבלו! 💰';
+        const notificationBody = `התקבלו ${child.weeklyAllowance} ש״ח דמי כיס ${allowanceTypeText}`;
+        
+        try {
+          const { sendPushToFamily } = await import('./pushNotifications.js');
+          await sendPushToFamily(familyId, notificationTitle, notificationBody, {
+            type: 'allowance',
+            childId: child._id,
+            childName: child.name,
+            amount: child.weeklyAllowance,
+            allowanceType
+          });
+        } catch (error) {
+          console.error('Error sending push notification for allowance:', error);
+        }
+        
         console.log(`✅ Added ${allowanceType} allowance of ${child.weeklyAllowance} to ${child.name} in family ${familyId} at ${new Date().toISOString()}`);
       }
     }
