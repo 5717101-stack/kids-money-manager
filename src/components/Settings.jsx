@@ -1775,7 +1775,7 @@ const Settings = ({ familyId, onClose, onLogout, activeTab: externalActiveTab, h
                             onClick={async () => {
                               const childName = child?.name || t('parent.settings.child', { defaultValue: 'ילד' });
                               const confirmMessage = t('parent.settings.deleteChildConfirm', { 
-                                defaultValue: 'Are you sure you want to delete {name}? This action will move all data to archive and cannot be undone.',
+                                defaultValue: 'האם אתה בטוח שברצונך למחוק את {name}? פעולה זו תעביר את כל הנתונים לארכיון ולא ניתן לבטל אותה.',
                                 name: childName
                               }).replace(/\{name\}/g, childName);
                               
@@ -1793,7 +1793,7 @@ const Settings = ({ familyId, onClose, onLogout, activeTab: externalActiveTab, h
                                 // Show success notification
                                 const notification = document.createElement('div');
                                 const successMessage = t('parent.settings.deleteChildSuccess', { 
-                                  defaultValue: 'Child {name} deleted and moved to archive successfully',
+                                  defaultValue: 'הילד {name} נמחק והועבר לארכיון בהצלחה',
                                   name: childName
                                 }).replace(/\{name\}/g, childName);
                                 notification.textContent = successMessage;
@@ -1825,13 +1825,13 @@ const Settings = ({ familyId, onClose, onLogout, activeTab: externalActiveTab, h
                                   await onChildrenUpdated();
                                 }
                               } catch (error) {
-                                alert(t('parent.settings.deleteChildError', { defaultValue: 'Error deleting child' }) + ': ' + (error.message || 'Unknown error'));
+                                alert(t('parent.settings.deleteChildError', { defaultValue: 'שגיאה במחיקת ילד' }) + ': ' + (error.message || 'Unknown error'));
                               }
                             }}
                             className="pay-allowance-button"
                             style={{ background: '#EF4444' }}
                           >
-                            🗑️ {t('parent.settings.deleteChild', { defaultValue: 'Delete Child' })}
+                            🗑️ {t('parent.settings.deleteChild', { defaultValue: 'מחיקת ילד' })}
                           </button>
                         </div>
                       </form>

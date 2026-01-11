@@ -88,6 +88,10 @@
       "invalidResponse": "תגובה לא תקינה מהשרת",
       "createChildError": "שגיאה ביצירת ילד",
       "passwordError": "שגיאה בקבלת סיסמה",
+      "deleteChild": "מחיקת ילד",
+      "deleteChildConfirm": "האם אתה בטוח שברצונך למחוק את {name}? פעולה זו תעביר את כל הנתונים לארכיון ולא ניתן לבטל אותה.",
+      "deleteChildSuccess": "הילד {name} נמחק והועבר לארכיון בהצלחה",
+      "deleteChildError": "שגיאה במחיקת ילד",
       "tabs": {
         "categories": "קטגוריות הוצאות",
         "profileImages": "תמונות פרופיל",
