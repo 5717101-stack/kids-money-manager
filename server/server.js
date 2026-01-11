@@ -817,6 +817,10 @@ async function addChildToFamily(familyId, childName, phoneNumber) {
     allowanceType: 'weekly',
     allowanceDay: 1,
     allowanceTime: '08:00',
+    weeklyInterestRate: 0,
+    lastAllowancePayment: null,
+    lastInterestCalculation: null,
+    totalInterestEarned: 0,
     transactions: [],
     createdAt: new Date().toISOString()
   };
@@ -1025,7 +1029,8 @@ async function processAllowancesForFamily(familyId) {
             { 
               $set: { 
                 'children.$.balance': balance,
-                'children.$.transactions': transactions
+                'children.$.transactions': transactions,
+                'children.$.lastAllowancePayment': new Date().toISOString()
               }
             }
           );
@@ -2606,7 +2611,7 @@ app.delete('/api/families/:familyId/children/:childId/savings-goal', async (req,
 app.put('/api/families/:familyId/children/:childId/weekly-allowance', async (req, res) => {
   try {
     const { familyId, childId } = req.params;
-    const { weeklyAllowance, allowanceType, allowanceDay, allowanceTime } = req.body;
+    const { weeklyAllowance, allowanceType, allowanceDay, allowanceTime, weeklyInterestRate } = req.body;
     
     const amount = parseFloat(weeklyAllowance);
     if (isNaN(amount) || amount < 0) {
@@ -2635,27 +2640,49 @@ app.put('/api/families/:familyId/children/:childId/weekly-allowance', async (req
       return res.status(400).json({ error: 'Allowance time must be in HH:mm format' });
     }
     
+    // Validate interest rate if provided
+    let interestRate = undefined;
+    if (weeklyInterestRate !== undefined && weeklyInterestRate !== null && weeklyInterestRate !== '') {
+      interestRate = parseFloat(weeklyInterestRate);
+      if (isNaN(interestRate) || interestRate < 0 || interestRate > 100) {
+        return res.status(400).json({ error: 'Weekly interest rate must be a valid number between 0 and 100' });
+      }
+    }
+    
     const family = await getFamilyById(familyId);
     if (!family) {
       return res.status(404).json({ error: 'משפחה לא נמצאה' });
+    }
+    
+    const updateFields = {
+      'children.$.weeklyAllowance': amount,
+      'children.$.allowanceType': type,
+      'children.$.allowanceDay': day,
+      'children.$.allowanceTime': time
+    };
+    
+    if (interestRate !== undefined) {
+      updateFields['children.$.weeklyInterestRate'] = interestRate;
     }
     
     if (db) {
       await db.collection('families').updateOne(
         { _id: familyId, 'children._id': childId },
         { 
-          $set: { 
-            'children.$.weeklyAllowance': amount,
-            'children.$.allowanceType': type,
-            'children.$.allowanceDay': day,
-            'children.$.allowanceTime': time
-          }
+          $set: updateFields
         }
       );
       invalidateFamilyCache(familyId);
     }
     
-    res.json({ success: true, weeklyAllowance: amount, allowanceType: type, allowanceDay: day, allowanceTime: time });
+    res.json({ 
+      success: true, 
+      weeklyAllowance: amount, 
+      allowanceType: type, 
+      allowanceDay: day, 
+      allowanceTime: time,
+      weeklyInterestRate: interestRate
+    });
   } catch (error) {
     console.error('Error updating weekly allowance:', error);
     res.status(500).json({ error: 'Failed to update weekly allowance' });

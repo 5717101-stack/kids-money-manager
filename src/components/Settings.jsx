@@ -128,7 +128,8 @@ const Settings = ({ familyId, onClose, onLogout, activeTab: externalActiveTab, h
           amount: child.weeklyAllowance || 0,
           type: child.allowanceType || 'weekly',
           day: child.allowanceDay !== undefined ? child.allowanceDay : 1,
-          time: child.allowanceTime || '08:00'
+          time: child.allowanceTime || '08:00',
+          interestRate: child.weeklyInterestRate || 0
         };
       });
       setAllowanceStates(states);
@@ -437,10 +438,10 @@ const Settings = ({ familyId, onClose, onLogout, activeTab: externalActiveTab, h
     }
   };
 
-  const handleAllowanceUpdate = async (childId, allowance, allowanceType, allowanceDay, allowanceTime) => {
+  const handleAllowanceUpdate = async (childId, allowance, allowanceType, allowanceDay, allowanceTime, weeklyInterestRate) => {
     if (!familyId) return;
     try {
-      await updateWeeklyAllowance(familyId, childId, allowance, allowanceType, allowanceDay, allowanceTime);
+      await updateWeeklyAllowance(familyId, childId, allowance, allowanceType, allowanceDay, allowanceTime, weeklyInterestRate);
       await loadData();
       
       // Show success notification
@@ -817,8 +818,74 @@ const Settings = ({ familyId, onClose, onLogout, activeTab: externalActiveTab, h
                 amount: child?.weeklyAllowance || 0,
                 type: child?.allowanceType || 'weekly',
                 day: child?.allowanceDay !== undefined ? child.allowanceDay : 1,
-                time: child?.allowanceTime || '08:00'
+                time: child?.allowanceTime || '08:00',
+                interestRate: child?.weeklyInterestRate || 0
               };
+              
+              // Calculate last and next allowance payment dates
+              const calculateAllowanceDates = () => {
+                if (!child?.weeklyAllowance || child.weeklyAllowance <= 0) {
+                  return { lastPayment: null, nextPayment: null };
+                }
+                
+                const now = new Date();
+                const allowanceType = child?.allowanceType || 'weekly';
+                const allowanceDay = child?.allowanceDay !== undefined ? child.allowanceDay : 1;
+                const allowanceTime = child?.allowanceTime || '08:00';
+                const [hour, minute] = allowanceTime.split(':').map(Number);
+                
+                // Find last allowance payment from transactions
+                const allowanceTransactions = (child?.transactions || []).filter(t => 
+                  t.type === 'deposit' && 
+                  (t.description === 'דמי כיס שבועיים' || t.description === 'דמי כיס חודשיים')
+                ).sort((a, b) => new Date(b.date) - new Date(a.date));
+                
+                const lastPayment = allowanceTransactions.length > 0 
+                  ? new Date(allowanceTransactions[0].date)
+                  : child?.lastAllowancePayment 
+                    ? new Date(child.lastAllowancePayment)
+                    : null;
+                
+                // Calculate next payment date
+                let nextPayment = null;
+                if (allowanceType === 'weekly') {
+                  const currentDayOfWeek = now.getDay(); // 0 = Sunday, 6 = Saturday
+                  const targetDayOfWeek = allowanceDay; // 0-6
+                  
+                  let daysUntilNext = (targetDayOfWeek - currentDayOfWeek + 7) % 7;
+                  if (daysUntilNext === 0) {
+                    // Same day - check if time has passed
+                    if (now.getHours() < hour || (now.getHours() === hour && now.getMinutes() < minute)) {
+                      daysUntilNext = 0;
+                    } else {
+                      daysUntilNext = 7; // Next week
+                    }
+                  }
+                  
+                  nextPayment = new Date(now);
+                  nextPayment.setDate(now.getDate() + daysUntilNext);
+                  nextPayment.setHours(hour, minute, 0, 0);
+                } else {
+                  // Monthly
+                  const currentDay = now.getDate();
+                  const targetDay = allowanceDay;
+                  
+                  nextPayment = new Date(now);
+                  if (currentDay < targetDay) {
+                    // This month
+                    nextPayment.setDate(targetDay);
+                  } else {
+                    // Next month
+                    nextPayment.setMonth(now.getMonth() + 1);
+                    nextPayment.setDate(targetDay);
+                  }
+                  nextPayment.setHours(hour, minute, 0, 0);
+                }
+                
+                return { lastPayment, nextPayment };
+              };
+              
+              const { lastPayment, nextPayment } = calculateAllowanceDates();
 
               const updateState = (updates) => {
                 setAllowanceStates(prev => ({
@@ -832,8 +899,9 @@ const Settings = ({ familyId, onClose, onLogout, activeTab: externalActiveTab, h
                 if (currentState.amount !== (child?.weeklyAllowance || 0) || 
                     currentState.type !== (child?.allowanceType || 'weekly') ||
                     currentState.day !== (child?.allowanceDay !== undefined ? child.allowanceDay : 1) ||
-                    currentState.time !== (child?.allowanceTime || '08:00')) {
-                  handleAllowanceUpdate(childId, currentState.amount, currentState.type, currentState.day, currentState.time);
+                    currentState.time !== (child?.allowanceTime || '08:00') ||
+                    currentState.interestRate !== (child?.weeklyInterestRate || 0)) {
+                  handleAllowanceUpdate(childId, currentState.amount, currentState.type, currentState.day, currentState.time, currentState.interestRate);
                 }
               };
 
@@ -842,7 +910,8 @@ const Settings = ({ familyId, onClose, onLogout, activeTab: externalActiveTab, h
                 return currentState.amount !== (child?.weeklyAllowance || 0) || 
                        currentState.type !== (child?.allowanceType || 'weekly') ||
                        currentState.day !== (child?.allowanceDay !== undefined ? child.allowanceDay : 1) ||
-                       currentState.time !== (child?.allowanceTime || '08:00');
+                       currentState.time !== (child?.allowanceTime || '08:00') ||
+                       currentState.interestRate !== (child?.weeklyInterestRate || 0);
               };
 
               return (
@@ -953,6 +1022,66 @@ const Settings = ({ familyId, onClose, onLogout, activeTab: externalActiveTab, h
                       className="allowance-input allowance-time-input"
                     />
                   </div>
+
+                  <div className="allowance-config-group">
+                    <label className="allowance-label">{t('parent.settings.allowance.interestRate', { defaultValue: 'ריבית שבועית (%)' })}</label>
+                    <div className="allowance-input-group">
+                      <input
+                        type="number"
+                        inputMode="decimal"
+                        step="0.01"
+                        min="0"
+                        max="100"
+                        value={state.interestRate === 0 ? '' : state.interestRate}
+                        onChange={(e) => {
+                          const val = e.target.value === '' ? 0 : parseFloat(e.target.value) || 0;
+                          updateState({ interestRate: val });
+                        }}
+                        className="allowance-input"
+                        placeholder="0.00"
+                      />
+                      <span className="currency-label">%</span>
+                    </div>
+                    <p style={{ fontSize: '12px', color: 'var(--text-muted)', marginTop: '4px' }}>
+                      {t('parent.settings.allowance.interestDescription', { defaultValue: 'ריבית שבועית על הכסף שנמצא אצל ההורים' })}
+                    </p>
+                  </div>
+
+                  {/* Allowance payment dates info */}
+                  {child?.weeklyAllowance && child.weeklyAllowance > 0 && (
+                    <div className="allowance-info-box" style={{
+                      background: 'rgba(99, 102, 241, 0.05)',
+                      padding: '12px',
+                      borderRadius: '8px',
+                      marginTop: '8px',
+                      fontSize: '14px'
+                    }}>
+                      {lastPayment && (
+                        <div style={{ marginBottom: '8px' }}>
+                          <strong>{t('parent.settings.allowance.lastPayment', { defaultValue: 'נכנס לאחרונה:' })}</strong>{' '}
+                          {lastPayment.toLocaleDateString(i18n.language === 'he' ? 'he-IL' : 'en-US', {
+                            day: '2-digit',
+                            month: '2-digit',
+                            year: 'numeric',
+                            hour: '2-digit',
+                            minute: '2-digit'
+                          })}
+                        </div>
+                      )}
+                      {nextPayment && (
+                        <div>
+                          <strong>{t('parent.settings.allowance.nextPayment', { defaultValue: 'הפעם הבאה:' })}</strong>{' '}
+                          {nextPayment.toLocaleDateString(i18n.language === 'he' ? 'he-IL' : 'en-US', {
+                            day: '2-digit',
+                            month: '2-digit',
+                            year: 'numeric',
+                            hour: '2-digit',
+                            minute: '2-digit'
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  )}
 
                   <div className="allowance-actions">
                     <button

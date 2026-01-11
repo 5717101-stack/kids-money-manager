@@ -365,18 +365,24 @@ export const updateProfileImage = async (familyId, childId, profileImage) => {
 };
 
 // Weekly allowance API
-export const updateWeeklyAllowance = async (familyId, childId, weeklyAllowance, allowanceType, allowanceDay, allowanceTime) => {
+export const updateWeeklyAllowance = async (familyId, childId, weeklyAllowance, allowanceType, allowanceDay, allowanceTime, weeklyInterestRate) => {
   if (!familyId || !childId) {
     throw new Error('Family ID and Child ID are required');
   }
+  const body = { 
+    weeklyAllowance: parseFloat(weeklyAllowance),
+    allowanceType: allowanceType || 'weekly',
+    allowanceDay: allowanceDay !== undefined ? parseInt(allowanceDay) : 1,
+    allowanceTime: allowanceTime || '08:00'
+  };
+  
+  if (weeklyInterestRate !== undefined && weeklyInterestRate !== null && weeklyInterestRate !== '') {
+    body.weeklyInterestRate = parseFloat(weeklyInterestRate);
+  }
+  
   const response = await apiCall(`/families/${familyId}/children/${childId}/weekly-allowance`, {
     method: 'PUT',
-    body: JSON.stringify({ 
-      weeklyAllowance: parseFloat(weeklyAllowance),
-      allowanceType: allowanceType || 'weekly',
-      allowanceDay: allowanceDay !== undefined ? parseInt(allowanceDay) : 1,
-      allowanceTime: allowanceTime || '08:00'
-    })
+    body: JSON.stringify(body)
   }, { useCache: false });
   
   // Invalidate cache
