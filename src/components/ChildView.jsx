@@ -726,7 +726,7 @@ const ChildView = ({ childId, familyId, onBackToParent, onLogout }) => {
                 <span style={{ fontSize: '14px' }}>{t('child.dashboard.interestEarned', { defaultValue: 'ריבית נצברה:' })}</span>
               </div>
               <span style={{ fontSize: '20px', fontWeight: 800, letterSpacing: '0.5px' }}>
-                +₪{(childData?.totalInterestEarned || 0).toFixed(2)}
+                ₪{(childData?.totalInterestEarned || 0).toFixed(2)}
               </span>
             </div>
           </div>

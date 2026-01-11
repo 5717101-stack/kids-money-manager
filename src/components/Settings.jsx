@@ -444,7 +444,39 @@ const Settings = ({ familyId, onClose, onLogout, activeTab: externalActiveTab, h
     if (!familyId) return;
     try {
       await updateWeeklyAllowance(familyId, childId, allowance, allowanceType, allowanceDay, allowanceTime, weeklyInterestRate);
-      await loadData();
+      // Reload data without showing loading spinner
+      const wasLoading = loading;
+      if (!wasLoading) {
+        // Load data silently without showing loading state
+        try {
+          const [categoriesData, childrenData, familyData] = await Promise.all([
+            getCategories(familyId).catch(() => []),
+            getData(familyId).catch(() => ({ children: {} })),
+            getFamilyInfo(familyId).catch(() => null)
+          ]);
+          
+          setCategories(Array.isArray(categoriesData) ? categoriesData : []);
+          setAllData(childrenData && childrenData.children ? childrenData : { children: {} });
+          setFamilyInfo(familyData);
+          
+          // Update allowance states
+          const states = {};
+          Object.entries(childrenData?.children || {}).forEach(([id, child]) => {
+            states[id] = {
+              amount: child.weeklyAllowance || 0,
+              type: child.allowanceType || 'weekly',
+              day: child.allowanceDay !== undefined ? child.allowanceDay : 1,
+              time: child.allowanceTime || '08:00',
+              interestRate: child.weeklyInterestRate || 0
+            };
+          });
+          setAllowanceStates(states);
+        } catch (err) {
+          console.error('Error silently reloading data:', err);
+        }
+      } else {
+        await loadData();
+      }
       
       // Show success notification
       const notification = document.createElement('div');
@@ -856,34 +888,65 @@ const Settings = ({ familyId, onClose, onLogout, activeTab: externalActiveTab, h
                   const currentDayOfWeek = now.getDay(); // 0 = Sunday, 6 = Saturday
                   const targetDayOfWeek = allowanceDay; // 0-6
                   
-                  let daysUntilNext = (targetDayOfWeek - currentDayOfWeek + 7) % 7;
-                  if (daysUntilNext === 0) {
-                    // Same day - check if time has passed
-                    if (now.getHours() < hour || (now.getHours() === hour && now.getMinutes() < minute)) {
-                      daysUntilNext = 0;
-                    } else {
-                      daysUntilNext = 7; // Next week
-                    }
-                  }
+                  // Create target time for today
+                  const targetTimeToday = new Date(now);
+                  targetTimeToday.setHours(hour, minute, 0, 0);
                   
-                  nextPayment = new Date(now);
-                  nextPayment.setDate(now.getDate() + daysUntilNext);
-                  nextPayment.setHours(hour, minute, 0, 0);
+                  // Check if today is the correct day
+                  if (currentDayOfWeek === targetDayOfWeek) {
+                    // Same day - check if time has passed
+                    if (now < targetTimeToday) {
+                      // Time hasn't passed yet today
+                      nextPayment = targetTimeToday;
+                    } else {
+                      // Time has passed, next payment is next week
+                      nextPayment = new Date(now);
+                      nextPayment.setDate(now.getDate() + 7);
+                      nextPayment.setHours(hour, minute, 0, 0);
+                    }
+                  } else {
+                    // Different day - calculate days until next occurrence
+                    let daysUntilNext = (targetDayOfWeek - currentDayOfWeek + 7) % 7;
+                    if (daysUntilNext === 0) daysUntilNext = 7; // Shouldn't happen, but safety check
+                    
+                    nextPayment = new Date(now);
+                    nextPayment.setDate(now.getDate() + daysUntilNext);
+                    nextPayment.setHours(hour, minute, 0, 0);
+                  }
                 } else {
                   // Monthly
                   const currentDay = now.getDate();
                   const targetDay = allowanceDay;
                   
-                  nextPayment = new Date(now);
-                  if (currentDay < targetDay) {
-                    // This month
+                  // Create target time for today
+                  const targetTimeToday = new Date(now);
+                  targetTimeToday.setDate(targetDay);
+                  targetTimeToday.setHours(hour, minute, 0, 0);
+                  
+                  if (currentDay === targetDay) {
+                    // Same day - check if time has passed
+                    if (now < targetTimeToday) {
+                      // Time hasn't passed yet today
+                      nextPayment = targetTimeToday;
+                    } else {
+                      // Time has passed, next payment is next month
+                      nextPayment = new Date(now);
+                      nextPayment.setMonth(now.getMonth() + 1);
+                      nextPayment.setDate(targetDay);
+                      nextPayment.setHours(hour, minute, 0, 0);
+                    }
+                  } else if (currentDay < targetDay) {
+                    // This month, day hasn't arrived yet
+                    nextPayment = new Date(now);
                     nextPayment.setDate(targetDay);
+                    nextPayment.setHours(hour, minute, 0, 0);
                   } else {
-                    // Next month
+                    // This month's day has passed, next month
+                    nextPayment = new Date(now);
                     nextPayment.setMonth(now.getMonth() + 1);
                     nextPayment.setDate(targetDay);
+                    nextPayment.setHours(hour, minute, 0, 0);
                   }
-                  nextPayment.setHours(hour, minute, 0, 0);
                 }
                 
                 return { lastPayment, nextPayment };

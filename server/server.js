@@ -2008,6 +2008,24 @@ app.get('/api/families/:familyId/children/:childId', async (req, res) => {
       return res.status(404).json({ error: 'ילד לא נמצא' });
     }
     
+    // Calculate totalInterestEarned from transactions if not set or if it seems incorrect
+    let totalInterestEarned = child.totalInterestEarned || 0;
+    const interestTransactions = (child.transactions || []).filter(t => 
+      t.description && t.description.includes('ריבית')
+    );
+    if (interestTransactions.length > 0) {
+      const calculatedTotal = interestTransactions.reduce((sum, t) => sum + (t.amount || 0), 0);
+      // Use the higher value (either stored or calculated) to ensure accuracy
+      if (calculatedTotal > totalInterestEarned) {
+        totalInterestEarned = calculatedTotal;
+        // Update the stored value in the database
+        await db.collection('families').updateOne(
+          { _id: familyId, 'children._id': childId },
+          { $set: { 'children.$.totalInterestEarned': calculatedTotal } }
+        );
+      }
+    }
+    
     res.json({
       name: child.name,
       phoneNumber: child.phoneNumber || '',
@@ -2020,7 +2038,7 @@ app.get('/api/families/:familyId/children/:childId', async (req, res) => {
       allowanceTime: child.allowanceTime || '08:00',
       weeklyInterestRate: child.weeklyInterestRate || 0,
       lastAllowancePayment: child.lastAllowancePayment || null,
-      totalInterestEarned: child.totalInterestEarned || 0,
+      totalInterestEarned: totalInterestEarned,
       transactions: child.transactions || []
     });
   } catch (error) {
