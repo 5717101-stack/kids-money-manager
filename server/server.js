@@ -2843,29 +2843,23 @@ app.post('/api/families/:familyId/children/:childId/pay-allowance', async (req, 
       childId: child._id
     };
     
-    const transactions = [...(child.transactions || []), transaction];
-    const balance = transactions.reduce((total, t) => {
-      if (t.type === 'deposit') {
-        return total + t.amount;
-      } else {
-        return total - t.amount;
-      }
-    }, 0);
+    // Calculate balance increment instead of recalculating all
+    const balanceChange = child.weeklyAllowance;
+    const newBalance = (child.balance || 0) + balanceChange;
     
     if (db) {
+      // Use atomic operations for better performance
       await db.collection('families').updateOne(
         { _id: familyId, 'children._id': childId },
         { 
-          $set: { 
-            'children.$.balance': balance,
-            'children.$.transactions': transactions
-          }
+          $push: { 'children.$.transactions': transaction },
+          $inc: { 'children.$.balance': balanceChange }
         }
       );
       invalidateFamilyCache(familyId);
     }
     
-    res.json({ success: true, transaction, balance });
+    res.json({ success: true, transaction, balance: newBalance });
   } catch (error) {
     console.error('Error paying allowance:', error);
     res.status(500).json({ error: 'Failed to pay allowance' });
