@@ -240,7 +240,7 @@ async function connectDB() {
     await mongoClient.connect();
     db = mongoClient.db();
     console.log('[DB] Connected to MongoDB with connection pooling');
-    console.log('[DB] Pool settings: maxPoolSize=10, minPoolSize=2');
+    console.log('[DB] Pool settings: maxPoolSize=20, minPoolSize=5');
     await initializeData();
   } catch (error) {
     console.error('[DB] Connection error:', error.message);
@@ -2353,7 +2353,7 @@ app.post('/api/families/:familyId/transactions', async (req, res) => {
       invalidateFamilyCache(familyId);
     }
     
-    res.json({ transaction, balance, updated: true });
+    res.json({ transaction, balance: newBalance, updated: true });
   } catch (error) {
     console.error('Error adding transaction:', error);
     res.status(500).json({ error: 'Failed to add transaction' });
