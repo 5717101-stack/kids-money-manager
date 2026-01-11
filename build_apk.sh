@@ -50,6 +50,15 @@ if [ -f "$APK_PATH" ]; then
     # Copy to project root for easy access
     cp "$APK_PATH" "../kids-money-manager-$(date +%Y%m%d-%H%M%S).apk"
     echo "📋 Also copied to project root with timestamp"
+    
+    # Copy to FamilyBank folder on Desktop
+    FAMILYBANK_DIR="$HOME/Desktop/FamilyBank"
+    mkdir -p "$FAMILYBANK_DIR"
+    VERSION=$(grep '"version"' ../package.json | cut -d'"' -f4)
+    FAMILYBANK_APK="$FAMILYBANK_DIR/Family-Bank-${VERSION}.apk"
+    cp "$APK_PATH" "$FAMILYBANK_APK"
+    echo "📁 Also copied to FamilyBank folder:"
+    echo "   $FAMILYBANK_APK"
 else
     echo "❌ APK not found at expected location: $APK_PATH"
     exit 1

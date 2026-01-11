@@ -61,11 +61,23 @@ if [ -f "$APK_PATH" ]; then
     echo "📱 Version: $VERSION"
     echo ""
     
-    # Copy to Desktop
+    # Copy to Desktop and FamilyBank folder
     DESKTOP_APK="$HOME/Desktop/Family-Bank-${VERSION}.apk"
+    FAMILYBANK_DIR="$HOME/Desktop/FamilyBank"
+    FAMILYBANK_APK="$FAMILYBANK_DIR/Family-Bank-${VERSION}.apk"
+    
+    # Create FamilyBank directory if it doesn't exist
+    mkdir -p "$FAMILYBANK_DIR"
+    
+    # Copy to Desktop
     cp "$APK_PATH" "$DESKTOP_APK"
     echo "✅ APK exported to Desktop:"
     echo "   $DESKTOP_APK"
+    
+    # Copy to FamilyBank folder
+    cp "$APK_PATH" "$FAMILYBANK_APK"
+    echo "✅ APK exported to FamilyBank folder:"
+    echo "   $FAMILYBANK_APK"
     echo ""
     echo "📤 You can now share this APK file!"
 else
