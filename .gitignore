@@ -33,3 +33,8 @@ ios/App/App/capacitor.config.json
 ios/App/App/config.xml
 ios/App/App/public/
 android/app/src/main/assets/public/
+
+# Android signing files
+android/key.properties
+android/app/*.keystore
+android/app/release.keystore
