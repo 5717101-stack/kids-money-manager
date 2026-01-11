@@ -2281,8 +2281,8 @@ const Settings = ({ familyId, onClose, onLogout, activeTab: externalActiveTab, h
                                     
                                     // Show success notification
                                     const notification = document.createElement('div');
-                                    const successMessage = t('parent.settings.deleteParentSuccess', { 
-                                      defaultValue: 'Parent {name} deleted and moved to archive successfully',
+                                    const successMessage = t('parent.settings.parents.deleteParentSuccess', { 
+                                      defaultValue: 'ההורה {name} נמחק והועבר לארכיון בהצלחה',
                                       name: parentName
                                     }).replace(/\{name\}/g, parentName);
                                     notification.textContent = successMessage;
