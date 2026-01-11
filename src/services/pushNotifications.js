@@ -1,5 +1,5 @@
 import { PushNotifications } from '@capacitor/push-notifications';
-import { apiCall } from '../utils/api';
+import { getData } from '../utils/api';
 
 class PushNotificationService {
   constructor() {
@@ -69,10 +69,17 @@ class PushNotificationService {
         return;
       }
 
-      await apiCall(`/api/families/${this.familyId}/push-token`, {
+      const response = await fetch(`${import.meta.env.VITE_API_URL || ''}/api/families/${this.familyId}/push-token`, {
         method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
         body: JSON.stringify({ token, platform: this.getPlatform() })
       });
+      
+      if (!response.ok) {
+        throw new Error(`Failed to register token: ${response.statusText}`);
+      }
       
       console.log('Push token registered successfully');
     } catch (error) {
@@ -93,10 +100,17 @@ class PushNotificationService {
   async unregister() {
     try {
       if (this.familyId && this.deviceToken) {
-        await apiCall(`/api/families/${this.familyId}/push-token`, {
+        const response = await fetch(`${import.meta.env.VITE_API_URL || ''}/api/families/${this.familyId}/push-token`, {
           method: 'DELETE',
+          headers: {
+            'Content-Type': 'application/json',
+          },
           body: JSON.stringify({ token: this.deviceToken })
         });
+        
+        if (!response.ok) {
+          throw new Error(`Failed to unregister token: ${response.statusText}`);
+        }
       }
       this.deviceToken = null;
       this.isRegistered = false;
