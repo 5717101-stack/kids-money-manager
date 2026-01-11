@@ -23,8 +23,8 @@ const JoinParentScreen = ({ onVerified, onBack }) => {
 
       if (response.ok) {
         const data = await response.json();
-        sessionStorage.setItem('familyId', data.familyId);
-        sessionStorage.setItem('parentLoggedIn', 'true');
+        localStorage.setItem('familyId', data.familyId);
+        localStorage.setItem('parentLoggedIn', 'true');
         onVerified(data.familyId);
       } else {
         const errorData = await response.json();

@@ -13,8 +13,8 @@ const ParentLogin = ({ onLogin }) => {
     setError('');
 
     if (password === PARENT_PASSWORD) {
-      // Save login state in sessionStorage
-      sessionStorage.setItem('parentLoggedIn', 'true');
+      // Save login state in localStorage to persist across app restarts
+      localStorage.setItem('parentLoggedIn', 'true');
       onLogin();
     } else {
       setError(t('parentLogin.wrongPassword', { defaultValue: 'סיסמה שגויה. אנא נסה שוב.' }));

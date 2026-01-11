@@ -69,9 +69,9 @@ const JoinChildScreen = ({ onVerified, onBack }) => {
       <ChildPasswordLogin
         familyId={familyId}
         onChildVerified={(child, fId) => {
-          sessionStorage.setItem('familyId', fId);
-          sessionStorage.setItem('childId', child._id);
-          sessionStorage.setItem('isChildView', 'true');
+          localStorage.setItem('familyId', fId);
+          localStorage.setItem('childId', child._id);
+          localStorage.setItem('isChildView', 'true');
           onVerified(fId, child._id, child);
         }}
         onBack={() => setStep('otp')}

@@ -32,10 +32,11 @@ const App = () => {
 
   useEffect(() => {
     // Check if already logged in
-    const savedFamilyId = sessionStorage.getItem('familyId');
-    const savedPhoneNumber = sessionStorage.getItem('phoneNumber');
-    const savedChildId = sessionStorage.getItem('childId');
-    const savedIsChildView = sessionStorage.getItem('isChildView') === 'true';
+    // Use localStorage instead of sessionStorage to persist login across app restarts
+    const savedFamilyId = localStorage.getItem('familyId');
+    const savedPhoneNumber = localStorage.getItem('phoneNumber');
+    const savedChildId = localStorage.getItem('childId');
+    const savedIsChildView = localStorage.getItem('isChildView') === 'true';
     
     if (savedFamilyId) {
       setFamilyId(savedFamilyId);
@@ -119,8 +120,9 @@ const App = () => {
   const handleOTPVerified = (fId, phoneNum, isNewFamily, isChild, childId, isAdditionalParent) => {
     setFamilyId(fId);
     setPhoneNumber(phoneNum);
-    sessionStorage.setItem('familyId', fId);
-    sessionStorage.setItem('phoneNumber', phoneNum);
+    // Use localStorage to persist login across app restarts
+    localStorage.setItem('familyId', fId);
+    localStorage.setItem('phoneNumber', phoneNum);
     
     // Initialize push notifications for native platforms
     if (window.Capacitor?.isNativePlatform()) {
@@ -131,9 +133,9 @@ const App = () => {
     
     // If this is a child login (phone number belongs to a child)
     if (isChild && childId) {
-      sessionStorage.setItem('childId', childId);
-      sessionStorage.setItem('isChildView', 'true');
-      sessionStorage.removeItem('parentLoggedIn');
+      localStorage.setItem('childId', childId);
+      localStorage.setItem('isChildView', 'true');
+      localStorage.removeItem('parentLoggedIn');
       setIsChildView(true);
       setCurrentChild({ _id: childId });
       setScreen('child-view');
@@ -150,15 +152,15 @@ const App = () => {
     // 5. Otherwise (existing family from "Join"), show child password login
     if (isAdditionalParent || isCreatingFamily || screen === 'main-login' || isNewFamily) {
       // User is additional parent OR came from "Create Family" OR "Main Login" OR it's a new family - show parent dashboard
-      sessionStorage.setItem('parentLoggedIn', 'true');
-      sessionStorage.removeItem('isChildView');
-      sessionStorage.removeItem('childId');
+      localStorage.setItem('parentLoggedIn', 'true');
+      localStorage.removeItem('isChildView');
+      localStorage.removeItem('childId');
       setIsChildView(false);
       setScreen('dashboard');
       loadChildren(fId);
     } else {
       // Existing family and user came from "Join" - show child password login
-      sessionStorage.removeItem('parentLoggedIn');
+      localStorage.removeItem('parentLoggedIn');
       setScreen('child-password');
     }
     
@@ -172,7 +174,7 @@ const App = () => {
     // Ensure familyId is set
     if (fId) {
       setFamilyId(fId);
-      sessionStorage.setItem('familyId', fId);
+      localStorage.setItem('familyId', fId);
     }
     
     // Ensure child has all required properties
@@ -184,9 +186,9 @@ const App = () => {
     
     setCurrentChild(childData);
     setIsChildView(true);
-    sessionStorage.setItem('childId', childData._id);
-    sessionStorage.setItem('isChildView', 'true');
-    sessionStorage.removeItem('parentLoggedIn');
+    localStorage.setItem('childId', childData._id);
+    localStorage.setItem('isChildView', 'true');
+    localStorage.removeItem('parentLoggedIn');
     
     console.log('[APP] Setting screen to child-view with:', { 
       familyId: fId || familyId, 
@@ -208,11 +210,12 @@ const App = () => {
       });
     }
     
-    sessionStorage.removeItem('familyId');
-    sessionStorage.removeItem('phoneNumber');
-    sessionStorage.removeItem('parentLoggedIn');
-    sessionStorage.removeItem('childId');
-    sessionStorage.removeItem('isChildView');
+    // Clear all login data from localStorage
+    localStorage.removeItem('familyId');
+    localStorage.removeItem('phoneNumber');
+    localStorage.removeItem('parentLoggedIn');
+    localStorage.removeItem('childId');
+    localStorage.removeItem('isChildView');
     setFamilyId(null);
     setPhoneNumber('');
     setChildren([]);
@@ -293,9 +296,9 @@ const App = () => {
               setIsChildView(false);
               setCurrentChild(null);
               setScreen('dashboard');
-              sessionStorage.removeItem('childId');
-              sessionStorage.removeItem('isChildView');
-              sessionStorage.setItem('parentLoggedIn', 'true');
+              localStorage.removeItem('childId');
+              localStorage.removeItem('isChildView');
+              localStorage.setItem('parentLoggedIn', 'true');
             }}
             onLogout={handleLogout}
           />
@@ -312,8 +315,8 @@ const App = () => {
               setCurrentChild(child);
               setIsChildView(true);
               setScreen('child-view');
-              sessionStorage.setItem('childId', child._id);
-              sessionStorage.setItem('isChildView', 'true');
+              localStorage.setItem('childId', child._id);
+              localStorage.setItem('isChildView', 'true');
             }}
           />
         </div>
