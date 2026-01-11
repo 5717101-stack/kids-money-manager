@@ -71,6 +71,24 @@ const ChildView = ({ childId, familyId, onBackToParent, onLogout }) => {
         ]);
         
         if (child) {
+          // Load ALL transactions (no limit) to calculate totalInterestEarned accurately
+          const allTrans = await getChildTransactions(familyId, childId, null);
+          
+          // Calculate totalInterestEarned from ALL transactions
+          const interestTransactions = (allTrans || []).filter(t => 
+            t && t.description && (t.description.includes('ריבית') || t.description.includes('interest'))
+          );
+          
+          if (interestTransactions.length > 0) {
+            const calculatedTotal = interestTransactions.reduce((sum, t) => sum + (t.amount || 0), 0);
+            // Always use calculated value if we have interest transactions
+            child.totalInterestEarned = calculatedTotal;
+            console.log(`[CHILD-VIEW-INIT] Calculated totalInterestEarned: ${calculatedTotal.toFixed(2)} from ${interestTransactions.length} interest transactions`);
+            console.log(`[CHILD-VIEW-INIT] Interest transactions:`, interestTransactions.map(t => ({ desc: t.description, amount: t.amount })));
+          } else {
+            console.log(`[CHILD-VIEW-INIT] No interest transactions found. Total transactions: ${allTrans.length}`);
+          }
+          
           setChildData(child);
           setTransactions(trans);
           setError(null);

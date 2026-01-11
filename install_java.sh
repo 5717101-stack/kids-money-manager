@@ -23,21 +23,18 @@ if [ ! -f /tmp/openjdk.pkg ]; then
 fi
 
 echo "✅ Download complete"
-echo "📦 Installing Java (requires sudo password)..."
-sudo installer -pkg /tmp/openjdk.pkg -target /
+echo "📦 Opening Java installer..."
+open /tmp/openjdk.pkg
 
-# Clean up
-rm /tmp/openjdk.pkg
-
-# Verify installation
-sleep 2
-if /usr/libexec/java_home -V &>/dev/null; then
-    JAVA_HOME=$(/usr/libexec/java_home)
-    echo "✅ Java installed successfully!"
-    echo "📍 Java Home: $JAVA_HOME"
-    export JAVA_HOME
-    export PATH=$JAVA_HOME/bin:$PATH
-    java -version
-else
-    echo "⚠️ Java installation may need a restart or manual verification"
-fi
+echo ""
+echo "✅ Java installer opened!"
+echo "📋 Please complete the installation:"
+echo "   1. Click 'Continue' in the installer window"
+echo "   2. Click 'Install'"
+echo "   3. Enter your admin password"
+echo "   4. Wait for installation to complete"
+echo ""
+echo "After installation, verify with:"
+echo "   /usr/libexec/java_home -V"
+echo ""
+echo "Then run: ./setup_android_build.sh"
