@@ -12,6 +12,11 @@ if [ ! -d "android" ]; then
     exit 1
 fi
 
+# Set environment variables
+export ANDROID_HOME=$HOME/Library/Android/sdk
+export PATH=$PATH:$ANDROID_HOME/cmdline-tools/latest/bin:$ANDROID_HOME/platform-tools:$ANDROID_HOME/build-tools/34.0.0
+export JAVA_HOME=$(/usr/libexec/java_home 2>/dev/null || echo "")
+
 # Build web assets first
 echo "📦 Building web assets..."
 npm run build
