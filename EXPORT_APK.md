@@ -41,31 +41,52 @@
 - **locate** - לחץ על זה
 - או: `android/app/build/outputs/apk/prod/release/app-prod-release.apk`
 
-### דרך 2: דרך Terminal (מהיר)
+### דרך 2: דרך Terminal (דורש Java 21)
 
+**⚠️ לפני שתמשיך:** ודא שיש Java 21 מותקן:
+```bash
+/usr/libexec/java_home -V
+```
+
+אם אין Java 21, התקן:
+```bash
+# דרך Homebrew
+brew install openjdk@21
+
+# או הורד מ-Adoptium
+# https://adoptium.net/temurin/releases/?version=21
+```
+
+**לאחר התקנת Java 21:**
 ```bash
 cd /Users/itzhakbachar/Projects/kids-money-manager
 
 # בנה APK לפרודקשן
 cd android
-./gradlew assembleProdRelease
+export JAVA_HOME=$(/usr/libexec/java_home -v 21)
+./gradlew assembleRelease
 ```
 
 ה-APK יהיה ב:
 ```
-android/app/build/outputs/apk/prod/release/app-prod-release.apk
+android/app/build/outputs/apk/release/app-release.apk
 ```
 
-### דרך 3: דרך Gradle Tasks
+**או עם הסקריפט:**
+```bash
+./export_apk.sh
+```
+
+### דרך 3: דרך Gradle Tasks ב-Android Studio
 
 1. **View → Tool Windows → Gradle**
 2. **Expand:** `android` → `app` → `Tasks` → `build`
-3. **לחץ כפול** על `assembleProdRelease`
-4. **לחץ כפול** על `assembleProdRelease` שוב (אם צריך)
+3. **לחץ כפול** על `assembleRelease`
+4. **המתן לסיום הבנייה**
 
 ה-APK יהיה ב:
 ```
-android/app/build/outputs/apk/prod/release/app-prod-release.apk
+android/app/build/outputs/apk/release/app-release.apk
 ```
 
 ## בדיקה
@@ -74,7 +95,7 @@ android/app/build/outputs/apk/prod/release/app-prod-release.apk
 
 1. **מצא את ה-APK:**
    ```bash
-   ls -lh android/app/build/outputs/apk/prod/release/
+   ls -lh android/app/build/outputs/apk/release/
    ```
 
 2. **בדוק את הגודל:**
@@ -85,14 +106,15 @@ android/app/build/outputs/apk/prod/release/app-prod-release.apk
    cd android
    ./gradlew signingReport
    ```
-   - תחת `prodRelease`, אמור להיות כתוב "Config: release"
+   - תחת `release`, אמור להיות כתוב "Config: release"
 
 ## שליחה לאנשים
 
 ### דרך 1: דרך Email/WhatsApp
 1. **העתק את ה-APK:**
    ```bash
-   cp android/app/build/outputs/apk/prod/release/app-prod-release.apk ~/Desktop/Family-Bank-3.11.11.apk
+   VERSION=$(grep '"version"' package.json | cut -d'"' -f4)
+   cp android/app/build/outputs/apk/release/app-release.apk ~/Desktop/Family-Bank-${VERSION}.apk
    ```
 
 2. **שלח את הקובץ:**
@@ -163,18 +185,21 @@ cd android
 
 ## סיכום מהיר
 
-**הדרך הכי קלה:**
+**הדרך הכי קלה (Android Studio):**
+1. **Build → Build Bundle(s) / APK(s) → Build APK(s)**
+2. **המתן לסיום הבנייה**
+3. **לחץ על "locate"** או מצא ב:
+   ```
+   android/app/build/outputs/apk/release/app-release.apk
+   ```
+
+**או דרך Terminal (אם יש Java 21):**
 ```bash
-cd android
-./gradlew assembleProdRelease
+./export_apk.sh
 ```
 
-ה-APK יהיה ב:
-```
-android/app/build/outputs/apk/prod/release/app-prod-release.apk
-```
-
-**להעתקה לשולחן העבודה:**
+**להעתקה ידנית לשולחן העבודה:**
 ```bash
-cp android/app/build/outputs/apk/prod/release/app-prod-release.apk ~/Desktop/Family-Bank-3.11.11.apk
+VERSION=$(grep '"version"' package.json | cut -d'"' -f4)
+cp android/app/build/outputs/apk/release/app-release.apk ~/Desktop/Family-Bank-${VERSION}.apk
 ```
