@@ -25,6 +25,7 @@ const Settings = ({ familyId, onClose, onLogout, activeTab: externalActiveTab, h
   const [allData, setAllData] = useState({ children: {} });
   const [loading, setLoading] = useState(true);
   const [allowanceStates, setAllowanceStates] = useState({});
+  const [savingAllowance, setSavingAllowance] = useState({}); // Track which child's allowance is being saved
   const [uploadingImages, setUploadingImages] = useState({});
   const fileInputRefs = useRef({});
   const [newChildName, setNewChildName] = useState('');
@@ -439,6 +440,7 @@ const Settings = ({ familyId, onClose, onLogout, activeTab: externalActiveTab, h
   };
 
   const handleAllowanceUpdate = async (childId, allowance, allowanceType, allowanceDay, allowanceTime, weeklyInterestRate) => {
+    setSavingAllowance(prev => ({ ...prev, [childId]: true }));
     if (!familyId) return;
     try {
       await updateWeeklyAllowance(familyId, childId, allowance, allowanceType, allowanceDay, allowanceTime, weeklyInterestRate);
@@ -472,6 +474,8 @@ const Settings = ({ familyId, onClose, onLogout, activeTab: externalActiveTab, h
       }, 2000);
     } catch (error) {
       alert(t('parent.settings.alerts.updateAllowanceError', { defaultValue: 'שגיאה בעדכון דמי הכיס' }) + ': ' + error.message);
+    } finally {
+      setSavingAllowance(prev => ({ ...prev, [childId]: false }));
     }
   };
 
@@ -931,8 +935,8 @@ const Settings = ({ familyId, onClose, onLogout, activeTab: externalActiveTab, h
                   
                   <div className="allowance-config-group">
                     <label className="allowance-label">{t('parent.settings.allowance.amount', { defaultValue: 'סכום קצבה' })}</label>
-                    <div className="allowance-input-group">
-                      <span className="currency-label">₪</span>
+                    <div className="allowance-input-group" style={{ direction: i18n.language === 'he' ? 'rtl' : 'ltr' }}>
+                      {i18n.language === 'he' && <span className="currency-label" style={{ right: '16px', left: 'auto' }}>₪</span>}
                       <input
                         type="number"
                         inputMode="decimal"
@@ -945,7 +949,13 @@ const Settings = ({ familyId, onClose, onLogout, activeTab: externalActiveTab, h
                         }}
                         className="allowance-input"
                         placeholder="0.00"
+                        style={{ 
+                          maxWidth: '200px',
+                          paddingRight: i18n.language === 'he' ? '40px' : undefined, 
+                          paddingLeft: i18n.language === 'he' ? undefined : '40px' 
+                        }}
                       />
+                      {i18n.language !== 'he' && <span className="currency-label">₪</span>}
                     </div>
                   </div>
 
@@ -1040,7 +1050,11 @@ const Settings = ({ familyId, onClose, onLogout, activeTab: externalActiveTab, h
                         }}
                         className="allowance-input"
                         placeholder="0.00"
-                        style={{ paddingRight: i18n.language === 'he' ? '40px' : undefined, paddingLeft: i18n.language === 'he' ? undefined : '40px' }}
+                        style={{ 
+                          maxWidth: '200px',
+                          paddingRight: i18n.language === 'he' ? '40px' : undefined, 
+                          paddingLeft: i18n.language === 'he' ? undefined : '40px' 
+                        }}
                       />
                       {i18n.language !== 'he' && <span className="currency-label">%</span>}
                     </div>
@@ -1091,15 +1105,24 @@ const Settings = ({ familyId, onClose, onLogout, activeTab: externalActiveTab, h
 
                   <div className="allowance-actions">
                     <button
-                      className={`update-allowance-button ${!hasChanges() ? 'disabled' : ''}`}
+                      className={`update-allowance-button ${!hasChanges() || savingAllowance[childId] ? 'disabled' : ''}`}
                       onClick={() => {
-                        if (hasChanges()) {
+                        if (hasChanges() && !savingAllowance[childId]) {
                           saveChanges();
                         }
                       }}
-                      disabled={!hasChanges()}
+                      disabled={!hasChanges() || savingAllowance[childId]}
                     >
-                      {t('parent.settings.allowance.update', { defaultValue: 'עדכן הגדרות' })}
+                      {savingAllowance[childId] ? (
+                        <span style={{
+                          display: 'inline-block',
+                          animation: 'pulse 1.5s ease-in-out infinite'
+                        }}>
+                          {t('common.saving', { defaultValue: 'שומר...' })}
+                        </span>
+                      ) : (
+                        t('parent.settings.allowance.update', { defaultValue: 'עדכן הגדרות' })
+                      )}
                     </button>
                   </div>
                 </div>
@@ -2227,8 +2250,8 @@ const Settings = ({ familyId, onClose, onLogout, activeTab: externalActiveTab, h
                                 type="button"
                                 onClick={async () => {
                                   const parentName = parent.name || t('parent.settings.parent', { defaultValue: 'הורה' });
-                                  const confirmMessage = t('parent.settings.deleteParentConfirm', { 
-                                    defaultValue: 'Are you sure you want to delete {name}? This action will move all data to archive and cannot be undone.',
+                                  const confirmMessage = t('parent.settings.parents.deleteParentConfirm', { 
+                                    defaultValue: 'האם אתה בטוח שברצונך למחוק את {name}? פעולה זו תעביר את כל הנתונים לארכיון ולא ניתן לבטל אותה.',
                                     name: parentName
                                   }).replace(/\{name\}/g, parentName);
                                   
@@ -2246,7 +2269,7 @@ const Settings = ({ familyId, onClose, onLogout, activeTab: externalActiveTab, h
                                     
                                     // Verify this is not the main parent
                                     if (parent.isMain) {
-                                      alert(t('parent.settings.deleteParentError', { defaultValue: 'Error deleting parent' }) + ': ' + t('parent.settings.cannotDeleteMainParent', { defaultValue: 'Cannot delete the main parent' }));
+                                      alert(t('parent.settings.parents.deleteParentError', { defaultValue: 'שגיאה במחיקת הורה' }) + ': ' + t('parent.settings.parents.cannotDeleteMainParent', { defaultValue: 'לא ניתן למחוק את ההורה הראשי' }));
                                       return;
                                     }
                                     
@@ -2287,13 +2310,13 @@ const Settings = ({ familyId, onClose, onLogout, activeTab: externalActiveTab, h
                                       setTimeout(() => notification.remove(), 300);
                                     }, 3000);
                                   } catch (error) {
-                                    alert(t('parent.settings.deleteParentError', { defaultValue: 'Error deleting parent' }) + ': ' + (error.message || 'Unknown error'));
+                                    alert(t('parent.settings.parents.deleteParentError', { defaultValue: 'שגיאה במחיקת הורה' }) + ': ' + (error.message || 'Unknown error'));
                                   }
                                 }}
                                 className="pay-allowance-button"
                                 style={{ background: '#EF4444' }}
                               >
-                                🗑️ {t('parent.settings.deleteParent', { defaultValue: 'Delete Parent' })}
+                                🗑️ {t('parent.settings.parents.deleteParent', { defaultValue: 'מחיקת הורה' })}
                               </button>
                             )}
                           </div>

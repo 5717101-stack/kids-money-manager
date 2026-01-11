@@ -964,7 +964,7 @@ async function processAllowancesForFamily(familyId) {
       
       if (allowanceType === 'weekly') {
         const isCorrectDay = currentDayOfWeek === allowanceDay;
-        const isCorrectTime = hour === allowanceHour && minute >= allowanceMinute && minute < allowanceMinute + 1;
+        const isCorrectTime = hour === allowanceHour && minute >= allowanceMinute;
         shouldProcess = isCorrectDay && isCorrectTime;
         
         if (shouldProcess) {
@@ -982,7 +982,7 @@ async function processAllowancesForFamily(familyId) {
         }
       } else if (allowanceType === 'monthly') {
         const isCorrectDay = dayOfMonth === allowanceDay;
-        const isCorrectTime = hour === allowanceHour && minute >= allowanceMinute && minute < allowanceMinute + 1;
+        const isCorrectTime = hour === allowanceHour && minute >= allowanceMinute;
         shouldProcess = isCorrectDay && isCorrectTime;
         
         if (shouldProcess) {

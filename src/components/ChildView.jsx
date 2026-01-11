@@ -702,21 +702,32 @@ const ChildView = ({ childId, familyId, onBackToParent, onLogout }) => {
             <div style={{ fontSize: '12px', marginBottom: '4px' }}>{t('child.dashboard.balanceWithParents', { defaultValue: 'יתרה אצל ההורים' })}</div>
             <div style={{ fontSize: '16px', fontWeight: 600, color: 'var(--text-main)' }}>₪{(childData?.balance || 0).toFixed(2)}</div>
             <div style={{
-              fontSize: '16px',
-              marginTop: '8px',
-              padding: '8px 12px',
-              borderRadius: '8px',
-              background: (childData?.totalInterestEarned && childData.totalInterestEarned > 0) ? 'rgba(16, 185, 129, 0.15)' : 'rgba(107, 114, 128, 0.1)',
+              marginTop: '12px',
+              padding: '14px 16px',
+              borderRadius: '12px',
+              background: (childData?.totalInterestEarned && childData.totalInterestEarned > 0) 
+                ? 'linear-gradient(135deg, rgba(16, 185, 129, 0.2) 0%, rgba(16, 185, 129, 0.1) 100%)' 
+                : 'linear-gradient(135deg, rgba(107, 114, 128, 0.15) 0%, rgba(107, 114, 128, 0.08) 100%)',
               color: (childData?.totalInterestEarned && childData.totalInterestEarned > 0) ? '#10B981' : 'var(--text-muted)',
               fontWeight: 700,
               display: 'flex',
               alignItems: 'center',
-              gap: '6px',
-              border: (childData?.totalInterestEarned && childData.totalInterestEarned > 0) ? '1px solid rgba(16, 185, 129, 0.3)' : '1px solid rgba(107, 114, 128, 0.2)'
+              justifyContent: 'space-between',
+              gap: '8px',
+              border: (childData?.totalInterestEarned && childData.totalInterestEarned > 0) 
+                ? '2px solid rgba(16, 185, 129, 0.4)' 
+                : '2px solid rgba(107, 114, 128, 0.25)',
+              boxShadow: (childData?.totalInterestEarned && childData.totalInterestEarned > 0)
+                ? '0 2px 8px rgba(16, 185, 129, 0.15)'
+                : '0 2px 4px rgba(0, 0, 0, 0.05)'
             }}>
-              <span style={{ fontSize: '18px' }}>💰</span>
-              <span>{t('child.dashboard.interestEarned', { defaultValue: 'ריבית נצברה:' })}</span>
-              <span style={{ fontSize: '18px', fontWeight: 800 }}>+₪{(childData?.totalInterestEarned || 0).toFixed(2)}</span>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <span style={{ fontSize: '22px' }}>💰</span>
+                <span style={{ fontSize: '14px' }}>{t('child.dashboard.interestEarned', { defaultValue: 'ריבית נצברה:' })}</span>
+              </div>
+              <span style={{ fontSize: '20px', fontWeight: 800, letterSpacing: '0.5px' }}>
+                +₪{(childData?.totalInterestEarned || 0).toFixed(2)}
+              </span>
             </div>
           </div>
           <div style={{ textAlign: 'right', flex: 1 }}>

@@ -108,7 +108,12 @@
         "addSuccess": "הורה נוסף בהצלחה!",
         "addError": "שגיאה בהוספת הורה",
         "updateSuccess": "פרטי ההורה עודכנו בהצלחה!",
-        "updateError": "שגיאה בעדכון פרטי ההורה"
+        "updateError": "שגיאה בעדכון פרטי ההורה",
+        "deleteParent": "מחיקת הורה",
+        "deleteParentConfirm": "האם אתה בטוח שברצונך למחוק את {name}? פעולה זו תעביר את כל הנתונים לארכיון ולא ניתן לבטל אותה.",
+        "deleteParentSuccess": "ההורה {name} נמחק והועבר לארכיון בהצלחה",
+        "deleteParentError": "שגיאה במחיקת הורה",
+        "cannotDeleteMainParent": "לא ניתן למחוק את ההורה הראשי"
       },
       "passwordModal": {
         "title": "סיסמה ל{name}",
