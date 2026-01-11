@@ -132,14 +132,12 @@ const OTPVerification = ({ phoneNumber, isExistingFamily, onVerified, onBack }) 
       if (digits.length === 6) {
         inputRefs.current[5]?.focus();
         // Auto-submit when 6 digits are filled
-        if (!isLoading) {
-          setTimeout(() => {
-            const otpCode = newOtp.join('');
-            if (otpCode.length === 6) {
-              handleSubmit(new Event('submit'));
-            }
-          }, 100);
-        }
+        setTimeout(() => {
+          const otpCode = newOtp.join('');
+          if (otpCode.length === 6 && !isLoading) {
+            handleSubmit(null);
+          }
+        }, 200);
       } else if (digits.length > 0) {
         inputRefs.current[digits.length - 1]?.focus();
       }
@@ -157,13 +155,13 @@ const OTPVerification = ({ phoneNumber, isExistingFamily, onVerified, onBack }) 
     }
     
     // Auto-submit when 6 digits are filled
-    if (newOtp.join('').length === 6 && !isLoading) {
+    if (newOtp.join('').length === 6) {
       setTimeout(() => {
         const otpCode = newOtp.join('');
-        if (otpCode.length === 6) {
-          handleSubmit(new Event('submit'));
+        if (otpCode.length === 6 && !isLoading) {
+          handleSubmit(null);
         }
-      }, 100);
+      }, 200);
     }
   };
 
@@ -184,23 +182,28 @@ const OTPVerification = ({ phoneNumber, isExistingFamily, onVerified, onBack }) 
     if (pastedData.length === 6) {
       inputRefs.current[5]?.focus();
       // Auto-submit when 6 digits are pasted
-      if (!isLoading) {
-        setTimeout(() => {
-          const otpCode = newOtp.join('');
-          if (otpCode.length === 6) {
-            handleSubmit(new Event('submit'));
-          }
-        }, 100);
-      }
+      setTimeout(() => {
+        const otpCode = newOtp.join('');
+        if (otpCode.length === 6 && !isLoading) {
+          handleSubmit(null);
+        }
+      }, 200);
     }
   };
 
   const handleSubmit = async (e) => {
-    e.preventDefault();
+    if (e && e.preventDefault) {
+      e.preventDefault();
+    }
     const otpCode = otp.join('');
     
     if (otpCode.length !== 6) {
       setError(t('auth.otpVerification.enterFullCode', { defaultValue: 'אנא הכנס קוד מלא' }));
+      return;
+    }
+    
+    // Prevent multiple submissions
+    if (isLoading) {
       return;
     }
 
