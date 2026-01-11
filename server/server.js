@@ -1027,25 +1027,17 @@ async function processAllowancesForFamily(familyId) {
           childId: child._id
         };
         
-        const transactions = [...(child.transactions || []), transaction];
-        const balance = transactions.reduce((total, t) => {
-          if (t.type === 'deposit') {
-            return total + t.amount;
-          } else {
-            return total - t.amount;
-          }
-        }, 0);
+        // Calculate balance increment instead of recalculating all
+        const balanceChange = child.weeklyAllowance;
         
-        // Update child in family
+        // Update child in family using atomic operations
         if (db) {
           await db.collection('families').updateOne(
             { _id: familyId, 'children._id': child._id },
             { 
-              $set: { 
-                'children.$.balance': balance,
-                'children.$.transactions': transactions,
-                'children.$.lastAllowancePayment': new Date().toISOString()
-              }
+              $push: { 'children.$.transactions': transaction },
+              $inc: { 'children.$.balance': balanceChange },
+              $set: { 'children.$.lastAllowancePayment': new Date().toISOString() }
             }
           );
           invalidateFamilyCache(familyId);
