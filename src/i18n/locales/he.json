@@ -184,6 +184,7 @@
       "cashBox": "קופה",
       "totalBalance": "יתרה כוללת",
       "myBalance": "היתרה שלי:",
+      "interestEarned": "ריבית נצברה:",
     "confirmLogout": "האם אתה בטוח שברצונך להתנתק?",
     "deleteFamily": "מחיקת פרופיל משפחתי"
   },
