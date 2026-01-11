@@ -501,7 +501,7 @@ const ChildView = ({ childId, familyId, onBackToParent, onLogout }) => {
   }, [savingsGoal, totalBalance]);
 
   // Check if user is a parent (logged in as parent)
-  const isParent = typeof window !== 'undefined' && sessionStorage.getItem('parentLoggedIn') === 'true';
+  const isParent = typeof window !== 'undefined' && localStorage.getItem('parentLoggedIn') === 'true';
 
   // Show loading state
   if (loading) {

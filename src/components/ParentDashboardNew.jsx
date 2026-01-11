@@ -67,8 +67,8 @@ const ParentDashboard = ({ familyId, onChildrenUpdated, onLogout, onViewChild })
       if (dataResult.status === 'fulfilled' && dataResult.value) {
         setAllData(dataResult.value);
         
-        // Get family phone number from sessionStorage
-        const savedPhone = sessionStorage.getItem('phoneNumber') || '';
+        // Get family phone number from localStorage
+        const savedPhone = localStorage.getItem('phoneNumber') || '';
         setFamilyPhoneNumber(savedPhone);
         
         // Load parent info
@@ -672,7 +672,12 @@ const ParentDashboard = ({ familyId, onChildrenUpdated, onLogout, onViewChild })
           familyId={familyId}
           onDeleteComplete={() => {
             // Clear session storage and logout
-            sessionStorage.clear();
+            // Clear only login-related items from localStorage
+            localStorage.removeItem('familyId');
+            localStorage.removeItem('phoneNumber');
+            localStorage.removeItem('parentLoggedIn');
+            localStorage.removeItem('childId');
+            localStorage.removeItem('isChildView');
             if (onLogout) {
               onLogout();
             }
