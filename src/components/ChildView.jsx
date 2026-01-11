@@ -163,8 +163,10 @@ const ChildView = ({ childId, familyId, onBackToParent, onLogout }) => {
         const allTrans = await getChildTransactions(familyId, childId, null);
         
         // Calculate totalInterestEarned from ALL transactions
+        // IMPORTANT: Only count transactions with id starting with "interest_" to prevent manipulation
+        // Real interest transactions are created by the server with id format: "interest_${Date.now()}_${child._id}"
         const interestTransactions = (allTrans || []).filter(t => 
-          t && t.description && (t.description.includes('ריבית') || t.description.includes('interest'))
+          t && t.id && typeof t.id === 'string' && t.id.startsWith('interest_')
         );
         
         if (interestTransactions.length > 0) {
