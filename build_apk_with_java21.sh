@@ -52,9 +52,18 @@ cd android
 echo "   ✅ APK built"
 echo ""
 
-# Check if APK exists
-APK_PATH="app/build/outputs/apk/release/app-release.apk"
-if [ -f "$APK_PATH" ]; then
+# Check if APK exists (try multiple locations)
+APK_PATH=""
+if [ -f "app/build/outputs/apk/prod/release/app-prod-release.apk" ]; then
+    APK_PATH="app/build/outputs/apk/prod/release/app-prod-release.apk"
+elif [ -f "app/build/outputs/apk/release/app-release.apk" ]; then
+    APK_PATH="app/build/outputs/apk/release/app-release.apk"
+else
+    # Try to find any APK
+    APK_PATH=$(find app/build/outputs/apk -name "*.apk" -type f 2>/dev/null | grep -E "prod|release" | head -1)
+fi
+
+if [ -n "$APK_PATH" ] && [ -f "$APK_PATH" ]; then
     APK_SIZE=$(du -h "$APK_PATH" | cut -f1)
     VERSION=$(grep '"version"' ../package.json | cut -d'"' -f4)
     echo "📊 APK size: $APK_SIZE"
