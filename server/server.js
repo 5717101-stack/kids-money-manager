@@ -1034,9 +1034,10 @@ async function processAllowancesForFamily(familyId) {
               }
             }
           );
+          invalidateFamilyCache(familyId);
         }
         
-        console.log(`✅ Added ${allowanceType} allowance of ${child.weeklyAllowance} to ${child.name} in family ${familyId}`);
+        console.log(`✅ Added ${allowanceType} allowance of ${child.weeklyAllowance} to ${child.name} in family ${familyId} at ${new Date().toISOString()}`);
       }
     }
   } catch (error) {
@@ -2008,21 +2009,22 @@ app.get('/api/families/:familyId/children/:childId', async (req, res) => {
       return res.status(404).json({ error: 'ילד לא נמצא' });
     }
     
-    // Calculate totalInterestEarned from transactions if not set or if it seems incorrect
+    // Calculate totalInterestEarned from ALL transactions to ensure accuracy
     let totalInterestEarned = child.totalInterestEarned || 0;
     const interestTransactions = (child.transactions || []).filter(t => 
-      t.description && t.description.includes('ריבית')
+      t && t.description && (t.description.includes('ריבית') || t.description.includes('interest'))
     );
     if (interestTransactions.length > 0) {
       const calculatedTotal = interestTransactions.reduce((sum, t) => sum + (t.amount || 0), 0);
-      // Use the higher value (either stored or calculated) to ensure accuracy
-      if (calculatedTotal > totalInterestEarned) {
+      // Always use calculated value if we have interest transactions
+      if (calculatedTotal !== totalInterestEarned) {
         totalInterestEarned = calculatedTotal;
         // Update the stored value in the database
         await db.collection('families').updateOne(
           { _id: familyId, 'children._id': childId },
           { $set: { 'children.$.totalInterestEarned': calculatedTotal } }
         );
+        console.log(`[GET-CHILD] Updated totalInterestEarned to ${calculatedTotal} for child ${childId} based on ${interestTransactions.length} interest transactions`);
       }
     }
     

@@ -139,16 +139,18 @@ const ChildView = ({ childId, familyId, onBackToParent, onLogout }) => {
         const trans = await getChildTransactions(familyId, childId, transactionLimit);
         setTransactions(trans);
         
-        // Calculate totalInterestEarned from transactions if not set or if it seems incorrect
-        const interestTransactions = trans.filter(t => 
-          t.description && (t.description.includes('ריבית') || t.description.includes('interest'))
+        // Calculate totalInterestEarned from ALL transactions (not just loaded ones)
+        // Get all transactions from child object if available, otherwise use loaded ones
+        const allTransactions = child.transactions || trans || [];
+        const interestTransactions = allTransactions.filter(t => 
+          t && t.description && (t.description.includes('ריבית') || t.description.includes('interest'))
         );
+        
         if (interestTransactions.length > 0) {
           const calculatedTotal = interestTransactions.reduce((sum, t) => sum + (t.amount || 0), 0);
-          // Use the higher value (either stored or calculated) to ensure accuracy
-          if (calculatedTotal > (child.totalInterestEarned || 0)) {
-            child.totalInterestEarned = calculatedTotal;
-          }
+          // Always use calculated value if we have interest transactions
+          child.totalInterestEarned = calculatedTotal;
+          console.log(`[CHILD-VIEW] Calculated totalInterestEarned: ${calculatedTotal} from ${interestTransactions.length} interest transactions`);
         }
         
         setChildData(child);
