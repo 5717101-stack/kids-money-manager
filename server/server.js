@@ -230,11 +230,12 @@ async function connectDB() {
     // minPoolSize: 2 - maintains at least 2 connections ready
     // maxIdleTimeMS: 30000 - closes idle connections after 30s
     mongoClient = new MongoClient(MONGODB_URI, {
-      maxPoolSize: 10,
-      minPoolSize: 2,
-      maxIdleTimeMS: 30000,
+      maxPoolSize: 20, // Increased for better concurrency
+      minPoolSize: 5, // Keep more connections ready
+      maxIdleTimeMS: 60000, // Keep connections longer (1 minute)
       serverSelectionTimeoutMS: 5000,
       socketTimeoutMS: 45000,
+      connectTimeoutMS: 10000, // 10 seconds to connect
     });
     await mongoClient.connect();
     db = mongoClient.db();
@@ -566,6 +567,9 @@ async function initializeData() {
       await db.collection('families').createIndex({ 'children._id': 1 });
       await db.collection('families').createIndex({ 'children.phoneNumber': 1 }); // For child phone lookup
       await db.collection('families').createIndex({ 'additionalParents.phoneNumber': 1 }); // For additional parent lookup
+      // Index for transaction queries (by date, type, childId)
+      await db.collection('families').createIndex({ 'children.transactions.date': -1 }); // For sorting transactions
+      await db.collection('families').createIndex({ 'children.transactions.type': 1 }); // For filtering by type
       await db.collection('otpCodes').createIndex({ phoneNumber: 1 });
       await db.collection('otpCodes').createIndex({ expiresAt: 1 }, { expireAfterSeconds: 0 });
       await db.collection('otpCodes').createIndex({ familyId: 1 }); // For OTP family lookup
@@ -1092,16 +1096,17 @@ async function processInterestForFamily(familyId) {
             childId: child._id
           };
 
-          const transactions = [...(child.transactions || []), transaction];
-
+          // Use atomic operations for better performance
           await db.collection('families').updateOne(
             { _id: familyId, 'children._id': child._id },
             {
+              $push: { 'children.$.transactions': transaction },
+              $inc: { 
+                'children.$.balance': interestAmount,
+                'children.$.totalInterestEarned': interestAmount
+              },
               $set: {
-                'children.$.balance': newBalance,
-                'children.$.transactions': transactions,
-                'children.$.lastInterestCalculation': new Date().toISOString(),
-                'children.$.totalInterestEarned': newTotalInterestEarned
+                'children.$.lastInterestCalculation': new Date().toISOString()
               }
             }
           );
@@ -2330,23 +2335,18 @@ app.post('/api/families/:familyId/transactions', async (req, res) => {
       childId: childId
     };
     
-    const transactions = [...(child.transactions || []), transaction];
-    const balance = transactions.reduce((total, t) => {
-      if (t.type === 'deposit') {
-        return total + t.amount;
-      } else {
-        return total - t.amount;
-      }
-    }, 0);
+    // Calculate balance increment/decrement instead of recalculating all
+    const balanceChange = type === 'deposit' ? parseFloat(amount) : -parseFloat(amount);
+    const newBalance = (child.balance || 0) + balanceChange;
     
     if (db) {
+      // Use $push to add transaction and $inc to update balance atomically
+      // This is much faster than loading all transactions and recalculating
       await db.collection('families').updateOne(
         { _id: familyId, 'children._id': childId },
         { 
-          $set: { 
-            'children.$.balance': balance,
-            'children.$.transactions': transactions
-          }
+          $push: { 'children.$.transactions': transaction },
+          $inc: { 'children.$.balance': balanceChange }
         }
       );
       // Invalidate cache to ensure fresh data on next request
