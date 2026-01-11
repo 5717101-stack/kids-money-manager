@@ -29,7 +29,9 @@
     "optional": "Optional",
     "language": "Language",
     "retry": "Retry",
-    "calculator": "Calculator"
+    "calculator": "Calculator",
+    "notYet": "Not paid yet",
+    "notApplicable": "N/A"
   },
   "parent": {
     "dashboard": {
