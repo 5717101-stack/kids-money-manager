@@ -2020,10 +2020,12 @@ app.get('/api/families/:familyId/children/:childId', async (req, res) => {
     }
     
     // Calculate totalInterestEarned from ALL transactions to ensure accuracy
+    // IMPORTANT: Only count transactions with id starting with "interest_" to prevent manipulation
+    // Real interest transactions are created by the server with id format: "interest_${Date.now()}_${child._id}"
     let totalInterestEarned = child.totalInterestEarned || 0;
     const allTransactions = child.transactions || [];
     const interestTransactions = allTransactions.filter(t => 
-      t && t.description && (t.description.includes('ריבית') || t.description.includes('interest'))
+      t && t.id && typeof t.id === 'string' && t.id.startsWith('interest_')
     );
     
     if (interestTransactions.length > 0) {
