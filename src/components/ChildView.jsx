@@ -134,12 +134,25 @@ const ChildView = ({ childId, familyId, onBackToParent, onLogout }) => {
     try {
       const child = await getChild(familyId, childId);
       if (child) {
-        setChildData(child);
-        setError(null);
         // Load transactions based on limit
         const transactionLimit = historyLimit === null ? 50 : Math.max(historyLimit, 10);
         const trans = await getChildTransactions(familyId, childId, transactionLimit);
         setTransactions(trans);
+        
+        // Calculate totalInterestEarned from transactions if not set or if it seems incorrect
+        const interestTransactions = trans.filter(t => 
+          t.description && (t.description.includes('ריבית') || t.description.includes('interest'))
+        );
+        if (interestTransactions.length > 0) {
+          const calculatedTotal = interestTransactions.reduce((sum, t) => sum + (t.amount || 0), 0);
+          // Use the higher value (either stored or calculated) to ensure accuracy
+          if (calculatedTotal > (child.totalInterestEarned || 0)) {
+            child.totalInterestEarned = calculatedTotal;
+          }
+        }
+        
+        setChildData(child);
+        setError(null);
       } else {
         setError(t('child.dashboard.childNotFound', { defaultValue: 'Child not found' }));
       }
@@ -148,7 +161,7 @@ const ChildView = ({ childId, familyId, onBackToParent, onLogout }) => {
       setError(error.message || t('child.dashboard.loadError', { defaultValue: 'Error loading child data' }));
       throw error; // Re-throw to be caught by useEffect
     }
-  }, [familyId, childId]);
+  }, [familyId, childId, historyLimit, t]);
 
   const loadSavingsGoal = useCallback(async () => {
     if (!familyId || !childId) return;
