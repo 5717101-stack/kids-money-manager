@@ -1103,6 +1103,24 @@ async function processInterestForFamily(familyId) {
             }
           );
           invalidateFamilyCache(familyId);
+          
+          // Send push notification
+          const notificationTitle = 'הרווחת ריבית! 📈';
+          const notificationBody = `הרווחת ${interestAmount.toFixed(2)} ש״ח מריבית יומית. המשך לחסוך!`;
+          
+          try {
+            const { sendPushToFamily } = await import('./pushNotifications.js');
+            await sendPushToFamily(familyId, notificationTitle, notificationBody, {
+              type: 'interest',
+              childId: child._id,
+              childName: child.name,
+              amount: interestAmount,
+              weeklyRate: child.weeklyInterestRate
+            });
+          } catch (error) {
+            console.error('Error sending push notification for interest:', error);
+          }
+          
           console.log(`✅ Added ${interestAmount.toFixed(2)} daily interest (${dailyInterestRate.toFixed(4)}%) to ${child.name} in family ${familyId}`);
         }
       }
@@ -2863,6 +2881,89 @@ app.post('/api/families/:familyId/children/:childId/pay-allowance', async (req, 
   } catch (error) {
     console.error('Error paying allowance:', error);
     res.status(500).json({ error: 'Failed to pay allowance' });
+  }
+});
+
+// Push notification token management
+app.post('/api/families/:familyId/push-token', async (req, res) => {
+  try {
+    const { familyId } = req.params;
+    const { token, platform } = req.body;
+    
+    if (!token || !platform) {
+      return res.status(400).json({ error: 'Token and platform are required' });
+    }
+    
+    const family = await getFamilyById(familyId);
+    if (!family) {
+      return res.status(404).json({ error: 'משפחה לא נמצאה' });
+    }
+    
+    // Initialize pushTokens array if it doesn't exist
+    const pushTokens = family.pushTokens || [];
+    
+    // Check if token already exists
+    const existingTokenIndex = pushTokens.findIndex(t => t.token === token);
+    
+    if (existingTokenIndex >= 0) {
+      // Update existing token
+      pushTokens[existingTokenIndex] = {
+        token,
+        platform,
+        updatedAt: new Date().toISOString()
+      };
+    } else {
+      // Add new token
+      pushTokens.push({
+        token,
+        platform,
+        createdAt: new Date().toISOString()
+      });
+    }
+    
+    if (db) {
+      await db.collection('families').updateOne(
+        { _id: familyId },
+        { $set: { pushTokens } }
+      );
+      invalidateFamilyCache(familyId);
+    }
+    
+    res.json({ success: true, message: 'Push token registered' });
+  } catch (error) {
+    console.error('Error registering push token:', error);
+    res.status(500).json({ error: 'Failed to register push token' });
+  }
+});
+
+app.delete('/api/families/:familyId/push-token', async (req, res) => {
+  try {
+    const { familyId } = req.params;
+    const { token } = req.body;
+    
+    if (!token) {
+      return res.status(400).json({ error: 'Token is required' });
+    }
+    
+    const family = await getFamilyById(familyId);
+    if (!family) {
+      return res.status(404).json({ error: 'משפחה לא נמצאה' });
+    }
+    
+    const pushTokens = (family.pushTokens || []).filter(t => t.token !== token);
+    
+    if (db) {
+      await db.collection('families').updateOne(
+        { _id: familyId },
+        { $set: { pushTokens } }
+      );
+      invalidateFamilyCache(familyId);
+    }
+    
+    res.json({ success: true, message: 'Push token removed' });
+  } catch (error) {
+    console.error('Error removing push token:', error);
+    res.status(500).json({ error: 'Failed to remove push token' });
   }
 });
 

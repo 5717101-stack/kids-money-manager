@@ -14,7 +14,9 @@
     "android": "npx cap open android"
   },
   "dependencies": {
+    "@capacitor-community/fcm": "^8.1.0",
     "@capacitor/android": "^8.0.0",
+    "@capacitor/push-notifications": "^8.0.0",
     "chart.js": "^4.4.0",
     "i18next": "^25.7.4",
     "i18next-browser-languagedetector": "^8.2.0",

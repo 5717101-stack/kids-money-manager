@@ -10,6 +10,7 @@ import ChildPasswordLogin from './components/ChildPasswordLogin';
 import JoinParentScreen from './components/JoinParentScreen';
 import JoinChildScreen from './components/JoinChildScreen';
 import { getData, getChild } from './utils/api';
+import { pushNotificationService } from './services/pushNotifications';
 
 const App = () => {
   const { t, i18n } = useTranslation();
@@ -39,6 +40,13 @@ const App = () => {
     if (savedFamilyId) {
       setFamilyId(savedFamilyId);
       setPhoneNumber(savedPhoneNumber || '');
+      
+      // Initialize push notifications for native platforms
+      if (window.Capacitor?.isNativePlatform()) {
+        pushNotificationService.initialize(savedFamilyId).catch(err => {
+          console.error('Failed to initialize push notifications:', err);
+        });
+      }
       
       if (savedIsChildView && savedChildId) {
         // Load child data and show child view
@@ -114,6 +122,13 @@ const App = () => {
     sessionStorage.setItem('familyId', fId);
     sessionStorage.setItem('phoneNumber', phoneNum);
     
+    // Initialize push notifications for native platforms
+    if (window.Capacitor?.isNativePlatform()) {
+      pushNotificationService.initialize(fId).catch(err => {
+        console.error('Failed to initialize push notifications:', err);
+      });
+    }
+    
     // If this is a child login (phone number belongs to a child)
     if (isChild && childId) {
       sessionStorage.setItem('childId', childId);
@@ -186,6 +201,13 @@ const App = () => {
   };
 
   const handleLogout = () => {
+    // Unregister push notifications
+    if (window.Capacitor?.isNativePlatform()) {
+      pushNotificationService.unregister().catch(err => {
+        console.error('Failed to unregister push notifications:', err);
+      });
+    }
+    
     sessionStorage.removeItem('familyId');
     sessionStorage.removeItem('phoneNumber');
     sessionStorage.removeItem('parentLoggedIn');
