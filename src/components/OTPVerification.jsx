@@ -131,6 +131,15 @@ const OTPVerification = ({ phoneNumber, isExistingFamily, onVerified, onBack }) 
       // Focus last filled input
       if (digits.length === 6) {
         inputRefs.current[5]?.focus();
+        // Auto-submit when 6 digits are filled
+        if (!isLoading) {
+          setTimeout(() => {
+            const otpCode = newOtp.join('');
+            if (otpCode.length === 6) {
+              handleSubmit(new Event('submit'));
+            }
+          }, 100);
+        }
       } else if (digits.length > 0) {
         inputRefs.current[digits.length - 1]?.focus();
       }
@@ -145,6 +154,16 @@ const OTPVerification = ({ phoneNumber, isExistingFamily, onVerified, onBack }) 
     // Auto-focus next input
     if (value && index < 5) {
       inputRefs.current[index + 1]?.focus();
+    }
+    
+    // Auto-submit when 6 digits are filled
+    if (newOtp.join('').length === 6 && !isLoading) {
+      setTimeout(() => {
+        const otpCode = newOtp.join('');
+        if (otpCode.length === 6) {
+          handleSubmit(new Event('submit'));
+        }
+      }, 100);
     }
   };
 
@@ -164,6 +183,15 @@ const OTPVerification = ({ phoneNumber, isExistingFamily, onVerified, onBack }) 
     setOtp(newOtp);
     if (pastedData.length === 6) {
       inputRefs.current[5]?.focus();
+      // Auto-submit when 6 digits are pasted
+      if (!isLoading) {
+        setTimeout(() => {
+          const otpCode = newOtp.join('');
+          if (otpCode.length === 6) {
+            handleSubmit(new Event('submit'));
+          }
+        }, 100);
+      }
     }
   };
 
@@ -432,22 +460,24 @@ const OTPVerification = ({ phoneNumber, isExistingFamily, onVerified, onBack }) 
             )}
 
             <button 
-              type="submit" 
-              disabled={isLoading || otp.join('').length !== 6}
+              type="button" 
+              onClick={handleResend}
+              disabled={!canResend || isLoading}
               style={{
                 width: '100%',
                 height: '50px',
                 borderRadius: '12px',
-                background: isLoading || otp.join('').length !== 6 ? '#ccc' : 'var(--primary-gradient)',
+                background: canResend && !isLoading ? 'var(--primary-gradient)' : '#ccc',
                 color: 'white',
                 border: 'none',
                 fontSize: '16px',
                 fontWeight: 600,
-                cursor: isLoading || otp.join('').length !== 6 ? 'not-allowed' : 'pointer',
-                transition: '0.2s'
+                cursor: canResend && !isLoading ? 'pointer' : 'not-allowed',
+                transition: '0.2s',
+                opacity: canResend && !isLoading ? 1 : 0.6
               }}
               onMouseEnter={(e) => {
-                if (!isLoading && otp.join('').length === 6) {
+                if (canResend && !isLoading) {
                   e.currentTarget.style.transform = 'translateY(-2px)';
                   e.currentTarget.style.boxShadow = '0 10px 20px rgba(99, 102, 241, 0.3)';
                 }
@@ -457,39 +487,15 @@ const OTPVerification = ({ phoneNumber, isExistingFamily, onVerified, onBack }) 
                 e.currentTarget.style.boxShadow = 'none';
               }}
             >
-              {isLoading 
-                ? t('auth.otpVerification.verifying', { defaultValue: 'מאמת...' })
-                : t('auth.otpVerification.verify', { defaultValue: 'אימות' })}
-            </button>
-
-            <div style={{ textAlign: 'center' }}>
-              {canResend ? (
-                <button 
-                  type="button" 
-                  onClick={handleResend}
-                  style={{
-                    background: 'none',
-                    border: 'none',
-                    color: 'var(--primary)',
-                    fontSize: '14px',
-                    fontWeight: 600,
-                    cursor: 'pointer',
-                    padding: '8px 16px'
-                  }}
-                >
-                  {t('auth.otpVerification.resend', { defaultValue: 'שלח קוד מחדש' })}
-                </button>
-              ) : (
-                <p style={{ fontSize: '14px', color: 'var(--text-muted)' }}>
-                  {t('auth.otpVerification.resendIn', { 
+              {canResend 
+                ? t('auth.otpVerification.resend', { defaultValue: 'שלח שוב' })
+                : t('auth.otpVerification.resendIn', { 
                     seconds: resendTimer,
                     defaultValue: i18n.language === 'he' 
-                      ? 'ניתן לשלוח קוד מחדש בעוד {{seconds}} שניות' 
-                      : 'You can resend code in {{seconds}} seconds'
+                      ? `שלח שוב (${resendTimer})` 
+                      : `Resend (${resendTimer})`
                   })}
-                </p>
-              )}
-            </div>
+            </button>
           </form>
         </div>
 
