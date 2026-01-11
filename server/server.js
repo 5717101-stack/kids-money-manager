@@ -1044,12 +1044,73 @@ async function processAllowancesForFamily(familyId) {
   }
 }
 
-// Check allowances every minute
+// Process daily interest for a family (calculated daily, but rate is weekly)
+async function processInterestForFamily(familyId) {
+  try {
+    const family = await getFamilyById(familyId);
+    if (!family || !family.children) return;
+
+    const now = new Date();
+    
+    for (const child of family.children) {
+      if (!child.weeklyInterestRate || child.weeklyInterestRate <= 0) continue;
+      if (!child.balance || child.balance <= 0) continue;
+
+      const lastCalcDate = child.lastInterestCalculation ? new Date(child.lastInterestCalculation) : null;
+      const oneDayAgo = new Date(now);
+      oneDayAgo.setDate(now.getDate() - 1);
+      oneDayAgo.setHours(0, 0, 0, 0);
+
+      // Calculate interest daily (weekly rate divided by 7)
+      const dailyInterestRate = child.weeklyInterestRate / 7;
+      
+      // Only calculate if it's been at least 1 day since last calculation
+      if (!lastCalcDate || lastCalcDate <= oneDayAgo) {
+        const interestAmount = (child.balance || 0) * (dailyInterestRate / 100);
+        if (interestAmount > 0) {
+          const newBalance = (child.balance || 0) + interestAmount;
+          const newTotalInterestEarned = (child.totalInterestEarned || 0) + interestAmount;
+
+          const transaction = {
+            id: `interest_${Date.now()}_${child._id}`,
+            date: new Date().toISOString(),
+            type: 'deposit',
+            amount: interestAmount,
+            description: `ריבית יומית (${child.weeklyInterestRate}% שבועי)`,
+            category: null,
+            childId: child._id
+          };
+
+          const transactions = [...(child.transactions || []), transaction];
+
+          await db.collection('families').updateOne(
+            { _id: familyId, 'children._id': child._id },
+            {
+              $set: {
+                'children.$.balance': newBalance,
+                'children.$.transactions': transactions,
+                'children.$.lastInterestCalculation': new Date().toISOString(),
+                'children.$.totalInterestEarned': newTotalInterestEarned
+              }
+            }
+          );
+          invalidateFamilyCache(familyId);
+          console.log(`✅ Added ${interestAmount.toFixed(2)} daily interest (${dailyInterestRate.toFixed(4)}%) to ${child.name} in family ${familyId}`);
+        }
+      }
+    }
+  } catch (error) {
+    console.error('Error processing interest:', error);
+  }
+}
+
+// Check allowances and interest every minute
 setInterval(async () => {
   if (db) {
     const families = await db.collection('families').find({}).toArray();
     for (const family of families) {
       await processAllowancesForFamily(family._id);
+      await processInterestForFamily(family._id);
     }
   }
 }, 60 * 1000);

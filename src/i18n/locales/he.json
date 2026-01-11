@@ -27,7 +27,9 @@
     "settings": "הגדרות",
     "saving": "שומר...",
     "optional": "אופציונלי",
-    "language": "שפה"
+    "language": "שפה",
+    "notYet": "עדיין לא שולם",
+    "notApplicable": "לא רלוונטי"
   },
   "parent": {
     "dashboard": {

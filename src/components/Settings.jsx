@@ -1026,7 +1026,7 @@ const Settings = ({ familyId, onClose, onLogout, activeTab: externalActiveTab, h
                   <div className="allowance-config-group">
                     <label className="allowance-label">{t('parent.settings.allowance.interestRate', { defaultValue: 'ריבית שבועית (%)' })}</label>
                     <div className="allowance-input-group" style={{ direction: i18n.language === 'he' ? 'rtl' : 'ltr' }}>
-                      {i18n.language === 'he' && <span className="currency-label" style={{ left: '16px', right: 'auto' }}>%</span>}
+                      {i18n.language === 'he' && <span className="currency-label" style={{ right: '16px', left: 'auto' }}>%</span>}
                       <input
                         type="number"
                         inputMode="decimal"
@@ -1040,7 +1040,7 @@ const Settings = ({ familyId, onClose, onLogout, activeTab: externalActiveTab, h
                         }}
                         className="allowance-input"
                         placeholder="0.00"
-                        style={{ paddingLeft: i18n.language === 'he' ? '40px' : undefined, paddingRight: i18n.language === 'he' ? undefined : '40px' }}
+                        style={{ paddingRight: i18n.language === 'he' ? '40px' : undefined, paddingLeft: i18n.language === 'he' ? undefined : '40px' }}
                       />
                       {i18n.language !== 'he' && <span className="currency-label">%</span>}
                     </div>
@@ -1058,18 +1058,22 @@ const Settings = ({ familyId, onClose, onLogout, activeTab: externalActiveTab, h
                       marginTop: '8px',
                       fontSize: '14px'
                     }}>
-                      {lastPayment && (
-                        <div style={{ marginBottom: '8px' }}>
-                          <strong>{t('parent.settings.allowance.lastPayment', { defaultValue: 'נכנס לאחרונה:' })}</strong>{' '}
-                          {lastPayment.toLocaleDateString(i18n.language === 'he' ? 'he-IL' : 'en-US', {
+                      <div style={{ marginBottom: lastPayment ? '8px' : '0' }}>
+                        <strong>{t('parent.settings.allowance.lastPayment', { defaultValue: 'נכנס לאחרונה:' })}</strong>{' '}
+                        {lastPayment ? (
+                          lastPayment.toLocaleDateString(i18n.language === 'he' ? 'he-IL' : 'en-US', {
                             day: '2-digit',
                             month: '2-digit',
                             year: 'numeric',
                             hour: '2-digit',
                             minute: '2-digit'
-                          })}
-                        </div>
-                      )}
+                          })
+                        ) : (
+                          <span style={{ color: 'var(--text-muted)', fontStyle: 'italic' }}>
+                            {t('common.notYet', { defaultValue: 'עדיין לא שולם' })}
+                          </span>
+                        )}
+                      </div>
                       {nextPayment && (
                         <div>
                           <strong>{t('parent.settings.allowance.nextPayment', { defaultValue: 'הפעם הבאה:' })}</strong>{' '}

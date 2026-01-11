@@ -702,17 +702,21 @@ const ChildView = ({ childId, familyId, onBackToParent, onLogout }) => {
             <div style={{ fontSize: '12px', marginBottom: '4px' }}>{t('child.dashboard.balanceWithParents', { defaultValue: 'יתרה אצל ההורים' })}</div>
             <div style={{ fontSize: '16px', fontWeight: 600, color: 'var(--text-main)' }}>₪{(childData?.balance || 0).toFixed(2)}</div>
             <div style={{
-              fontSize: '12px',
-              marginTop: '4px',
+              fontSize: '16px',
+              marginTop: '8px',
+              padding: '8px 12px',
+              borderRadius: '8px',
+              background: (childData?.totalInterestEarned && childData.totalInterestEarned > 0) ? 'rgba(16, 185, 129, 0.15)' : 'rgba(107, 114, 128, 0.1)',
               color: (childData?.totalInterestEarned && childData.totalInterestEarned > 0) ? '#10B981' : 'var(--text-muted)',
-              fontWeight: 600,
+              fontWeight: 700,
               display: 'flex',
               alignItems: 'center',
-              gap: '4px'
+              gap: '6px',
+              border: (childData?.totalInterestEarned && childData.totalInterestEarned > 0) ? '1px solid rgba(16, 185, 129, 0.3)' : '1px solid rgba(107, 114, 128, 0.2)'
             }}>
-              <span>💰</span>
+              <span style={{ fontSize: '18px' }}>💰</span>
               <span>{t('child.dashboard.interestEarned', { defaultValue: 'ריבית נצברה:' })}</span>
-              <span style={{ fontSize: '14px' }}>+₪{(childData?.totalInterestEarned || 0).toFixed(2)}</span>
+              <span style={{ fontSize: '18px', fontWeight: 800 }}>+₪{(childData?.totalInterestEarned || 0).toFixed(2)}</span>
             </div>
           </div>
           <div style={{ textAlign: 'right', flex: 1 }}>
