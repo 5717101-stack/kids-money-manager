@@ -1776,6 +1776,9 @@ app.post('/api/auth/verify-child-password', async (req, res) => {
         allowanceType: child.allowanceType || 'weekly',
         allowanceDay: child.allowanceDay !== undefined ? child.allowanceDay : 1,
         allowanceTime: child.allowanceTime || '08:00',
+        weeklyInterestRate: child.weeklyInterestRate || 0,
+        lastAllowancePayment: child.lastAllowancePayment || null,
+        totalInterestEarned: child.totalInterestEarned || 0,
         transactions: child.transactions || []
       }
     });
