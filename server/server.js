@@ -968,17 +968,22 @@ async function processAllowancesForFamily(familyId) {
         shouldProcess = isCorrectDay && isCorrectTime;
         
         if (shouldProcess) {
-          const startOfWeek = new Date(now);
-          startOfWeek.setDate(now.getDate() - (now.getDay() + 6) % 7);
-          startOfWeek.setHours(0, 0, 0, 0);
+          // Check if allowance was already paid today (same day and same hour)
+          const todayStart = new Date(now);
+          todayStart.setHours(0, 0, 0, 0);
           
-          const recentAllowance = (child.transactions || []).find(t => 
-            t.type === 'deposit' && 
-            (t.description === 'דמי כיס שבועיים' || t.description === 'דמי כיס חודשיים') &&
-            new Date(t.date) >= startOfWeek
-          );
+          const recentAllowance = (child.transactions || []).find(t => {
+            if (!t || t.type !== 'deposit') return false;
+            const tDate = new Date(t.date);
+            return (t.description === 'דמי כיס שבועיים' || t.description === 'דמי כיס חודשיים') &&
+                   tDate >= todayStart &&
+                   tDate.getHours() === hour;
+          });
           
-          if (recentAllowance) continue;
+          if (recentAllowance) {
+            console.log(`⏭️ Skipping allowance for ${child.name} - already paid today at ${recentAllowance.date}`);
+            continue;
+          }
         }
       } else if (allowanceType === 'monthly') {
         const isCorrectDay = dayOfMonth === allowanceDay;
@@ -986,17 +991,22 @@ async function processAllowancesForFamily(familyId) {
         shouldProcess = isCorrectDay && isCorrectTime;
         
         if (shouldProcess) {
-          const startOfMonth = new Date(now);
-          startOfMonth.setDate(1);
-          startOfMonth.setHours(0, 0, 0, 0);
+          // Check if allowance was already paid today (same day and same hour)
+          const todayStart = new Date(now);
+          todayStart.setHours(0, 0, 0, 0);
           
-          const recentAllowance = (child.transactions || []).find(t => 
-            t.type === 'deposit' && 
-            (t.description === 'דמי כיס שבועיים' || t.description === 'דמי כיס חודשיים') &&
-            new Date(t.date) >= startOfMonth
-          );
+          const recentAllowance = (child.transactions || []).find(t => {
+            if (!t || t.type !== 'deposit') return false;
+            const tDate = new Date(t.date);
+            return (t.description === 'דמי כיס שבועיים' || t.description === 'דמי כיס חודשיים') &&
+                   tDate >= todayStart &&
+                   tDate.getHours() === hour;
+          });
           
-          if (recentAllowance) continue;
+          if (recentAllowance) {
+            console.log(`⏭️ Skipping allowance for ${child.name} - already paid today at ${recentAllowance.date}`);
+            continue;
+          }
         }
       }
       
