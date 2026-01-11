@@ -73,7 +73,7 @@ if [ ! -f "android/key.properties" ]; then
 storePassword=android
 keyPassword=android
 keyAlias=release
-storeFile=release.keystore
+storeFile=app/release.keystore
 EOF
     echo "✅ key.properties created!"
     echo "⚠️  Using default passwords. Change them in android/key.properties for production!"
