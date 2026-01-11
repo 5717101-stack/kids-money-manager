@@ -2021,21 +2021,28 @@ app.get('/api/families/:familyId/children/:childId', async (req, res) => {
     
     // Calculate totalInterestEarned from ALL transactions to ensure accuracy
     let totalInterestEarned = child.totalInterestEarned || 0;
-    const interestTransactions = (child.transactions || []).filter(t => 
+    const allTransactions = child.transactions || [];
+    const interestTransactions = allTransactions.filter(t => 
       t && t.description && (t.description.includes('ריבית') || t.description.includes('interest'))
     );
+    
     if (interestTransactions.length > 0) {
       const calculatedTotal = interestTransactions.reduce((sum, t) => sum + (t.amount || 0), 0);
+      console.log(`[GET-CHILD] Found ${interestTransactions.length} interest transactions, calculated total: ${calculatedTotal.toFixed(2)}, stored: ${totalInterestEarned.toFixed(2)}`);
+      console.log(`[GET-CHILD] Interest transactions:`, interestTransactions.map(t => ({ desc: t.description, amount: t.amount })));
+      
       // Always use calculated value if we have interest transactions
-      if (calculatedTotal !== totalInterestEarned) {
+      if (Math.abs(calculatedTotal - totalInterestEarned) > 0.01) { // Use small epsilon for float comparison
         totalInterestEarned = calculatedTotal;
         // Update the stored value in the database
         await db.collection('families').updateOne(
           { _id: familyId, 'children._id': childId },
           { $set: { 'children.$.totalInterestEarned': calculatedTotal } }
         );
-        console.log(`[GET-CHILD] Updated totalInterestEarned to ${calculatedTotal} for child ${childId} based on ${interestTransactions.length} interest transactions`);
+        console.log(`[GET-CHILD] ✅ Updated totalInterestEarned to ${calculatedTotal.toFixed(2)} for child ${childId}`);
       }
+    } else {
+      console.log(`[GET-CHILD] No interest transactions found for child ${childId}. Total transactions: ${allTransactions.length}`);
     }
     
     res.json({

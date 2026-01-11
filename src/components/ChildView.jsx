@@ -134,15 +134,16 @@ const ChildView = ({ childId, familyId, onBackToParent, onLogout }) => {
     try {
       const child = await getChild(familyId, childId);
       if (child) {
-        // Load transactions based on limit
+        // Load transactions based on limit for display
         const transactionLimit = historyLimit === null ? 50 : Math.max(historyLimit, 10);
         const trans = await getChildTransactions(familyId, childId, transactionLimit);
         setTransactions(trans);
         
-        // Calculate totalInterestEarned from ALL transactions (not just loaded ones)
-        // Get all transactions from child object if available, otherwise use loaded ones
-        const allTransactions = child.transactions || trans || [];
-        const interestTransactions = allTransactions.filter(t => 
+        // Load ALL transactions (no limit) to calculate totalInterestEarned accurately
+        const allTrans = await getChildTransactions(familyId, childId, null);
+        
+        // Calculate totalInterestEarned from ALL transactions
+        const interestTransactions = (allTrans || []).filter(t => 
           t && t.description && (t.description.includes('ריבית') || t.description.includes('interest'))
         );
         
@@ -150,7 +151,10 @@ const ChildView = ({ childId, familyId, onBackToParent, onLogout }) => {
           const calculatedTotal = interestTransactions.reduce((sum, t) => sum + (t.amount || 0), 0);
           // Always use calculated value if we have interest transactions
           child.totalInterestEarned = calculatedTotal;
-          console.log(`[CHILD-VIEW] Calculated totalInterestEarned: ${calculatedTotal} from ${interestTransactions.length} interest transactions`);
+          console.log(`[CHILD-VIEW] Calculated totalInterestEarned: ${calculatedTotal.toFixed(2)} from ${interestTransactions.length} interest transactions`);
+          console.log(`[CHILD-VIEW] Interest transactions:`, interestTransactions.map(t => ({ desc: t.description, amount: t.amount })));
+        } else {
+          console.log(`[CHILD-VIEW] No interest transactions found. Total transactions: ${allTrans.length}`);
         }
         
         setChildData(child);
