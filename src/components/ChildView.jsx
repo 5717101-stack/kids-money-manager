@@ -701,21 +701,19 @@ const ChildView = ({ childId, familyId, onBackToParent, onLogout }) => {
           <div style={{ flex: 1 }}>
             <div style={{ fontSize: '12px', marginBottom: '4px' }}>{t('child.dashboard.balanceWithParents', { defaultValue: 'יתרה אצל ההורים' })}</div>
             <div style={{ fontSize: '16px', fontWeight: 600, color: 'var(--text-main)' }}>₪{(childData?.balance || 0).toFixed(2)}</div>
-            {childData?.totalInterestEarned && childData.totalInterestEarned > 0 && (
-              <div style={{
-                fontSize: '12px',
-                marginTop: '4px',
-                color: '#10B981',
-                fontWeight: 600,
-                display: 'flex',
-                alignItems: 'center',
-                gap: '4px'
-              }}>
-                <span>💰</span>
-                <span>{t('child.dashboard.interestEarned', { defaultValue: 'ריבית נצברה:' })}</span>
-                <span style={{ fontSize: '14px' }}>+₪{childData.totalInterestEarned.toFixed(2)}</span>
-              </div>
-            )}
+            <div style={{
+              fontSize: '12px',
+              marginTop: '4px',
+              color: (childData?.totalInterestEarned && childData.totalInterestEarned > 0) ? '#10B981' : 'var(--text-muted)',
+              fontWeight: 600,
+              display: 'flex',
+              alignItems: 'center',
+              gap: '4px'
+            }}>
+              <span>💰</span>
+              <span>{t('child.dashboard.interestEarned', { defaultValue: 'ריבית נצברה:' })}</span>
+              <span style={{ fontSize: '14px' }}>+₪{(childData?.totalInterestEarned || 0).toFixed(2)}</span>
+            </div>
           </div>
           <div style={{ textAlign: 'right', flex: 1 }}>
             <div style={{ fontSize: '12px', marginBottom: '4px' }}>{t('child.dashboard.cashBoxBalance', { defaultValue: 'יתרה בקופה' })}</div>

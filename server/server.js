@@ -1892,6 +1892,9 @@ app.get('/api/families/:familyId/children', async (req, res) => {
       allowanceType: child.allowanceType || 'weekly',
       allowanceDay: child.allowanceDay !== undefined ? child.allowanceDay : 1,
       allowanceTime: child.allowanceTime || '08:00',
+      weeklyInterestRate: child.weeklyInterestRate || 0,
+      lastAllowancePayment: child.lastAllowancePayment || null,
+      totalInterestEarned: child.totalInterestEarned || 0,
       // Don't include transactions here - they're fetched via separate endpoint
       // This reduces response size by 80-90% for families with many transactions
       transactionCount: (child.transactions || []).length

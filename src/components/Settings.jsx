@@ -1025,7 +1025,8 @@ const Settings = ({ familyId, onClose, onLogout, activeTab: externalActiveTab, h
 
                   <div className="allowance-config-group">
                     <label className="allowance-label">{t('parent.settings.allowance.interestRate', { defaultValue: 'ריבית שבועית (%)' })}</label>
-                    <div className="allowance-input-group">
+                    <div className="allowance-input-group" style={{ direction: i18n.language === 'he' ? 'rtl' : 'ltr' }}>
+                      {i18n.language === 'he' && <span className="currency-label" style={{ left: '16px', right: 'auto' }}>%</span>}
                       <input
                         type="number"
                         inputMode="decimal"
@@ -1039,8 +1040,9 @@ const Settings = ({ familyId, onClose, onLogout, activeTab: externalActiveTab, h
                         }}
                         className="allowance-input"
                         placeholder="0.00"
+                        style={{ paddingLeft: i18n.language === 'he' ? '40px' : undefined, paddingRight: i18n.language === 'he' ? undefined : '40px' }}
                       />
-                      <span className="currency-label">%</span>
+                      {i18n.language !== 'he' && <span className="currency-label">%</span>}
                     </div>
                     <p style={{ fontSize: '12px', color: 'var(--text-muted)', marginTop: '4px' }}>
                       {t('parent.settings.allowance.interestDescription', { defaultValue: 'ריבית שבועית על הכסף שנמצא אצל ההורים' })}
