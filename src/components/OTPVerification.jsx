@@ -462,43 +462,70 @@ const OTPVerification = ({ phoneNumber, isExistingFamily, onVerified, onBack }) 
               </div>
             )}
 
-            <button 
-              type="button" 
-              onClick={handleResend}
-              disabled={!canResend || isLoading}
-              style={{
-                width: '100%',
-                height: '50px',
-                borderRadius: '12px',
-                background: canResend && !isLoading ? 'var(--primary-gradient)' : '#ccc',
-                color: 'white',
-                border: 'none',
-                fontSize: '16px',
-                fontWeight: 600,
-                cursor: canResend && !isLoading ? 'pointer' : 'not-allowed',
-                transition: '0.2s',
-                opacity: canResend && !isLoading ? 1 : 0.6
-              }}
-              onMouseEnter={(e) => {
-                if (canResend && !isLoading) {
-                  e.currentTarget.style.transform = 'translateY(-2px)';
-                  e.currentTarget.style.boxShadow = '0 10px 20px rgba(99, 102, 241, 0.3)';
-                }
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.transform = 'translateY(0)';
-                e.currentTarget.style.boxShadow = 'none';
-              }}
-            >
-              {canResend 
-                ? t('auth.otpVerification.resend', { defaultValue: 'שלח שוב' })
-                : t('auth.otpVerification.resendIn', { 
-                    seconds: resendTimer,
-                    defaultValue: i18n.language === 'he' 
-                      ? `שלח שוב (${resendTimer})` 
-                      : `Resend (${resendTimer})`
-                  })}
-            </button>
+            {isLoading ? (
+              <button 
+                type="button"
+                disabled
+                style={{
+                  width: '100%',
+                  height: '50px',
+                  borderRadius: '12px',
+                  background: 'var(--primary-gradient)',
+                  color: 'white',
+                  border: 'none',
+                  fontSize: '16px',
+                  fontWeight: 600,
+                  cursor: 'not-allowed',
+                  animation: 'pulse 1.5s ease-in-out infinite',
+                  boxShadow: '0 0 20px rgba(99, 102, 241, 0.5)'
+                }}
+              >
+                <span style={{
+                  display: 'inline-block',
+                  animation: 'pulse 1.5s ease-in-out infinite'
+                }}>
+                  {t('auth.otpVerification.verifying', { defaultValue: 'מאמת...' })}
+                </span>
+              </button>
+            ) : (
+              <button 
+                type="button" 
+                onClick={handleResend}
+                disabled={!canResend}
+                style={{
+                  width: '100%',
+                  height: '50px',
+                  borderRadius: '12px',
+                  background: canResend ? 'var(--primary-gradient)' : '#ccc',
+                  color: 'white',
+                  border: 'none',
+                  fontSize: '16px',
+                  fontWeight: 600,
+                  cursor: canResend ? 'pointer' : 'not-allowed',
+                  transition: '0.2s',
+                  opacity: canResend ? 1 : 0.6
+                }}
+                onMouseEnter={(e) => {
+                  if (canResend) {
+                    e.currentTarget.style.transform = 'translateY(-2px)';
+                    e.currentTarget.style.boxShadow = '0 10px 20px rgba(99, 102, 241, 0.3)';
+                  }
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.transform = 'translateY(0)';
+                  e.currentTarget.style.boxShadow = 'none';
+                }}
+              >
+                {canResend 
+                  ? t('auth.otpVerification.resend', { defaultValue: 'שלח שוב' })
+                  : t('auth.otpVerification.resendIn', { 
+                      seconds: resendTimer,
+                      defaultValue: i18n.language === 'he' 
+                        ? `שלח שוב (${resendTimer})` 
+                        : `Resend (${resendTimer})`
+                    })}
+              </button>
+            )}
           </form>
         </div>
 
