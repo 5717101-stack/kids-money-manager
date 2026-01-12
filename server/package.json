@@ -1,6 +1,6 @@
 {
   "name": "kids-money-manager-server",
-  "version": "4.0.3",
+  "version": "4.0.4",
   "type": "module",
   "scripts": {
     "dev": "node --watch server.js",
