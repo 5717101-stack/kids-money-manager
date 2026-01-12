@@ -135,7 +135,7 @@ const OTPVerification = ({ phoneNumber, isExistingFamily, onVerified, onBack }) 
         setTimeout(() => {
           const otpCode = newOtp.join('');
           if (otpCode.length === 6 && !isLoading) {
-            handleSubmit(null);
+            handleSubmit(null, newOtp);
           }
         }, 200);
       } else if (digits.length > 0) {
@@ -159,7 +159,7 @@ const OTPVerification = ({ phoneNumber, isExistingFamily, onVerified, onBack }) 
       setTimeout(() => {
         const otpCode = newOtp.join('');
         if (otpCode.length === 6 && !isLoading) {
-          handleSubmit(null);
+          handleSubmit(null, newOtp);
         }
       }, 200);
     }
@@ -185,17 +185,19 @@ const OTPVerification = ({ phoneNumber, isExistingFamily, onVerified, onBack }) 
       setTimeout(() => {
         const otpCode = newOtp.join('');
         if (otpCode.length === 6 && !isLoading) {
-          handleSubmit(null);
+          handleSubmit(null, newOtp);
         }
       }, 200);
     }
   };
 
-  const handleSubmit = async (e) => {
+  const handleSubmit = async (e, otpArray = null) => {
     if (e && e.preventDefault) {
       e.preventDefault();
     }
-    const otpCode = otp.join('');
+    // Use provided otpArray or fallback to state
+    const currentOtp = otpArray || otp;
+    const otpCode = currentOtp.join('');
     
     if (otpCode.length !== 6) {
       setError(t('auth.otpVerification.enterFullCode', { defaultValue: 'אנא הכנס קוד מלא' }));
