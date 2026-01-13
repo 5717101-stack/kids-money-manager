@@ -947,14 +947,26 @@ const Settings = ({ familyId, onClose, onLogout, activeTab: externalActiveTab, h
 
         {activeTab === 'tasks' && (
           <div className="tasks-section" style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-            {!asPage && (
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              {!asPage && (
                 <h2 style={{ fontSize: '20px', fontWeight: 700, margin: 0 }}>
                   {showTaskHistory 
                     ? t('parent.settings.tasks.history', { defaultValue: 'היסטוריית מטלות' })
                     : t('parent.settings.tasks.title', { defaultValue: 'ניהול מטלות' })
                   }
                 </h2>
+              )}
+              {asPage && !showTaskHistory && (
+                <h2 style={{ fontSize: '20px', fontWeight: 700, margin: 0 }}>
+                  {t('parent.settings.tasks.title', { defaultValue: 'ניהול מטלות' })}
+                </h2>
+              )}
+              {asPage && showTaskHistory && (
+                <h2 style={{ fontSize: '20px', fontWeight: 700, margin: 0 }}>
+                  {t('parent.settings.tasks.history', { defaultValue: 'היסטוריית מטלות' })}
+                </h2>
+              )}
+              <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
                 {!showTaskHistory ? (
                   <button
                     onClick={async () => {
@@ -965,13 +977,15 @@ const Settings = ({ familyId, onClose, onLogout, activeTab: externalActiveTab, h
                     style={{
                       background: 'none',
                       border: 'none',
-                      fontSize: '24px',
+                      fontSize: '28px',
                       cursor: 'pointer',
                       padding: '8px',
                       display: 'flex',
                       alignItems: 'center',
                       justifyContent: 'center',
-                      color: 'var(--primary)'
+                      color: 'var(--primary)',
+                      minWidth: '44px',
+                      minHeight: '44px'
                     }}
                     title={t('parent.settings.tasks.history', { defaultValue: 'היסטוריית מטלות' })}
                   >
@@ -998,7 +1012,7 @@ const Settings = ({ familyId, onClose, onLogout, activeTab: externalActiveTab, h
                   </button>
                 )}
               </div>
-            )}
+            </div>
             
             {!showTaskHistory ? (
               <>
