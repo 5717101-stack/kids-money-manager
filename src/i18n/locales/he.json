@@ -70,7 +70,10 @@
       "reject": "דחה",
       "paymentApproved": "תשלום אושר בהצלחה!",
       "paymentApproveError": "שגיאה באישור תשלום",
-      "paymentRejectError": "שגיאה בדחיית תשלום"
+      "paymentRejectError": "שגיאה בדחיית תשלום",
+      "alreadyApproved": "הבקשה כבר אושרה",
+      "alreadyRejected": "הבקשה כבר נדחתה",
+      "requestNotFound": "בקשה לא נמצאה"
     },
     "settings": {
       "title": "הגדרות",
@@ -263,6 +266,7 @@
       "image": "תמונה (אופציונלי)",
       "takePhoto": "צלם תמונה",
       "cameraError": "שגיאה בצילום תמונה",
+      "cameraPermissionDenied": "נדרשת הרשאה לגישה למצלמה",
       "requestSent": "בקשת תשלום נשלחה בהצלחה!",
       "sendRequest": "שלח בקשת תשלום"
     },

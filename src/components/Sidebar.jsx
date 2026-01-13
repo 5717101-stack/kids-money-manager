@@ -26,9 +26,9 @@ const Sidebar = ({ isOpen, onClose, familyId, onLogout, onChildrenUpdated, onMen
       icon: '🏷️'
     },
     {
-      id: 'allowances',
-      label: t('sidebar.allowances', { defaultValue: 'דמי כיס' }),
-      icon: '💰'
+      id: 'tasks',
+      label: t('sidebar.tasks', { defaultValue: 'מטלות' }),
+      icon: '✅'
     },
     {
       id: 'children',

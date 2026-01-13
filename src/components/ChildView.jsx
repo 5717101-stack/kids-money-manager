@@ -1457,6 +1457,17 @@ const ChildView = ({ childId, familyId, onBackToParent, onLogout }) => {
                       onClick={async () => {
                         try {
                           const { Camera } = await import('@capacitor/camera');
+                          
+                          // Check permissions first
+                          const permissions = await Camera.checkPermissions();
+                          if (permissions.camera !== 'granted') {
+                            const requestResult = await Camera.requestPermissions();
+                            if (requestResult.camera !== 'granted') {
+                              alert(t('child.dashboard.cameraPermissionDenied', { defaultValue: 'נדרשת הרשאה לגישה למצלמה' }));
+                              return;
+                            }
+                          }
+                          
                           const image = await Camera.getPhoto({
                             quality: 90,
                             allowEditing: false,
@@ -1468,7 +1479,8 @@ const ChildView = ({ childId, familyId, onBackToParent, onLogout }) => {
                           }
                         } catch (error) {
                           console.error('Error taking photo:', error);
-                          alert(t('child.dashboard.cameraError', { defaultValue: 'שגיאה בצילום תמונה' }));
+                          const errorMessage = error.message || 'Unknown error';
+                          alert(t('child.dashboard.cameraError', { defaultValue: 'שגיאה בצילום תמונה' }) + ': ' + errorMessage);
                         }
                       }}
                       style={{
@@ -1509,6 +1521,17 @@ const ChildView = ({ childId, familyId, onBackToParent, onLogout }) => {
                     onClick={async () => {
                       try {
                         const { Camera } = await import('@capacitor/camera');
+                        
+                        // Check permissions first
+                        const permissions = await Camera.checkPermissions();
+                        if (permissions.camera !== 'granted') {
+                          const requestResult = await Camera.requestPermissions();
+                          if (requestResult.camera !== 'granted') {
+                            alert(t('child.dashboard.cameraPermissionDenied', { defaultValue: 'נדרשת הרשאה לגישה למצלמה' }));
+                            return;
+                          }
+                        }
+                        
                         const image = await Camera.getPhoto({
                           quality: 90,
                           allowEditing: false,
@@ -1520,7 +1543,8 @@ const ChildView = ({ childId, familyId, onBackToParent, onLogout }) => {
                         }
                       } catch (error) {
                         console.error('Error taking photo:', error);
-                        alert(t('child.dashboard.cameraError', { defaultValue: 'שגיאה בצילום תמונה' }));
+                        const errorMessage = error.message || 'Unknown error';
+                        alert(t('child.dashboard.cameraError', { defaultValue: 'שגיאה בצילום תמונה' }) + ': ' + errorMessage);
                       }
                     }}
                     style={{

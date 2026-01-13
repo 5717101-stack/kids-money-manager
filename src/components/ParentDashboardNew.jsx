@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { getData, getCategories, getChildTransactions, addTransaction, getFamilyInfo, updateParentProfileImage, getPaymentRequests, approvePaymentRequest, rejectPaymentRequest } from '../utils/api';
+import { clearCache } from '../utils/cache';
 import { smartCompressImage } from '../utils/imageCompression';
 import Sidebar from './Sidebar';
 import QuickActionModal from './QuickActionModal';
@@ -230,6 +231,31 @@ const ParentDashboard = ({ familyId, onChildrenUpdated, onLogout, onViewChild })
   const handleApprovePayment = async (requestId) => {
     if (!familyId) return;
     try {
+      // Clear cache and reload payment requests to get latest status
+      clearCache(`/families/${familyId}/payment-requests`);
+      clearCache(`/families/${familyId}/payment-requests?status=pending`);
+      
+      // Check if request is still pending (without cache)
+      const currentRequests = await getPaymentRequests(familyId, null, false);
+      const currentRequest = currentRequests.find(r => r._id === requestId);
+      
+      if (!currentRequest) {
+        alert(t('parent.dashboard.requestNotFound', { defaultValue: 'בקשה לא נמצאה' }));
+        await loadData();
+        setSelectedPaymentRequest(null);
+        return;
+      }
+      
+      if (currentRequest.status !== 'pending') {
+        const statusMessage = currentRequest.status === 'approved' 
+          ? t('parent.dashboard.alreadyApproved', { defaultValue: 'הבקשה כבר אושרה' })
+          : t('parent.dashboard.alreadyRejected', { defaultValue: 'הבקשה כבר נדחתה' });
+        alert(statusMessage);
+        await loadData();
+        setSelectedPaymentRequest(null);
+        return;
+      }
+      
       await approvePaymentRequest(familyId, requestId);
       await loadData();
       setSelectedPaymentRequest(null);

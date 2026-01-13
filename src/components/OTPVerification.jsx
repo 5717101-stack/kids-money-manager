@@ -418,7 +418,16 @@ const OTPVerification = ({ phoneNumber, isExistingFamily, onVerified, onBack }) 
           )}
 
           <form onSubmit={handleSubmit} onPaste={handlePaste} style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
-            <div style={{ display: 'flex', gap: '12px', justifyContent: 'center' }} dir="ltr">
+            <div style={{ 
+              display: 'flex', 
+              gap: 'clamp(6px, 2vw, 12px)', 
+              justifyContent: 'center',
+              flexWrap: 'nowrap',
+              width: '100%',
+              maxWidth: '100%',
+              padding: '0 10px',
+              boxSizing: 'border-box'
+            }} dir="ltr">
               {otp.map((digit, index) => (
                 <input
                   key={index}
@@ -435,15 +444,19 @@ const OTPVerification = ({ phoneNumber, isExistingFamily, onVerified, onBack }) 
                   autoCorrect="off"
                   spellCheck="false"
                   style={{
-                    width: '50px',
-                    height: '60px',
+                    width: 'clamp(40px, 12vw, 50px)',
+                    minWidth: '40px',
+                    maxWidth: '50px',
+                    height: 'clamp(50px, 15vw, 60px)',
                     borderRadius: '12px',
                     border: '2px solid rgba(0,0,0,0.1)',
-                    fontSize: '24px',
+                    fontSize: 'clamp(20px, 6vw, 24px)',
                     fontWeight: 700,
                     textAlign: 'center',
                     outline: 'none',
-                    transition: '0.2s'
+                    transition: '0.2s',
+                    flex: '0 0 auto',
+                    boxSizing: 'border-box'
                   }}
                   onFocus={(e) => e.target.style.borderColor = 'var(--primary)'}
                   onBlur={(e) => e.target.style.borderColor = 'rgba(0,0,0,0.1)'}

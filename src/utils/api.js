@@ -416,13 +416,13 @@ export const requestTaskPayment = async (familyId, taskId, childId, note, image)
   return response.paymentRequest;
 };
 
-export const getPaymentRequests = async (familyId, status = null) => {
+export const getPaymentRequests = async (familyId, status = null, useCacheOption = true) => {
   if (!familyId) {
     throw new Error('Family ID is required');
   }
   const params = status ? `?status=${status}` : '';
   const response = await apiCall(`/families/${familyId}/payment-requests${params}`, {}, {
-    useCache: true,
+    useCache: useCacheOption,
     cacheTTL: 1 * 60 * 1000 // 1 minute cache
   });
   return response.paymentRequests || [];

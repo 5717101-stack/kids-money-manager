@@ -3116,7 +3116,12 @@ app.put('/api/families/:familyId/payment-requests/:requestId/approve', async (re
     }
     
     if (request.status !== 'pending') {
-      return res.status(400).json({ error: 'Request is not pending' });
+      const statusMessage = request.status === 'approved' 
+        ? 'הבקשה כבר אושרה' 
+        : request.status === 'rejected' 
+        ? 'הבקשה כבר נדחתה'
+        : `הבקשה במצב: ${request.status}`;
+      return res.status(400).json({ error: statusMessage });
     }
     
     const child = family.children?.find(c => c._id === request.childId);
