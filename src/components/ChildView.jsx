@@ -148,14 +148,18 @@ const ChildView = ({ childId, familyId, onBackToParent, onLogout }) => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [childId, familyId, historyLimit]);
 
-  // Load expenses when period changes or on initial load
+  // Load expenses/income when period changes or on initial load
   useEffect(() => {
     if (familyId && childId) {
-      loadExpensesByCategory();
+      if (chartType === 'expenses') {
+        loadExpensesByCategory();
+      } else {
+        loadIncomeByCategory();
+      }
       loadCategories();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [expensesPeriod, familyId, childId]);
+  }, [expensesPeriod, familyId, childId, chartType]);
 
   const loadCategories = async () => {
     if (!familyId) return;
