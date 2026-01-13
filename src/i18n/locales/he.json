@@ -400,6 +400,7 @@
     },
     "income": {
       "title": "הכנסות",
+      "distributionTitle": "התפלגות הכנסות",
       "chartTitle": "הכנסות - {period}",
       "loading": "טוען...",
       "noIncome": "אין הכנסות בתקופה זו"

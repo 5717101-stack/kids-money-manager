@@ -283,22 +283,42 @@ const ChildView = ({ childId, familyId, onBackToParent, onLogout }) => {
       
       // Load all transactions for the period
       const allTransactions = await getChildTransactions(familyId, childId, null);
+      console.log('[INCOME-CHART] Total transactions loaded:', allTransactions?.length || 0);
       
       // Calculate date range
       const endDate = new Date();
+      endDate.setHours(23, 59, 59, 999); // End of today
       const startDate = new Date();
       startDate.setDate(startDate.getDate() - days);
+      startDate.setHours(0, 0, 0, 0); // Start of day
+      
+      console.log('[INCOME-CHART] Date range:', { startDate: startDate.toISOString(), endDate: endDate.toISOString(), days });
       
       // Filter deposits within date range
       const deposits = (allTransactions || []).filter(t => {
-        if (!t || t.type !== 'deposit') return false;
+        if (!t) return false;
+        if (t.type !== 'deposit') return false;
+        
         try {
           const transactionDate = new Date(t.date || t.createdAt);
-          return transactionDate >= startDate && transactionDate <= endDate;
+          const isInRange = transactionDate >= startDate && transactionDate <= endDate;
+          if (isInRange) {
+            console.log('[INCOME-CHART] Found deposit:', { 
+              id: t.id, 
+              amount: t.amount, 
+              description: t.description, 
+              category: t.category,
+              date: transactionDate.toISOString()
+            });
+          }
+          return isInRange;
         } catch (dateError) {
+          console.error('[INCOME-CHART] Date parsing error:', dateError, t);
           return false;
         }
       });
+      
+      console.log('[INCOME-CHART] Deposits in range:', deposits.length);
       
       // Categorize income
       const incomeCategories = {
@@ -310,33 +330,41 @@ const ChildView = ({ childId, familyId, onBackToParent, onLogout }) => {
       
       deposits.forEach(deposit => {
         const amount = Math.abs(deposit.amount || 0);
+        if (amount === 0) return;
         
         // Check if it's interest (id starts with "interest_")
         if (deposit.id && typeof deposit.id === 'string' && deposit.id.startsWith('interest_')) {
           incomeCategories['הכנסה מריבית'] += amount;
+          console.log('[INCOME-CHART] Categorized as interest:', amount);
         }
         // Check if it's from tasks (id starts with "task_" or category is "משימות בית")
         else if ((deposit.id && typeof deposit.id === 'string' && deposit.id.startsWith('task_')) ||
                  deposit.category === 'משימות בית' ||
                  (deposit.description && deposit.description.includes('משימה'))) {
           incomeCategories['הכנסה ממטלות'] += amount;
+          console.log('[INCOME-CHART] Categorized as task:', amount);
         }
         // Check if it's allowance (description contains "דמי כיס" or "allowance" or category is "דמי כיס")
         else if ((deposit.description && (deposit.description.includes('דמי כיס') || deposit.description.includes('allowance'))) ||
                  deposit.category === 'דמי כיס') {
           incomeCategories['הכנסה מדמי כיס'] += amount;
+          console.log('[INCOME-CHART] Categorized as allowance:', amount);
         }
         // Everything else is "other income"
         else {
           incomeCategories['הכנסה אחרת'] += amount;
+          console.log('[INCOME-CHART] Categorized as other:', amount, deposit);
         }
       });
+      
+      console.log('[INCOME-CHART] Income categories:', incomeCategories);
       
       // Convert to array format (only include categories with amount > 0)
       const incomeArray = Object.entries(incomeCategories)
         .filter(([_, amount]) => amount > 0)
         .map(([category, amount]) => ({ category, amount }));
       
+      console.log('[INCOME-CHART] Final income array:', incomeArray);
       setIncomeByCategory(incomeArray);
       
       // Cache the result
@@ -963,6 +991,12 @@ const ChildView = ({ childId, familyId, onBackToParent, onLogout }) => {
       {/* Expenses/Income Distribution Chart */}
       <div className="fintech-card">
         <div className="expenses-chart-header">
+          <h2 style={{ marginBottom: '12px' }}>
+            {chartType === 'expenses' 
+              ? t('child.expenses.title', { defaultValue: 'התפלגות הוצאות' })
+              : t('child.income.distributionTitle', { defaultValue: 'התפלגות הכנסות' })
+            }
+          </h2>
           <div style={{ display: 'flex', gap: '12px', alignItems: 'center', marginBottom: '12px' }}>
             <button
               className={`period-button ${chartType === 'expenses' ? 'active' : ''}`}
@@ -976,7 +1010,9 @@ const ChildView = ({ childId, familyId, onBackToParent, onLogout }) => {
                 fontSize: '14px',
                 fontWeight: 600,
                 cursor: 'pointer',
-                transition: 'all 0.2s'
+                transition: 'all 0.2s',
+                flex: 1,
+                minWidth: 0
               }}
             >
               {t('child.expenses.title', { defaultValue: 'הוצאות' })}
@@ -993,7 +1029,9 @@ const ChildView = ({ childId, familyId, onBackToParent, onLogout }) => {
                 fontSize: '14px',
                 fontWeight: 600,
                 cursor: 'pointer',
-                transition: 'all 0.2s'
+                transition: 'all 0.2s',
+                flex: 1,
+                minWidth: 0
               }}
             >
               {t('child.income.title', { defaultValue: 'הכנסות' })}
