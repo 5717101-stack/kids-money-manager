@@ -3161,14 +3161,24 @@ app.put('/api/families/:familyId/payment-requests/:requestId/approve', async (re
           }
         }
       );
-      invalidateFamilyCache(familyId);
-      invalidateChildCache(familyId, request.childId);
+      
+      // Invalidate cache if functions exist
+      try {
+        if (typeof invalidateFamilyCache === 'function') {
+          invalidateFamilyCache(familyId);
+        }
+        if (typeof invalidateChildCache === 'function') {
+          invalidateChildCache(familyId, request.childId);
+        }
+      } catch (cacheError) {
+        console.warn('Cache invalidation error (non-critical):', cacheError);
+      }
     }
     
     res.json({ success: true, transaction });
   } catch (error) {
     console.error('Error approving payment request:', error);
-    res.status(500).json({ error: 'Failed to approve payment request' });
+    res.status(500).json({ error: 'Failed to approve payment request: ' + (error.message || 'Unknown error') });
   }
 });
 
