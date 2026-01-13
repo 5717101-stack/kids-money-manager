@@ -991,12 +991,6 @@ const ChildView = ({ childId, familyId, onBackToParent, onLogout }) => {
       {/* Expenses/Income Distribution Chart */}
       <div className="fintech-card">
         <div className="expenses-chart-header">
-          <h2 style={{ marginBottom: '12px' }}>
-            {chartType === 'expenses' 
-              ? t('child.expenses.title', { defaultValue: 'התפלגות הוצאות' })
-              : t('child.income.distributionTitle', { defaultValue: 'התפלגות הכנסות' })
-            }
-          </h2>
           <div style={{ display: 'flex', gap: '12px', alignItems: 'center', marginBottom: '12px' }}>
             <button
               className={`period-button ${chartType === 'expenses' ? 'active' : ''}`}
@@ -1015,7 +1009,7 @@ const ChildView = ({ childId, familyId, onBackToParent, onLogout }) => {
                 minWidth: 0
               }}
             >
-              {t('child.expenses.title', { defaultValue: 'הוצאות' })}
+              {t('child.expenses.title', { defaultValue: 'התפלגות הוצאות' })}
             </button>
             <button
               className={`period-button ${chartType === 'income' ? 'active' : ''}`}
@@ -1034,7 +1028,7 @@ const ChildView = ({ childId, familyId, onBackToParent, onLogout }) => {
                 minWidth: 0
               }}
             >
-              {t('child.income.title', { defaultValue: 'הכנסות' })}
+              {t('child.income.distributionTitle', { defaultValue: 'התפלגות הכנסות' })}
             </button>
           </div>
           <div className="period-toggle">
