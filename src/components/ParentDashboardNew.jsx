@@ -887,8 +887,14 @@ const ParentDashboard = ({ familyId, onChildrenUpdated, onLogout, onViewChild })
                 </div>
               </>
             ) : (
-              <div style={{ padding: '20px' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+              <div style={{ 
+                padding: '20px',
+                display: 'flex',
+                flexDirection: 'column',
+                maxHeight: '80vh',
+                overflow: 'hidden'
+              }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', flexShrink: 0 }}>
                   <h2 style={{ margin: 0 }}>{selectedPaymentRequest.taskName}</h2>
                   <button 
                     className="close-button" 
@@ -897,7 +903,15 @@ const ParentDashboard = ({ familyId, onChildrenUpdated, onLogout, onViewChild })
                     ✕
                   </button>
                 </div>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                <div style={{ 
+                  display: 'flex', 
+                  flexDirection: 'column', 
+                  gap: '16px',
+                  overflowY: 'auto',
+                  flex: 1,
+                  minHeight: 0,
+                  paddingRight: '8px'
+                }}>
                   <div>
                     <div style={{ fontSize: '14px', color: 'var(--text-muted)', marginBottom: '4px' }}>
                       {t('parent.dashboard.child', { defaultValue: 'ילד' })}
@@ -946,47 +960,57 @@ const ParentDashboard = ({ familyId, onChildrenUpdated, onLogout, onViewChild })
                         alt="Task completion" 
                         style={{
                           maxWidth: '100%',
-                          maxHeight: '300px',
+                          maxHeight: '200px',
+                          width: 'auto',
+                          height: 'auto',
                           borderRadius: '8px',
-                          objectFit: 'contain'
+                          objectFit: 'contain',
+                          display: 'block'
                         }}
                       />
                     </div>
                   )}
-                  <div style={{ display: 'flex', gap: '12px', marginTop: '20px' }}>
-                    <button
-                      onClick={() => handleRejectPayment(selectedPaymentRequest._id)}
-                      style={{
-                        flex: 1,
-                        padding: '12px',
-                        borderRadius: '8px',
-                        background: '#EF4444',
-                        color: 'white',
-                        border: 'none',
-                        fontSize: '16px',
-                        fontWeight: 600,
-                        cursor: 'pointer'
-                      }}
-                    >
-                      {t('parent.dashboard.reject', { defaultValue: 'דחה' })}
-                    </button>
-                    <button
-                      onClick={() => handleApprovePayment(selectedPaymentRequest._id)}
-                      style={{
-                        flex: 1,
-                        padding: '12px',
-                        borderRadius: '8px',
-                        background: 'var(--primary-gradient)',
-                        color: 'white',
-                        border: 'none',
-                        fontSize: '16px',
-                        fontWeight: 600,
-                        cursor: 'pointer'
-                      }}
-                    >
-                      {t('parent.dashboard.approve', { defaultValue: 'אשר תשלום' })}
-                    </button>
-                  </div>
+                </div>
+                <div style={{ 
+                  display: 'flex', 
+                  gap: '12px', 
+                  marginTop: '20px',
+                  flexShrink: 0,
+                  paddingTop: '16px',
+                  borderTop: '1px solid rgba(0,0,0,0.1)'
+                }}>
+                  <button
+                    onClick={() => handleRejectPayment(selectedPaymentRequest._id)}
+                    style={{
+                      flex: 1,
+                      padding: '12px',
+                      borderRadius: '8px',
+                      background: '#EF4444',
+                      color: 'white',
+                      border: 'none',
+                      fontSize: '16px',
+                      fontWeight: 600,
+                      cursor: 'pointer'
+                    }}
+                  >
+                    {t('parent.dashboard.reject', { defaultValue: 'דחה' })}
+                  </button>
+                  <button
+                    onClick={() => handleApprovePayment(selectedPaymentRequest._id)}
+                    style={{
+                      flex: 1,
+                      padding: '12px',
+                      borderRadius: '8px',
+                      background: 'var(--primary-gradient)',
+                      color: 'white',
+                      border: 'none',
+                      fontSize: '16px',
+                      fontWeight: 600,
+                      cursor: 'pointer'
+                    }}
+                  >
+                    {t('parent.dashboard.approve', { defaultValue: 'אשר תשלום' })}
+                  </button>
                 </div>
               </div>
             )}
