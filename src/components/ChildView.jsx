@@ -960,10 +960,45 @@ const ChildView = ({ childId, familyId, onBackToParent, onLogout }) => {
         )}
       </div>
 
-      {/* Expenses Distribution Chart */}
+      {/* Expenses/Income Distribution Chart */}
       <div className="fintech-card">
         <div className="expenses-chart-header">
-          <h2>{t('child.expenses.title', { defaultValue: 'התפלגות הוצאות' })}</h2>
+          <div style={{ display: 'flex', gap: '12px', alignItems: 'center', marginBottom: '12px' }}>
+            <button
+              className={`period-button ${chartType === 'expenses' ? 'active' : ''}`}
+              onClick={() => setChartType('expenses')}
+              style={{
+                padding: '8px 16px',
+                borderRadius: '8px',
+                border: '1px solid var(--primary)',
+                background: chartType === 'expenses' ? 'var(--primary)' : 'white',
+                color: chartType === 'expenses' ? 'white' : 'var(--primary)',
+                fontSize: '14px',
+                fontWeight: 600,
+                cursor: 'pointer',
+                transition: 'all 0.2s'
+              }}
+            >
+              {t('child.expenses.title', { defaultValue: 'הוצאות' })}
+            </button>
+            <button
+              className={`period-button ${chartType === 'income' ? 'active' : ''}`}
+              onClick={() => setChartType('income')}
+              style={{
+                padding: '8px 16px',
+                borderRadius: '8px',
+                border: '1px solid var(--primary)',
+                background: chartType === 'income' ? 'var(--primary)' : 'white',
+                color: chartType === 'income' ? 'white' : 'var(--primary)',
+                fontSize: '14px',
+                fontWeight: 600,
+                cursor: 'pointer',
+                transition: 'all 0.2s'
+              }}
+            >
+              {t('child.income.title', { defaultValue: 'הכנסות' })}
+            </button>
+          </div>
           <div className="period-toggle">
             <button
               className={`period-button ${expensesPeriod === 'week' ? 'active' : ''}`}
@@ -979,44 +1014,86 @@ const ChildView = ({ childId, familyId, onBackToParent, onLogout }) => {
             </button>
           </div>
         </div>
-        {loadingExpenses ? (
-          <div style={{
-            display: 'flex',
-            flexDirection: 'column',
-            alignItems: 'center',
-            justifyContent: 'center',
-            padding: '40px 20px',
-            gap: '16px'
-          }}>
+        {chartType === 'expenses' ? (
+          loadingExpenses ? (
             <div style={{
-              width: '40px',
-              height: '40px',
-              border: '4px solid rgba(99, 102, 241, 0.2)',
-              borderTopColor: '#6366F1',
-              borderRadius: '50%',
-              animation: 'spin 0.8s linear infinite'
-            }}></div>
-            <div style={{ color: 'var(--text-muted)', fontSize: '14px', fontWeight: 500 }}>
-              {t('common.loading', { defaultValue: 'טוען...' })}
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              justifyContent: 'center',
+              padding: '40px 20px',
+              gap: '16px'
+            }}>
+              <div style={{
+                width: '40px',
+                height: '40px',
+                border: '4px solid rgba(99, 102, 241, 0.2)',
+                borderTopColor: '#6366F1',
+                borderRadius: '50%',
+                animation: 'spin 0.8s linear infinite'
+              }}></div>
+              <div style={{ color: 'var(--text-muted)', fontSize: '14px', fontWeight: 500 }}>
+                {t('child.expenses.loading', { defaultValue: 'טוען...' })}
+              </div>
             </div>
-          </div>
-        ) : expensesByCategory && expensesByCategory.length > 0 ? (
-          <ExpensePieChart
-            expensesByCategory={expensesByCategory}
-            title={t('child.expenses.chartTitle', { 
-              period: expensesPeriod === 'week' 
-                ? t('child.expenses.week', { defaultValue: 'Last Week' })
-                : t('child.expenses.month', { defaultValue: 'Last Month' }),
-              defaultValue: 'Expenses - {period}'
-            })}
-            days={expensesPeriod === 'week' ? 7 : 30}
-            onCategorySelect={setFilteredCategory}
-            selectedCategory={filteredCategory}
-          />
+          ) : expensesByCategory && expensesByCategory.length > 0 ? (
+            <ExpensePieChart
+              expensesByCategory={expensesByCategory}
+              title={t('child.expenses.chartTitle', { 
+                period: expensesPeriod === 'week' 
+                  ? t('child.expenses.week', { defaultValue: 'Last Week' })
+                  : t('child.expenses.month', { defaultValue: 'Last Month' }),
+                defaultValue: 'Expenses - {period}'
+              })}
+              days={expensesPeriod === 'week' ? 7 : 30}
+              onCategorySelect={setFilteredCategory}
+              selectedCategory={filteredCategory}
+            />
+          ) : (
+            <div className="no-expenses-message">
+              {t('child.expenses.noExpenses', { defaultValue: 'אין הוצאות בתקופה זו' })}
+            </div>
+          )
         ) : (
-          <div className="no-expenses-message">
-            {t('child.expenses.noExpenses', { defaultValue: 'אין הוצאות בתקופה זו' })}
-          </div>
+          loadingIncome ? (
+            <div style={{
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              justifyContent: 'center',
+              padding: '40px 20px',
+              gap: '16px'
+            }}>
+              <div style={{
+                width: '40px',
+                height: '40px',
+                border: '4px solid rgba(99, 102, 241, 0.2)',
+                borderTopColor: '#6366F1',
+                borderRadius: '50%',
+                animation: 'spin 0.8s linear infinite'
+              }}></div>
+              <div style={{ color: 'var(--text-muted)', fontSize: '14px', fontWeight: 500 }}>
+                {t('child.income.loading', { defaultValue: 'טוען...' })}
+              </div>
+            </div>
+          ) : incomeByCategory && incomeByCategory.length > 0 ? (
+            <ExpensePieChart
+              expensesByCategory={incomeByCategory}
+              title={t('child.income.chartTitle', { 
+                period: expensesPeriod === 'week' 
+                  ? t('child.expenses.week', { defaultValue: 'Last Week' })
+                  : t('child.expenses.month', { defaultValue: 'Last Month' }),
+                defaultValue: 'Income - {period}'
+              })}
+              days={expensesPeriod === 'week' ? 7 : 30}
+              onCategorySelect={setFilteredCategory}
+              selectedCategory={filteredCategory}
+            />
+          ) : (
+            <div className="no-expenses-message">
+              {t('child.income.noIncome', { defaultValue: 'אין הכנסות בתקופה זו' })}
+            </div>
+          )
         )}
       </div>
 
