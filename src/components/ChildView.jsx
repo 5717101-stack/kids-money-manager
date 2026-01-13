@@ -1455,34 +1455,8 @@ const ChildView = ({ childId, familyId, onBackToParent, onLogout }) => {
                       }}
                     />
                     <button
-                      onClick={async () => {
-                        try {
-                          const { Camera } = await import('@capacitor/camera');
-                          
-                          // Check permissions first
-                          const permissions = await Camera.checkPermissions();
-                          if (permissions.camera !== 'granted') {
-                            const requestResult = await Camera.requestPermissions();
-                            if (requestResult.camera !== 'granted') {
-                              alert(t('child.dashboard.cameraPermissionDenied', { defaultValue: 'נדרשת הרשאה לגישה למצלמה' }));
-                              return;
-                            }
-                          }
-                          
-                          const image = await Camera.getPhoto({
-                            quality: 90,
-                            allowEditing: false,
-                            source: 'CAMERA',
-                            resultType: 'base64'
-                          });
-                          if (image.base64String) {
-                            setTaskImage(`data:image/${image.format};base64,${image.base64String}`);
-                          }
-                        } catch (error) {
-                          console.error('Error taking photo:', error);
-                          const errorMessage = error.message || 'Unknown error';
-                          alert(t('child.dashboard.cameraError', { defaultValue: 'שגיאה בצילום תמונה' }) + ': ' + errorMessage);
-                        }
+                      onClick={() => {
+                        taskImageInputRef.current?.click();
                       }}
                       style={{
                         position: 'absolute',
@@ -1518,36 +1492,7 @@ const ChildView = ({ childId, familyId, onBackToParent, onLogout }) => {
                     </button>
                   </div>
                 ) : (
-                  <button
-                    onClick={async () => {
-                      try {
-                        const { Camera } = await import('@capacitor/camera');
-                        
-                        // Check permissions first
-                        const permissions = await Camera.checkPermissions();
-                        if (permissions.camera !== 'granted') {
-                          const requestResult = await Camera.requestPermissions();
-                          if (requestResult.camera !== 'granted') {
-                            alert(t('child.dashboard.cameraPermissionDenied', { defaultValue: 'נדרשת הרשאה לגישה למצלמה' }));
-                            return;
-                          }
-                        }
-                        
-                        const image = await Camera.getPhoto({
-                          quality: 90,
-                          allowEditing: false,
-                          source: 'CAMERA',
-                          resultType: 'base64'
-                        });
-                        if (image.base64String) {
-                          setTaskImage(`data:image/${image.format};base64,${image.base64String}`);
-                        }
-                      } catch (error) {
-                        console.error('Error taking photo:', error);
-                        const errorMessage = error.message || 'Unknown error';
-                        alert(t('child.dashboard.cameraError', { defaultValue: 'שגיאה בצילום תמונה' }) + ': ' + errorMessage);
-                      }
-                    }}
+                  <label
                     style={{
                       width: '100%',
                       padding: '40px',
@@ -1563,9 +1508,43 @@ const ChildView = ({ childId, familyId, onBackToParent, onLogout }) => {
                       gap: '8px'
                     }}
                   >
+                    <input
+                      ref={taskImageInputRef}
+                      type="file"
+                      accept="image/*"
+                      capture="environment"
+                      onChange={async (e) => {
+                        const file = e.target.files?.[0];
+                        if (!file) return;
+                        
+                        try {
+                          // Convert file to base64 using FileReader (works on iOS)
+                          const reader = new FileReader();
+                          reader.onload = (event) => {
+                            const base64 = event.target?.result;
+                            if (base64) {
+                              setTaskImage(base64);
+                            }
+                          };
+                          reader.onerror = () => {
+                            alert(t('child.dashboard.cameraError', { defaultValue: 'שגיאה בקריאת התמונה' }));
+                          };
+                          reader.readAsDataURL(file);
+                        } catch (error) {
+                          console.error('Error reading file:', error);
+                          alert(t('child.dashboard.cameraError', { defaultValue: 'שגיאה בצילום תמונה' }) + ': ' + (error.message || 'Unknown error'));
+                        }
+                        
+                        // Reset input to allow selecting the same file again
+                        if (taskImageInputRef.current) {
+                          taskImageInputRef.current.value = '';
+                        }
+                      }}
+                      style={{ display: 'none' }}
+                    />
                     <span style={{ fontSize: '32px' }}>📷</span>
                     <span>{t('child.dashboard.takePhoto', { defaultValue: 'צלם תמונה' })}</span>
-                  </button>
+                  </label>
                 )}
               </div>
 
