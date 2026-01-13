@@ -21,6 +21,9 @@ const ChildView = ({ childId, familyId, onBackToParent, onLogout }) => {
   const [expensesPeriod, setExpensesPeriod] = useState('month'); // 'week' or 'month'
   const [expensesByCategory, setExpensesByCategory] = useState([]);
   const [loadingExpenses, setLoadingExpenses] = useState(false);
+  const [chartType, setChartType] = useState('expenses'); // 'expenses' or 'income'
+  const [incomeByCategory, setIncomeByCategory] = useState([]);
+  const [loadingIncome, setLoadingIncome] = useState(false);
   const [filteredCategory, setFilteredCategory] = useState(null); // Category to filter transactions
   const [historyLimit, setHistoryLimit] = useState(() => {
     // Load from localStorage or default to 5
@@ -257,6 +260,92 @@ const ChildView = ({ childId, familyId, onBackToParent, onLogout }) => {
       setExpensesByCategory([]);
     } finally {
       setLoadingExpenses(false);
+    }
+  };
+
+  const loadIncomeByCategory = async () => {
+    if (!familyId || !childId) return;
+    
+    const days = expensesPeriod === 'week' ? 7 : 30;
+    const cacheKey = `income_by_category_${familyId}_${childId}_${days}`;
+    const cacheTTL = 10 * 60 * 1000; // 10 minutes cache
+    
+    // Check cache first
+    const cached = getCached(cacheKey, cacheTTL);
+    if (cached !== null) {
+      setIncomeByCategory(cached);
+      setLoadingIncome(false);
+      return;
+    }
+    
+    try {
+      setLoadingIncome(true);
+      
+      // Load all transactions for the period
+      const allTransactions = await getChildTransactions(familyId, childId, null);
+      
+      // Calculate date range
+      const endDate = new Date();
+      const startDate = new Date();
+      startDate.setDate(startDate.getDate() - days);
+      
+      // Filter deposits within date range
+      const deposits = (allTransactions || []).filter(t => {
+        if (!t || t.type !== 'deposit') return false;
+        try {
+          const transactionDate = new Date(t.date || t.createdAt);
+          return transactionDate >= startDate && transactionDate <= endDate;
+        } catch (dateError) {
+          return false;
+        }
+      });
+      
+      // Categorize income
+      const incomeCategories = {
+        'הכנסה מריבית': 0,
+        'הכנסה ממטלות': 0,
+        'הכנסה מדמי כיס': 0,
+        'הכנסה אחרת': 0
+      };
+      
+      deposits.forEach(deposit => {
+        const amount = Math.abs(deposit.amount || 0);
+        
+        // Check if it's interest (id starts with "interest_")
+        if (deposit.id && typeof deposit.id === 'string' && deposit.id.startsWith('interest_')) {
+          incomeCategories['הכנסה מריבית'] += amount;
+        }
+        // Check if it's from tasks (id starts with "task_" or category is "משימות בית")
+        else if ((deposit.id && typeof deposit.id === 'string' && deposit.id.startsWith('task_')) ||
+                 deposit.category === 'משימות בית' ||
+                 (deposit.description && deposit.description.includes('משימה'))) {
+          incomeCategories['הכנסה ממטלות'] += amount;
+        }
+        // Check if it's allowance (description contains "דמי כיס" or "allowance" or category is "דמי כיס")
+        else if ((deposit.description && (deposit.description.includes('דמי כיס') || deposit.description.includes('allowance'))) ||
+                 deposit.category === 'דמי כיס') {
+          incomeCategories['הכנסה מדמי כיס'] += amount;
+        }
+        // Everything else is "other income"
+        else {
+          incomeCategories['הכנסה אחרת'] += amount;
+        }
+      });
+      
+      // Convert to array format (only include categories with amount > 0)
+      const incomeArray = Object.entries(incomeCategories)
+        .filter(([_, amount]) => amount > 0)
+        .map(([category, amount]) => ({ category, amount }));
+      
+      setIncomeByCategory(incomeArray);
+      
+      // Cache the result
+      setCached(cacheKey, incomeArray, cacheTTL);
+    } catch (error) {
+      console.error('Error loading income by category:', error);
+      setIncomeByCategory([]);
+    } finally {
+      setLoadingIncome(false);
     }
   };
 
@@ -499,9 +588,15 @@ const ChildView = ({ childId, familyId, onBackToParent, onLogout }) => {
       
       // Reload data to show updated balance
       await loadChildData();
-      // Only reload expenses chart if it was an expense
-      if (transactionType === 'expense') {
+      // Reload chart if it was an expense or deposit
+      if (transactionType === 'expense' || transactionType === 'deposit') {
         setChartReloadKey(prev => prev + 1);
+        // Clear income cache to force reload
+        if (chartType === 'income') {
+          const days = expensesPeriod === 'week' ? 7 : 30;
+          const cacheKey = `income_by_category_${familyId}_${childId}_${days}`;
+          setCached(cacheKey, null, 0); // Invalidate cache
+        }
       }
     } catch (error) {
       alert(t('parent.dashboard.error', { defaultValue: 'שגיאה' }) + ': ' + error.message);
