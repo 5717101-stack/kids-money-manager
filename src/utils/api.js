@@ -98,7 +98,10 @@ async function apiCall(endpoint, options = {}, cacheOptions = {}) {
       } catch (e) {
         errorData = { error: `HTTP error! status: ${response.status}` };
       }
-      throw new Error(errorData.error || `HTTP error! status: ${response.status}`);
+      const errorMessage = errorData.error || `HTTP error! status: ${response.status}`;
+      const error = new Error(errorMessage);
+      error.response = errorData;
+      throw error;
     }
 
     const data = await response.json();

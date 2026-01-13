@@ -230,44 +230,19 @@ const ParentDashboard = ({ familyId, onChildrenUpdated, onLogout, onViewChild })
 
   const handleApprovePayment = async (requestId) => {
     if (!familyId) return;
+    
     try {
-      // Clear cache and reload payment requests to get latest status
+      // Clear cache first
       clearCache(`/families/${familyId}/payment-requests`);
       clearCache(`/families/${familyId}/payment-requests?status=pending`);
       
-      // Check if request is still pending (without cache)
-      const currentRequests = await getPaymentRequests(familyId, null, false);
-      const currentRequest = currentRequests.find(r => r._id === requestId);
+      // Try to approve - server will handle all checks
+      await approvePaymentRequest(familyId, requestId);
       
-      if (!currentRequest) {
-        alert(t('parent.dashboard.requestNotFound', { defaultValue: 'בקשה לא נמצאה' }));
-        await loadData();
-        setSelectedPaymentRequest(null);
-        return;
-      }
+      // Reload data to get updated state
+      await loadData();
+      setSelectedPaymentRequest(null);
       
-      if (currentRequest.status !== 'pending') {
-        const statusMessage = currentRequest.status === 'approved' 
-          ? t('parent.dashboard.alreadyApproved', { defaultValue: 'הבקשה כבר אושרה' })
-          : t('parent.dashboard.alreadyRejected', { defaultValue: 'הבקשה כבר נדחתה' });
-        alert(statusMessage);
-        await loadData();
-        setSelectedPaymentRequest(null);
-        return;
-      }
-      
-      try {
-        await approvePaymentRequest(familyId, requestId);
-        await loadData();
-        setSelectedPaymentRequest(null);
-      } catch (error) {
-        console.error('Error approving payment:', error);
-        const errorMessage = error.message || error.error || 'שגיאה לא ידועה';
-        alert(t('parent.dashboard.approveError', { defaultValue: 'שגיאה באישור תשלום' }) + ': ' + errorMessage);
-        await loadData();
-        setSelectedPaymentRequest(null);
-        return;
-      }
       // Show success notification
       const notification = document.createElement('div');
       notification.textContent = t('parent.dashboard.paymentApproved', { defaultValue: 'תשלום אושר בהצלחה!' });
@@ -295,7 +270,31 @@ const ParentDashboard = ({ familyId, onChildrenUpdated, onLogout, onViewChild })
         setTimeout(() => notification.remove(), 300);
       }, 2000);
     } catch (error) {
-      alert(t('parent.dashboard.paymentApproveError', { defaultValue: 'שגיאה באישור תשלום' }) + ': ' + error.message);
+      console.error('Error approving payment:', error);
+      
+      // Extract error message
+      let errorMessage = 'שגיאה לא ידועה';
+      if (error.message) {
+        errorMessage = error.message;
+      } else if (error.error) {
+        errorMessage = error.error;
+      } else if (typeof error === 'string') {
+        errorMessage = error;
+      }
+      
+      // Check if it's a status error (already approved/rejected)
+      if (errorMessage.includes('כבר אושרה') || errorMessage.includes('כבר נדחתה')) {
+        alert(errorMessage);
+      } else {
+        // Only show error if it's not a network error that might be temporary
+        if (!errorMessage.includes('שגיאת רשת') && !errorMessage.includes('Failed to fetch')) {
+          alert(t('parent.dashboard.approveError', { defaultValue: 'שגיאה באישור תשלום' }) + ': ' + errorMessage);
+        }
+      }
+      
+      // Reload data to get current state
+      await loadData();
+      setSelectedPaymentRequest(null);
     }
   };
 
