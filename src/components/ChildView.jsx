@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
-import { getChild, getChildTransactions, updateCashBoxBalance, getSavingsGoal, updateSavingsGoal, deleteSavingsGoal, updateProfileImage, getExpensesByCategory, addTransaction, getCategories } from '../utils/api';
+import { getChild, getChildTransactions, updateCashBoxBalance, getSavingsGoal, updateSavingsGoal, deleteSavingsGoal, updateProfileImage, getExpensesByCategory, addTransaction, getCategories, getTasks, requestTaskPayment } from '../utils/api';
+// Camera is imported dynamically when needed
 import { smartCompressImage } from '../utils/imageCompression';
 import { getCached, setCached } from '../utils/cache';
 import ExpensePieChart from './ExpensePieChart';
@@ -46,6 +47,12 @@ const ChildView = ({ childId, familyId, onBackToParent, onLogout }) => {
   const [error, setError] = useState(null);
   const [showGuide, setShowGuide] = useState(false);
   const [chartReloadKey, setChartReloadKey] = useState(0);
+  const [tasks, setTasks] = useState([]);
+  const [showTasksList, setShowTasksList] = useState(false);
+  const [selectedTask, setSelectedTask] = useState(null);
+  const [taskNote, setTaskNote] = useState('');
+  const [taskImage, setTaskImage] = useState(null);
+  const [submittingTaskRequest, setSubmittingTaskRequest] = useState(false);
 
   useEffect(() => {
     // Reset loading and error when childId or familyId changes
@@ -64,10 +71,11 @@ const ChildView = ({ childId, familyId, onBackToParent, onLogout }) => {
         // Load child data and transactions in parallel
         // Load more transactions if limit is null (all) or if limit is higher
         const transactionLimit = historyLimit === null ? 50 : Math.max(historyLimit, 10);
-        const [child, trans, goal] = await Promise.all([
+        const [child, trans, goal, tasksData] = await Promise.all([
           getChild(familyId, childId),
           getChildTransactions(familyId, childId, transactionLimit),
-          getSavingsGoal(familyId, childId)
+          getSavingsGoal(familyId, childId),
+          getTasks(familyId).catch(() => [])
         ]);
         
         if (child) {
@@ -103,6 +111,12 @@ const ChildView = ({ childId, familyId, onBackToParent, onLogout }) => {
           setGoalName(goal.name || '');
           setGoalAmount(goal.targetAmount?.toString() || '');
         }
+        
+        // Filter tasks active for this child
+        const activeTasks = (tasksData || []).filter(task => 
+          (task.activeFor || []).includes(childId)
+        );
+        setTasks(activeTasks);
       } catch (err) {
         console.error('Error loading child data:', err);
         setError(err.message || t('child.dashboard.loadError', { defaultValue: 'Error loading data' }));
@@ -343,6 +357,12 @@ const ChildView = ({ childId, familyId, onBackToParent, onLogout }) => {
 
   const handleCalculatorClick = () => {
     console.log('[ChildView] handleCalculatorClick called');
+    // If there are active tasks, show tasks list instead of calculator
+    if (tasks.length > 0) {
+      setShowTasksList(true);
+      return;
+    }
+    // Otherwise, show calculator as before
     setShowCalculator(true);
     setCalculatorValue('0');
     setCalculatorHistory('');
@@ -1280,7 +1300,7 @@ const ChildView = ({ childId, familyId, onBackToParent, onLogout }) => {
           <span>{t('child.dashboard.addIncome', { defaultValue: 'הכנסה' })}</span>
         </button>
         
-        {/* Center: Calculator */}
+        {/* Center: Calculator or Tasks */}
         <button 
           className="fab-btn"
           onClick={(e) => {
@@ -1290,7 +1310,7 @@ const ChildView = ({ childId, familyId, onBackToParent, onLogout }) => {
           }}
           type="button"
         >
-          🧮
+          {tasks.length > 0 ? '✅' : '🧮'}
         </button>
         
         {/* Right: Expense - affects cash box */}
@@ -1307,6 +1327,287 @@ const ChildView = ({ childId, familyId, onBackToParent, onLogout }) => {
           <span>{t('child.dashboard.recordExpense', { defaultValue: 'הוצאה' })}</span>
         </button>
       </div>
+
+      {/* Tasks List Modal */}
+      {showTasksList && !selectedTask && (
+        <div className="calculator-overlay" onClick={() => setShowTasksList(false)}>
+          <div className="calculator-modal" onClick={(e) => e.stopPropagation()} dir={i18n.language === 'he' ? 'rtl' : 'ltr'}>
+            <div className="calculator-header">
+              <h2>{t('child.dashboard.tasks', { defaultValue: 'מטלות' })}</h2>
+              <button 
+                className="calculator-close" 
+                onClick={() => setShowTasksList(false)}
+              >
+                ✕
+              </button>
+            </div>
+            <div style={{ padding: '20px', maxHeight: '60vh', overflowY: 'auto' }}>
+              {tasks.length === 0 ? (
+                <div style={{ textAlign: 'center', padding: '40px', color: 'var(--text-muted)' }}>
+                  {t('child.dashboard.noTasks', { defaultValue: 'אין מטלות פעילות' })}
+                </div>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                  {tasks.map(task => (
+                    <button
+                      key={task._id}
+                      onClick={() => {
+                        setSelectedTask(task);
+                        setTaskNote('');
+                        setTaskImage(null);
+                      }}
+                      style={{
+                        padding: '16px',
+                        background: 'white',
+                        borderRadius: '12px',
+                        border: '2px solid var(--primary)',
+                        textAlign: 'right',
+                        cursor: 'pointer',
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        alignItems: 'center'
+                      }}
+                    >
+                      <div>
+                        <div style={{ fontSize: '16px', fontWeight: 600 }}>{task.name}</div>
+                        <div style={{ fontSize: '14px', color: 'var(--text-muted)' }}>
+                          {t('child.dashboard.payment', { defaultValue: 'תשלום' })}: ₪{task.price.toFixed(2)}
+                        </div>
+                      </div>
+                      <span style={{ fontSize: '20px' }}>→</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Task Request Modal */}
+      {selectedTask && (
+        <div className="calculator-overlay" onClick={() => {
+          setSelectedTask(null);
+          setTaskNote('');
+          setTaskImage(null);
+        }}>
+          <div className="calculator-modal" onClick={(e) => e.stopPropagation()} dir={i18n.language === 'he' ? 'rtl' : 'ltr'} style={{ maxWidth: '500px' }}>
+            <div className="calculator-header">
+              <h2>{selectedTask.name}</h2>
+              <button 
+                className="calculator-close" 
+                onClick={() => {
+                  setSelectedTask(null);
+                  setTaskNote('');
+                  setTaskImage(null);
+                }}
+              >
+                ✕
+              </button>
+            </div>
+            <div style={{ padding: '20px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
+              <div>
+                <div style={{ fontSize: '14px', color: 'var(--text-muted)', marginBottom: '8px' }}>
+                  {t('child.dashboard.payment', { defaultValue: 'תשלום' })}
+                </div>
+                <div style={{ fontSize: '24px', fontWeight: 700, color: 'var(--primary)' }}>
+                  ₪{selectedTask.price.toFixed(2)}
+                </div>
+              </div>
+              
+              <div>
+                <label style={{ display: 'block', fontSize: '14px', fontWeight: 600, marginBottom: '8px' }}>
+                  {t('child.dashboard.note', { defaultValue: 'הערה (אופציונלי)' })}
+                </label>
+                <textarea
+                  value={taskNote}
+                  onChange={(e) => setTaskNote(e.target.value)}
+                  placeholder={t('child.dashboard.notePlaceholder', { defaultValue: 'הוסף הערה...' })}
+                  style={{
+                    width: '100%',
+                    minHeight: '80px',
+                    padding: '12px',
+                    borderRadius: '8px',
+                    border: '1px solid rgba(0,0,0,0.1)',
+                    fontSize: '14px',
+                    fontFamily: 'inherit',
+                    resize: 'vertical',
+                    outline: 'none'
+                  }}
+                />
+              </div>
+
+              <div>
+                <label style={{ display: 'block', fontSize: '14px', fontWeight: 600, marginBottom: '8px' }}>
+                  {t('child.dashboard.image', { defaultValue: 'תמונה (אופציונלי)' })}
+                </label>
+                {taskImage ? (
+                  <div style={{ position: 'relative' }}>
+                    <img 
+                      src={taskImage} 
+                      alt="Task" 
+                      style={{
+                        width: '100%',
+                        maxHeight: '200px',
+                        borderRadius: '8px',
+                        objectFit: 'contain'
+                      }}
+                    />
+                    <button
+                      onClick={async () => {
+                        try {
+                          const { Camera } = await import('@capacitor/camera');
+                          const image = await Camera.getPhoto({
+                            quality: 90,
+                            allowEditing: false,
+                            source: 'CAMERA',
+                            resultType: 'base64'
+                          });
+                          if (image.base64String) {
+                            setTaskImage(`data:image/${image.format};base64,${image.base64String}`);
+                          }
+                        } catch (error) {
+                          console.error('Error taking photo:', error);
+                          alert(t('child.dashboard.cameraError', { defaultValue: 'שגיאה בצילום תמונה' }));
+                        }
+                      }}
+                      style={{
+                        position: 'absolute',
+                        top: '8px',
+                        right: '8px',
+                        padding: '8px',
+                        background: 'rgba(0,0,0,0.7)',
+                        color: 'white',
+                        border: 'none',
+                        borderRadius: '50%',
+                        cursor: 'pointer',
+                        fontSize: '16px'
+                      }}
+                    >
+                      📷
+                    </button>
+                    <button
+                      onClick={() => setTaskImage(null)}
+                      style={{
+                        position: 'absolute',
+                        top: '8px',
+                        left: '8px',
+                        padding: '8px',
+                        background: '#EF4444',
+                        color: 'white',
+                        border: 'none',
+                        borderRadius: '50%',
+                        cursor: 'pointer',
+                        fontSize: '16px'
+                      }}
+                    >
+                      ✕
+                    </button>
+                  </div>
+                ) : (
+                  <button
+                    onClick={async () => {
+                      try {
+                        const { Camera } = await import('@capacitor/camera');
+                        const image = await Camera.getPhoto({
+                          quality: 90,
+                          allowEditing: false,
+                          source: 'CAMERA',
+                          resultType: 'base64'
+                        });
+                        if (image.base64String) {
+                          setTaskImage(`data:image/${image.format};base64,${image.base64String}`);
+                        }
+                      } catch (error) {
+                        console.error('Error taking photo:', error);
+                        alert(t('child.dashboard.cameraError', { defaultValue: 'שגיאה בצילום תמונה' }));
+                      }
+                    }}
+                    style={{
+                      width: '100%',
+                      padding: '40px',
+                      background: '#F9FAFB',
+                      border: '2px dashed #D1D5DB',
+                      borderRadius: '8px',
+                      cursor: 'pointer',
+                      fontSize: '16px',
+                      color: 'var(--text-muted)',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      alignItems: 'center',
+                      gap: '8px'
+                    }}
+                  >
+                    <span style={{ fontSize: '32px' }}>📷</span>
+                    <span>{t('child.dashboard.takePhoto', { defaultValue: 'צלם תמונה' })}</span>
+                  </button>
+                )}
+              </div>
+
+              <button
+                onClick={async () => {
+                  if (!familyId || !selectedTask || !childId) return;
+                  setSubmittingTaskRequest(true);
+                  try {
+                    await requestTaskPayment(familyId, selectedTask._id, childId, taskNote || null, taskImage || null);
+                    setSelectedTask(null);
+                    setTaskNote('');
+                    setTaskImage(null);
+                    setShowTasksList(false);
+                    // Show success notification
+                    const notification = document.createElement('div');
+                    notification.textContent = t('child.dashboard.requestSent', { defaultValue: 'בקשת תשלום נשלחה בהצלחה!' });
+                    const isRTL = i18n.language === 'he';
+                    const animationName = isRTL ? 'slideInRTL' : 'slideIn';
+                    const animationOutName = isRTL ? 'slideOutRTL' : 'slideOut';
+                    const rightOrLeft = isRTL ? 'left' : 'right';
+                    notification.style.cssText = `
+                      position: fixed;
+                      bottom: 100px;
+                      ${rightOrLeft}: 20px;
+                      background: linear-gradient(135deg, #10B981 0%, #059669 100%);
+                      color: white;
+                      padding: 16px 24px;
+                      border-radius: 12px;
+                      box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3);
+                      z-index: 10005;
+                      font-weight: 600;
+                      animation: ${animationName} 0.3s ease;
+                      max-width: calc(100% - 40px);
+                    `;
+                    document.body.appendChild(notification);
+                    setTimeout(() => {
+                      notification.style.animation = `${animationOutName} 0.3s ease`;
+                      setTimeout(() => notification.remove(), 300);
+                    }, 2000);
+                  } catch (error) {
+                    alert(t('child.dashboard.requestError', { defaultValue: 'שגיאה בשליחת בקשה' }) + ': ' + error.message);
+                  } finally {
+                    setSubmittingTaskRequest(false);
+                  }
+                }}
+                disabled={submittingTaskRequest}
+                style={{
+                  width: '100%',
+                  padding: '16px',
+                  background: submittingTaskRequest ? '#ccc' : 'var(--primary-gradient)',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '8px',
+                  fontSize: '16px',
+                  fontWeight: 600,
+                  cursor: submittingTaskRequest ? 'not-allowed' : 'pointer'
+                }}
+              >
+                {submittingTaskRequest 
+                  ? t('common.saving', { defaultValue: 'שולח...' })
+                  : t('child.dashboard.sendRequest', { defaultValue: 'שלח בקשת תשלום' })
+                }
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Guide Modal */}
       {showGuide && (

@@ -343,6 +343,149 @@ export const deleteCategory = async (familyId, categoryId) => {
   return response;
 };
 
+// Tasks API
+export const getTasks = async (familyId) => {
+  if (!familyId) {
+    throw new Error('Family ID is required');
+  }
+  const response = await apiCall(`/families/${familyId}/tasks`, {}, {
+    useCache: true,
+    cacheTTL: 5 * 60 * 1000 // 5 minutes cache
+  });
+  return response.tasks || [];
+};
+
+export const addTask = async (familyId, name, price, activeFor = []) => {
+  if (!familyId) {
+    throw new Error('Family ID is required');
+  }
+  const response = await apiCall(`/families/${familyId}/tasks`, {
+    method: 'POST',
+    body: JSON.stringify({ name, price, activeFor })
+  }, { useCache: false });
+  
+  // Invalidate tasks cache
+  clearCache(`/families/${familyId}/tasks`);
+  
+  return response.task;
+};
+
+export const updateTask = async (familyId, taskId, name, price, activeFor) => {
+  if (!familyId || !taskId) {
+    throw new Error('Family ID and Task ID are required');
+  }
+  const response = await apiCall(`/families/${familyId}/tasks/${taskId}`, {
+    method: 'PUT',
+    body: JSON.stringify({ name, price, activeFor })
+  }, { useCache: false });
+  
+  // Invalidate tasks cache
+  clearCache(`/families/${familyId}/tasks`);
+  
+  return response;
+};
+
+export const deleteTask = async (familyId, taskId) => {
+  if (!familyId || !taskId) {
+    throw new Error('Family ID and Task ID are required');
+  }
+  const response = await apiCall(`/families/${familyId}/tasks/${taskId}`, {
+    method: 'DELETE'
+  }, { useCache: false });
+  
+  // Invalidate tasks cache
+  clearCache(`/families/${familyId}/tasks`);
+  
+  return response;
+};
+
+// Payment Requests API
+export const requestTaskPayment = async (familyId, taskId, childId, note, image) => {
+  if (!familyId || !taskId || !childId) {
+    throw new Error('Family ID, Task ID and Child ID are required');
+  }
+  const response = await apiCall(`/families/${familyId}/tasks/${taskId}/request-payment`, {
+    method: 'POST',
+    body: JSON.stringify({ childId, note, image })
+  }, { useCache: false });
+  
+  // Invalidate payment requests cache
+  clearCache(`/families/${familyId}/payment-requests`);
+  invalidateFamilyCache(familyId);
+  
+  return response.paymentRequest;
+};
+
+export const getPaymentRequests = async (familyId, status = null) => {
+  if (!familyId) {
+    throw new Error('Family ID is required');
+  }
+  const params = status ? `?status=${status}` : '';
+  const response = await apiCall(`/families/${familyId}/payment-requests${params}`, {}, {
+    useCache: true,
+    cacheTTL: 1 * 60 * 1000 // 1 minute cache
+  });
+  return response.paymentRequests || [];
+};
+
+export const approvePaymentRequest = async (familyId, requestId) => {
+  if (!familyId || !requestId) {
+    throw new Error('Family ID and Request ID are required');
+  }
+  const response = await apiCall(`/families/${familyId}/payment-requests/${requestId}/approve`, {
+    method: 'PUT'
+  }, { useCache: false });
+  
+  // Invalidate caches
+  clearCache(`/families/${familyId}/payment-requests`);
+  invalidateFamilyCache(familyId);
+  
+  return response;
+};
+
+export const rejectPaymentRequest = async (familyId, requestId) => {
+  if (!familyId || !requestId) {
+    throw new Error('Family ID and Request ID are required');
+  }
+  const response = await apiCall(`/families/${familyId}/payment-requests/${requestId}/reject`, {
+    method: 'PUT'
+  }, { useCache: false });
+  
+  // Invalidate caches
+  clearCache(`/families/${familyId}/payment-requests`);
+  invalidateFamilyCache(familyId);
+  
+  return response;
+};
+
+export const getTaskHistory = async (familyId) => {
+  if (!familyId) {
+    throw new Error('Family ID is required');
+  }
+  const response = await apiCall(`/families/${familyId}/tasks/history`, {}, {
+    useCache: true,
+    cacheTTL: 2 * 60 * 1000 // 2 minutes cache
+  });
+  return response.history || [];
+};
+
+export const updatePaymentRequestStatus = async (familyId, requestId, status) => {
+  if (!familyId || !requestId || !status) {
+    throw new Error('Family ID, Request ID and Status are required');
+  }
+  const response = await apiCall(`/families/${familyId}/payment-requests/${requestId}/status`, {
+    method: 'PUT',
+    body: JSON.stringify({ status })
+  }, { useCache: false });
+  
+  // Invalidate caches
+  clearCache(`/families/${familyId}/payment-requests`);
+  clearCache(`/families/${familyId}/tasks/history`);
+  invalidateFamilyCache(familyId);
+  
+  return response;
+};
+
 // Profile image API
 export const updateProfileImage = async (familyId, childId, profileImage) => {
   if (!familyId || !childId) {

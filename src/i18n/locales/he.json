@@ -29,7 +29,8 @@
     "optional": "אופציונלי",
     "language": "שפה",
     "notYet": "עדיין לא שולם",
-    "notApplicable": "לא רלוונטי"
+    "notApplicable": "לא רלוונטי",
+    "ofMonth": "בחודש"
   },
   "parent": {
     "dashboard": {
@@ -58,7 +59,18 @@
       "noExpenses": "אין הוצאות בתקופה זו",
       "total": "סה\"כ",
       "all": "הכל",
-      "balanceDetail": "פירוט יתרה לפי ילדים"
+      "balanceDetail": "פירוט יתרה לפי ילדים",
+      "paymentRequests": "בקשות תשלום",
+      "noPaymentRequests": "אין בקשות תשלום ממתינות",
+      "child": "ילד",
+      "requestedAt": "זמן ביצוע",
+      "note": "הערה",
+      "image": "תמונה",
+      "approve": "אשר תשלום",
+      "reject": "דחה",
+      "paymentApproved": "תשלום אושר בהצלחה!",
+      "paymentApproveError": "שגיאה באישור תשלום",
+      "paymentRejectError": "שגיאה בדחיית תשלום"
     },
     "settings": {
       "title": "הגדרות",
@@ -183,6 +195,51 @@
         "title": "תמונות פרופיל",
         "upload": "העלה תמונה",
         "remove": "הסר תמונה"
+      },
+      "childDetails": {
+        "title": "פרטי הילד",
+        "phoneNumber": "מספר טלפון",
+        "firstLogin": "כניסה ראשונה",
+        "lastLogin": "כניסה אחרונה"
+      },
+      "totalInterestEarned": "סה״כ ריבית",
+      "transactionCount": "מספר עסקאות",
+      "viewDetails": "הצג פרטים",
+      "closeDetails": "סגור פרטים",
+      "createChildSuccess": "ילד נוסף בהצלחה!",
+      "updateChildSuccess": "הגדרות הילד עודכנו בהצלחה!",
+      "notAvailable": "לא זמין",
+      "neverLoggedIn": "מעולם לא נכנס",
+      "tasks": {
+        "title": "ניהול מטלות",
+        "taskName": "שם המטלה",
+        "price": "מחיר",
+        "addTask": "הוסף מטלה",
+        "enterTaskDetails": "אנא הכנס שם מטלה ומחיר",
+        "addTaskError": "שגיאה בהוספת מטלה",
+        "updateTaskSuccess": "מטלה עודכנה בהצלחה!",
+        "updateTaskError": "שגיאה בעדכון מטלה",
+        "deleteTaskConfirm": "האם אתה בטוח שברצונך למחוק את המטלה?",
+        "deleteTaskSuccess": "מטלה נמחקה בהצלחה!",
+        "deleteTaskError": "שגיאה במחיקת מטלה",
+        "noTasks": "אין מטלות. הוסף מטלה חדשה למעלה.",
+        "history": "היסטוריית מטלות",
+        "backToTasks": "חזרה למטלות",
+        "noHistory": "אין היסטוריית מטלות.",
+        "loadHistoryError": "שגיאה בטעינת היסטוריית מטלות",
+        "updateStatusError": "שגיאה בעדכון סטטוס",
+        "approve": "אשר",
+        "reject": "דחה",
+        "statusApproved": "אושר",
+        "statusRejected": "נדחה",
+        "statusPending": "ממתין"
+      },
+      "tabs": {
+        "categories": "קטגוריות הוצאות",
+        "tasks": "מטלות",
+        "profileImages": "תמונות פרופיל",
+        "children": "ילדים",
+        "parents": "הורים"
       }
     }
   },
@@ -196,9 +253,19 @@
       "totalBalance": "יתרה כוללת",
       "myBalance": "היתרה שלי:",
       "interestEarned": "ריבית נצברה:",
-    "confirmLogout": "האם אתה בטוח שברצונך להתנתק?",
-    "deleteFamily": "מחיקת פרופיל משפחתי"
-  },
+      "confirmLogout": "האם אתה בטוח שברצונך להתנתק?",
+      "deleteFamily": "מחיקת פרופיל משפחתי",
+      "tasks": "מטלות",
+      "noTasks": "אין מטלות פעילות",
+      "payment": "תשלום",
+      "note": "הערה (אופציונלי)",
+      "notePlaceholder": "הוסף הערה...",
+      "image": "תמונה (אופציונלי)",
+      "takePhoto": "צלם תמונה",
+      "cameraError": "שגיאה בצילום תמונה",
+      "requestSent": "בקשת תשלום נשלחה בהצלחה!",
+      "sendRequest": "שלח בקשת תשלום"
+    },
   "deleteFamily": {
     "title": "מחיקת פרופיל משפחתי",
     "warning": "מחיקת הפרופיל המשפחתי תמחק את כל הנתונים וכל בני המשפחה המשויכים לפרופיל הזה. אין דרך לשחזר את הפרופיל או ההיסטוריה של הפעולות.",
@@ -408,6 +475,7 @@
     "dashboard": "דשבורד הורים",
     "profile": "פרופיל",
     "categories": "קטגוריות",
+    "tasks": "מטלות",
     "allowances": "דמי כיס",
     "children": "ילדים",
     "childrenSettings": "הגדרת ילדים",

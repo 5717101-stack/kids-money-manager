@@ -2876,6 +2876,436 @@ app.post('/api/families/:familyId/children/:childId/pay-allowance', async (req, 
 
 // Root endpoint is already defined at the top - no duplicate needed
 
+// ========== TASKS API ENDPOINTS ==========
+
+// Get all tasks for a family
+app.get('/api/families/:familyId/tasks', async (req, res) => {
+  try {
+    const { familyId } = req.params;
+    const family = await getFamilyById(familyId);
+    
+    if (!family) {
+      return res.status(404).json({ error: 'משפחה לא נמצאה' });
+    }
+    
+    res.json({ tasks: family.tasks || [] });
+  } catch (error) {
+    console.error('Error fetching tasks:', error);
+    res.status(500).json({ error: 'Failed to fetch tasks' });
+  }
+});
+
+// Create a new task
+app.post('/api/families/:familyId/tasks', async (req, res) => {
+  try {
+    console.log('[ADD-TASK] Request received:', {
+      familyId: req.params.familyId,
+      body: req.body,
+      method: req.method,
+      url: req.url
+    });
+    
+    const { familyId } = req.params;
+    const { name, price, activeFor } = req.body;
+    
+    if (!name || price === undefined) {
+      console.log('[ADD-TASK] Validation failed: missing name or price');
+      return res.status(400).json({ error: 'Task name and price are required' });
+    }
+    
+    const family = await getFamilyById(familyId);
+    if (!family) {
+      console.log('[ADD-TASK] Family not found:', familyId);
+      return res.status(404).json({ error: 'משפחה לא נמצאה' });
+    }
+    
+    const task = {
+      _id: `task_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+      name: name.trim(),
+      price: parseFloat(price),
+      activeFor: activeFor || [],
+      createdAt: new Date().toISOString()
+    };
+    
+    if (!family.tasks) {
+      family.tasks = [];
+    }
+    family.tasks.push(task);
+    
+    if (db) {
+      await db.collection('families').updateOne(
+        { _id: familyId },
+        { $set: { tasks: family.tasks } }
+      );
+      invalidateFamilyCache(familyId);
+    }
+    
+    console.log('[ADD-TASK] Task added successfully:', task._id);
+    res.json({ task });
+  } catch (error) {
+    console.error('[ADD-TASK] Error adding task:', error);
+    console.error('[ADD-TASK] Error stack:', error.stack);
+    res.status(500).json({ error: 'Failed to add task', details: error.message });
+  }
+});
+
+// Update a task
+app.put('/api/families/:familyId/tasks/:taskId', async (req, res) => {
+  try {
+    const { familyId, taskId } = req.params;
+    const { name, price, activeFor } = req.body;
+    
+    const family = await getFamilyById(familyId);
+    if (!family) {
+      return res.status(404).json({ error: 'משפחה לא נמצאה' });
+    }
+    
+    const task = family.tasks?.find(t => t._id === taskId);
+    if (!task) {
+      return res.status(404).json({ error: 'Task not found' });
+    }
+    
+    if (name !== undefined) task.name = name.trim();
+    if (price !== undefined) task.price = parseFloat(price);
+    if (activeFor !== undefined) task.activeFor = activeFor;
+    
+    if (db) {
+      await db.collection('families').updateOne(
+        { _id: familyId },
+        { $set: { tasks: family.tasks } }
+      );
+      invalidateFamilyCache(familyId);
+    }
+    
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Error updating task:', error);
+    res.status(500).json({ error: 'Failed to update task' });
+  }
+});
+
+// Delete a task
+app.delete('/api/families/:familyId/tasks/:taskId', async (req, res) => {
+  try {
+    const { familyId, taskId } = req.params;
+    
+    const family = await getFamilyById(familyId);
+    if (!family) {
+      return res.status(404).json({ error: 'משפחה לא נמצאה' });
+    }
+    
+    if (!family.tasks) {
+      family.tasks = [];
+    }
+    family.tasks = family.tasks.filter(t => t._id !== taskId);
+    
+    if (db) {
+      await db.collection('families').updateOne(
+        { _id: familyId },
+        { $set: { tasks: family.tasks } }
+      );
+      invalidateFamilyCache(familyId);
+    }
+    
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Error deleting task:', error);
+    res.status(500).json({ error: 'Failed to delete task' });
+  }
+});
+
+// Request payment for a task
+app.post('/api/families/:familyId/tasks/:taskId/request-payment', async (req, res) => {
+  try {
+    const { familyId, taskId } = req.params;
+    const { childId, note, image } = req.body;
+    
+    if (!childId) {
+      return res.status(400).json({ error: 'Child ID is required' });
+    }
+    
+    const family = await getFamilyById(familyId);
+    if (!family) {
+      return res.status(404).json({ error: 'משפחה לא נמצאה' });
+    }
+    
+    const task = family.tasks?.find(t => t._id === taskId);
+    if (!task) {
+      return res.status(404).json({ error: 'Task not found' });
+    }
+    
+    const child = family.children?.find(c => c._id === childId);
+    if (!child) {
+      return res.status(404).json({ error: 'Child not found' });
+    }
+    
+    if (!task.activeFor.includes(childId)) {
+      return res.status(400).json({ error: 'Task is not active for this child' });
+    }
+    
+    const paymentRequest = {
+      _id: `req_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+      taskId,
+      taskName: task.name,
+      taskPrice: task.price,
+      childId,
+      childName: child.name,
+      note: note || null,
+      image: image || null,
+      status: 'pending', // 'pending', 'approved', 'rejected'
+      requestedAt: new Date().toISOString(),
+      completedAt: null
+    };
+    
+    if (!family.paymentRequests) {
+      family.paymentRequests = [];
+    }
+    family.paymentRequests.push(paymentRequest);
+    
+    if (db) {
+      await db.collection('families').updateOne(
+        { _id: familyId },
+        { $set: { paymentRequests: family.paymentRequests } }
+      );
+      invalidateFamilyCache(familyId);
+    }
+    
+    res.json({ paymentRequest });
+  } catch (error) {
+    console.error('Error creating payment request:', error);
+    res.status(500).json({ error: 'Failed to create payment request' });
+  }
+});
+
+// Get pending payment requests
+app.get('/api/families/:familyId/payment-requests', async (req, res) => {
+  try {
+    const { familyId } = req.params;
+    const { status } = req.query; // Optional: filter by status
+    
+    const family = await getFamilyById(familyId);
+    if (!family) {
+      return res.status(404).json({ error: 'משפחה לא נמצאה' });
+    }
+    
+    let requests = family.paymentRequests || [];
+    if (status) {
+      requests = requests.filter(r => r.status === status);
+    }
+    
+    res.json({ paymentRequests: requests });
+  } catch (error) {
+    console.error('Error fetching payment requests:', error);
+    res.status(500).json({ error: 'Failed to fetch payment requests' });
+  }
+});
+
+// Approve payment request
+app.put('/api/families/:familyId/payment-requests/:requestId/approve', async (req, res) => {
+  try {
+    const { familyId, requestId } = req.params;
+    
+    const family = await getFamilyById(familyId);
+    if (!family) {
+      return res.status(404).json({ error: 'משפחה לא נמצאה' });
+    }
+    
+    const request = family.paymentRequests?.find(r => r._id === requestId);
+    if (!request) {
+      return res.status(404).json({ error: 'Payment request not found' });
+    }
+    
+    if (request.status !== 'pending') {
+      return res.status(400).json({ error: 'Request is not pending' });
+    }
+    
+    const child = family.children?.find(c => c._id === request.childId);
+    if (!child) {
+      return res.status(404).json({ error: 'Child not found' });
+    }
+    
+    // Update request status
+    request.status = 'approved';
+    request.completedAt = new Date().toISOString();
+    
+    // Add transaction to child
+    const transaction = {
+      id: `task_${Date.now()}_${request.childId}`,
+      type: 'deposit',
+      amount: request.taskPrice,
+      description: `תשלום על משימה: ${request.taskName}`,
+      date: new Date().toISOString(),
+      category: 'משימות בית'
+    };
+    
+    if (!child.transactions) {
+      child.transactions = [];
+    }
+    child.transactions.push(transaction);
+    
+    // Update child balance
+    child.balance = (child.balance || 0) + request.taskPrice;
+    
+    if (db) {
+      await db.collection('families').updateOne(
+        { _id: familyId },
+        { 
+          $set: { 
+            paymentRequests: family.paymentRequests,
+            children: family.children
+          }
+        }
+      );
+      invalidateFamilyCache(familyId);
+      invalidateChildCache(familyId, request.childId);
+    }
+    
+    res.json({ success: true, transaction });
+  } catch (error) {
+    console.error('Error approving payment request:', error);
+    res.status(500).json({ error: 'Failed to approve payment request' });
+  }
+});
+
+// Reject payment request
+app.put('/api/families/:familyId/payment-requests/:requestId/reject', async (req, res) => {
+  try {
+    const { familyId, requestId } = req.params;
+    
+    const family = await getFamilyById(familyId);
+    if (!family) {
+      return res.status(404).json({ error: 'משפחה לא נמצאה' });
+    }
+    
+    const request = family.paymentRequests?.find(r => r._id === requestId);
+    if (!request) {
+      return res.status(404).json({ error: 'Payment request not found' });
+    }
+    
+    if (request.status !== 'pending') {
+      return res.status(400).json({ error: 'Request is not pending' });
+    }
+    
+    // Update request status
+    request.status = 'rejected';
+    request.completedAt = new Date().toISOString();
+    
+    if (db) {
+      await db.collection('families').updateOne(
+        { _id: familyId },
+        { $set: { paymentRequests: family.paymentRequests } }
+      );
+      invalidateFamilyCache(familyId);
+    }
+    
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Error rejecting payment request:', error);
+    res.status(500).json({ error: 'Failed to reject payment request' });
+  }
+});
+
+// Get task history (all payment requests with status approved or rejected)
+app.get('/api/families/:familyId/tasks/history', async (req, res) => {
+  try {
+    const { familyId } = req.params;
+    
+    const family = await getFamilyById(familyId);
+    if (!family) {
+      return res.status(404).json({ error: 'משפחה לא נמצאה' });
+    }
+    
+    const requests = (family.paymentRequests || []).filter(r => 
+      r.status === 'approved' || r.status === 'rejected'
+    );
+    
+    res.json({ history: requests });
+  } catch (error) {
+    console.error('Error fetching task history:', error);
+    res.status(500).json({ error: 'Failed to fetch task history' });
+  }
+});
+
+// Update payment request status (for history screen)
+app.put('/api/families/:familyId/payment-requests/:requestId/status', async (req, res) => {
+  try {
+    const { familyId, requestId } = req.params;
+    const { status } = req.body; // 'approved' or 'rejected'
+    
+    if (!['approved', 'rejected'].includes(status)) {
+      return res.status(400).json({ error: 'Invalid status' });
+    }
+    
+    const family = await getFamilyById(familyId);
+    if (!family) {
+      return res.status(404).json({ error: 'משפחה לא נמצאה' });
+    }
+    
+    const request = family.paymentRequests?.find(r => r._id === requestId);
+    if (!request) {
+      return res.status(404).json({ error: 'Payment request not found' });
+    }
+    
+    const oldStatus = request.status;
+    request.status = status;
+    request.completedAt = new Date().toISOString();
+    
+    const child = family.children?.find(c => c._id === request.childId);
+    if (!child) {
+      return res.status(404).json({ error: 'Child not found' });
+    }
+    
+    // If changing from rejected to approved, add money
+    if (oldStatus === 'rejected' && status === 'approved') {
+      const transaction = {
+        id: `task_${Date.now()}_${request.childId}`,
+        type: 'deposit',
+        amount: request.taskPrice,
+        description: `תשלום על משימה: ${request.taskName}`,
+        date: new Date().toISOString(),
+        category: 'משימות בית'
+      };
+      
+      if (!child.transactions) {
+        child.transactions = [];
+      }
+      child.transactions.push(transaction);
+      child.balance = (child.balance || 0) + request.taskPrice;
+    }
+    
+    // If changing from approved to rejected, remove money
+    if (oldStatus === 'approved' && status === 'rejected') {
+      // Find and remove the transaction
+      if (child.transactions) {
+        child.transactions = child.transactions.filter(t => 
+          !(t.description && t.description.includes(`תשלום על משימה: ${request.taskName}`) && 
+            Math.abs(t.amount - request.taskPrice) < 0.01)
+        );
+      }
+      child.balance = Math.max(0, (child.balance || 0) - request.taskPrice);
+    }
+    
+    if (db) {
+      await db.collection('families').updateOne(
+        { _id: familyId },
+        { 
+          $set: { 
+            paymentRequests: family.paymentRequests,
+            children: family.children
+          }
+        }
+      );
+      invalidateFamilyCache(familyId);
+      invalidateChildCache(familyId, request.childId);
+    }
+    
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Error updating payment request status:', error);
+    res.status(500).json({ error: 'Failed to update payment request status' });
+  }
+});
+
 // Start server
 let server;
 
