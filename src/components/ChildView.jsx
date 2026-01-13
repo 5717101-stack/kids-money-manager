@@ -296,18 +296,48 @@ const ChildView = ({ childId, familyId, onBackToParent, onLogout }) => {
       startDate.setDate(startDate.getDate() - days);
       startDate.setHours(0, 0, 0, 0); // Start of day
       
-      console.log('[INCOME-CHART] Date range:', { startDate: startDate.toISOString(), endDate: endDate.toISOString(), days });
+      console.log('[INCOME-CHART] Date range:', { 
+        startDate: startDate.toISOString(), 
+        endDate: endDate.toISOString(), 
+        days,
+        startDateLocal: startDate.toLocaleString('he-IL'),
+        endDateLocal: endDate.toLocaleString('he-IL')
+      });
       
       // Filter deposits within date range
       const deposits = (allTransactions || []).filter(t => {
-        if (!t) return false;
-        if (t.type !== 'deposit') return false;
+        if (!t) {
+          console.log('[INCOME-CHART] Transaction is null/undefined');
+          return false;
+        }
+        
+        console.log('[INCOME-CHART] Checking transaction:', {
+          id: t.id,
+          type: t.type,
+          amount: t.amount,
+          date: t.date,
+          createdAt: t.createdAt
+        });
+        
+        if (t.type !== 'deposit') {
+          console.log('[INCOME-CHART] Not a deposit, type:', t.type);
+          return false;
+        }
         
         try {
           const transactionDate = new Date(t.date || t.createdAt);
           const isInRange = transactionDate >= startDate && transactionDate <= endDate;
+          
+          console.log('[INCOME-CHART] Date check:', {
+            transactionDate: transactionDate.toISOString(),
+            transactionDateLocal: transactionDate.toLocaleString('he-IL'),
+            isInRange,
+            beforeStart: transactionDate < startDate,
+            afterEnd: transactionDate > endDate
+          });
+          
           if (isInRange) {
-            console.log('[INCOME-CHART] Found deposit:', { 
+            console.log('[INCOME-CHART] ✅ Found deposit in range:', { 
               id: t.id, 
               amount: t.amount, 
               description: t.description, 
@@ -323,6 +353,7 @@ const ChildView = ({ childId, familyId, onBackToParent, onLogout }) => {
       });
       
       console.log('[INCOME-CHART] Deposits in range:', deposits.length);
+      console.log('[INCOME-CHART] All deposits:', deposits);
       
       // Categorize income
       const incomeCategories = {
