@@ -256,9 +256,18 @@ const ParentDashboard = ({ familyId, onChildrenUpdated, onLogout, onViewChild })
         return;
       }
       
-      await approvePaymentRequest(familyId, requestId);
-      await loadData();
-      setSelectedPaymentRequest(null);
+      try {
+        await approvePaymentRequest(familyId, requestId);
+        await loadData();
+        setSelectedPaymentRequest(null);
+      } catch (error) {
+        console.error('Error approving payment:', error);
+        const errorMessage = error.message || error.error || 'שגיאה לא ידועה';
+        alert(t('parent.dashboard.approveError', { defaultValue: 'שגיאה באישור תשלום' }) + ': ' + errorMessage);
+        await loadData();
+        setSelectedPaymentRequest(null);
+        return;
+      }
       // Show success notification
       const notification = document.createElement('div');
       notification.textContent = t('parent.dashboard.paymentApproved', { defaultValue: 'תשלום אושר בהצלחה!' });

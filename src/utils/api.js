@@ -432,15 +432,20 @@ export const approvePaymentRequest = async (familyId, requestId) => {
   if (!familyId || !requestId) {
     throw new Error('Family ID and Request ID are required');
   }
-  const response = await apiCall(`/families/${familyId}/payment-requests/${requestId}/approve`, {
-    method: 'PUT'
-  }, { useCache: false });
-  
-  // Invalidate caches
-  clearCache(`/families/${familyId}/payment-requests`);
-  invalidateFamilyCache(familyId);
-  
-  return response;
+  try {
+    const response = await apiCall(`/families/${familyId}/payment-requests/${requestId}/approve`, {
+      method: 'PUT'
+    }, { useCache: false });
+    
+    // Invalidate caches
+    clearCache(`/families/${familyId}/payment-requests`);
+    invalidateFamilyCache(familyId);
+    
+    return response;
+  } catch (error) {
+    // apiCall already throws Error with the message, so just re-throw it
+    throw error;
+  }
 };
 
 export const rejectPaymentRequest = async (familyId, requestId) => {

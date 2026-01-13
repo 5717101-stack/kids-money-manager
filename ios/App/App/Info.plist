@@ -58,5 +58,9 @@
 	</array>
 	<key>UIViewControllerBasedStatusBarAppearance</key>
 	<true/>
+	<key>NSCameraUsageDescription</key>
+	<string>האפליקציה זקוקה לגישה למצלמה כדי לצלם תמונות למשימות בית</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>האפליקציה זקוקה לגישה לגלריית התמונות כדי לבחור תמונות למשימות בית</string>
 </dict>
 </plist>

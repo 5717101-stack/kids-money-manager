@@ -71,6 +71,7 @@
       "paymentApproved": "תשלום אושר בהצלחה!",
       "paymentApproveError": "שגיאה באישור תשלום",
       "paymentRejectError": "שגיאה בדחיית תשלום",
+      "approveError": "שגיאה באישור תשלום",
       "alreadyApproved": "הבקשה כבר אושרה",
       "alreadyRejected": "הבקשה כבר נדחתה",
       "requestNotFound": "בקשה לא נמצאה"
