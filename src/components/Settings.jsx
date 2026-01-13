@@ -32,6 +32,7 @@ const Settings = ({ familyId, onClose, onLogout, activeTab: externalActiveTab, h
   const [editingTask, setEditingTask] = useState(null);
   const [showTaskHistory, setShowTaskHistory] = useState(false);
   const [taskHistory, setTaskHistory] = useState([]);
+  const [selectedHistoryRequest, setSelectedHistoryRequest] = useState(null);
   const [allData, setAllData] = useState({ children: {} });
   const [loading, setLoading] = useState(true);
   const [allowanceStates, setAllowanceStates] = useState({});
@@ -948,30 +949,54 @@ const Settings = ({ familyId, onClose, onLogout, activeTab: externalActiveTab, h
           <div className="tasks-section" style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
             {!asPage && (
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <h2 style={{ fontSize: '20px', fontWeight: 700, margin: 0 }}>{t('parent.settings.tasks.title', { defaultValue: 'ניהול מטלות' })}</h2>
-                <button
-                  onClick={async () => {
-                    if (!showTaskHistory) {
-                      await loadTaskHistory();
-                    }
-                    setShowTaskHistory(!showTaskHistory);
-                  }}
-                  style={{
-                    padding: '8px 16px',
-                    borderRadius: '8px',
-                    background: showTaskHistory ? 'var(--primary)' : 'white',
-                    color: showTaskHistory ? 'white' : 'var(--primary)',
-                    border: '1px solid var(--primary)',
-                    fontSize: '14px',
-                    fontWeight: 600,
-                    cursor: 'pointer'
-                  }}
-                >
+                <h2 style={{ fontSize: '20px', fontWeight: 700, margin: 0 }}>
                   {showTaskHistory 
-                    ? t('parent.settings.tasks.backToTasks', { defaultValue: 'חזרה למטלות' })
-                    : t('parent.settings.tasks.history', { defaultValue: 'היסטוריית מטלות' })
+                    ? t('parent.settings.tasks.history', { defaultValue: 'היסטוריית מטלות' })
+                    : t('parent.settings.tasks.title', { defaultValue: 'ניהול מטלות' })
                   }
-                </button>
+                </h2>
+                {!showTaskHistory ? (
+                  <button
+                    onClick={async () => {
+                      await loadTaskHistory();
+                      setShowTaskHistory(true);
+                      setSelectedHistoryRequest(null);
+                    }}
+                    style={{
+                      background: 'none',
+                      border: 'none',
+                      fontSize: '24px',
+                      cursor: 'pointer',
+                      padding: '8px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      color: 'var(--primary)'
+                    }}
+                    title={t('parent.settings.tasks.history', { defaultValue: 'היסטוריית מטלות' })}
+                  >
+                    📋
+                  </button>
+                ) : (
+                  <button
+                    onClick={() => {
+                      setShowTaskHistory(false);
+                      setSelectedHistoryRequest(null);
+                    }}
+                    style={{
+                      padding: '8px 16px',
+                      borderRadius: '8px',
+                      background: 'white',
+                      color: 'var(--primary)',
+                      border: '1px solid var(--primary)',
+                      fontSize: '14px',
+                      fontWeight: 600,
+                      cursor: 'pointer'
+                    }}
+                  >
+                    {t('parent.settings.tasks.backToTasks', { defaultValue: 'חזרה למטלות' })}
+                  </button>
+                )}
               </div>
             )}
             
@@ -1182,91 +1207,210 @@ const Settings = ({ familyId, onClose, onLogout, activeTab: externalActiveTab, h
                   )}
                 </div>
               </>
+            ) : selectedHistoryRequest ? (
+              <div style={{ 
+                padding: '20px',
+                display: 'flex',
+                flexDirection: 'column',
+                maxHeight: '80vh',
+                overflow: 'hidden'
+              }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', flexShrink: 0 }}>
+                  <h3 style={{ margin: 0, fontSize: '18px', fontWeight: 600 }}>{selectedHistoryRequest.taskName}</h3>
+                  <button
+                    onClick={() => setSelectedHistoryRequest(null)}
+                    style={{
+                      background: 'none',
+                      border: 'none',
+                      fontSize: '24px',
+                      cursor: 'pointer',
+                      padding: '4px',
+                      color: 'var(--text-muted)'
+                    }}
+                  >
+                    ✕
+                  </button>
+                </div>
+                <div style={{ 
+                  display: 'flex', 
+                  flexDirection: 'column', 
+                  gap: '16px',
+                  overflowY: 'auto',
+                  flex: 1,
+                  minHeight: 0,
+                  paddingRight: '8px'
+                }}>
+                  <div>
+                    <div style={{ fontSize: '14px', color: 'var(--text-muted)', marginBottom: '4px' }}>
+                      {t('parent.dashboard.child', { defaultValue: 'ילד' })}
+                    </div>
+                    <div style={{ fontSize: '16px', fontWeight: 600 }}>{selectedHistoryRequest.childName}</div>
+                  </div>
+                  <div>
+                    <div style={{ fontSize: '14px', color: 'var(--text-muted)', marginBottom: '4px' }}>
+                      {t('parent.dashboard.amount', { defaultValue: 'סכום' })}
+                    </div>
+                    <div style={{ fontSize: '20px', fontWeight: 700, color: 'var(--primary)' }}>
+                      ₪{selectedHistoryRequest.taskPrice.toFixed(2)}
+                    </div>
+                  </div>
+                  <div>
+                    <div style={{ fontSize: '14px', color: 'var(--text-muted)', marginBottom: '4px' }}>
+                      {t('parent.dashboard.requestedAt', { defaultValue: 'זמן ביצוע' })}
+                    </div>
+                    <div style={{ fontSize: '14px' }}>
+                      {new Date(selectedHistoryRequest.requestedAt).toLocaleDateString(i18n.language === 'he' ? 'he-IL' : 'en-US', {
+                        year: 'numeric',
+                        month: 'long',
+                        day: 'numeric',
+                        hour: '2-digit',
+                        minute: '2-digit'
+                      })}
+                    </div>
+                  </div>
+                  <div>
+                    <div style={{ fontSize: '14px', color: 'var(--text-muted)', marginBottom: '4px' }}>
+                      {t('parent.settings.tasks.status', { defaultValue: 'סטטוס' })}
+                    </div>
+                    <div style={{
+                      display: 'inline-block',
+                      padding: '6px 12px',
+                      borderRadius: '8px',
+                      background: selectedHistoryRequest.status === 'approved' ? '#10B981' : selectedHistoryRequest.status === 'rejected' ? '#EF4444' : '#F59E0B',
+                      color: 'white',
+                      fontSize: '14px',
+                      fontWeight: 600
+                    }}>
+                      {selectedHistoryRequest.status === 'approved' 
+                        ? t('parent.settings.tasks.statusApproved', { defaultValue: 'אושר' })
+                        : selectedHistoryRequest.status === 'rejected'
+                        ? t('parent.settings.tasks.statusRejected', { defaultValue: 'נדחה' })
+                        : t('parent.settings.tasks.statusPending', { defaultValue: 'ממתין' })
+                      }
+                    </div>
+                  </div>
+                  {selectedHistoryRequest.note && (
+                    <div>
+                      <div style={{ fontSize: '14px', color: 'var(--text-muted)', marginBottom: '4px' }}>
+                        {t('parent.dashboard.note', { defaultValue: 'הערה' })}
+                      </div>
+                      <div style={{ fontSize: '14px', padding: '12px', background: '#F9FAFB', borderRadius: '8px' }}>
+                        {selectedHistoryRequest.note}
+                      </div>
+                    </div>
+                  )}
+                  {selectedHistoryRequest.image && (
+                    <div>
+                      <div style={{ fontSize: '14px', color: 'var(--text-muted)', marginBottom: '4px' }}>
+                        {t('parent.dashboard.image', { defaultValue: 'תמונה' })}
+                      </div>
+                      <img 
+                        src={selectedHistoryRequest.image} 
+                        alt="Task completion" 
+                        style={{
+                          maxWidth: '100%',
+                          maxHeight: '200px',
+                          width: 'auto',
+                          height: 'auto',
+                          borderRadius: '8px',
+                          objectFit: 'contain',
+                          display: 'block'
+                        }}
+                      />
+                    </div>
+                  )}
+                </div>
+                <div style={{ 
+                  display: 'flex', 
+                  gap: '12px', 
+                  marginTop: '20px',
+                  flexShrink: 0,
+                  paddingTop: '16px',
+                  borderTop: '1px solid rgba(0,0,0,0.1)'
+                }}>
+                  <button
+                    onClick={async () => {
+                      const newStatus = selectedHistoryRequest.status === 'approved' ? 'rejected' : 'approved';
+                      await handleUpdateTaskStatus(selectedHistoryRequest._id, newStatus);
+                      // Update local state
+                      const updated = { ...selectedHistoryRequest, status: newStatus };
+                      setSelectedHistoryRequest(updated);
+                      // Update in history list
+                      setTaskHistory(taskHistory.map(r => r._id === selectedHistoryRequest._id ? updated : r));
+                    }}
+                    style={{
+                      flex: 1,
+                      padding: '12px',
+                      borderRadius: '8px',
+                      background: selectedHistoryRequest.status === 'approved' ? '#EF4444' : '#10B981',
+                      color: 'white',
+                      border: 'none',
+                      fontSize: '16px',
+                      fontWeight: 600,
+                      cursor: 'pointer'
+                    }}
+                  >
+                    {selectedHistoryRequest.status === 'approved' 
+                      ? t('parent.settings.tasks.reject', { defaultValue: 'דחה' })
+                      : t('parent.settings.tasks.approve', { defaultValue: 'אשר' })
+                    }
+                  </button>
+                </div>
+              </div>
             ) : (
               <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
                 {taskHistory.map(request => (
-                  <div 
-                    key={request._id} 
+                  <button
+                    key={request._id}
+                    onClick={() => setSelectedHistoryRequest(request)}
                     style={{
                       background: 'white',
                       padding: '16px',
                       borderRadius: '16px',
                       boxShadow: '0 2px 10px rgba(0,0,0,0.05)',
+                      border: 'none',
+                      cursor: 'pointer',
+                      textAlign: 'right',
                       display: 'flex',
-                      flexDirection: 'column',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
                       gap: '12px'
                     }}
                   >
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <div>
-                        <div style={{ fontSize: '16px', fontWeight: 600 }}>{request.taskName}</div>
-                        <div style={{ fontSize: '14px', color: 'var(--text-muted)' }}>
-                          {request.childName} - ₪{request.taskPrice.toFixed(2)}
-                        </div>
-                        <div style={{ fontSize: '12px', color: 'var(--text-muted)' }}>
-                          {new Date(request.requestedAt).toLocaleDateString(i18n.language === 'he' ? 'he-IL' : 'en-US', {
-                            year: 'numeric',
-                            month: 'short',
-                            day: 'numeric',
-                            hour: '2-digit',
-                            minute: '2-digit'
-                          })}
-                        </div>
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontSize: '16px', fontWeight: 600, marginBottom: '4px' }}>{request.taskName}</div>
+                      <div style={{ fontSize: '14px', color: 'var(--text-muted)' }}>
+                        {request.childName} - ₪{request.taskPrice.toFixed(2)}
                       </div>
-                      <div style={{ display: 'flex', gap: '8px' }}>
-                        <button
-                          onClick={() => handleUpdateTaskStatus(request._id, request.status === 'approved' ? 'rejected' : 'approved')}
-                          style={{
-                            padding: '6px 12px',
-                            borderRadius: '8px',
-                            background: request.status === 'approved' ? '#EF4444' : '#10B981',
-                            color: 'white',
-                            border: 'none',
-                            fontSize: '12px',
-                            fontWeight: 600,
-                            cursor: 'pointer'
-                          }}
-                        >
-                          {request.status === 'approved' 
-                            ? t('parent.settings.tasks.reject', { defaultValue: 'דחה' })
-                            : t('parent.settings.tasks.approve', { defaultValue: 'אשר' })
-                          }
-                        </button>
-                        <div style={{
-                          padding: '6px 12px',
-                          borderRadius: '8px',
-                          background: request.status === 'approved' ? '#10B981' : request.status === 'rejected' ? '#EF4444' : '#F59E0B',
-                          color: 'white',
-                          fontSize: '12px',
-                          fontWeight: 600
-                        }}>
-                          {request.status === 'approved' 
-                            ? t('parent.settings.tasks.statusApproved', { defaultValue: 'אושר' })
-                            : request.status === 'rejected'
-                            ? t('parent.settings.tasks.statusRejected', { defaultValue: 'נדחה' })
-                            : t('parent.settings.tasks.statusPending', { defaultValue: 'ממתין' })
-                          }
-                        </div>
+                      <div style={{ fontSize: '12px', color: 'var(--text-muted)', marginTop: '4px' }}>
+                        {new Date(request.requestedAt).toLocaleDateString(i18n.language === 'he' ? 'he-IL' : 'en-US', {
+                          year: 'numeric',
+                          month: 'short',
+                          day: 'numeric',
+                          hour: '2-digit',
+                          minute: '2-digit'
+                        })}
                       </div>
                     </div>
-                    {request.note && (
-                      <div style={{ fontSize: '14px', color: 'var(--text-main)', padding: '8px', background: '#F9FAFB', borderRadius: '8px' }}>
-                        {request.note}
+                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '8px' }}>
+                      <div style={{
+                        padding: '6px 12px',
+                        borderRadius: '8px',
+                        background: request.status === 'approved' ? '#10B981' : request.status === 'rejected' ? '#EF4444' : '#F59E0B',
+                        color: 'white',
+                        fontSize: '12px',
+                        fontWeight: 600
+                      }}>
+                        {request.status === 'approved' 
+                          ? t('parent.settings.tasks.statusApproved', { defaultValue: 'אושר' })
+                          : request.status === 'rejected'
+                          ? t('parent.settings.tasks.statusRejected', { defaultValue: 'נדחה' })
+                          : t('parent.settings.tasks.statusPending', { defaultValue: 'ממתין' })
+                        }
                       </div>
-                    )}
-                    {request.image && (
-                      <img 
-                        src={request.image} 
-                        alt="Task completion" 
-                        style={{
-                          maxWidth: '100%',
-                          maxHeight: '200px',
-                          borderRadius: '8px',
-                          objectFit: 'contain'
-                        }}
-                      />
-                    )}
-                  </div>
+                      <span style={{ fontSize: '20px', color: 'var(--text-muted)' }}>→</span>
+                    </div>
+                  </button>
                 ))}
                 {taskHistory.length === 0 && (
                   <div style={{ 
