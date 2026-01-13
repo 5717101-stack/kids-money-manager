@@ -53,6 +53,7 @@ const ChildView = ({ childId, familyId, onBackToParent, onLogout }) => {
   const [taskNote, setTaskNote] = useState('');
   const [taskImage, setTaskImage] = useState(null);
   const [submittingTaskRequest, setSubmittingTaskRequest] = useState(false);
+  const taskImageInputRef = useRef(null);
 
   useEffect(() => {
     // Reset loading and error when childId or familyId changes
