@@ -3095,6 +3095,12 @@ app.post('/api/families/:familyId/tasks/:taskId/request-payment', async (req, re
       return res.status(400).json({ error: 'Child ID is required' });
     }
     
+    // Validate image size if provided (max 500KB base64)
+    if (image && image.length > 500 * 1024) {
+      console.warn(`[REQUEST-PAYMENT] Image too large: ${(image.length / 1024).toFixed(2)} KB`);
+      return res.status(400).json({ error: 'תמונה גדולה מדי. אנא בחר תמונה קטנה יותר.' });
+    }
+    
     const family = await getFamilyById(familyId);
     if (!family) {
       return res.status(404).json({ error: 'משפחה לא נמצאה' });
@@ -3122,7 +3128,7 @@ app.post('/api/families/:familyId/tasks/:taskId/request-payment', async (req, re
       childId,
       childName: child.name,
       note: note || null,
-      image: image || null,
+      image: image || null, // Image should already be compressed by client
       status: 'pending', // 'pending', 'approved', 'rejected'
       requestedAt: new Date().toISOString(),
       completedAt: null
