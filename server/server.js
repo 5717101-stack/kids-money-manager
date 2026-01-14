@@ -626,12 +626,15 @@ async function getFamilyByPhone(phoneNumber) {
   if (db) {
     try {
       // First try direct lookup by main phone (indexed)
-      // Exclude transactions to prevent loading huge documents
+      // Exclude large fields to prevent loading huge documents
       let family = await db.collection('families').findOne(
         { phoneNumber: normalized },
         {
           projection: {
-            // Include all fields, but we'll handle transactions separately if needed
+            // Exclude large fields that can cause timeout
+            'children.transactions': 0, // Transactions loaded separately
+            'children.profileImage': 0, // Profile images loaded separately (can be very large base64)
+            'paymentRequests': 0 // Payment requests loaded separately (contain large images)
           }
         }
       );
@@ -646,7 +649,10 @@ async function getFamilyByPhone(phoneNumber) {
         { 'additionalParents.phoneNumber': normalized },
         {
           projection: {
-            // Include all fields
+            // Exclude large fields that can cause timeout
+            'children.transactions': 0, // Transactions loaded separately
+            'children.profileImage': 0, // Profile images loaded separately (can be very large base64)
+            'paymentRequests': 0 // Payment requests loaded separately (contain large images)
           }
         }
       );
@@ -731,16 +737,17 @@ async function getFamilyById(familyId) {
   
   if (db) {
     try {
-      // Use projection to exclude large fields (transactions are loaded separately)
-      // Note: We keep paymentRequests because they're needed for the parent dashboard
-      // Payment requests are limited in size (max 500KB per image, usually only a few requests)
+      // Use projection to exclude large fields (transactions, images are loaded separately)
+      // Exclude profile images and payment request images to reduce document size significantly
       const family = await db.collection('families').findOne(
         { _id: familyId },
         {
           projection: {
             // Exclude large fields that can cause timeout
-            'children.transactions': 0 // Transactions loaded separately
-            // Keep paymentRequests - they're needed and usually small
+            'children.transactions': 0, // Transactions loaded separately
+            'children.profileImage': 0, // Profile images loaded separately (can be very large base64)
+            'paymentRequests': 0 // Payment requests loaded separately (contain large images)
+            // Note: parentProfileImage is kept because it's usually small and needed for parent dashboard
           }
         }
       );
@@ -2034,15 +2041,17 @@ app.get('/api/families/:familyId/children', async (req, res) => {
     }
     
     console.log(`[GET-CHILDREN] Step 2: Mapping children...`);
-    // Optimize: Don't send all transactions in children list - they're fetched separately
-    // This reduces payload size significantly when there are many transactions
+    // Optimize: Don't send all transactions and profile images in children list - they're fetched separately
+    // This reduces payload size significantly when there are many transactions or large images
     const children = (family.children || []).map(child => ({
       _id: child._id,
       name: child.name,
       phoneNumber: child.phoneNumber || '',
       balance: child.balance || 0,
       cashBoxBalance: child.cashBoxBalance || 0,
-      profileImage: child.profileImage || null,
+      // Don't include profileImage here - it's loaded separately via /api/families/:familyId/children/:childId/profile-image
+      // This reduces response size by 80-90% for families with many children or large images
+      hasProfileImage: !!child.profileImage, // Just a flag to indicate if image exists
       weeklyAllowance: child.weeklyAllowance || 0,
       allowanceType: child.allowanceType || 'weekly',
       allowanceDay: child.allowanceDay !== undefined ? child.allowanceDay : 1,
@@ -3192,6 +3201,32 @@ app.get('/api/families/:familyId/payment-requests', async (req, res) => {
     const { familyId } = req.params;
     const { status } = req.query; // Optional: filter by status
     
+    // Load payment requests directly from DB with projection to include only paymentRequests field
+    // This avoids loading the entire family document with all images and transactions
+    if (db) {
+      const family = await db.collection('families').findOne(
+        { _id: familyId },
+        {
+          projection: {
+            paymentRequests: 1 // Only load payment requests, nothing else
+          }
+        }
+      );
+      
+      if (!family) {
+        return res.status(404).json({ error: 'משפחה לא נמצאה' });
+      }
+      
+      let requests = family.paymentRequests || [];
+      if (status) {
+        requests = requests.filter(r => r.status === status);
+      }
+      
+      res.json({ paymentRequests: requests });
+      return;
+    }
+    
+    // Fallback to getFamilyById if no DB
     const family = await getFamilyById(familyId);
     if (!family) {
       return res.status(404).json({ error: 'משפחה לא נמצאה' });

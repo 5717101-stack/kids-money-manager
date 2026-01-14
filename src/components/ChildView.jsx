@@ -136,14 +136,14 @@ const ChildView = ({ childId, familyId, onBackToParent, onLogout }) => {
       setShowGuide(true);
     }
     
-    // Refresh every 15 seconds to show updated balance (reduced frequency for better performance)
+    // Refresh every 30 seconds to show updated balance (reduced frequency for better performance)
     const interval = setInterval(() => {
       if (familyId && childId && !loading) {
         loadChildData();
         loadSavingsGoal();
         // Don't reload expenses chart automatically - only when period changes
       }
-    }, 15000);
+    }, 30000);
     return () => clearInterval(interval);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [childId, familyId, historyLimit]);
