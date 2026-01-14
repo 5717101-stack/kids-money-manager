@@ -145,6 +145,11 @@ const Settings = ({ familyId, onClose, onLogout, activeTab: externalActiveTab, h
       setFamilyInfo(familyData);
       setTasks(Array.isArray(tasksData) ? tasksData : []);
       
+      // Debug: Log family info to see what we're getting
+      console.log('[SETTINGS] Family info loaded:', familyData);
+      console.log('[SETTINGS] Family info parents:', familyData?.parents);
+      console.log('[SETTINGS] Family info parents length:', familyData?.parents?.length || 0);
+      
       // Initialize allowance states
       const states = {};
       Object.entries(childrenData?.children || {}).forEach(([childId, child]) => {
@@ -2771,9 +2776,17 @@ const Settings = ({ familyId, onClose, onLogout, activeTab: externalActiveTab, h
               </div>
             )}
             
-            {familyInfo && familyInfo.parents && familyInfo.parents.length > 0 ? (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                {familyInfo.parents.map((parent, index) => (
+            {(() => {
+              // Debug: Log what we have
+              console.log('[SETTINGS-PARENTS] familyInfo:', familyInfo);
+              console.log('[SETTINGS-PARENTS] familyInfo?.parents:', familyInfo?.parents);
+              console.log('[SETTINGS-PARENTS] parents length:', familyInfo?.parents?.length || 0);
+              
+              // Show parents if they exist
+              if (familyInfo && familyInfo.parents && familyInfo.parents.length > 0) {
+                return (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                    {familyInfo.parents.map((parent, index) => (
                   <div key={index}>
                     <div 
                       style={{
@@ -3159,19 +3172,25 @@ const Settings = ({ familyId, onClose, onLogout, activeTab: externalActiveTab, h
                         </form>
                       </div>
                     )}
+                      </div>
+                    ))}
                   </div>
-                ))}
-              </div>
-            ) : (
-              <div style={{
-                padding: '40px 20px',
-                textAlign: 'center',
-                color: 'var(--text-muted)',
-                fontSize: '16px'
-              }}>
-                {t('parent.settings.parents.noParents', { defaultValue: 'אין הורים רשומים' })}
-              </div>
-            )}
+                );
+              } else {
+                // Show message if no parents or familyInfo is null
+                console.log('[SETTINGS-PARENTS] No parents found, showing message');
+                return (
+                  <div style={{
+                    padding: '40px 20px',
+                    textAlign: 'center',
+                    color: 'var(--text-muted)',
+                    fontSize: '16px'
+                  }}>
+                    {t('parent.settings.parents.noParents', { defaultValue: 'אין הורים רשומים' })}
+                  </div>
+                );
+              }
+            })()}
           </div>
         )}
       </div>
