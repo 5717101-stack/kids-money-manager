@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { getData, getCategories, getChildTransactions, addTransaction, getFamilyInfo, updateParentProfileImage, getPaymentRequests, approvePaymentRequest, rejectPaymentRequest } from '../utils/api';
 import { clearCache } from '../utils/cache';
@@ -10,7 +10,7 @@ import DeleteFamilyProfile from './DeleteFamilyProfile';
 import ExpensesPieChart from './ExpensesPieChart';
 import Guide from './Guide';
 
-const ParentDashboard = ({ familyId, onChildrenUpdated, onLogout, onViewChild }) => {
+const ParentDashboard = ({ familyId, isNewFamily: isNewFamilyProp, onChildrenUpdated, onLogout, onViewChild, onNewFamilyComplete }) => {
   const { t, i18n } = useTranslation();
   const [allData, setAllData] = useState({ children: {} });
   const [categories, setCategories] = useState([]);
@@ -52,12 +52,40 @@ const ParentDashboard = ({ familyId, onChildrenUpdated, onLogout, onViewChild })
     return () => clearInterval(interval);
   }, [familyId, activityLimit]);
 
+  // Track if guide has been shown in this session
+  const guideShownRef = useRef(false);
+  const [familyInfoForGuide, setFamilyInfoForGuide] = useState(null);
+
+  // Load family info to check parent name
+  useEffect(() => {
+    const loadFamilyInfo = async () => {
+      if (!familyId) return;
+      try {
+        const info = await getFamilyInfo(familyId);
+        setFamilyInfoForGuide(info);
+      } catch (error) {
+        console.error('Error loading family info for guide:', error);
+      }
+    };
+    loadFamilyInfo();
+  }, [familyId]);
+
   // Check if guide should be shown on first visit
   useEffect(() => {
-    if (currentView === 'dashboard' && !localStorage.getItem('guideSeen_parent')) {
+    // For new families: show guide if not shown yet and parent name is still "הורה1"
+    if (isNewFamilyProp && !guideShownRef.current && currentView !== 'parents') {
+      const mainParentName = familyInfoForGuide?.parentName || 'הורה1';
+      const isParentNameStillDefault = mainParentName === 'הורה1';
+      
+      if (isParentNameStillDefault) {
+        setShowGuide(true);
+      }
+    } 
+    // For existing families: show guide only if not seen before and on dashboard
+    else if (!isNewFamilyProp && currentView === 'dashboard' && !localStorage.getItem('guideSeen_parent') && !guideShownRef.current) {
       setShowGuide(true);
     }
-  }, [currentView]);
+  }, [currentView, isNewFamilyProp, familyInfoForGuide]);
 
   const loadData = async () => {
     if (!familyId) return;
@@ -726,6 +754,7 @@ const ParentDashboard = ({ familyId, onChildrenUpdated, onLogout, onViewChild })
         <div className="content-area">
           <Settings 
             familyId={familyId}
+            isNewFamily={isNewFamilyProp && currentView === 'parents'}
             onClose={async () => {
               setCurrentView('dashboard');
               await loadData();
@@ -740,6 +769,11 @@ const ParentDashboard = ({ familyId, onChildrenUpdated, onLogout, onViewChild })
             asPage={true}
             onChildrenUpdated={onChildrenUpdated}
             onTabChange={(tab) => setCurrentView(tab)}
+            onParentSaved={() => {
+              if (isNewFamilyProp && onNewFamilyComplete) {
+                onNewFamilyComplete();
+              }
+            }}
           />
         </div>
       )}
@@ -1072,7 +1106,19 @@ const ParentDashboard = ({ familyId, onChildrenUpdated, onLogout, onViewChild })
           userType="parent" 
           onClose={() => {
             setShowGuide(false);
-            setCurrentView('dashboard');
+            guideShownRef.current = true;
+            localStorage.setItem('guideSeen_parent', 'true');
+            
+            // For new families: navigate to parent settings after guide
+            if (isNewFamilyProp) {
+              if (currentView !== 'parents') {
+                setCurrentView('parents');
+              } else {
+                setCurrentView('dashboard');
+              }
+            } else {
+              setCurrentView('dashboard');
+            }
           }} 
         />
       )}
