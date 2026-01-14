@@ -1041,47 +1041,56 @@ async function processAllowancesForFamily(familyId) {
       
       if (allowanceType === 'weekly') {
         const isCorrectDay = currentDayOfWeek === allowanceDay;
-        const isCorrectTime = hour === allowanceHour && minute >= allowanceMinute;
+        // Only process if it's the exact minute or within 1 minute after (to account for processing delay)
+        const isCorrectTime = hour === allowanceHour && minute >= allowanceMinute && minute <= allowanceMinute + 1;
         shouldProcess = isCorrectDay && isCorrectTime;
         
         if (shouldProcess) {
-          // Check if allowance was already paid today (same day and same hour)
-          const todayStart = new Date(now);
-          todayStart.setHours(0, 0, 0, 0);
+          // Check if allowance was already paid this week (same day of week)
+          // Calculate the start of the current week (Sunday at 00:00)
+          const weekStart = new Date(now);
+          weekStart.setHours(0, 0, 0, 0);
+          const daysSinceSunday = currentDayOfWeek;
+          weekStart.setDate(now.getDate() - daysSinceSunday);
           
           const recentAllowance = (child.transactions || []).find(t => {
             if (!t || t.type !== 'deposit') return false;
+            if (t.description !== 'דמי כיס שבועיים') return false;
             const tDate = new Date(t.date);
-            return (t.description === 'דמי כיס שבועיים' || t.description === 'דמי כיס חודשיים') &&
-                   tDate >= todayStart &&
-                   tDate.getHours() === hour;
+            // Check if transaction is from this week and same day of week
+            const tDayOfWeek = tDate.toLocaleString('en-US', { timeZone: 'Asia/Jerusalem', weekday: 'long' });
+            const tCurrentDayOfWeek = dayNameToNumber[tDayOfWeek];
+            return tDate >= weekStart && tCurrentDayOfWeek === currentDayOfWeek;
           });
           
           if (recentAllowance) {
-            console.log(`⏭️ Skipping allowance for ${child.name} - already paid today at ${recentAllowance.date}`);
+            console.log(`⏭️ Skipping allowance for ${child.name} - already paid this week at ${recentAllowance.date}`);
             continue;
           }
         }
       } else if (allowanceType === 'monthly') {
         const isCorrectDay = dayOfMonth === allowanceDay;
-        const isCorrectTime = hour === allowanceHour && minute >= allowanceMinute;
+        // Only process if it's the exact minute or within 1 minute after (to account for processing delay)
+        const isCorrectTime = hour === allowanceHour && minute >= allowanceMinute && minute <= allowanceMinute + 1;
         shouldProcess = isCorrectDay && isCorrectTime;
         
         if (shouldProcess) {
-          // Check if allowance was already paid today (same day and same hour)
-          const todayStart = new Date(now);
-          todayStart.setHours(0, 0, 0, 0);
+          // Check if allowance was already paid this month (same day of month)
+          const monthStart = new Date(now);
+          monthStart.setDate(1);
+          monthStart.setHours(0, 0, 0, 0);
           
           const recentAllowance = (child.transactions || []).find(t => {
             if (!t || t.type !== 'deposit') return false;
+            if (t.description !== 'דמי כיס חודשיים') return false;
             const tDate = new Date(t.date);
-            return (t.description === 'דמי כיס שבועיים' || t.description === 'דמי כיס חודשיים') &&
-                   tDate >= todayStart &&
-                   tDate.getHours() === hour;
+            // Check if transaction is from this month and same day of month
+            const tDayOfMonth = tDate.getDate();
+            return tDate >= monthStart && tDayOfMonth === dayOfMonth;
           });
           
           if (recentAllowance) {
-            console.log(`⏭️ Skipping allowance for ${child.name} - already paid today at ${recentAllowance.date}`);
+            console.log(`⏭️ Skipping allowance for ${child.name} - already paid this month at ${recentAllowance.date}`);
             continue;
           }
         }
