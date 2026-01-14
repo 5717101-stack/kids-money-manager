@@ -3521,7 +3521,25 @@ process.on('SIGINT', () => {
 app.get('/api/families/:familyId', async (req, res) => {
   try {
     const { familyId } = req.params;
-    const family = await db.collection('families').findOne({ _id: familyId });
+    
+    // Use projection to exclude transactions and other large fields
+    const family = await db.collection('families').findOne(
+      { _id: familyId },
+      {
+        projection: {
+          _id: 1,
+          phoneNumber: 1,
+          parentName: 1,
+          parentProfileImage: 1,
+          additionalParents: 1,
+          createdAt: 1,
+          lastLoginAt: 1,
+          // Exclude large fields
+          'children.transactions': 0,
+          'children.profileImage': 0
+        }
+      }
+    );
     
     if (!family) {
       return res.status(404).json({ error: 'Family not found' });
