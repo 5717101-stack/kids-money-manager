@@ -3530,7 +3530,7 @@ app.get('/api/families/:familyId', async (req, res) => {
   try {
     const { familyId } = req.params;
     
-    // Use projection to exclude transactions and other large fields
+    // Use projection to include only needed fields (can't mix inclusion and exclusion)
     const family = await db.collection('families').findOne(
       { _id: familyId },
       {
@@ -3541,10 +3541,9 @@ app.get('/api/families/:familyId', async (req, res) => {
           parentProfileImage: 1,
           additionalParents: 1,
           createdAt: 1,
-          lastLoginAt: 1,
-          // Exclude large fields
-          'children.transactions': 0,
-          'children.profileImage': 0
+          lastLoginAt: 1
+          // Note: We don't include children.transactions or children.profileImage
+          // This reduces the document size significantly
         }
       }
     );
