@@ -156,8 +156,8 @@ const ExpensesPieChart = ({ familyId, children, categories, onCategorySelect, se
             const childId = child._id || child.id;
             if (!childId) continue;
             
-            // Load more transactions to ensure we get all expenses in the date range
-            const transactions = await getChildTransactions(familyId, childId, 100);
+            // Load ALL transactions (no limit) to ensure we get all expenses in the date range
+            const transactions = await getChildTransactions(familyId, childId, null);
             
             if (!isMounted) break;
             
