@@ -146,6 +146,12 @@ const ExpensesPieChart = ({ familyId, children, categories, onCategorySelect, se
         }
         
         const { startDate, endDate } = getDateRange();
+        console.log('[EXPENSES-CHART] Date range:', { 
+          startDate: startDate.toISOString(), 
+          endDate: endDate.toISOString(),
+          startDateLocal: startDate.toLocaleString('he-IL'),
+          endDateLocal: endDate.toLocaleString('he-IL')
+        });
         const allExpenses = [];
 
         // Load transactions from all children
@@ -158,19 +164,41 @@ const ExpensesPieChart = ({ familyId, children, categories, onCategorySelect, se
             
             // Load ALL transactions (no limit) to ensure we get all expenses in the date range
             const transactions = await getChildTransactions(familyId, childId, null);
+            console.log(`[EXPENSES-CHART] Loaded ${transactions?.length || 0} transactions for child ${child.name} (${childId})`);
             
             if (!isMounted) break;
             
             // Filter expenses within date range
             const childExpenses = (transactions || []).filter(t => {
-              if (!t || t.type !== 'expense') return false;
+              if (!t) {
+                console.log('[EXPENSES-CHART] Transaction is null/undefined');
+                return false;
+              }
+              if (t.type !== 'expense') {
+                return false;
+              }
               try {
                 const transactionDate = new Date(t.date || t.createdAt);
-                return transactionDate >= startDate && transactionDate <= endDate;
+                const isInRange = transactionDate >= startDate && transactionDate <= endDate;
+                
+                if (isInRange) {
+                  console.log('[EXPENSES-CHART] ✅ Found expense in range:', {
+                    id: t.id,
+                    amount: t.amount,
+                    category: t.category,
+                    date: transactionDate.toISOString(),
+                    dateLocal: transactionDate.toLocaleString('he-IL')
+                  });
+                }
+                
+                return isInRange;
               } catch (dateError) {
+                console.error('[EXPENSES-CHART] Date parsing error:', dateError, t);
                 return false;
               }
             });
+
+            console.log(`[EXPENSES-CHART] Found ${childExpenses.length} expenses for child ${child.name} in date range`);
 
             // Add child info to each expense
             childExpenses.forEach(expense => {
@@ -181,10 +209,12 @@ const ExpensesPieChart = ({ familyId, children, categories, onCategorySelect, se
               });
             });
           } catch (err) {
-            console.error(`Error loading expenses for ${child.name || childId}:`, err);
+            console.error(`[EXPENSES-CHART] Error loading expenses for ${child.name || childId}:`, err);
             // Continue with other children
           }
         }
+        
+        console.log(`[EXPENSES-CHART] Total expenses found: ${allExpenses.length}`);
 
         if (!isMounted) return;
 
@@ -198,11 +228,15 @@ const ExpensesPieChart = ({ familyId, children, categories, onCategorySelect, se
           categoryTotals[category] += Math.abs(expense.amount || 0);
         });
 
+        console.log('[EXPENSES-CHART] Category totals:', categoryTotals);
+
         // Convert to array format like ExpensePieChart expects
         const expensesArray = Object.keys(categoryTotals).map(category => ({
           category: category,
           amount: categoryTotals[category]
         })).sort((a, b) => b.amount - a.amount); // Sort by amount descending
+        
+        console.log('[EXPENSES-CHART] Expenses array:', expensesArray);
 
         // Cache the result
         try {
