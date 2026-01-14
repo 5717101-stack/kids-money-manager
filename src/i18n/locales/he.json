@@ -334,6 +334,8 @@
       "title": "התפלגות הוצאות",
       "week": "שבוע אחרון",
       "month": "חודש אחרון",
+      "weekShort": "שבוע",
+      "monthShort": "חודש",
       "chartTitle": "הוצאות - {period}"
     }
   },
