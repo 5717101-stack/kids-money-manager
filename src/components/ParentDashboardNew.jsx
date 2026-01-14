@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { getData, getCategories, getChildTransactions, addTransaction, getFamilyInfo, updateParentProfileImage, getPaymentRequests, approvePaymentRequest, rejectPaymentRequest } from '../utils/api';
 import { clearCache } from '../utils/cache';
@@ -10,7 +10,7 @@ import DeleteFamilyProfile from './DeleteFamilyProfile';
 import ExpensesPieChart from './ExpensesPieChart';
 import Guide from './Guide';
 
-const ParentDashboard = ({ familyId, onChildrenUpdated, onLogout, onViewChild }) => {
+const ParentDashboard = ({ familyId, isNewFamily: isNewFamilyProp, onChildrenUpdated, onLogout, onViewChild, onNewFamilyComplete }) => {
   const { t, i18n } = useTranslation();
   const [allData, setAllData] = useState({ children: {} });
   const [categories, setCategories] = useState([]);
@@ -45,6 +45,10 @@ const ParentDashboard = ({ familyId, onChildrenUpdated, onLogout, onViewChild })
   const [paymentRequests, setPaymentRequests] = useState([]);
   const [showPaymentRequests, setShowPaymentRequests] = useState(false);
   const [selectedPaymentRequest, setSelectedPaymentRequest] = useState(null);
+  
+  // Track if guide has been shown in this session
+  const guideShownRef = useRef(false);
+  const [familyInfoForGuide, setFamilyInfoForGuide] = useState(null);
 
   useEffect(() => {
     loadData();
@@ -52,12 +56,37 @@ const ParentDashboard = ({ familyId, onChildrenUpdated, onLogout, onViewChild })
     return () => clearInterval(interval);
   }, [familyId, activityLimit]);
 
+  // Load family info to check parent name
+  useEffect(() => {
+    const loadFamilyInfo = async () => {
+      if (!familyId) return;
+      try {
+        const info = await getFamilyInfo(familyId);
+        setFamilyInfoForGuide(info);
+      } catch (error) {
+        console.error('Error loading family info for guide:', error);
+      }
+    };
+    loadFamilyInfo();
+  }, [familyId]);
+
   // Check if guide should be shown on first visit
   useEffect(() => {
-    if (currentView === 'dashboard' && !localStorage.getItem('guideSeen_parent')) {
+    // For new families: show guide if not shown yet and parent name is still "הורה1"
+    if (isNewFamilyProp && !guideShownRef.current && currentView !== 'parents') {
+      const mainParentName = familyInfoForGuide?.parentName || 'הורה1';
+      const isParentNameStillDefault = mainParentName === 'הורה1';
+      
+      if (isParentNameStillDefault) {
+        setShowGuide(true);
+        guideShownRef.current = true; // Mark as shown for this session
+      }
+    } 
+    // For existing families: show guide only if not seen before and on dashboard
+    else if (!isNewFamilyProp && currentView === 'dashboard' && !localStorage.getItem('guideSeen_parent') && !guideShownRef.current) {
       setShowGuide(true);
     }
-  }, [currentView]);
+  }, [currentView, isNewFamilyProp, familyInfoForGuide]);
 
   const loadData = async () => {
     if (!familyId) return;
@@ -727,6 +756,7 @@ const ParentDashboard = ({ familyId, onChildrenUpdated, onLogout, onViewChild })
         <div className="content-area">
           <Settings 
             familyId={familyId}
+            isNewFamily={isNewFamilyProp && currentView === 'parents'}
             onClose={async () => {
               setCurrentView('dashboard');
               await loadData();
@@ -741,6 +771,12 @@ const ParentDashboard = ({ familyId, onChildrenUpdated, onLogout, onViewChild })
             asPage={true}
             onChildrenUpdated={onChildrenUpdated}
             onTabChange={(tab) => setCurrentView(tab)}
+            onParentSaved={() => {
+              if (isNewFamilyProp && onNewFamilyComplete) {
+                onNewFamilyComplete(); // Notify App.jsx that new family setup is complete
+              }
+              localStorage.setItem('guideSeen_parent', 'true'); // Mark guide as seen after initial parent setup
+            }}
           />
         </div>
       )}

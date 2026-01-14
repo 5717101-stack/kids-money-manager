@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
+import { Capacitor } from '@capacitor/core';
 import { getCategories, addCategory, updateCategory, deleteCategory, getData, updateProfileImage, updateWeeklyAllowance, payWeeklyAllowance, createChild, updateChild, getFamilyInfo, updateParentInfo, addParent, archiveChild, archiveParent, getTasks, addTask, updateTask, deleteTask, getTaskHistory, updatePaymentRequestStatus } from '../utils/api';
 import { smartCompressImage } from '../utils/imageCompression';
 import { invalidateFamilyCache } from '../utils/cache';
@@ -14,7 +15,7 @@ const CHILD_NAMES = {
   child2: 'ג\'וּן'
 };
 
-const Settings = ({ familyId, onClose, onLogout, activeTab: externalActiveTab, hideTabs = false, inSidebar = false, asPage = false, onChildrenUpdated, onTabChange }) => {
+const Settings = ({ familyId, isNewFamily, onClose, onLogout, activeTab: externalActiveTab, hideTabs = false, inSidebar = false, asPage = false, onChildrenUpdated, onTabChange, onParentSaved }) => {
   const { t, i18n } = useTranslation();
   const [internalActiveTab, setInternalActiveTab] = useState('categories'); // 'categories', 'profileImages', 'allowances', 'children', 'parents', 'tasks'
   const activeTab = externalActiveTab !== undefined ? externalActiveTab : internalActiveTab;
@@ -65,11 +66,54 @@ const Settings = ({ familyId, onClose, onLogout, activeTab: externalActiveTab, h
   const [newParentName, setNewParentName] = useState('');
   const [newParentPhone, setNewParentPhone] = useState('');
   const newParentNameInputRef = useRef(null);
+  const editParentNameInputRef = useRef(null);
   const [showChildJoin, setShowChildJoin] = useState(false);
+  const [showGoToChildrenButton, setShowGoToChildrenButton] = useState(false);
 
   useEffect(() => {
     loadData();
   }, []);
+
+  // Auto-edit main parent for new families
+  useEffect(() => {
+    if (isNewFamily && activeTab === 'parents' && familyInfo && familyInfo.parents && familyInfo.parents.length > 0) {
+      const mainParentIndex = familyInfo.parents.findIndex(p => p.isMain);
+      if (mainParentIndex !== -1 && editingParent !== mainParentIndex) {
+        const mainParent = familyInfo.parents[mainParentIndex];
+        setEditingParent(mainParentIndex);
+        setEditParentName('');
+        setEditParentPhone(mainParent.phoneNumber || '');
+      }
+    }
+  }, [isNewFamily, activeTab, familyInfo, editingParent]);
+
+  // Auto-focus on parent name input for new families
+  useEffect(() => {
+    if (isNewFamily && activeTab === 'parents' && editingParent === 0 && editParentNameInputRef.current) {
+      // Multiple attempts to ensure focus works on mobile
+      const focusInput = () => {
+        if (editParentNameInputRef.current) {
+          editParentNameInputRef.current.value = '';
+          editParentNameInputRef.current.focus();
+          editParentNameInputRef.current.select();
+          
+          // For mobile, try clicking to trigger keyboard
+          if (typeof window !== 'undefined' && Capacitor.isNativePlatform()) {
+            editParentNameInputRef.current.click();
+          }
+        }
+      };
+      
+      // Try immediately
+      requestAnimationFrame(() => {
+        focusInput();
+        // Try again after a delay for mobile
+        setTimeout(() => {
+          focusInput();
+        }, 700);
+      });
+    }
+  }, [isNewFamily, activeTab, editingParent]);
 
   // Auto-focus on child name input when form opens
   useEffect(() => {
@@ -3015,6 +3059,14 @@ const Settings = ({ familyId, onClose, onLogout, activeTab: externalActiveTab, h
                               // Invalidate cache for future loads
                               invalidateFamilyCache(familyId);
                               
+                              // For new families, show "Go to Child Settings" button after saving main parent
+                              if (isNewFamily && parent.isMain && index === 0) {
+                                setShowGoToChildrenButton(true);
+                                if (onParentSaved) {
+                                  onParentSaved();
+                                }
+                              }
+                              
                               setEditingParent(null);
                               setEditParentName('');
                               setEditParentPhone('');
@@ -3056,6 +3108,7 @@ const Settings = ({ familyId, onClose, onLogout, activeTab: externalActiveTab, h
                           <div className="allowance-config-group">
                             <label className="allowance-label">{t('parent.settings.parents.name', { defaultValue: 'שם' })}</label>
                             <input
+                              ref={index === 0 && isNewFamily ? editParentNameInputRef : null}
                               type="text"
                               value={editParentName}
                               onChange={(e) => setEditParentName(e.target.value)}
@@ -3191,6 +3244,36 @@ const Settings = ({ familyId, onClose, onLogout, activeTab: externalActiveTab, h
                 );
               }
             })()}
+            
+            {/* Go to Child Settings button for new families */}
+            {showGoToChildrenButton && isNewFamily && (
+              <div style={{ marginTop: '20px' }}>
+                <button
+                  onClick={() => {
+                    setShowGoToChildrenButton(false);
+                    if (onTabChange) {
+                      onTabChange('children');
+                    } else {
+                      setActiveTab('children');
+                    }
+                  }}
+                  style={{
+                    width: '100%',
+                    padding: '16px',
+                    borderRadius: '12px',
+                    background: 'var(--primary-gradient)',
+                    color: 'white',
+                    border: 'none',
+                    fontSize: '16px',
+                    fontWeight: 600,
+                    cursor: 'pointer',
+                    boxShadow: '0 4px 12px rgba(99, 102, 241, 0.3)'
+                  }}
+                >
+                  {t('parent.settings.parents.goToChildren', { defaultValue: 'מעבר להגדרת ילדים במערכת' })}
+                </button>
+              </div>
+            )}
           </div>
         )}
       </div>

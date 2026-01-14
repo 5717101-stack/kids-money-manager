@@ -21,6 +21,7 @@ const App = () => {
   const [currentChild, setCurrentChild] = useState(null); // For child-only view
   const [isChildView, setIsChildView] = useState(false); // Track if we're in child-only mode
   const [isCreatingFamily, setIsCreatingFamily] = useState(false); // Track if user is creating a new family
+  const [isNewFamily, setIsNewFamily] = useState(false); // Track if this is a new family (for onboarding)
 
   // Update document direction based on language
   useEffect(() => {
@@ -109,12 +110,15 @@ const App = () => {
     }
   };
 
-  const handleOTPVerified = (fId, phoneNum, isNewFamily, isChild, childId, isAdditionalParent) => {
+  const handleOTPVerified = (fId, phoneNum, isNewFamilyParam, isChild, childId, isAdditionalParent) => {
     setFamilyId(fId);
     setPhoneNumber(phoneNum);
     // Use localStorage to persist login across app restarts
     localStorage.setItem('familyId', fId);
     localStorage.setItem('phoneNumber', phoneNum);
+    
+    // Set isNewFamily state for onboarding flow
+    setIsNewFamily(isNewFamilyParam || false);
     
     // If this is a child login (phone number belongs to a child)
     if (isChild && childId) {
@@ -126,6 +130,7 @@ const App = () => {
       setScreen('child-view');
       loadChildData(fId, childId);
       setIsCreatingFamily(false);
+      setIsNewFamily(false);
       return;
     }
     
@@ -135,7 +140,7 @@ const App = () => {
     // 3. If coming from main login, always show parent dashboard
     // 4. If it's a new family, show parent dashboard
     // 5. Otherwise (existing family from "Join"), show child password login
-    if (isAdditionalParent || isCreatingFamily || screen === 'main-login' || isNewFamily) {
+    if (isAdditionalParent || isCreatingFamily || screen === 'main-login' || isNewFamilyParam) {
       // User is additional parent OR came from "Create Family" OR "Main Login" OR it's a new family - show parent dashboard
       localStorage.setItem('parentLoggedIn', 'true');
       localStorage.removeItem('isChildView');
@@ -287,6 +292,7 @@ const App = () => {
         <div className="app-layout">
           <ParentDashboard 
             familyId={familyId} 
+            isNewFamily={isNewFamily}
             onChildrenUpdated={loadChildren} 
             onLogout={handleLogout}
             onViewChild={(child) => {
@@ -295,6 +301,9 @@ const App = () => {
               setScreen('child-view');
               localStorage.setItem('childId', child._id);
               localStorage.setItem('isChildView', 'true');
+            }}
+            onNewFamilyComplete={() => {
+              setIsNewFamily(false);
             }}
           />
         </div>

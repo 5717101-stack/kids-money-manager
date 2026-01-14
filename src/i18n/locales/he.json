@@ -133,7 +133,8 @@
         "deleteParentConfirm": "האם אתה בטוח שברצונך למחוק את {name}? פעולה זו תעביר את כל הנתונים לארכיון ולא ניתן לבטל אותה.",
         "deleteParentSuccess": "ההורה {name} נמחק והועבר לארכיון בהצלחה",
         "deleteParentError": "שגיאה במחיקת הורה",
-        "cannotDeleteMainParent": "לא ניתן למחוק את ההורה הראשי"
+        "cannotDeleteMainParent": "לא ניתן למחוק את ההורה הראשי",
+        "goToChildren": "מעבר להגדרת ילדים במערכת"
       },
       "passwordModal": {
         "title": "סיסמה ל{name}",
