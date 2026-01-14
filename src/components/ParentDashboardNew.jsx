@@ -1109,7 +1109,19 @@ const ParentDashboard = ({ familyId, isNewFamily: isNewFamilyProp, onChildrenUpd
           userType="parent" 
           onClose={() => {
             setShowGuide(false);
-            setCurrentView('dashboard');
+            guideShownRef.current = true;
+            localStorage.setItem('guideSeen_parent', 'true');
+            
+            // For new families: navigate to parent settings after guide
+            if (isNewFamilyProp) {
+              if (currentView !== 'parents') {
+                setCurrentView('parents');
+              } else {
+                setCurrentView('dashboard');
+              }
+            } else {
+              setCurrentView('dashboard');
+            }
           }} 
         />
       )}
