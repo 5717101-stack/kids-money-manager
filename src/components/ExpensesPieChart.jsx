@@ -125,15 +125,24 @@ const ExpensesPieChart = ({ familyId, children, categories, onCategorySelect, se
       if (!forceReloadChanged && !childrenChanged) {
         try {
           const cached = getCached(cacheKey, cacheTTL);
+          console.log('[EXPENSES-CHART] Cache check:', { cacheKey, cached: cached !== null, cachedLength: cached?.length || 0 });
           if (cached !== null && isMounted) {
-            setExpensesByCategory(cached);
-            setLoading(false);
-            return;
+            // Only use cache if it has data
+            if (cached.length > 0) {
+              console.log('[EXPENSES-CHART] Using cached data:', cached);
+              setExpensesByCategory(cached);
+              setLoading(false);
+              return;
+            } else {
+              console.log('[EXPENSES-CHART] Cache has empty array, loading from API');
+            }
           }
         } catch (cacheError) {
-          console.warn('Cache read error:', cacheError);
+          console.warn('[EXPENSES-CHART] Cache read error:', cacheError);
           // Continue to load from API
         }
+      } else {
+        console.log('[EXPENSES-CHART] Skipping cache:', { forceReloadChanged, childrenChanged });
       }
 
       // Update refs
