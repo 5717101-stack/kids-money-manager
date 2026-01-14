@@ -3555,24 +3555,39 @@ app.get('/api/families/:familyId', async (req, res) => {
     
     // Get parents list (phoneNumber is the main parent, and any additional parents)
     const parents = [];
-    if (family.phoneNumber) {
+    
+    // Debug: Log what we have
+    console.log('[GET-FAMILY-INFO] Family phoneNumber:', family.phoneNumber);
+    console.log('[GET-FAMILY-INFO] Family parentName:', family.parentName);
+    console.log('[GET-FAMILY-INFO] Family additionalParents:', family.additionalParents);
+    console.log('[GET-FAMILY-INFO] Family additionalParents length:', family.additionalParents?.length || 0);
+    
+    // Always add main parent (even if phoneNumber is missing, we should have at least parentName)
+    if (family.phoneNumber || family.parentName) {
       parents.push({
-        phoneNumber: family.phoneNumber,
+        phoneNumber: family.phoneNumber || '',
         name: family.parentName || 'הורה1',
         isMain: true
       });
+      console.log('[GET-FAMILY-INFO] Added main parent:', { phoneNumber: family.phoneNumber || '', name: family.parentName || 'הורה1' });
     }
     
     // Add any additional parents if they exist
     if (family.additionalParents && Array.isArray(family.additionalParents)) {
-      family.additionalParents.forEach(parent => {
-        parents.push({
-          phoneNumber: parent.phoneNumber,
-          name: parent.name || 'הורה נוסף',
-          isMain: false
-        });
+      family.additionalParents.forEach((parent, idx) => {
+        if (parent && (parent.phoneNumber || parent.name)) {
+          parents.push({
+            phoneNumber: parent.phoneNumber || '',
+            name: parent.name || 'הורה נוסף',
+            isMain: false
+          });
+          console.log(`[GET-FAMILY-INFO] Added additional parent ${idx + 1}:`, { phoneNumber: parent.phoneNumber || '', name: parent.name || 'הורה נוסף' });
+        }
       });
     }
+    
+    console.log('[GET-FAMILY-INFO] Total parents:', parents.length);
+    console.log('[GET-FAMILY-INFO] Parents array:', parents);
     
     res.json({
       _id: family._id,
