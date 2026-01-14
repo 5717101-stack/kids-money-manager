@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { getData, getCategories, getChildTransactions, addTransaction, getFamilyInfo, updateParentProfileImage, getPaymentRequests, approvePaymentRequest, rejectPaymentRequest } from '../utils/api';
 import { clearCache } from '../utils/cache';
@@ -10,7 +10,7 @@ import DeleteFamilyProfile from './DeleteFamilyProfile';
 import ExpensesPieChart from './ExpensesPieChart';
 import Guide from './Guide';
 
-const ParentDashboard = ({ familyId, isNewFamily: isNewFamilyProp, onChildrenUpdated, onLogout, onViewChild, onNewFamilyComplete }) => {
+const ParentDashboard = ({ familyId, onChildrenUpdated, onLogout, onViewChild }) => {
   const { t, i18n } = useTranslation();
   const [allData, setAllData] = useState({ children: {} });
   const [categories, setCategories] = useState([]);
@@ -52,40 +52,12 @@ const ParentDashboard = ({ familyId, isNewFamily: isNewFamilyProp, onChildrenUpd
     return () => clearInterval(interval);
   }, [familyId, activityLimit]);
 
-  // Track if guide has been shown in this session
-  const guideShownRef = useRef(false);
-  const [familyInfoForGuide, setFamilyInfoForGuide] = useState(null);
-
-  // Load family info to check parent name
-  useEffect(() => {
-    const loadFamilyInfo = async () => {
-      if (!familyId) return;
-      try {
-        const info = await getFamilyInfo(familyId);
-        setFamilyInfoForGuide(info);
-      } catch (error) {
-        console.error('Error loading family info for guide:', error);
-      }
-    };
-    loadFamilyInfo();
-  }, [familyId]);
-
   // Check if guide should be shown on first visit
   useEffect(() => {
-    // For new families: show guide if not shown yet and parent name is still "הורה1"
-    if (isNewFamilyProp && !guideShownRef.current && currentView !== 'parents') {
-      const mainParentName = familyInfoForGuide?.parentName || 'הורה1';
-      const isParentNameStillDefault = mainParentName === 'הורה1';
-      
-      if (isParentNameStillDefault) {
-        setShowGuide(true);
-      }
-    } 
-    // For existing families: show guide only if not seen before and on dashboard
-    else if (!isNewFamilyProp && currentView === 'dashboard' && !localStorage.getItem('guideSeen_parent') && !guideShownRef.current) {
+    if (currentView === 'dashboard' && !localStorage.getItem('guideSeen_parent')) {
       setShowGuide(true);
     }
-  }, [currentView, isNewFamilyProp, familyInfoForGuide]);
+  }, [currentView]);
 
   const loadData = async () => {
     if (!familyId) return;
@@ -258,19 +230,44 @@ const ParentDashboard = ({ familyId, isNewFamily: isNewFamilyProp, onChildrenUpd
 
   const handleApprovePayment = async (requestId) => {
     if (!familyId) return;
-    
     try {
-      // Clear cache first
+      // Clear cache and reload payment requests to get latest status
       clearCache(`/families/${familyId}/payment-requests`);
       clearCache(`/families/${familyId}/payment-requests?status=pending`);
       
-      // Try to approve - server will handle all checks
-      await approvePaymentRequest(familyId, requestId);
+      // Check if request is still pending (without cache)
+      const currentRequests = await getPaymentRequests(familyId, null, false);
+      const currentRequest = currentRequests.find(r => r._id === requestId);
       
-      // Reload data to get updated state
-      await loadData();
-      setSelectedPaymentRequest(null);
+      if (!currentRequest) {
+        alert(t('parent.dashboard.requestNotFound', { defaultValue: 'בקשה לא נמצאה' }));
+        await loadData();
+        setSelectedPaymentRequest(null);
+        return;
+      }
       
+      if (currentRequest.status !== 'pending') {
+        const statusMessage = currentRequest.status === 'approved' 
+          ? t('parent.dashboard.alreadyApproved', { defaultValue: 'הבקשה כבר אושרה' })
+          : t('parent.dashboard.alreadyRejected', { defaultValue: 'הבקשה כבר נדחתה' });
+        alert(statusMessage);
+        await loadData();
+        setSelectedPaymentRequest(null);
+        return;
+      }
+      
+      try {
+        await approvePaymentRequest(familyId, requestId);
+        await loadData();
+        setSelectedPaymentRequest(null);
+      } catch (error) {
+        console.error('Error approving payment:', error);
+        const errorMessage = error.message || error.error || 'שגיאה לא ידועה';
+        alert(t('parent.dashboard.approveError', { defaultValue: 'שגיאה באישור תשלום' }) + ': ' + errorMessage);
+        await loadData();
+        setSelectedPaymentRequest(null);
+        return;
+      }
       // Show success notification
       const notification = document.createElement('div');
       notification.textContent = t('parent.dashboard.paymentApproved', { defaultValue: 'תשלום אושר בהצלחה!' });
@@ -298,31 +295,7 @@ const ParentDashboard = ({ familyId, isNewFamily: isNewFamilyProp, onChildrenUpd
         setTimeout(() => notification.remove(), 300);
       }, 2000);
     } catch (error) {
-      console.error('Error approving payment:', error);
-      
-      // Extract error message
-      let errorMessage = 'שגיאה לא ידועה';
-      if (error.message) {
-        errorMessage = error.message;
-      } else if (error.error) {
-        errorMessage = error.error;
-      } else if (typeof error === 'string') {
-        errorMessage = error;
-      }
-      
-      // Check if it's a status error (already approved/rejected)
-      if (errorMessage.includes('כבר אושרה') || errorMessage.includes('כבר נדחתה')) {
-        alert(errorMessage);
-      } else {
-        // Only show error if it's not a network error that might be temporary
-        if (!errorMessage.includes('שגיאת רשת') && !errorMessage.includes('Failed to fetch')) {
-          alert(t('parent.dashboard.approveError', { defaultValue: 'שגיאה באישור תשלום' }) + ': ' + errorMessage);
-        }
-      }
-      
-      // Reload data to get current state
-      await loadData();
-      setSelectedPaymentRequest(null);
+      alert(t('parent.dashboard.paymentApproveError', { defaultValue: 'שגיאה באישור תשלום' }) + ': ' + error.message);
     }
   };
 
@@ -754,7 +727,6 @@ const ParentDashboard = ({ familyId, isNewFamily: isNewFamilyProp, onChildrenUpd
         <div className="content-area">
           <Settings 
             familyId={familyId}
-            isNewFamily={isNewFamilyProp && currentView === 'parents'}
             onClose={async () => {
               setCurrentView('dashboard');
               await loadData();
@@ -769,11 +741,6 @@ const ParentDashboard = ({ familyId, isNewFamily: isNewFamilyProp, onChildrenUpd
             asPage={true}
             onChildrenUpdated={onChildrenUpdated}
             onTabChange={(tab) => setCurrentView(tab)}
-            onParentSaved={() => {
-              if (isNewFamilyProp && onNewFamilyComplete) {
-                onNewFamilyComplete();
-              }
-            }}
           />
         </div>
       )}
@@ -1106,19 +1073,7 @@ const ParentDashboard = ({ familyId, isNewFamily: isNewFamilyProp, onChildrenUpd
           userType="parent" 
           onClose={() => {
             setShowGuide(false);
-            guideShownRef.current = true;
-            localStorage.setItem('guideSeen_parent', 'true');
-            
-            // For new families: navigate to parent settings after guide
-            if (isNewFamilyProp) {
-              if (currentView !== 'parents') {
-                setCurrentView('parents');
-              } else {
-                setCurrentView('dashboard');
-              }
-            } else {
-              setCurrentView('dashboard');
-            }
+            setCurrentView('dashboard');
           }} 
         />
       )}
