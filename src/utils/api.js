@@ -1,5 +1,5 @@
 // Import cache utilities
-import { getCached, setCached, clearCache, invalidateFamilyCache, invalidateChildCache } from './cache.js';
+import { getCached, setCached, clearCache, clearAllCache, invalidateFamilyCache, invalidateChildCache } from './cache.js';
 
 // Get API URL - check if we're in production, development, or mobile app
 const getApiUrl = () => {
@@ -171,9 +171,8 @@ export const getData = async (familyId) => {
       localStorage.removeItem('parentLoggedIn');
       localStorage.removeItem('childId');
       localStorage.removeItem('isChildView');
-      // Clear cache for this family
-      const { clearCache } = await import('./cache');
-      clearCache();
+      // Clear all cache since family was deleted
+      clearAllCache();
       // Throw error to notify caller that family was deleted
       throw new Error('FAMILY_NOT_FOUND');
     }
@@ -212,9 +211,8 @@ export const getChild = async (familyId, childId) => {
       localStorage.removeItem('parentLoggedIn');
       localStorage.removeItem('childId');
       localStorage.removeItem('isChildView');
-      // Clear cache for this family
-      const { clearCache } = await import('./cache');
-      clearCache();
+      // Clear all cache since family was deleted
+      clearAllCache();
       // Throw error to notify caller that family was deleted
       throw new Error('FAMILY_NOT_FOUND');
     }
