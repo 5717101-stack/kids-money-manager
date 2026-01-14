@@ -1757,26 +1757,26 @@ const ChildView = ({ childId, familyId, onBackToParent, onLogout }) => {
                         if (!file) return;
                         
                         try {
-                          // Convert file to base64 using FileReader (works on iOS)
-                          const reader = new FileReader();
-                          reader.onload = (event) => {
-                            const base64 = event.target?.result;
-                            if (base64) {
-                              setTaskImage(base64);
-                            }
-                          };
-                          reader.onerror = () => {
-                            alert(t('child.dashboard.cameraError', { defaultValue: 'שגיאה בקריאת התמונה' }));
-                          };
-                          reader.readAsDataURL(file);
+                          // Compress image before uploading using smart compression
+                          console.log('Compressing task image, original size:', file.size, 'bytes');
+                          const base64Image = await smartCompressImage(file);
+                          console.log('Compressed task image size:', base64Image.length, 'bytes');
+                          
+                          // Check if compressed image is still too large (max 500KB base64)
+                          if (base64Image.length > 500 * 1024) {
+                            alert(t('child.dashboard.errorImageTooLarge', { defaultValue: 'התמונה גדולה מדי גם לאחר דחיסה. אנא בחר תמונה קטנה יותר.' }));
+                            return;
+                          }
+                          
+                          setTaskImage(base64Image);
                         } catch (error) {
-                          console.error('Error reading file:', error);
+                          console.error('Error compressing/reading image:', error);
                           alert(t('child.dashboard.cameraError', { defaultValue: 'שגיאה בצילום תמונה' }) + ': ' + (error.message || 'Unknown error'));
-                        }
-                        
-                        // Reset input to allow selecting the same file again
-                        if (taskImageInputRef.current) {
-                          taskImageInputRef.current.value = '';
+                        } finally {
+                          // Reset input to allow selecting the same file again
+                          if (taskImageInputRef.current) {
+                            taskImageInputRef.current.value = '';
+                          }
                         }
                       }}
                       style={{ display: 'none' }}

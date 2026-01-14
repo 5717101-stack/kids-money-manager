@@ -269,7 +269,8 @@
       "cameraError": "שגיאה בצילום תמונה",
       "cameraPermissionDenied": "נדרשת הרשאה לגישה למצלמה",
       "requestSent": "בקשת תשלום נשלחה בהצלחה!",
-      "sendRequest": "שלח בקשת תשלום"
+      "sendRequest": "שלח בקשת תשלום",
+      "errorImageTooLarge": "התמונה גדולה מדי גם לאחר דחיסה. אנא בחר תמונה קטנה יותר."
     },
   "deleteFamily": {
     "title": "מחיקת פרופיל משפחתי",
