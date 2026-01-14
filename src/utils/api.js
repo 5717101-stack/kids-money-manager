@@ -187,21 +187,39 @@ export const getChild = async (familyId, childId) => {
   if (!familyId || !childId) {
     throw new Error('Family ID and Child ID are required');
   }
-  const response = await apiCall(`/families/${familyId}/children/${childId}`, {}, {
-    useCache: true,
-    cacheTTL: 1 * 60 * 1000 // 1 minute cache
-  });
-  return {
-    name: response.name,
-    balance: response.balance || 0,
-    cashBoxBalance: response.cashBoxBalance || 0,
-    profileImage: response.profileImage || null,
-    weeklyAllowance: response.weeklyAllowance || 0,
-    allowanceType: response.allowanceType || 'weekly',
-    allowanceDay: response.allowanceDay !== undefined ? response.allowanceDay : 1,
-    allowanceTime: response.allowanceTime || '08:00',
-    transactions: response.transactions || []
-  };
+  try {
+    const response = await apiCall(`/families/${familyId}/children/${childId}`, {}, {
+      useCache: true,
+      cacheTTL: 1 * 60 * 1000 // 1 minute cache
+    });
+    return {
+      name: response.name,
+      balance: response.balance || 0,
+      cashBoxBalance: response.cashBoxBalance || 0,
+      profileImage: response.profileImage || null,
+      weeklyAllowance: response.weeklyAllowance || 0,
+      allowanceType: response.allowanceType || 'weekly',
+      allowanceDay: response.allowanceDay !== undefined ? response.allowanceDay : 1,
+      allowanceTime: response.allowanceTime || '08:00',
+      transactions: response.transactions || []
+    };
+  } catch (error) {
+    // If family not found (404), clear localStorage and throw error to trigger logout
+    if (error.message?.includes('404') || error.message?.includes('לא נמצאה') || error.message?.includes('not found')) {
+      console.warn('[GET-CHILD] Family not found, clearing localStorage:', familyId);
+      localStorage.removeItem('familyId');
+      localStorage.removeItem('phoneNumber');
+      localStorage.removeItem('parentLoggedIn');
+      localStorage.removeItem('childId');
+      localStorage.removeItem('isChildView');
+      // Clear cache for this family
+      const { clearCache } = await import('./cache');
+      clearCache();
+      // Throw error to notify caller that family was deleted
+      throw new Error('FAMILY_NOT_FOUND');
+    }
+    throw error;
+  }
 };
 
 // Update child (name and phone number)
