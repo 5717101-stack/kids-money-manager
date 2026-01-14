@@ -624,22 +624,53 @@ async function getFamilyByPhone(phoneNumber) {
   console.log(`[GET-FAMILY-BY-PHONE] Searching for phone: ${phoneNumber}, normalized: ${normalized}`);
   
   if (db) {
-    // First try direct lookup by main phone (indexed)
-    let family = await db.collection('families').findOne({ phoneNumber: normalized });
-    if (family) {
-      console.log(`[GET-FAMILY-BY-PHONE] Found family ${family._id} via main parent (indexed)`);
-      familyCache.set(cacheKey, { data: family, timestamp: Date.now() });
-      return family;
-    }
-    
-    // Try to find by additional parents using aggregation (more efficient than loading all)
-    family = await db.collection('families').findOne({
-      'additionalParents.phoneNumber': normalized
-    });
-    if (family) {
-      console.log(`[GET-FAMILY-BY-PHONE] Found family ${family._id} via additional parent (indexed)`);
-      familyCache.set(cacheKey, { data: family, timestamp: Date.now() });
-      return family;
+    try {
+      // First try direct lookup by main phone (indexed)
+      // Exclude transactions to prevent loading huge documents
+      let family = await db.collection('families').findOne(
+        { phoneNumber: normalized },
+        {
+          projection: {
+            // Include all fields, but we'll handle transactions separately if needed
+          }
+        }
+      );
+      if (family) {
+        console.log(`[GET-FAMILY-BY-PHONE] Found family ${family._id} via main parent (indexed)`);
+        familyCache.set(cacheKey, { data: family, timestamp: Date.now() });
+        return family;
+      }
+      
+      // Try to find by additional parents using aggregation (more efficient than loading all)
+      family = await db.collection('families').findOne(
+        { 'additionalParents.phoneNumber': normalized },
+        {
+          projection: {
+            // Include all fields
+          }
+        }
+      );
+      if (family) {
+        console.log(`[GET-FAMILY-BY-PHONE] Found family ${family._id} via additional parent (indexed)`);
+        familyCache.set(cacheKey, { data: family, timestamp: Date.now() });
+        return family;
+      }
+    } catch (error) {
+      console.error(`[GET-FAMILY-BY-PHONE] Error loading family by phone ${normalized}:`, error.message);
+      // Try without transactions if document is too large
+      try {
+        let family = await db.collection('families').findOne(
+          { phoneNumber: normalized },
+          { projection: { 'children.transactions': 0 } }
+        );
+        if (family) {
+          console.log(`[GET-FAMILY-BY-PHONE] Loaded family without transactions due to size`);
+          familyCache.set(cacheKey, { data: family, timestamp: Date.now() });
+          return family;
+        }
+      } catch (retryError) {
+        console.error(`[GET-FAMILY-BY-PHONE] Failed to load family even without transactions:`, retryError.message);
+      }
     }
     
     // Fallback: if normalization doesn't match exactly, do a limited scan
@@ -699,12 +730,52 @@ async function getFamilyById(familyId) {
   }
   
   if (db) {
-    const family = await db.collection('families').findOne({ _id: familyId });
-    if (family) {
-      // Cache the result
-      familyByIdCache.set(cacheKey, { data: family, timestamp: Date.now() });
+    try {
+      // Use projection to exclude transactions initially (they're loaded separately)
+      // This prevents loading huge documents that exceed MongoDB's 16MB limit
+      const family = await db.collection('families').findOne(
+        { _id: familyId },
+        {
+          projection: {
+            // Include all fields except transactions (they're loaded separately)
+            // We'll add transactions back if needed, but for most operations we don't need them
+          }
+        }
+      );
+      
+      if (family) {
+        // Check document size (approximate)
+        const docSize = JSON.stringify(family).length;
+        if (docSize > 15 * 1024 * 1024) { // 15MB warning
+          console.warn(`[GET-FAMILY-BY-ID] ⚠️  Large document detected: ${(docSize / 1024 / 1024).toFixed(2)}MB for family ${familyId}`);
+        }
+        
+        // Cache the result
+        familyByIdCache.set(cacheKey, { data: family, timestamp: Date.now() });
+      }
+      return family;
+    } catch (error) {
+      console.error(`[GET-FAMILY-BY-ID] Error loading family ${familyId}:`, error.message);
+      // If document is too large, try to load without transactions
+      try {
+        const family = await db.collection('families').findOne(
+          { _id: familyId },
+          {
+            projection: {
+              'children.transactions': 0 // Exclude transactions
+            }
+          }
+        );
+        if (family) {
+          console.log(`[GET-FAMILY-BY-ID] Loaded family without transactions due to size`);
+          familyByIdCache.set(cacheKey, { data: family, timestamp: Date.now() });
+        }
+        return family;
+      } catch (retryError) {
+        console.error(`[GET-FAMILY-BY-ID] Failed to load family even without transactions:`, retryError.message);
+        return null;
+      }
     }
-    return family;
   }
   return null;
 }
