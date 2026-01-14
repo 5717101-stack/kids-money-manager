@@ -163,7 +163,21 @@ export const getData = async (familyId) => {
       children: response.children || {}
     };
   } catch (error) {
-    // Return empty children object instead of throwing
+    // If family not found (404), clear localStorage and throw error to trigger logout
+    if (error.message?.includes('404') || error.message?.includes('לא נמצאה') || error.message?.includes('not found')) {
+      console.warn('[GET-DATA] Family not found, clearing localStorage:', familyId);
+      localStorage.removeItem('familyId');
+      localStorage.removeItem('phoneNumber');
+      localStorage.removeItem('parentLoggedIn');
+      localStorage.removeItem('childId');
+      localStorage.removeItem('isChildView');
+      // Clear cache for this family
+      const { clearCache } = await import('./cache');
+      clearCache();
+      // Throw error to notify caller that family was deleted
+      throw new Error('FAMILY_NOT_FOUND');
+    }
+    // Return empty children object for other errors
     return { children: {} };
   }
 };

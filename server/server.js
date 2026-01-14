@@ -2030,8 +2030,9 @@ app.get('/api/families/:familyId/children', async (req, res) => {
     
     if (!family) {
       console.error(`[GET-CHILDREN] ❌ Family not found: ${familyId}`);
-      process.stderr.write(`[GET-CHILDREN] ❌ Family not found: ${familyId}\n`);
-      return res.status(404).json({ error: 'משפחה לא נמצאה' });
+      console.error(`[GET-CHILDREN] ⚠️  This family may have been deleted. User should be logged out.`);
+      process.stderr.write(`[GET-CHILDREN] ❌ Family not found: ${familyId} (may have been deleted)\n`);
+      return res.status(404).json({ error: 'משפחה לא נמצאה', code: 'FAMILY_NOT_FOUND' });
     }
     
     console.log(`[GET-CHILDREN] ✅ Family found: ${familyId}`);

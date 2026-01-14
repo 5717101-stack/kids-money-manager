@@ -98,6 +98,19 @@ const ParentDashboard = ({ familyId, isNewFamily: isNewFamilyProp, onChildrenUpd
         getPaymentRequests(familyId, 'pending').catch(() => [])
       ]);
 
+      // Check if family was not found (deleted)
+      if (dataResult.status === 'rejected' && dataResult.reason?.message === 'FAMILY_NOT_FOUND') {
+        console.warn('[PARENT-DASHBOARD] Family not found, redirecting to login');
+        // Clear all state and redirect to login
+        if (onLogout) {
+          onLogout();
+        } else {
+          // Fallback: reload page to trigger App.jsx login check
+          window.location.href = '/';
+        }
+        return;
+      }
+
       if (dataResult.status === 'fulfilled' && dataResult.value) {
         setAllData(dataResult.value);
         

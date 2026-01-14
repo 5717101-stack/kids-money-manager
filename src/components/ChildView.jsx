@@ -71,6 +71,9 @@ const ChildView = ({ childId, familyId, onBackToParent, onLogout }) => {
         return;
       }
       
+      // Check if family was not found (deleted) - redirect to login
+      try {
+      
       try {
         // Load child data and transactions in parallel
         // Load more transactions if limit is null (all) or if limit is higher
