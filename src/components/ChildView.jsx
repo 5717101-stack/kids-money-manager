@@ -1066,18 +1066,20 @@ const ChildView = ({ childId, familyId, onBackToParent, onLogout }) => {
               {t('child.income.distributionTitle', { defaultValue: 'התפלגות הכנסות' })}
             </button>
           </div>
-          <div className="period-toggle">
+          <div className="period-toggle" style={{ fontSize: '12px' }}>
             <button
               className={`period-button ${expensesPeriod === 'week' ? 'active' : ''}`}
               onClick={() => setExpensesPeriod('week')}
+              style={{ padding: '6px 12px', fontSize: '12px' }}
             >
-              {t('child.expenses.week', { defaultValue: 'שבוע אחרון' })}
+              {t('child.expenses.weekShort', { defaultValue: 'שבוע' })}
             </button>
             <button
               className={`period-button ${expensesPeriod === 'month' ? 'active' : ''}`}
               onClick={() => setExpensesPeriod('month')}
+              style={{ padding: '6px 12px', fontSize: '12px' }}
             >
-              {t('child.expenses.month', { defaultValue: 'חודש אחרון' })}
+              {t('child.expenses.monthShort', { defaultValue: 'חודש' })}
             </button>
           </div>
         </div>
@@ -1148,8 +1150,8 @@ const ChildView = ({ childId, familyId, onBackToParent, onLogout }) => {
               expensesByCategory={incomeByCategory}
               title={t('child.income.chartTitle', { 
                 period: expensesPeriod === 'week' 
-                  ? t('child.expenses.week', { defaultValue: 'Last Week' })
-                  : t('child.expenses.month', { defaultValue: 'Last Month' }),
+                  ? t('child.expenses.weekShort', { defaultValue: 'Week' })
+                  : t('child.expenses.monthShort', { defaultValue: 'Month' }),
                 defaultValue: 'Income - {period}'
               })}
               days={expensesPeriod === 'week' ? 7 : 30}

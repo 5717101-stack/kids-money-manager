@@ -731,15 +731,16 @@ async function getFamilyById(familyId) {
   
   if (db) {
     try {
-      // Use projection to exclude large fields (transactions and paymentRequests are loaded separately)
-      // This prevents loading huge documents that exceed MongoDB's 16MB limit
+      // Use projection to exclude large fields (transactions are loaded separately)
+      // Note: We keep paymentRequests because they're needed for the parent dashboard
+      // Payment requests are limited in size (max 500KB per image, usually only a few requests)
       const family = await db.collection('families').findOne(
         { _id: familyId },
         {
           projection: {
             // Exclude large fields that can cause timeout
-            'children.transactions': 0, // Transactions loaded separately
-            'paymentRequests': 0 // Payment requests loaded separately
+            'children.transactions': 0 // Transactions loaded separately
+            // Keep paymentRequests - they're needed and usually small
           }
         }
       );
