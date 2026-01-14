@@ -1110,8 +1110,8 @@ const ChildView = ({ childId, familyId, onBackToParent, onLogout }) => {
               expensesByCategory={expensesByCategory}
               title={t('child.expenses.chartTitle', { 
                 period: expensesPeriod === 'week' 
-                  ? t('child.expenses.week', { defaultValue: 'Last Week' })
-                  : t('child.expenses.month', { defaultValue: 'Last Month' }),
+                  ? t('child.expenses.weekShort', { defaultValue: 'Week' })
+                  : t('child.expenses.monthShort', { defaultValue: 'Month' }),
                 defaultValue: 'Expenses - {period}'
               })}
               days={expensesPeriod === 'week' ? 7 : 30}
