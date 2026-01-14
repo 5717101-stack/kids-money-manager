@@ -2079,13 +2079,20 @@ app.get('/api/families/:familyId/children', async (req, res) => {
 app.get('/api/families/:familyId/children/:childId', async (req, res) => {
   try {
     const { familyId, childId } = req.params;
-    const family = await getFamilyById(familyId);
+    
+    // Load family WITH transactions for this endpoint
+    let family;
+    if (db) {
+      family = await db.collection('families').findOne({ _id: familyId });
+    } else {
+      family = await getFamilyById(familyId);
+    }
     
     if (!family) {
       return res.status(404).json({ error: 'משפחה לא נמצאה' });
     }
     
-    const child = family.children.find(c => c._id === childId);
+    const child = family.children?.find(c => c._id === childId);
     if (!child) {
       return res.status(404).json({ error: 'ילד לא נמצא' });
     }
@@ -2316,13 +2323,20 @@ app.put('/api/families/:familyId/children/:childId', async (req, res) => {
 app.get('/api/families/:familyId/children/:childId/transactions', async (req, res) => {
   try {
     const { familyId, childId } = req.params;
-    const family = await getFamilyById(familyId);
+    
+    // Load family WITH transactions for this endpoint
+    let family;
+    if (db) {
+      family = await db.collection('families').findOne({ _id: familyId });
+    } else {
+      family = await getFamilyById(familyId);
+    }
     
     if (!family) {
       return res.status(404).json({ error: 'משפחה לא נמצאה' });
     }
     
-    const child = family.children.find(c => c._id === childId);
+    const child = family.children?.find(c => c._id === childId);
     if (!child) {
       return res.status(404).json({ error: 'ילד לא נמצא' });
     }
@@ -2432,12 +2446,19 @@ app.get('/api/families/:familyId/children/:childId/expenses-by-category', async 
     const { familyId, childId } = req.params;
     const days = parseInt(req.query.days) || 30;
     
-    const family = await getFamilyById(familyId);
+    // Load family WITH transactions for this endpoint
+    let family;
+    if (db) {
+      family = await db.collection('families').findOne({ _id: familyId });
+    } else {
+      family = await getFamilyById(familyId);
+    }
+    
     if (!family) {
       return res.status(404).json({ error: 'משפחה לא נמצאה' });
     }
     
-    const child = family.children.find(c => c._id === childId);
+    const child = family.children?.find(c => c._id === childId);
     if (!child) {
       return res.status(404).json({ error: 'ילד לא נמצא' });
     }
