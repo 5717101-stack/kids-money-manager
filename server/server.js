@@ -731,14 +731,15 @@ async function getFamilyById(familyId) {
   
   if (db) {
     try {
-      // Use projection to exclude transactions initially (they're loaded separately)
+      // Use projection to exclude large fields (transactions and paymentRequests are loaded separately)
       // This prevents loading huge documents that exceed MongoDB's 16MB limit
       const family = await db.collection('families').findOne(
         { _id: familyId },
         {
           projection: {
-            // Include all fields except transactions (they're loaded separately)
-            // We'll add transactions back if needed, but for most operations we don't need them
+            // Exclude large fields that can cause timeout
+            'children.transactions': 0, // Transactions loaded separately
+            'paymentRequests': 0 // Payment requests loaded separately
           }
         }
       );
