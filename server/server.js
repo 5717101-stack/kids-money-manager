@@ -887,16 +887,6 @@ async function addChildToFamily(familyId, childName, phoneNumber) {
           }
         }
       }
-      
-      // Also check archived children to provide better error message
-      const archivedChild = await db.collection('archived_children').findOne({
-        'phoneNumber': normalizedPhone
-      });
-      
-      if (archivedChild) {
-        console.error(`[ADD-CHILD] ❌ Phone number found in archived children: ${normalizedPhone}`);
-        throw new Error('מספר טלפון זה שייך לילד שנמחק מהמערכת. אנא השתמש במספר טלפון אחר או פנה לתמיכה.');
-      }
     }
   }
   
