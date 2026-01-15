@@ -408,9 +408,6 @@ const Settings = ({ familyId, isNewFamily, onClose, onLogout, activeTab: externa
       return;
     }
 
-    // Set uploading state
-    setUploadingImages(prev => ({ ...prev, [childId]: true }));
-
     try {
       // Compress image before uploading using smart compression
       console.log('Compressing image, original size:', file.size, 'bytes');
@@ -1041,7 +1038,7 @@ const Settings = ({ familyId, isNewFamily, onClose, onLogout, activeTab: externa
                     📋
                   </button>
                 ) : (
-                  <button
+                      <button
                     onClick={() => {
                       setShowTaskHistory(false);
                       setSelectedHistoryRequest(null);
@@ -1058,10 +1055,10 @@ const Settings = ({ familyId, isNewFamily, onClose, onLogout, activeTab: externa
                     }}
                   >
                     {t('parent.settings.tasks.backToTasks', { defaultValue: 'חזרה למטלות' })}
-                  </button>
-                )}
-              </div>
-            </div>
+                      </button>
+                    )}
+                  </div>
+                </div>
             
             {!showTaskHistory ? (
               <>
@@ -1084,15 +1081,15 @@ const Settings = ({ familyId, isNewFamily, onClose, onLogout, activeTab: externa
                     }}
                   />
                   <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flex: '0 0 auto' }}>
-                    <input
-                      type="number"
-                      inputMode="decimal"
-                      step="0.01"
-                      min="0"
+                      <input
+                        type="number"
+                        inputMode="decimal"
+                        step="0.01"
+                        min="0"
                       value={newTaskPrice}
                       onChange={(e) => setNewTaskPrice(e.target.value)}
                       placeholder={t('parent.settings.tasks.price', { defaultValue: 'מחיר' })}
-                      style={{
+                        style={{ 
                         width: '120px',
                         height: '50px',
                         borderRadius: '12px',
@@ -1105,8 +1102,8 @@ const Settings = ({ familyId, isNewFamily, onClose, onLogout, activeTab: externa
                       }}
                     />
                     <span style={{ fontSize: '16px', fontWeight: 600 }}>₪</span>
-                  </div>
-                  <button 
+                    </div>
+                      <button
                     type="submit" 
                     style={{
                       width: 'auto',
@@ -1122,7 +1119,7 @@ const Settings = ({ familyId, isNewFamily, onClose, onLogout, activeTab: externa
                     }}
                   >
                     {t('parent.settings.tasks.addTask', { defaultValue: 'הוסף מטלה' })}
-                  </button>
+                      </button>
                 </form>
 
                 {/* Tasks List */}
@@ -1170,11 +1167,11 @@ const Settings = ({ familyId, isNewFamily, onClose, onLogout, activeTab: externa
                               outline: 'none'
                             }}
                           />
-                          <input
-                            type="number"
-                            inputMode="decimal"
-                            step="0.01"
-                            min="0"
+                      <input
+                        type="number"
+                        inputMode="decimal"
+                        step="0.01"
+                        min="0"
                             defaultValue={task.price}
                             onBlur={(e) => {
                               const newPrice = parseFloat(e.target.value) || 0;
@@ -1189,7 +1186,7 @@ const Settings = ({ familyId, isNewFamily, onClose, onLogout, activeTab: externa
                                 setEditingTask(null);
                               }
                             }}
-                            style={{
+                        style={{ 
                               width: '100px',
                               padding: '8px 12px',
                               borderRadius: '8px',
@@ -1231,7 +1228,7 @@ const Settings = ({ familyId, isNewFamily, onClose, onLogout, activeTab: externa
                             <span style={{ fontSize: '14px', color: 'var(--text-muted)' }}>
                               ₪{task.price.toFixed(2)}
                             </span>
-                          </div>
+                    </div>
                           <div style={{ display: 'flex', flexDirection: 'row', gap: '12px', flexWrap: 'wrap', alignItems: 'center' }}>
                             {Object.entries(allData.children || {}).map(([childId, child]) => (
                               <label 
@@ -1241,7 +1238,7 @@ const Settings = ({ familyId, isNewFamily, onClose, onLogout, activeTab: externa
                                   alignItems: 'center',
                                   gap: '6px',
                                   cursor: 'pointer',
-                                  fontSize: '14px'
+                      fontSize: '14px'
                                 }}
                               >
                                 <input
@@ -1267,8 +1264,8 @@ const Settings = ({ familyId, isNewFamily, onClose, onLogout, activeTab: externa
                     }}>
                       {t('parent.settings.tasks.noTasks', { defaultValue: 'אין מטלות. הוסף מטלה חדשה למעלה.' })}
                     </div>
-                  )}
-                </div>
+                        )}
+                      </div>
               </>
             ) : selectedHistoryRequest ? (
               <div style={{ 
@@ -1303,7 +1300,7 @@ const Settings = ({ familyId, isNewFamily, onClose, onLogout, activeTab: externa
                   minHeight: 0,
                   paddingRight: '8px'
                 }}>
-                  <div>
+                        <div>
                     <div style={{ fontSize: '14px', color: 'var(--text-muted)', marginBottom: '4px' }}>
                       {t('parent.dashboard.child', { defaultValue: 'ילד' })}
                     </div>
@@ -1323,13 +1320,13 @@ const Settings = ({ familyId, isNewFamily, onClose, onLogout, activeTab: externa
                     </div>
                     <div style={{ fontSize: '14px' }}>
                       {new Date(selectedHistoryRequest.requestedAt).toLocaleDateString(i18n.language === 'he' ? 'he-IL' : 'en-US', {
-                        year: 'numeric',
+                            year: 'numeric',
                         month: 'long',
                         day: 'numeric',
-                        hour: '2-digit',
-                        minute: '2-digit'
-                      })}
-                    </div>
+                            hour: '2-digit',
+                            minute: '2-digit'
+                          })}
+                        </div>
                   </div>
                   <div>
                     <div style={{ fontSize: '14px', color: 'var(--text-muted)', marginBottom: '4px' }}>
@@ -1391,7 +1388,7 @@ const Settings = ({ familyId, isNewFamily, onClose, onLogout, activeTab: externa
                   paddingTop: '16px',
                   borderTop: '1px solid rgba(0,0,0,0.1)'
                 }}>
-                  <button
+                    <button
                     onClick={async () => {
                       const newStatus = selectedHistoryRequest.status === 'approved' ? 'rejected' : 'approved';
                       await handleUpdateTaskStatus(selectedHistoryRequest._id, newStatus);
@@ -1502,19 +1499,53 @@ const Settings = ({ familyId, isNewFamily, onClose, onLogout, activeTab: externa
 
               return (
                 <div key={childId} className="profile-image-item">
-                  <div className="profile-image-preview">
+                  <div className="profile-image-preview" style={{ position: 'relative' }}>
                     {profileImage ? (
-                      <img 
-                        src={profileImage} 
-                        alt={childName}
-                        onError={(e) => {
-                          console.error('Error loading profile image:', e);
-                          e.target.style.display = 'none';
-                        }}
-                      />
+                      <div style={{ position: 'relative', width: '100%', height: '100%' }}>
+                        <img 
+                          src={profileImage} 
+                          alt={childName}
+                          onError={(e) => {
+                            console.error('Error loading profile image:', e);
+                            e.target.style.display = 'none';
+                          }}
+                          style={{
+                            opacity: uploadingImages[childId] ? 0.5 : 1,
+                            transition: 'opacity 0.2s'
+                          }}
+                        />
+                        {uploadingImages[childId] && (
+                          <div style={{
+                            position: 'absolute',
+                            top: '50%',
+                            left: '50%',
+                            transform: 'translate(-50%, -50%)',
+                            width: '30px',
+                            height: '30px',
+                            border: '3px solid rgba(255, 255, 255, 0.3)',
+                            borderTop: '3px solid white',
+                            borderRadius: '50%',
+                            animation: 'spin 1s linear infinite'
+                          }} />
+                        )}
+                      </div>
                     ) : (
-                      <div className="profile-placeholder">
-                        {childName.charAt(0)}
+                      <div className="profile-placeholder" style={{
+                        opacity: uploadingImages[childId] ? 0.5 : 1,
+                        transition: 'opacity 0.2s',
+                        position: 'relative'
+                      }}>
+                        {!uploadingImages[childId] && childName.charAt(0)}
+                        {uploadingImages[childId] && (
+                          <div style={{
+                            width: '30px',
+                            height: '30px',
+                            border: '3px solid rgba(255, 255, 255, 0.3)',
+                            borderTop: '3px solid white',
+                            borderRadius: '50%',
+                            animation: 'spin 1s linear infinite'
+                          }} />
+                        )}
                       </div>
                     )}
                   </div>
@@ -1548,7 +1579,7 @@ const Settings = ({ familyId, isNewFamily, onClose, onLogout, activeTab: externa
                         onClick={() => handleImageUpload(childId, null)}
                       >
                         {t('parent.settings.profileImages.remove', { defaultValue: 'הסר תמונה' })}
-                      </button>
+                    </button>
                     )}
                   </div>
                 </div>
@@ -1712,27 +1743,27 @@ const Settings = ({ familyId, isNewFamily, onClose, onLogout, activeTab: externa
                 {/* Child Name */}
                 <div className="allowance-config-group">
                   <label className="allowance-label">{t('parent.settings.childName', { defaultValue: 'שם הילד' })}</label>
-                  <input
-                    ref={newChildNameInputRef}
-                    type="text"
-                    value={newChildName}
-                    onChange={(e) => setNewChildName(e.target.value)}
-                    placeholder={t('parent.settings.childName', { defaultValue: 'שם הילד' })}
+                <input
+                  ref={newChildNameInputRef}
+                  type="text"
+                  value={newChildName}
+                  onChange={(e) => setNewChildName(e.target.value)}
+                  placeholder={t('parent.settings.childName', { defaultValue: 'שם הילד' })}
                     className="allowance-input"
-                    autoFocus
-                    required
-                  />
+                  autoFocus
+                  required
+                />
                 </div>
 
                 {/* Child Phone */}
                 <div className="allowance-config-group">
                   <label className="allowance-label">{t('parent.settings.childPhone', { defaultValue: 'מספר טלפון לילד' })}</label>
-                  <input
-                    type="tel"
-                    value={newChildPhone}
-                    onChange={(e) => setNewChildPhone(e.target.value)}
-                    placeholder={t('parent.settings.childPhone', { defaultValue: 'מספר טלפון לילד' })}
-                    inputMode="numeric"
+                <input
+                  type="tel"
+                  value={newChildPhone}
+                  onChange={(e) => setNewChildPhone(e.target.value)}
+                  placeholder={t('parent.settings.childPhone', { defaultValue: 'מספר טלפון לילד' })}
+                  inputMode="numeric"
                     className="allowance-input"
                     style={{ direction: 'ltr', textAlign: 'left' }}
                     required
@@ -1756,7 +1787,7 @@ const Settings = ({ familyId, isNewFamily, onClose, onLogout, activeTab: externa
                       }}
                       className="allowance-input"
                       placeholder="0.00"
-                      style={{ 
+                  style={{
                         maxWidth: '200px',
                         paddingRight: i18n.language === 'he' ? '40px' : undefined, 
                         paddingLeft: i18n.language === 'he' ? undefined : '40px' 
@@ -1770,7 +1801,7 @@ const Settings = ({ familyId, isNewFamily, onClose, onLogout, activeTab: externa
                 <div className="allowance-config-group">
                   <label className="allowance-label">{t('parent.settings.allowance.frequency', { defaultValue: 'תדירות' })}</label>
                   <div className="frequency-toggle">
-                    <button
+                <button
                       type="button"
                       className={`frequency-button ${newChildAllowance.type === 'weekly' ? 'active' : ''}`}
                       onClick={() => {
@@ -1864,7 +1895,7 @@ const Settings = ({ familyId, isNewFamily, onClose, onLogout, activeTab: externa
                       }}
                       className="allowance-input"
                       placeholder="0.00"
-                      style={{ 
+                  style={{
                         maxWidth: '200px',
                         paddingRight: i18n.language === 'he' ? '40px' : undefined, 
                         paddingLeft: i18n.language === 'he' ? undefined : '40px' 
@@ -1883,18 +1914,18 @@ const Settings = ({ familyId, isNewFamily, onClose, onLogout, activeTab: externa
                     type="submit"
                     disabled={creatingChild || !newChildName.trim() || !newChildPhone.trim()}
                     className="update-allowance-button"
-                  >
-                    {creatingChild ? (
-                      <span style={{
-                        display: 'inline-block',
-                        animation: 'pulse 1.5s ease-in-out infinite'
-                      }}>
-                        {t('common.saving', { defaultValue: 'שומר...' })}
-                      </span>
+                >
+                  {creatingChild ? (
+                    <span style={{
+                      display: 'inline-block',
+                      animation: 'pulse 1.5s ease-in-out infinite'
+                    }}>
+                      {t('common.saving', { defaultValue: 'שומר...' })}
+                    </span>
                     ) : (
                       t('common.save', { defaultValue: 'שמור' })
                     )}
-                  </button>
+                </button>
                 </div>
               </form>
               </div>
@@ -2044,7 +2075,7 @@ const Settings = ({ familyId, isNewFamily, onClose, onLogout, activeTab: externa
                               setEditChildPhone('');
                             }
                             setChildPhoneModal({ 
-                              childId,
+                              childId, 
                               child: child
                             });
                           }
@@ -2080,10 +2111,10 @@ const Settings = ({ familyId, isNewFamily, onClose, onLogout, activeTab: externa
                     ];
                     
                     return (
-                      <div style={{
-                        marginTop: '12px',
+                    <div style={{
+                      marginTop: '12px',
                         padding: '16px',
-                        background: 'white',
+                      background: 'white',
                         borderRadius: '12px',
                         boxShadow: '0 2px 8px rgba(0,0,0,0.05)',
                         border: '1px solid rgba(99, 102, 241, 0.15)'
@@ -2108,12 +2139,12 @@ const Settings = ({ familyId, isNewFamily, onClose, onLogout, activeTab: externa
                                   ? (modalChild.phoneNumber.startsWith('+') 
                                       ? modalChild.phoneNumber 
                                       : `+${modalChild.phoneNumber}`)
-                                  : t('parent.settings.noPhoneNumber', { defaultValue: 'לא מוגדר' })
-                                }
+                                : t('parent.settings.noPhoneNumber', { defaultValue: 'לא מוגדר' })
+                              }
                               </span>
                               {modalChild?.phoneNumber && (
-                                <button 
-                                  onClick={() => {
+                              <button 
+                                onClick={() => {
                                     navigator.clipboard.writeText(modalChild.phoneNumber);
                                     alert(t('parent.settings.passwordModal.copied', { defaultValue: 'הועתק!' }));
                                   }}
@@ -2126,18 +2157,18 @@ const Settings = ({ familyId, isNewFamily, onClose, onLogout, activeTab: externa
                                     fontSize: '11px',
                                     cursor: 'pointer',
                                     fontWeight: 500
-                                  }}
-                                  title={t('parent.settings.phoneModal.copyPhone', { defaultValue: 'העתק מספר טלפון' })}
-                                >
+                                }}
+                                title={t('parent.settings.phoneModal.copyPhone', { defaultValue: 'העתק מספר טלפון' })}
+                              >
                                   📋
-                                </button>
-                              )}
-                            </div>
+                              </button>
+                            )}
                           </div>
-
+                        </div>
+                        
                           {/* Allowance */}
                           {modalChild?.weeklyAllowance > 0 && (
-                            <div style={{
+                          <div style={{ 
                               display: 'flex',
                               justifyContent: 'space-between',
                               alignItems: 'center',
@@ -2213,19 +2244,19 @@ const Settings = ({ familyId, isNewFamily, onClose, onLogout, activeTab: externa
                             <span style={{ fontSize: '13px', fontWeight: 500, color: 'var(--text-main)' }}>
                               {modalChild?.createdAt 
                                 ? new Date(modalChild.createdAt).toLocaleDateString(i18n.language === 'he' ? 'he-IL' : 'en-US', { 
-                                    year: 'numeric', 
+                                  year: 'numeric', 
                                     month: 'short', 
-                                    day: 'numeric',
-                                    hour: '2-digit',
-                                    minute: '2-digit'
-                                  })
-                                : t('parent.settings.notAvailable', { defaultValue: 'לא זמין' })
-                              }
+                                  day: 'numeric',
+                                  hour: '2-digit',
+                                  minute: '2-digit'
+                                })
+                              : t('parent.settings.notAvailable', { defaultValue: 'לא זמין' })
+                            }
                             </span>
-                          </div>
-
+                        </div>
+                        
                           {/* Last Login */}
-                          <div style={{
+                          <div style={{ 
                             display: 'flex',
                             justifyContent: 'space-between',
                             alignItems: 'center',
@@ -2240,14 +2271,14 @@ const Settings = ({ familyId, isNewFamily, onClose, onLogout, activeTab: externa
                             <span style={{ fontSize: '13px', fontWeight: 500, color: 'var(--text-main)' }}>
                               {modalChild?.lastLogin || modalChild?.lastAccess
                                 ? new Date(modalChild.lastLogin || modalChild.lastAccess).toLocaleDateString(i18n.language === 'he' ? 'he-IL' : 'en-US', { 
-                                    year: 'numeric', 
+                                  year: 'numeric', 
                                     month: 'short', 
-                                    day: 'numeric',
-                                    hour: '2-digit',
-                                    minute: '2-digit'
-                                  })
-                                : t('parent.settings.neverLoggedIn', { defaultValue: 'מעולם לא נכנס' })
-                              }
+                                  day: 'numeric',
+                                  hour: '2-digit',
+                                  minute: '2-digit'
+                                })
+                              : t('parent.settings.neverLoggedIn', { defaultValue: 'מעולם לא נכנס' })
+                            }
                             </span>
                           </div>
                         </div>
@@ -2284,23 +2315,23 @@ const Settings = ({ familyId, isNewFamily, onClose, onLogout, activeTab: externa
                     };
 
                     return (
-                      <div style={{
-                        marginTop: '12px',
-                        padding: '20px',
-                        background: 'white',
-                        borderRadius: '16px',
-                        boxShadow: '0 2px 10px rgba(0,0,0,0.05)',
-                        border: '1px solid rgba(99, 102, 241, 0.2)'
-                      }}>
-                        <form
-                          onSubmit={async (e) => {
-                            e.preventDefault();
-                            if (!editChildName.trim() || !editChildPhone.trim()) {
-                              alert(t('parent.settings.parents.fillAllFields', { defaultValue: 'אנא מלא את כל השדות' }));
-                              return;
-                            }
-                            
-                            setUpdatingChild(true);
+                    <div style={{
+                      marginTop: '12px',
+                      padding: '20px',
+                      background: 'white',
+                      borderRadius: '16px',
+                      boxShadow: '0 2px 10px rgba(0,0,0,0.05)',
+                      border: '1px solid rgba(99, 102, 241, 0.2)'
+                    }}>
+                      <form
+                        onSubmit={async (e) => {
+                          e.preventDefault();
+                          if (!editChildName.trim() || !editChildPhone.trim()) {
+                            alert(t('parent.settings.parents.fillAllFields', { defaultValue: 'אנא מלא את כל השדות' }));
+                            return;
+                          }
+                          
+                          setUpdatingChild(true);
                             setSavingAllowance(prev => ({ ...prev, [childId]: true }));
                             try {
                               // Update child name and phone
@@ -2309,7 +2340,7 @@ const Settings = ({ familyId, isNewFamily, onClose, onLogout, activeTab: externa
                               // Update allowance settings
                               const currentState = allowanceStates[childId] || state;
                               await updateWeeklyAllowance(
-                                familyId, 
+                              familyId,
                                 editingChild, 
                                 currentState.amount, 
                                 currentState.type, 
@@ -2323,94 +2354,94 @@ const Settings = ({ familyId, isNewFamily, onClose, onLogout, activeTab: externa
                               
                               // Update local state
                               if (childResult?.child) {
-                                setAllData(prev => {
-                                  const updated = { ...prev };
-                                  if (updated.children && updated.children[editingChild]) {
-                                    updated.children[editingChild] = {
-                                      ...updated.children[editingChild],
+                              setAllData(prev => {
+                                const updated = { ...prev };
+                                if (updated.children && updated.children[editingChild]) {
+                                  updated.children[editingChild] = {
+                                    ...updated.children[editingChild],
                                       name: childResult.child.name,
                                       phoneNumber: childResult.child.phoneNumber
-                                    };
-                                  }
-                                  return updated;
-                                });
-                              }
-                              
+                                  };
+                                }
+                                return updated;
+                              });
+                            }
+                            
                               // Invalidate cache
-                              invalidateFamilyCache(familyId);
-                              
-                              setEditingChild(null);
-                              setEditChildName('');
-                              setEditChildPhone('');
-                              
+                            invalidateFamilyCache(familyId);
+                            
+                            setEditingChild(null);
+                            setEditChildName('');
+                            setEditChildPhone('');
+                            
                               // Show success notification
-                              const notification = document.createElement('div');
+                            const notification = document.createElement('div');
                               notification.textContent = t('parent.settings.updateChildSuccess', { defaultValue: 'הגדרות הילד עודכנו בהצלחה!' });
-                              const isRTL = i18n.language === 'he';
-                              const animationName = isRTL ? 'slideInRTL' : 'slideIn';
-                              const animationOutName = isRTL ? 'slideOutRTL' : 'slideOut';
-                              const rightOrLeft = isRTL ? 'left' : 'right';
-                              notification.style.cssText = `
-                                position: fixed;
-                                bottom: 100px;
-                                ${rightOrLeft}: 20px;
-                                background: linear-gradient(135deg, #10B981 0%, #059669 100%);
-                                color: white;
-                                padding: 16px 24px;
-                                border-radius: 12px;
-                                box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3);
-                                z-index: 10005;
-                                font-weight: 600;
-                                animation: ${animationName} 0.3s ease;
-                                max-width: calc(100% - 40px);
-                              `;
-                              document.body.appendChild(notification);
-                              setTimeout(() => {
-                                notification.style.animation = `${animationOutName} 0.3s ease`;
-                                setTimeout(() => notification.remove(), 300);
-                              }, 2000);
+                            const isRTL = i18n.language === 'he';
+                            const animationName = isRTL ? 'slideInRTL' : 'slideIn';
+                            const animationOutName = isRTL ? 'slideOutRTL' : 'slideOut';
+                            const rightOrLeft = isRTL ? 'left' : 'right';
+                            notification.style.cssText = `
+                              position: fixed;
+                              bottom: 100px;
+                              ${rightOrLeft}: 20px;
+                              background: linear-gradient(135deg, #10B981 0%, #059669 100%);
+                              color: white;
+                              padding: 16px 24px;
+                              border-radius: 12px;
+                              box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3);
+                              z-index: 10005;
+                              font-weight: 600;
+                              animation: ${animationName} 0.3s ease;
+                              max-width: calc(100% - 40px);
+                            `;
+                            document.body.appendChild(notification);
+                            setTimeout(() => {
+                              notification.style.animation = `${animationOutName} 0.3s ease`;
+                              setTimeout(() => notification.remove(), 300);
+                            }, 2000);
                               
                               if (onChildrenUpdated) {
                                 await onChildrenUpdated();
-                              }
-                            } catch (error) {
-                              console.error('[UPDATE-CHILD] Error updating child:', error);
-                              const errorMessage = error.message || 'שגיאה לא ידועה';
-                              alert(t('parent.settings.updateChildError', { defaultValue: 'שגיאה בעדכון ילד' }) + ': ' + errorMessage);
-                            } finally {
-                              setUpdatingChild(false);
-                              setSavingAllowance(prev => ({ ...prev, [childId]: false }));
                             }
-                          }}
-                          style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}
-                        >
+                          } catch (error) {
+                              console.error('[UPDATE-CHILD] Error updating child:', error);
+                            const errorMessage = error.message || 'שגיאה לא ידועה';
+                            alert(t('parent.settings.updateChildError', { defaultValue: 'שגיאה בעדכון ילד' }) + ': ' + errorMessage);
+                          } finally {
+                            setUpdatingChild(false);
+                              setSavingAllowance(prev => ({ ...prev, [childId]: false }));
+                          }
+                        }}
+                        style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}
+                      >
                           {/* Child Name */}
-                          <div className="allowance-config-group">
-                            <label className="allowance-label">{t('parent.settings.childName', { defaultValue: 'שם הילד' })}</label>
-                            <input
-                              type="text"
-                              value={editChildName}
-                              onChange={(e) => setEditChildName(e.target.value)}
-                              placeholder={t('parent.settings.childName', { defaultValue: 'שם הילד' })}
-                              className="allowance-input"
-                              required
-                            />
-                          </div>
+                        <div className="allowance-config-group">
+                          <label className="allowance-label">{t('parent.settings.childName', { defaultValue: 'שם הילד' })}</label>
+                          <input
+                            type="text"
+                            value={editChildName}
+                            onChange={(e) => setEditChildName(e.target.value)}
+                            placeholder={t('parent.settings.childName', { defaultValue: 'שם הילד' })}
+                            className="allowance-input"
+                            required
+                          />
+                        </div>
 
                           {/* Child Phone */}
-                          <div className="allowance-config-group">
-                            <label className="allowance-label">{t('parent.settings.childPhone', { defaultValue: 'מספר טלפון לילד' })}</label>
-                            <input
-                              type="tel"
-                              inputMode="numeric"
-                              value={editChildPhone}
-                              onChange={(e) => setEditChildPhone(e.target.value)}
-                              placeholder={t('parent.settings.childPhone', { defaultValue: 'מספר טלפון לילד' })}
-                              className="allowance-input"
-                              style={{ direction: 'ltr', textAlign: 'left' }}
-                              required
-                            />
-                          </div>
+                        <div className="allowance-config-group">
+                          <label className="allowance-label">{t('parent.settings.childPhone', { defaultValue: 'מספר טלפון לילד' })}</label>
+                          <input
+                            type="tel"
+                            inputMode="numeric"
+                            value={editChildPhone}
+                            onChange={(e) => setEditChildPhone(e.target.value)}
+                            placeholder={t('parent.settings.childPhone', { defaultValue: 'מספר טלפון לילד' })}
+                            className="allowance-input"
+                            style={{ direction: 'ltr', textAlign: 'left' }}
+                            required
+                          />
+                        </div>
 
                           {/* Allowance Amount */}
                           <div className="allowance-config-group">
@@ -2551,19 +2582,19 @@ const Settings = ({ familyId, isNewFamily, onClose, onLogout, activeTab: externa
                           </div>
 
                           {/* Actions */}
-                          <div className="allowance-actions">
-                            <button
-                              type="submit"
+                        <div className="allowance-actions">
+                          <button
+                            type="submit"
                               className={`update-allowance-button ${!hasChanges() || (updatingChild || savingAllowance[childId]) ? 'disabled' : ''}`}
                               disabled={!hasChanges() || updatingChild || savingAllowance[childId] || !editChildName.trim() || !editChildPhone.trim()}
-                            >
+                          >
                               {(updatingChild || savingAllowance[childId]) ? (
-                                <span style={{
-                                  display: 'inline-block',
-                                  animation: 'pulse 1.5s ease-in-out infinite'
-                                }}>
+                              <span style={{
+                                display: 'inline-block',
+                                animation: 'pulse 1.5s ease-in-out infinite'
+                              }}>
                                   {t('common.saving', { defaultValue: 'שומר...' })}
-                                </span>
+                              </span>
                               ) : (
                                 t('common.saveChanges', { defaultValue: 'שמור שינויים' })
                               )}
@@ -2590,73 +2621,73 @@ const Settings = ({ familyId, isNewFamily, onClose, onLogout, activeTab: externa
                               style={{ background: '#6B7280' }}
                             >
                               {t('common.cancel', { defaultValue: 'ביטול' })}
-                            </button>
-                            <button
-                              type="button"
-                              onClick={async () => {
-                                const childName = child?.name || t('parent.settings.child', { defaultValue: 'ילד' });
-                                const confirmMessage = t('parent.settings.deleteChildConfirm', { 
-                                  defaultValue: 'האם אתה בטוח שברצונך למחוק את {name}? פעולה זו תעביר את כל הנתונים לארכיון ולא ניתן לבטל אותה.',
+                          </button>
+                          <button
+                            type="button"
+                            onClick={async () => {
+                              const childName = child?.name || t('parent.settings.child', { defaultValue: 'ילד' });
+                              const confirmMessage = t('parent.settings.deleteChildConfirm', { 
+                                defaultValue: 'האם אתה בטוח שברצונך למחוק את {name}? פעולה זו תעביר את כל הנתונים לארכיון ולא ניתן לבטל אותה.',
+                                name: childName
+                              }).replace(/\{name\}/g, childName);
+                              
+                              if (!confirm(confirmMessage)) {
+                                return;
+                              }
+                              
+                              try {
+                                await archiveChild(familyId, childId);
+                                await loadData();
+                                setEditingChild(null);
+                                setEditChildName('');
+                                setEditChildPhone('');
+                                
+                                // Show success notification
+                                const notification = document.createElement('div');
+                                const successMessage = t('parent.settings.deleteChildSuccess', { 
+                                  defaultValue: 'הילד {name} נמחק והועבר לארכיון בהצלחה',
                                   name: childName
                                 }).replace(/\{name\}/g, childName);
+                                notification.textContent = successMessage;
+                                const isRTL = i18n.language === 'he';
+                                const animationName = isRTL ? 'slideInRTL' : 'slideIn';
+                                const animationOutName = isRTL ? 'slideOutRTL' : 'slideOut';
+                                const rightOrLeft = isRTL ? 'left' : 'right';
+                                notification.style.cssText = `
+                                  position: fixed;
+                                  bottom: 100px;
+                                  ${rightOrLeft}: 20px;
+                                  background: linear-gradient(135deg, #10B981 0%, #059669 100%);
+                                  color: white;
+                                  padding: 16px 24px;
+                                  border-radius: 12px;
+                                  box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3);
+                                  z-index: 10005;
+                                  font-weight: 600;
+                                  animation: ${animationName} 0.3s ease;
+                                  max-width: calc(100% - 40px);
+                                `;
+                                document.body.appendChild(notification);
+                                setTimeout(() => {
+                                  notification.style.animation = `${animationOutName} 0.3s ease`;
+                                  setTimeout(() => notification.remove(), 300);
+                                }, 2000);
                                 
-                                if (!confirm(confirmMessage)) {
-                                  return;
+                                if (onChildrenUpdated) {
+                                  await onChildrenUpdated();
                                 }
-                                
-                                try {
-                                  await archiveChild(familyId, childId);
-                                  await loadData();
-                                  setEditingChild(null);
-                                  setEditChildName('');
-                                  setEditChildPhone('');
-                                  
-                                  // Show success notification
-                                  const notification = document.createElement('div');
-                                  const successMessage = t('parent.settings.deleteChildSuccess', { 
-                                    defaultValue: 'הילד {name} נמחק והועבר לארכיון בהצלחה',
-                                    name: childName
-                                  }).replace(/\{name\}/g, childName);
-                                  notification.textContent = successMessage;
-                                  const isRTL = i18n.language === 'he';
-                                  const animationName = isRTL ? 'slideInRTL' : 'slideIn';
-                                  const animationOutName = isRTL ? 'slideOutRTL' : 'slideOut';
-                                  const rightOrLeft = isRTL ? 'left' : 'right';
-                                  notification.style.cssText = `
-                                    position: fixed;
-                                    bottom: 100px;
-                                    ${rightOrLeft}: 20px;
-                                    background: linear-gradient(135deg, #10B981 0%, #059669 100%);
-                                    color: white;
-                                    padding: 16px 24px;
-                                    border-radius: 12px;
-                                    box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3);
-                                    z-index: 10005;
-                                    font-weight: 600;
-                                    animation: ${animationName} 0.3s ease;
-                                    max-width: calc(100% - 40px);
-                                  `;
-                                  document.body.appendChild(notification);
-                                  setTimeout(() => {
-                                    notification.style.animation = `${animationOutName} 0.3s ease`;
-                                    setTimeout(() => notification.remove(), 300);
-                                  }, 2000);
-                                  
-                                  if (onChildrenUpdated) {
-                                    await onChildrenUpdated();
-                                  }
-                                } catch (error) {
-                                  alert(t('parent.settings.deleteChildError', { defaultValue: 'שגיאה במחיקת ילד' }) + ': ' + (error.message || 'Unknown error'));
-                                }
-                              }}
-                              className="pay-allowance-button"
-                              style={{ background: '#EF4444' }}
-                            >
-                              🗑️ {t('parent.settings.deleteChild', { defaultValue: 'מחיקת ילד' })}
-                            </button>
-                          </div>
-                        </form>
-                      </div>
+                              } catch (error) {
+                                alert(t('parent.settings.deleteChildError', { defaultValue: 'שגיאה במחיקת ילד' }) + ': ' + (error.message || 'Unknown error'));
+                              }
+                            }}
+                            className="pay-allowance-button"
+                            style={{ background: '#EF4444' }}
+                          >
+                            🗑️ {t('parent.settings.deleteChild', { defaultValue: 'מחיקת ילד' })}
+                          </button>
+                        </div>
+                      </form>
+                    </div>
                     );
                   })()}
                 </div>
@@ -2829,8 +2860,8 @@ const Settings = ({ familyId, isNewFamily, onClose, onLogout, activeTab: externa
               // Show parents if they exist
               if (familyInfo && familyInfo.parents && familyInfo.parents.length > 0) {
                 return (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                    {familyInfo.parents.map((parent, index) => (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                {familyInfo.parents.map((parent, index) => (
                   <div key={index}>
                     <div 
                       style={{
@@ -3225,21 +3256,21 @@ const Settings = ({ familyId, isNewFamily, onClose, onLogout, activeTab: externa
                         </form>
                       </div>
                     )}
-                      </div>
-                    ))}
                   </div>
+                ))}
+              </div>
                 );
               } else {
                 // Show message if no parents or familyInfo is null
                 console.log('[SETTINGS-PARENTS] No parents found, showing message');
                 return (
-                  <div style={{
-                    padding: '40px 20px',
-                    textAlign: 'center',
-                    color: 'var(--text-muted)',
-                    fontSize: '16px'
-                  }}>
-                    {t('parent.settings.parents.noParents', { defaultValue: 'אין הורים רשומים' })}
+              <div style={{
+                padding: '40px 20px',
+                textAlign: 'center',
+                color: 'var(--text-muted)',
+                fontSize: '16px'
+              }}>
+                {t('parent.settings.parents.noParents', { defaultValue: 'אין הורים רשומים' })}
                   </div>
                 );
               }

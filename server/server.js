@@ -2100,11 +2100,31 @@ app.get('/api/families/:familyId/children/:childId', async (req, res) => {
     const { familyId, childId } = req.params;
     
     // Load family WITH transactions for this endpoint
+    // Note: We need to load the full family document (not using getFamilyById projection)
+    // to get profileImage for the hasProfileImage flag
     let family;
     if (db) {
       family = await db.collection('families').findOne({ _id: familyId });
     } else {
+      // If no db, try getFamilyById but it might not have profileImage due to projection
+      // So we'll check hasProfileImage from the child object directly
       family = await getFamilyById(familyId);
+      // If getFamilyById doesn't have children with profileImage, we need to load it separately
+      if (family && family.children) {
+        const child = family.children.find(c => c._id === childId);
+        if (child && !child.hasOwnProperty('profileImage')) {
+          // Need to load full family to get profileImage
+          if (db) {
+            const fullFamily = await db.collection('families').findOne({ _id: familyId });
+            if (fullFamily) {
+              const fullChild = fullFamily.children?.find(c => c._id === childId);
+              if (fullChild) {
+                child.profileImage = fullChild.profileImage;
+              }
+            }
+          }
+        }
+      }
     }
     
     if (!family) {
@@ -2144,12 +2164,19 @@ app.get('/api/families/:familyId/children/:childId', async (req, res) => {
       console.log(`[GET-CHILD] No interest transactions found for child ${childId}. Total transactions: ${allTransactions.length}`);
     }
     
-    res.json({
+    // Check if child has profile image
+    const hasProfileImage = !!child.profileImage;
+    console.log(`[GET-CHILD] Child ${childId}, hasProfileImage: ${hasProfileImage}, image length: ${child.profileImage?.length || 0}`);
+    
+    // IMPORTANT: Don't include profileImage here - it's loaded separately via /api/families/:familyId/children/:childId/profile-image
+    // This significantly reduces response size and improves performance
+    // Only return hasProfileImage flag
+    const response = {
       name: child.name,
       phoneNumber: child.phoneNumber || '',
       balance: child.balance || 0,
       cashBoxBalance: child.cashBoxBalance || 0,
-      profileImage: child.profileImage || null,
+      hasProfileImage: hasProfileImage, // Just a flag - don't include the actual image
       weeklyAllowance: child.weeklyAllowance || 0,
       allowanceType: child.allowanceType || 'weekly',
       allowanceDay: child.allowanceDay !== undefined ? child.allowanceDay : 1,
@@ -2158,7 +2185,17 @@ app.get('/api/families/:familyId/children/:childId', async (req, res) => {
       lastAllowancePayment: child.lastAllowancePayment || null,
       totalInterestEarned: totalInterestEarned,
       transactions: child.transactions || []
-    });
+    };
+    
+    // Make sure profileImage is NOT in the response
+    if (response.profileImage) {
+      delete response.profileImage;
+    }
+    
+    console.log(`[GET-CHILD] Response keys:`, Object.keys(response));
+    console.log(`[GET-CHILD] hasProfileImage in response:`, response.hasProfileImage);
+    
+    res.json(response);
   } catch (error) {
     console.error('Error fetching child:', error);
     res.status(500).json({ error: 'Failed to fetch child' });
@@ -2679,6 +2716,61 @@ app.delete('/api/families/:familyId/categories/:categoryId', async (req, res) =>
   }
 });
 
+// Get profile image (separate endpoint for better performance)
+app.get('/api/families/:familyId/children/:childId/profile-image', async (req, res) => {
+  try {
+    const { familyId, childId } = req.params;
+    console.log(`[GET-PROFILE-IMAGE] Request for child ${childId} in family ${familyId}`);
+    
+    // Load full family document (not using getFamilyById which excludes profileImage via projection)
+    let family;
+    if (db) {
+      family = await db.collection('families').findOne({ _id: familyId });
+    } else {
+      // Fallback to getFamilyById if no db
+      family = await getFamilyById(familyId);
+    }
+    
+    if (!family) {
+      console.error(`[GET-PROFILE-IMAGE] Family not found: ${familyId}`);
+      return res.status(404).json({ error: 'משפחה לא נמצאה' });
+    }
+    
+    const child = family.children?.find(c => c._id === childId);
+    if (!child) {
+      console.error(`[GET-PROFILE-IMAGE] Child not found: ${childId}`);
+      return res.status(404).json({ error: 'ילד לא נמצא' });
+    }
+    
+    const hasImage = !!child.profileImage;
+    const imageLength = child.profileImage?.length || 0;
+    console.log(`[GET-PROFILE-IMAGE] Child found, hasProfileImage: ${hasImage}, image length: ${imageLength}`);
+    
+    // Validate image format before sending
+    let profileImage = child.profileImage || null;
+    if (profileImage) {
+      if (!profileImage.startsWith('data:image/')) {
+        console.error(`[GET-PROFILE-IMAGE] Invalid image format, not a data URL. Preview: ${profileImage.substring(0, 50)}`);
+        profileImage = null;
+      } else if (imageLength < 100) {
+        console.error(`[GET-PROFILE-IMAGE] Image too small (${imageLength} bytes), likely corrupted`);
+        profileImage = null;
+      } else {
+        console.log(`[GET-PROFILE-IMAGE] Image validated, format: ${profileImage.substring(5, profileImage.indexOf(';'))}, length: ${imageLength}`);
+      }
+    }
+    
+    // Return only the profile image
+    res.json({ 
+      profileImage: profileImage,
+      hasProfileImage: !!profileImage
+    });
+  } catch (error) {
+    console.error('[GET-PROFILE-IMAGE] Error getting profile image:', error);
+    res.status(500).json({ error: 'Failed to get profile image' });
+  }
+});
+
 // Update profile image
 app.put('/api/families/:familyId/children/:childId/profile-image', async (req, res) => {
   try {
@@ -2715,6 +2807,27 @@ app.put('/api/families/:familyId/children/:childId/profile-image', async (req, r
   } catch (error) {
     console.error('Error updating profile image:', error);
     res.status(500).json({ error: 'Failed to update profile image' });
+  }
+});
+
+// Get parent profile image (separate endpoint for better performance)
+app.get('/api/families/:familyId/parent/profile-image', async (req, res) => {
+  try {
+    const { familyId } = req.params;
+    
+    const family = await getFamilyById(familyId);
+    if (!family) {
+      return res.status(404).json({ error: 'משפחה לא נמצאה' });
+    }
+    
+    // Return only the profile image
+    res.json({ 
+      profileImage: family.parentProfileImage || null,
+      hasProfileImage: !!family.parentProfileImage
+    });
+  } catch (error) {
+    console.error('[GET-PARENT-PROFILE-IMAGE] Error getting parent profile image:', error);
+    res.status(500).json({ error: 'Failed to get parent profile image' });
   }
 });
 
@@ -3250,12 +3363,41 @@ app.put('/api/families/:familyId/payment-requests/:requestId/approve', async (re
   try {
     const { familyId, requestId } = req.params;
     
-    const family = await getFamilyById(familyId);
-    if (!family) {
-      return res.status(404).json({ error: 'משפחה לא נמצאה' });
+    // Load payment requests directly from DB (getFamilyById excludes them)
+    let paymentRequests = [];
+    let family = null;
+    
+    if (db) {
+      // Load payment requests separately
+      const familyWithRequests = await db.collection('families').findOne(
+        { _id: familyId },
+        {
+          projection: {
+            paymentRequests: 1,
+            children: 1
+          }
+        }
+      );
+      
+      if (!familyWithRequests) {
+        return res.status(404).json({ error: 'משפחה לא נמצאה' });
+      }
+      
+      paymentRequests = familyWithRequests.paymentRequests || [];
+      family = familyWithRequests;
+    } else {
+      // Fallback: use getFamilyById and load payment requests separately
+      family = await getFamilyById(familyId);
+      if (!family) {
+        return res.status(404).json({ error: 'משפחה לא נמצאה' });
+      }
+      
+      // Try to get payment requests from a separate query if DB is available
+      // For now, if no DB, we can't proceed
+      return res.status(500).json({ error: 'Database not available' });
     }
     
-    const request = family.paymentRequests?.find(r => r._id === requestId);
+    const request = paymentRequests.find(r => r._id === requestId);
     if (!request) {
       return res.status(404).json({ error: 'Payment request not found' });
     }
@@ -3301,7 +3443,7 @@ app.put('/api/families/:familyId/payment-requests/:requestId/approve', async (re
         { _id: familyId },
         { 
           $set: { 
-            paymentRequests: family.paymentRequests,
+            paymentRequests: paymentRequests,
             children: family.children
           }
         }
@@ -3332,12 +3474,41 @@ app.put('/api/families/:familyId/payment-requests/:requestId/reject', async (req
   try {
     const { familyId, requestId } = req.params;
     
-    const family = await getFamilyById(familyId);
-    if (!family) {
-      return res.status(404).json({ error: 'משפחה לא נמצאה' });
+    // Load payment requests directly from DB (getFamilyById excludes them)
+    let paymentRequests = [];
+    let family = null;
+    
+    if (db) {
+      // Load payment requests separately
+      const familyWithRequests = await db.collection('families').findOne(
+        { _id: familyId },
+        {
+          projection: {
+            paymentRequests: 1,
+            children: 1
+          }
+        }
+      );
+      
+      if (!familyWithRequests) {
+        return res.status(404).json({ error: 'משפחה לא נמצאה' });
+      }
+      
+      paymentRequests = familyWithRequests.paymentRequests || [];
+      family = familyWithRequests;
+    } else {
+      // Fallback: use getFamilyById and load payment requests separately
+      family = await getFamilyById(familyId);
+      if (!family) {
+        return res.status(404).json({ error: 'משפחה לא נמצאה' });
+      }
+      
+      // Try to get payment requests from a separate query if DB is available
+      // For now, if no DB, we can't proceed
+      return res.status(500).json({ error: 'Database not available' });
     }
     
-    const request = family.paymentRequests?.find(r => r._id === requestId);
+    const request = paymentRequests.find(r => r._id === requestId);
     if (!request) {
       return res.status(404).json({ error: 'Payment request not found' });
     }
@@ -3353,7 +3524,7 @@ app.put('/api/families/:familyId/payment-requests/:requestId/reject', async (req
     if (db) {
       await db.collection('families').updateOne(
         { _id: familyId },
-        { $set: { paymentRequests: family.paymentRequests } }
+        { $set: { paymentRequests: paymentRequests } }
       );
       invalidateFamilyCache(familyId);
     }
@@ -3396,12 +3567,41 @@ app.put('/api/families/:familyId/payment-requests/:requestId/status', async (req
       return res.status(400).json({ error: 'Invalid status' });
     }
     
-    const family = await getFamilyById(familyId);
-    if (!family) {
-      return res.status(404).json({ error: 'משפחה לא נמצאה' });
+    // Load payment requests directly from DB (getFamilyById excludes them)
+    let paymentRequests = [];
+    let family = null;
+    
+    if (db) {
+      // Load payment requests and children separately
+      const familyWithRequests = await db.collection('families').findOne(
+        { _id: familyId },
+        {
+          projection: {
+            paymentRequests: 1,
+            children: 1
+          }
+        }
+      );
+      
+      if (!familyWithRequests) {
+        return res.status(404).json({ error: 'משפחה לא נמצאה' });
+      }
+      
+      paymentRequests = familyWithRequests.paymentRequests || [];
+      family = familyWithRequests;
+    } else {
+      // Fallback: use getFamilyById and load payment requests separately
+      family = await getFamilyById(familyId);
+      if (!family) {
+        return res.status(404).json({ error: 'משפחה לא נמצאה' });
+      }
+      
+      // Try to get payment requests from a separate query if DB is available
+      // For now, if no DB, we can't proceed
+      return res.status(500).json({ error: 'Database not available' });
     }
     
-    const request = family.paymentRequests?.find(r => r._id === requestId);
+    const request = paymentRequests.find(r => r._id === requestId);
     if (!request) {
       return res.status(404).json({ error: 'Payment request not found' });
     }
@@ -3450,7 +3650,7 @@ app.put('/api/families/:familyId/payment-requests/:requestId/status', async (req
         { _id: familyId },
         { 
           $set: { 
-            paymentRequests: family.paymentRequests,
+            paymentRequests: paymentRequests,
             children: family.children
           }
         }

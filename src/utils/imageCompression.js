@@ -12,10 +12,10 @@
  */
 export const compressImage = (file, options = {}) => {
   const {
-    maxWidth = 800,      // Reduced from 1920 for profile images
-    maxHeight = 800,      // Reduced from 1920 for profile images
-    quality = 0.7,        // Reduced from 0.8 for better compression
-    maxSize = 500 * 1024  // 500KB max size
+    maxWidth = 400,      // Reduced to 400px for profile images (was 800)
+    maxHeight = 400,      // Reduced to 400px for profile images (was 800)
+    quality = 0.6,        // Reduced to 0.6 for better compression (was 0.7)
+    maxSize = 200 * 1024  // 200KB max size (was 500KB) - much smaller for faster loading
   } = options;
 
   return new Promise((resolve, reject) => {
@@ -109,19 +109,19 @@ export const compressImage = (file, options = {}) => {
  * @returns {Promise<string>} Base64 encoded compressed image
  */
 export const smartCompressImage = async (file) => {
-  const maxSize = 500 * 1024; // 500KB target
+  const maxSize = 200 * 1024; // 200KB target (reduced from 500KB) - much smaller for faster loading
   
-  // Estimate initial compression based on file size
-  let initialWidth = 800;
-  let initialQuality = 0.7;
+  // Estimate initial compression based on file size - more aggressive defaults
+  let initialWidth = 400;  // Reduced from 800
+  let initialQuality = 0.6; // Reduced from 0.7
   
   // If file is very large (>5MB), start with more aggressive compression
   if (file.size > 5 * 1024 * 1024) {
-    initialWidth = 600;
-    initialQuality = 0.6;
+    initialWidth = 300;
+    initialQuality = 0.5;
   } else if (file.size > 2 * 1024 * 1024) {
-    initialWidth = 700;
-    initialQuality = 0.65;
+    initialWidth = 350;
+    initialQuality = 0.55;
   }
   
   // Start with optimized compression based on file size
@@ -132,13 +132,13 @@ export const smartCompressImage = async (file) => {
     maxSize: maxSize
   });
   
-  // Only try one more time if still too large (reduced from 3 attempts to 2)
+  // Only try one more time if still too large
   if (compressed.length > maxSize) {
     console.log('Image still too large, applying more aggressive compression...');
     compressed = await compressImage(file, {
-      maxWidth: 500,
-      maxHeight: 500,
-      quality: 0.55,
+      maxWidth: 300,  // Reduced from 500
+      maxHeight: 300, // Reduced from 500
+      quality: 0.5,   // Reduced from 0.55
       maxSize: maxSize
     });
   }

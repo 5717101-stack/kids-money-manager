@@ -30,6 +30,7 @@ const ParentDashboard = ({ familyId, isNewFamily: isNewFamilyProp, onChildrenUpd
   const [parentName, setParentName] = useState('');
   const [parentProfileImage, setParentProfileImage] = useState(null);
   const [showImagePicker, setShowImagePicker] = useState(false);
+  const [uploadingImage, setUploadingImage] = useState(false);
   const fileInputRef = React.useRef(null);
   const [showBalanceDetail, setShowBalanceDetail] = useState(false);
   const [activityLimit, setActivityLimit] = useState(() => {
@@ -63,6 +64,40 @@ const ParentDashboard = ({ familyId, isNewFamily: isNewFamilyProp, onChildrenUpd
       try {
         const info = await getFamilyInfo(familyId);
         setFamilyInfoForGuide(info);
+        
+        // Load parent profile image separately (lazy loading for better performance)
+        if (info?.parentProfileImage) {
+          // Try to get from cache first
+          try {
+            const { getCachedImage, setCachedImage, getImageCacheKey } = await import('../utils/imageCache.js');
+            const cacheKey = getImageCacheKey(familyId, null, true);
+            let cachedImage = await getCachedImage(cacheKey);
+            
+            if (!cachedImage) {
+              // Fetch from server
+              const imageResponse = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3001/api'}/families/${familyId}/parent/profile-image`);
+              if (imageResponse.ok) {
+                const imageData = await imageResponse.json();
+                cachedImage = imageData?.profileImage || null;
+                
+                // Cache the image locally
+                if (cachedImage && cacheKey) {
+                  await setCachedImage(cacheKey, cachedImage);
+                }
+              }
+            }
+            
+            if (cachedImage) {
+              setParentProfileImage(cachedImage);
+            }
+          } catch (error) {
+            console.warn('[PARENT-DASHBOARD] Error loading parent profile image:', error);
+            // Fallback to info.parentProfileImage if available
+            if (info.parentProfileImage) {
+              setParentProfileImage(info.parentProfileImage);
+            }
+          }
+        }
       } catch (error) {
         console.error('Error loading family info for guide:', error);
       }
@@ -118,10 +153,10 @@ const ParentDashboard = ({ familyId, isNewFamily: isNewFamilyProp, onChildrenUpd
         const savedPhone = localStorage.getItem('phoneNumber') || '';
         setFamilyPhoneNumber(savedPhone);
         
-        // Load parent info
+        // Load parent info (name only - image is loaded separately for better performance)
         if (familyInfoResult.status === 'fulfilled' && familyInfoResult.value) {
           setParentName(familyInfoResult.value.parentName || '');
-          setParentProfileImage(familyInfoResult.value.parentProfileImage || null);
+          // Don't load parentProfileImage here - it's loaded separately in the useEffect above
         }
         
         // Load pending payment requests
@@ -407,6 +442,7 @@ const ParentDashboard = ({ familyId, isNewFamily: isNewFamilyProp, onChildrenUpd
     if (!file) return;
 
     try {
+      setUploadingImage(true);
       // Compress image before upload - smartCompressImage already returns base64 string
       const base64Image = await smartCompressImage(file);
       
@@ -419,6 +455,8 @@ const ParentDashboard = ({ familyId, isNewFamily: isNewFamilyProp, onChildrenUpd
       }
     } catch (error) {
       alert(t('parent.profile.error', { defaultValue: 'שגיאה בעדכון תמונת הפרופיל' }) + ': ' + error.message);
+    } finally {
+      setUploadingImage(false);
     }
     
     // Reset file input so same file can be selected again
@@ -429,11 +467,14 @@ const ParentDashboard = ({ familyId, isNewFamily: isNewFamilyProp, onChildrenUpd
 
   const handleRemoveImage = async () => {
     try {
+      setUploadingImage(true);
       await updateParentProfileImage(familyId, null);
       setParentProfileImage(null);
       await loadData(); // Reload to get updated data
     } catch (error) {
       alert(t('parent.profile.error', { defaultValue: 'שגיאה בהסרת תמונה' }) + ': ' + error.message);
+    } finally {
+      setUploadingImage(false);
     }
   };
 
@@ -463,22 +504,40 @@ const ParentDashboard = ({ familyId, isNewFamily: isNewFamilyProp, onChildrenUpd
       <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '20px', paddingTop: '10px' }}>
         <div style={{ position: 'relative' }}>
           {parentProfileImage ? (
-            <img 
-              src={parentProfileImage} 
-              alt={parentName}
-              loading="lazy"
-              decoding="async"
-              onClick={() => setShowImagePicker(true)}
-              style={{
-                width: '120px',
-                height: '120px',
-                borderRadius: '50%',
-                objectFit: 'cover',
-                border: '4px solid white',
-                boxShadow: '0 4px 12px rgba(0,0,0,0.1)',
-                cursor: 'pointer'
-              }}
-            />
+            <div style={{ position: 'relative', width: '120px', height: '120px' }}>
+              <img 
+                src={parentProfileImage} 
+                alt={parentName}
+                loading="lazy"
+                decoding="async"
+                onClick={() => !uploadingImage && setShowImagePicker(true)}
+                style={{
+                  width: '120px',
+                  height: '120px',
+                  borderRadius: '50%',
+                  objectFit: 'cover',
+                  border: '4px solid white',
+                  boxShadow: '0 4px 12px rgba(0,0,0,0.1)',
+                  cursor: uploadingImage ? 'wait' : 'pointer',
+                  opacity: uploadingImage ? 0.5 : 1,
+                  transition: 'opacity 0.2s'
+                }}
+              />
+              {uploadingImage && (
+                <div style={{
+                  position: 'absolute',
+                  top: '50%',
+                  left: '50%',
+                  transform: 'translate(-50%, -50%)',
+                  width: '40px',
+                  height: '40px',
+                  border: '3px solid rgba(255, 255, 255, 0.3)',
+                  borderTop: '3px solid white',
+                  borderRadius: '50%',
+                  animation: 'spin 1s linear infinite'
+                }} />
+              )}
+            </div>
           ) : (
             <div style={{
               width: '120px',
@@ -492,9 +551,22 @@ const ParentDashboard = ({ familyId, isNewFamily: isNewFamilyProp, onChildrenUpd
               color: 'white',
               fontWeight: 700,
               border: '4px solid white',
-              boxShadow: '0 4px 12px rgba(0,0,0,0.1)'
+              boxShadow: '0 4px 12px rgba(0,0,0,0.1)',
+              position: 'relative',
+              opacity: uploadingImage ? 0.5 : 1,
+              transition: 'opacity 0.2s'
             }}>
-              {parentName?.charAt(0)?.toUpperCase() || 'ה'}
+              {!uploadingImage && (parentName?.charAt(0)?.toUpperCase() || 'ה')}
+              {uploadingImage && (
+                <div style={{
+                  width: '40px',
+                  height: '40px',
+                  border: '3px solid rgba(255, 255, 255, 0.3)',
+                  borderTop: '3px solid white',
+                  borderRadius: '50%',
+                  animation: 'spin 1s linear infinite'
+                }} />
+              )}
             </div>
           )}
           <button

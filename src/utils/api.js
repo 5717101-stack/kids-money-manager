@@ -191,11 +191,104 @@ export const getChild = async (familyId, childId) => {
       useCache: true,
       cacheTTL: 1 * 60 * 1000 // 1 minute cache
     });
+    
+    // Get profile image separately if needed (lazy loading for better performance)
+    let profileImage = null;
+    
+    // Check if profileImage is already in response (backward compatibility)
+    // OR if hasProfileImage flag is set
+    const hasImageFlag = response.hasProfileImage === true || response.hasProfileImage === 'true';
+    const hasImageDirect = !!response.profileImage;
+    
+    console.log('[GET-CHILD] Response keys:', Object.keys(response || {}));
+    console.log('[GET-CHILD] hasProfileImage flag:', response.hasProfileImage, typeof response.hasProfileImage);
+    console.log('[GET-CHILD] profileImage direct:', hasImageDirect, 'value:', response.profileImage ? response.profileImage.substring(0, 50) : 'null');
+    console.log('[GET-CHILD] Will load image:', hasImageFlag || hasImageDirect);
+    
+    // If profileImage is already in response, use it directly (backward compatibility)
+    if (hasImageDirect && response.profileImage) {
+      console.log('[GET-CHILD] Using profileImage from response directly (backward compatibility)');
+      profileImage = response.profileImage;
+      
+      // Validate image format
+      if (profileImage) {
+        if (!profileImage.startsWith('data:image/')) {
+          console.error('[GET-CHILD] Invalid image format, not a data URL:', profileImage.substring(0, 50));
+          profileImage = null;
+        } else if (profileImage.length < 100) {
+          console.error('[GET-CHILD] Image too small, likely corrupted:', profileImage.length);
+          profileImage = null;
+        } else {
+          console.log('[GET-CHILD] Image validated successfully, length:', profileImage.length);
+        }
+      }
+    } else if (hasImageFlag) {
+      // Load image separately if hasProfileImage flag is set
+      try {
+        // Try to get from cache first
+        const { getCachedImage, setCachedImage, getImageCacheKey } = await import('./imageCache.js');
+        const cacheKey = getImageCacheKey(familyId, childId, false);
+        console.log('[GET-CHILD] Cache key:', cacheKey);
+        profileImage = await getCachedImage(cacheKey);
+        console.log('[GET-CHILD] Image from cache:', !!profileImage, profileImage ? `length: ${profileImage.length}` : '');
+        
+        // If not in cache, fetch from server
+        if (!profileImage) {
+          console.log('[GET-CHILD] Fetching image from server...');
+          const imageResponse = await apiCall(`/families/${familyId}/children/${childId}/profile-image`, {}, {
+            useCache: true,
+            cacheTTL: 24 * 60 * 60 * 1000 // 24 hours cache for images
+          });
+          console.log('[GET-CHILD] Image response:', { 
+            hasProfileImage: !!imageResponse?.profileImage, 
+            responseKeys: Object.keys(imageResponse || {}),
+            imageLength: imageResponse?.profileImage?.length || 0,
+            imagePreview: imageResponse?.profileImage?.substring(0, 50) || 'null'
+          });
+          profileImage = imageResponse?.profileImage || null;
+          
+          // Validate image format
+          if (profileImage) {
+            if (!profileImage.startsWith('data:image/')) {
+              console.error('[GET-CHILD] Invalid image format, not a data URL:', profileImage.substring(0, 50));
+              profileImage = null;
+            } else if (profileImage.length < 100) {
+              console.error('[GET-CHILD] Image too small, likely corrupted:', profileImage.length);
+              profileImage = null;
+            } else {
+              console.log('[GET-CHILD] Image validated successfully, length:', profileImage.length);
+            }
+          }
+          
+          // Cache the image locally
+          if (profileImage && cacheKey) {
+            console.log('[GET-CHILD] Caching image locally');
+            await setCachedImage(cacheKey, profileImage);
+          }
+        } else {
+          // Validate cached image
+          if (profileImage && !profileImage.startsWith('data:image/')) {
+            console.error('[GET-CHILD] Cached image invalid format, clearing cache');
+            const { deleteCachedImage } = await import('./imageCache.js');
+            await deleteCachedImage(cacheKey);
+            profileImage = null;
+          }
+        }
+        console.log('[GET-CHILD] Final profileImage:', !!profileImage, profileImage ? `length: ${profileImage.length}` : '');
+      } catch (error) {
+        console.error('[GET-CHILD] Error loading profile image:', error);
+        // Don't fail - just continue without image
+        profileImage = null;
+      }
+    } else {
+      console.log('[GET-CHILD] No profile image flag or direct image, skipping image load');
+    }
+    
     return {
       name: response.name,
       balance: response.balance || 0,
       cashBoxBalance: response.cashBoxBalance || 0,
-      profileImage: response.profileImage || null,
+      profileImage: profileImage,
       weeklyAllowance: response.weeklyAllowance || 0,
       allowanceType: response.allowanceType || 'weekly',
       allowanceDay: response.allowanceDay !== undefined ? response.allowanceDay : 1,
@@ -535,6 +628,31 @@ export const updateProfileImage = async (familyId, childId, profileImage) => {
       body: JSON.stringify({ profileImage })
     }, { useCache: false });
     
+    // Cache the image locally if provided
+    if (profileImage) {
+      try {
+        const { setCachedImage, getImageCacheKey } = await import('./imageCache.js');
+        const cacheKey = getImageCacheKey(familyId, childId, false);
+        if (cacheKey) {
+          await setCachedImage(cacheKey, profileImage);
+        }
+      } catch (cacheError) {
+        console.warn('[UPDATE-PROFILE-IMAGE] Error caching image:', cacheError);
+        // Don't fail - caching is optional
+      }
+    } else {
+      // Remove from cache if image is deleted
+      try {
+        const { deleteCachedImage, getImageCacheKey } = await import('./imageCache.js');
+        const cacheKey = getImageCacheKey(familyId, childId, false);
+        if (cacheKey) {
+          await deleteCachedImage(cacheKey);
+        }
+      } catch (cacheError) {
+        console.warn('[UPDATE-PROFILE-IMAGE] Error removing from cache:', cacheError);
+      }
+    }
+    
     // Invalidate cache
     invalidateChildCache(familyId, childId);
     invalidateFamilyCache(familyId);
@@ -685,6 +803,31 @@ export const updateParentProfileImage = async (familyId, profileImage) => {
       method: 'PUT',
       body: JSON.stringify({ profileImage })
     }, { useCache: false });
+    
+    // Cache the image locally if provided
+    if (profileImage) {
+      try {
+        const { setCachedImage, getImageCacheKey } = await import('./imageCache.js');
+        const cacheKey = getImageCacheKey(familyId, null, true);
+        if (cacheKey) {
+          await setCachedImage(cacheKey, profileImage);
+        }
+      } catch (cacheError) {
+        console.warn('[UPDATE-PARENT-PROFILE-IMAGE] Error caching image:', cacheError);
+        // Don't fail - caching is optional
+      }
+    } else {
+      // Remove from cache if image is deleted
+      try {
+        const { deleteCachedImage, getImageCacheKey } = await import('./imageCache.js');
+        const cacheKey = getImageCacheKey(familyId, null, true);
+        if (cacheKey) {
+          await deleteCachedImage(cacheKey);
+        }
+      } catch (cacheError) {
+        console.warn('[UPDATE-PARENT-PROFILE-IMAGE] Error removing from cache:', cacheError);
+      }
+    }
     
     // Invalidate cache
     clearCache(`/families/${familyId}`);

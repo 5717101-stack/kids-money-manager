@@ -17,6 +17,7 @@ const ChildView = ({ childId, familyId, onBackToParent, onLogout }) => {
   const [goalAmount, setGoalAmount] = useState('');
   const [editingGoal, setEditingGoal] = useState(false);
   const [showImagePicker, setShowImagePicker] = useState(false);
+  const [uploadingImage, setUploadingImage] = useState(false);
   const fileInputRef = React.useRef(null);
   const [expensesPeriod, setExpensesPeriod] = useState('month'); // 'week' or 'month'
   const [expensesByCategory, setExpensesByCategory] = useState([]);
@@ -471,6 +472,7 @@ const ChildView = ({ childId, familyId, onBackToParent, onLogout }) => {
     }
 
     try {
+      setUploadingImage(true);
       // Compress image before uploading using smart compression
       console.log('Compressing image, original size:', file.size, 'bytes');
       const base64Image = await smartCompressImage(file);
@@ -486,15 +488,20 @@ const ChildView = ({ childId, familyId, onBackToParent, onLogout }) => {
       setShowImagePicker(false);
     } catch (error) {
       alert(t('child.profile.error', { defaultValue: 'שגיאה בעדכון תמונת הפרופיל' }) + ': ' + error.message);
+    } finally {
+      setUploadingImage(false);
     }
   };
 
   const handleRemoveImage = async () => {
     try {
+      setUploadingImage(true);
       await updateProfileImage(familyId, childId, null);
       await loadChildData();
     } catch (error) {
       alert(t('child.profile.errorRemoving', { defaultValue: 'Error removing image' }) + ': ' + error.message);
+    } finally {
+      setUploadingImage(false);
     }
   };
 
@@ -847,20 +854,50 @@ const ChildView = ({ childId, familyId, onBackToParent, onLogout }) => {
       <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '20px', paddingTop: '10px' }}>
         <div style={{ position: 'relative' }}>
           {childData?.profileImage ? (
-            <img 
-              src={childData.profileImage} 
-              alt={childData.name}
-              loading="lazy"
-              decoding="async"
-              style={{
-                width: '120px',
-                height: '120px',
-                borderRadius: '50%',
-                objectFit: 'cover',
-                border: '4px solid white',
-                boxShadow: '0 4px 12px rgba(0,0,0,0.1)'
-              }}
-            />
+            <div style={{ position: 'relative', width: '120px', height: '120px' }}>
+              <img 
+                src={childData.profileImage} 
+                alt={childData.name}
+                loading="lazy"
+                decoding="async"
+                onError={(e) => {
+                  console.error('[CHILD-VIEW] Error loading profile image:', e);
+                  console.error('[CHILD-VIEW] Image src length:', childData.profileImage?.length);
+                  console.error('[CHILD-VIEW] Image src preview:', childData.profileImage?.substring(0, 50));
+                  // Hide broken image
+                  e.target.style.display = 'none';
+                  // Optionally clear the broken image from state
+                  setChildData(prev => prev ? { ...prev, profileImage: null } : null);
+                }}
+                onLoad={() => {
+                  console.log('[CHILD-VIEW] Profile image loaded successfully');
+                }}
+                style={{
+                  width: '120px',
+                  height: '120px',
+                  borderRadius: '50%',
+                  objectFit: 'cover',
+                  border: '4px solid white',
+                  boxShadow: '0 4px 12px rgba(0,0,0,0.1)',
+                  opacity: uploadingImage ? 0.5 : 1,
+                  transition: 'opacity 0.2s'
+                }}
+              />
+              {uploadingImage && (
+                <div style={{
+                  position: 'absolute',
+                  top: '50%',
+                  left: '50%',
+                  transform: 'translate(-50%, -50%)',
+                  width: '40px',
+                  height: '40px',
+                  border: '3px solid rgba(255, 255, 255, 0.3)',
+                  borderTop: '3px solid white',
+                  borderRadius: '50%',
+                  animation: 'spin 1s linear infinite'
+                }} />
+              )}
+            </div>
           ) : (
             <div style={{
               width: '120px',
@@ -874,9 +911,22 @@ const ChildView = ({ childId, familyId, onBackToParent, onLogout }) => {
               color: 'white',
               fontWeight: 700,
               border: '4px solid white',
-              boxShadow: '0 4px 12px rgba(0,0,0,0.1)'
+              boxShadow: '0 4px 12px rgba(0,0,0,0.1)',
+              position: 'relative',
+              opacity: uploadingImage ? 0.5 : 1,
+              transition: 'opacity 0.2s'
             }}>
-              {childData?.name?.charAt(0)?.toUpperCase() || '?'}
+              {!uploadingImage && (childData?.name?.charAt(0)?.toUpperCase() || '?')}
+              {uploadingImage && (
+                <div style={{
+                  width: '40px',
+                  height: '40px',
+                  border: '3px solid rgba(255, 255, 255, 0.3)',
+                  borderTop: '3px solid white',
+                  borderRadius: '50%',
+                  animation: 'spin 1s linear infinite'
+                }} />
+              )}
             </div>
           )}
           <button
