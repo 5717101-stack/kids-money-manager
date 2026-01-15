@@ -14,7 +14,7 @@
   },
   "common": {
     "version": "גרסה",
-    "logout": "התנתק",
+    "logout": "התנתקות",
     "loading": "טוען...",
     "save": "שמור",
     "cancel": "ביטול",
@@ -30,7 +30,8 @@
     "language": "שפה",
     "notYet": "עדיין לא שולם",
     "notApplicable": "לא רלוונטי",
-    "ofMonth": "בחודש"
+    "confirmLogout": "אישור התנתקות",
+    "confirmLogoutMessage": "האם אתה בטוח שברצונך להתנתק?"
   },
   "parent": {
     "dashboard": {
@@ -59,22 +60,7 @@
       "noExpenses": "אין הוצאות בתקופה זו",
       "total": "סה\"כ",
       "all": "הכל",
-      "balanceDetail": "פירוט יתרה לפי ילדים",
-      "paymentRequests": "בקשות תשלום",
-      "noPaymentRequests": "אין בקשות תשלום ממתינות",
-      "child": "ילד",
-      "requestedAt": "זמן ביצוע",
-      "note": "הערה",
-      "image": "תמונה",
-      "approve": "אשר תשלום",
-      "reject": "דחה",
-      "paymentApproved": "תשלום אושר בהצלחה!",
-      "paymentApproveError": "שגיאה באישור תשלום",
-      "paymentRejectError": "שגיאה בדחיית תשלום",
-      "approveError": "שגיאה באישור תשלום",
-      "alreadyApproved": "הבקשה כבר אושרה",
-      "alreadyRejected": "הבקשה כבר נדחתה",
-      "requestNotFound": "בקשה לא נמצאה"
+      "balanceDetail": "פירוט יתרה לפי ילדים"
     },
     "settings": {
       "title": "הגדרות",
@@ -133,8 +119,7 @@
         "deleteParentConfirm": "האם אתה בטוח שברצונך למחוק את {name}? פעולה זו תעביר את כל הנתונים לארכיון ולא ניתן לבטל אותה.",
         "deleteParentSuccess": "ההורה {name} נמחק והועבר לארכיון בהצלחה",
         "deleteParentError": "שגיאה במחיקת הורה",
-        "cannotDeleteMainParent": "לא ניתן למחוק את ההורה הראשי",
-        "goToChildren": "מעבר להגדרת ילדים במערכת"
+        "cannotDeleteMainParent": "לא ניתן למחוק את ההורה הראשי"
       },
       "passwordModal": {
         "title": "סיסמה ל{name}",
@@ -200,51 +185,6 @@
         "title": "תמונות פרופיל",
         "upload": "העלה תמונה",
         "remove": "הסר תמונה"
-      },
-      "childDetails": {
-        "title": "פרטי הילד",
-        "phoneNumber": "מספר טלפון",
-        "firstLogin": "כניסה ראשונה",
-        "lastLogin": "כניסה אחרונה"
-      },
-      "totalInterestEarned": "סה״כ ריבית",
-      "transactionCount": "מספר עסקאות",
-      "viewDetails": "הצג פרטים",
-      "closeDetails": "סגור פרטים",
-      "createChildSuccess": "ילד נוסף בהצלחה!",
-      "updateChildSuccess": "הגדרות הילד עודכנו בהצלחה!",
-      "notAvailable": "לא זמין",
-      "neverLoggedIn": "מעולם לא נכנס",
-      "tasks": {
-        "title": "ניהול מטלות",
-        "taskName": "שם המטלה",
-        "price": "מחיר",
-        "addTask": "הוסף מטלה",
-        "enterTaskDetails": "אנא הכנס שם מטלה ומחיר",
-        "addTaskError": "שגיאה בהוספת מטלה",
-        "updateTaskSuccess": "מטלה עודכנה בהצלחה!",
-        "updateTaskError": "שגיאה בעדכון מטלה",
-        "deleteTaskConfirm": "האם אתה בטוח שברצונך למחוק את המטלה?",
-        "deleteTaskSuccess": "מטלה נמחקה בהצלחה!",
-        "deleteTaskError": "שגיאה במחיקת מטלה",
-        "noTasks": "אין מטלות. הוסף מטלה חדשה למעלה.",
-        "history": "היסטוריית מטלות",
-        "backToTasks": "חזרה למטלות",
-        "noHistory": "אין היסטוריית מטלות.",
-        "loadHistoryError": "שגיאה בטעינת היסטוריית מטלות",
-        "updateStatusError": "שגיאה בעדכון סטטוס",
-        "approve": "אשר",
-        "reject": "דחה",
-        "statusApproved": "אושר",
-        "statusRejected": "נדחה",
-        "statusPending": "ממתין"
-      },
-      "tabs": {
-        "categories": "קטגוריות הוצאות",
-        "tasks": "מטלות",
-        "profileImages": "תמונות פרופיל",
-        "children": "ילדים",
-        "parents": "הורים"
       }
     }
   },
@@ -258,21 +198,9 @@
       "totalBalance": "יתרה כוללת",
       "myBalance": "היתרה שלי:",
       "interestEarned": "ריבית נצברה:",
-      "confirmLogout": "האם אתה בטוח שברצונך להתנתק?",
-      "deleteFamily": "מחיקת פרופיל משפחתי",
-      "tasks": "מטלות",
-      "noTasks": "אין מטלות פעילות",
-      "payment": "תשלום",
-      "note": "הערה (אופציונלי)",
-      "notePlaceholder": "הוסף הערה...",
-      "image": "תמונה (אופציונלי)",
-      "takePhoto": "צלם תמונה",
-      "cameraError": "שגיאה בצילום תמונה",
-      "cameraPermissionDenied": "נדרשת הרשאה לגישה למצלמה",
-      "requestSent": "בקשת תשלום נשלחה בהצלחה!",
-      "sendRequest": "שלח בקשת תשלום",
-      "errorImageTooLarge": "התמונה גדולה מדי גם לאחר דחיסה. אנא בחר תמונה קטנה יותר."
-    },
+    "confirmLogout": "האם אתה בטוח שברצונך להתנתק?",
+    "deleteFamily": "מחיקת פרופיל משפחתי"
+  },
   "deleteFamily": {
     "title": "מחיקת פרופיל משפחתי",
     "warning": "מחיקת הפרופיל המשפחתי תמחק את כל הנתונים וכל בני המשפחה המשויכים לפרופיל הזה. אין דרך לשחזר את הפרופיל או ההיסטוריה של הפעולות.",
@@ -335,8 +263,6 @@
       "title": "התפלגות הוצאות",
       "week": "שבוע אחרון",
       "month": "חודש אחרון",
-      "weekShort": "שבוע",
-      "monthShort": "חודש",
       "chartTitle": "הוצאות - {period}"
     }
   },
@@ -393,22 +319,10 @@
         "title": "מטרות חיסכון",
         "content": "הגדירו מטרת חיסכון כדי לעקוב אחרי ההתקדמות שלכם. תראו כמה נשאר לחסוך כדי להגיע ליעד."
       },
-    "expenses": {
-      "title": "גרף הוצאות",
-      "content": "הגרף מציג את ההוצאות שלכם לפי קטגוריות. לחיצה על קטגוריה תציג רק את ההוצאות שלה בהיסטוריה.",
-      "week": "שבוע אחרון",
-      "month": "חודש אחרון",
-      "chartTitle": "הוצאות - {period}",
-      "loading": "טוען...",
-      "noExpenses": "אין הוצאות בתקופה זו"
-    },
-    "income": {
-      "title": "הכנסות",
-      "distributionTitle": "התפלגות הכנסות",
-      "chartTitle": "הכנסות - {period}",
-      "loading": "טוען...",
-      "noIncome": "אין הכנסות בתקופה זו"
-    }
+      "expenses": {
+        "title": "גרף הוצאות",
+        "content": "הגרף מציג את ההוצאות שלכם לפי קטגוריות. לחיצה על קטגוריה תציג רק את ההוצאות שלה בהיסטוריה."
+      }
     }
   },
   "auth": {
@@ -496,7 +410,6 @@
     "dashboard": "דשבורד הורים",
     "profile": "פרופיל",
     "categories": "קטגוריות",
-    "tasks": "מטלות",
     "allowances": "דמי כיס",
     "children": "ילדים",
     "childrenSettings": "הגדרת ילדים",

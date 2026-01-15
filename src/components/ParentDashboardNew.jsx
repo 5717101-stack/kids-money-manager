@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
-import { getData, getCategories, getChildTransactions, addTransaction, getFamilyInfo, updateParentProfileImage, getPaymentRequests, approvePaymentRequest, rejectPaymentRequest } from '../utils/api';
-import { clearCache } from '../utils/cache';
+import { getData, getCategories, getChildTransactions, addTransaction, getFamilyInfo, updateParentProfileImage } from '../utils/api';
 import { smartCompressImage } from '../utils/imageCompression';
 import Sidebar from './Sidebar';
 import QuickActionModal from './QuickActionModal';
@@ -10,15 +9,16 @@ import DeleteFamilyProfile from './DeleteFamilyProfile';
 import ExpensesPieChart from './ExpensesPieChart';
 import Guide from './Guide';
 
-const ParentDashboard = ({ familyId, isNewFamily: isNewFamilyProp, onChildrenUpdated, onLogout, onViewChild, onNewFamilyComplete }) => {
+const ParentDashboard = ({ familyId, onChildrenUpdated, onLogout, onViewChild, isNewFamily: initialIsNewFamily = false }) => {
   const { t, i18n } = useTranslation();
   const [allData, setAllData] = useState({ children: {} });
   const [categories, setCategories] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showSidebar, setShowSidebar] = useState(false);
-  const [currentView, setCurrentView] = useState('dashboard'); // 'dashboard', 'categories', 'tasks', 'profileImages', 'allowances', 'children', 'parents', 'deleteFamily', 'guide'
+  const [currentView, setCurrentView] = useState('dashboard'); // 'dashboard', 'categories', 'profileImages', 'allowances', 'children', 'parents', 'deleteFamily', 'guide'
   const [showQuickAction, setShowQuickAction] = useState(false);
   const [showGuide, setShowGuide] = useState(false);
+  const [isNewFamily, setIsNewFamily] = useState(initialIsNewFamily);
   const [quickActionType, setQuickActionType] = useState('deposit'); // 'deposit' or 'expense'
   const [showChildSelector, setShowChildSelector] = useState(false);
   const [pendingActionType, setPendingActionType] = useState(null); // 'deposit' or 'expense'
@@ -42,13 +42,7 @@ const ParentDashboard = ({ familyId, isNewFamily: isNewFamilyProp, onChildrenUpd
     return 5;
   });
   const [chartReloadKey, setChartReloadKey] = useState(0);
-  const [paymentRequests, setPaymentRequests] = useState([]);
-  const [showPaymentRequests, setShowPaymentRequests] = useState(false);
-  const [selectedPaymentRequest, setSelectedPaymentRequest] = useState(null);
-  
-  // Track if guide has been shown in this session
-  const guideShownRef = useRef(false);
-  const [familyInfoForGuide, setFamilyInfoForGuide] = useState(null);
+  const guideShownRef = useRef(false); // Track if guide has been shown to prevent double opening
 
   useEffect(() => {
     loadData();
@@ -56,60 +50,79 @@ const ParentDashboard = ({ familyId, isNewFamily: isNewFamilyProp, onChildrenUpd
     return () => clearInterval(interval);
   }, [familyId, activityLimit]);
 
-  // Load family info to check parent name
+  // Check if guide should be shown on first visit or for new family
   useEffect(() => {
-    const loadFamilyInfo = async () => {
-      if (!familyId) return;
-      try {
-        const info = await getFamilyInfo(familyId);
-        setFamilyInfoForGuide(info);
-      } catch (error) {
-        console.error('Error loading family info for guide:', error);
+    // Don't show guide if it was already shown in this session
+    if (guideShownRef.current) {
+      return;
+    }
+    
+    // Check localStorage - if guide was seen, don't show again
+    const guideSeen = localStorage.getItem('guideSeen_parent');
+    
+    // For new family, check if parent name is still "הורה1"
+    if (isNewFamily) {
+      // Don't show guide if we're already in parents view (means we already went through the process)
+      if (currentView === 'parents') {
+        guideShownRef.current = true;
+        return;
       }
-    };
-    loadFamilyInfo();
-  }, [familyId]);
-
-  // Check if guide should be shown on first visit
-  useEffect(() => {
-    // For new families: show guide if not shown yet and parent name is still "הורה1"
-    if (isNewFamilyProp && !guideShownRef.current && currentView !== 'parents') {
-      const mainParentName = familyInfoForGuide?.parentName || 'הורה1';
-      const isParentNameStillDefault = mainParentName === 'הורה1';
       
-      if (isParentNameStillDefault) {
-        setShowGuide(true);
-        guideShownRef.current = true; // Mark as shown for this session
-      }
-    } 
-    // For existing families: show guide only if not seen before and on dashboard
-    else if (!isNewFamilyProp && currentView === 'dashboard' && !localStorage.getItem('guideSeen_parent') && !guideShownRef.current) {
+      // Load family info to check parent name
+      const checkParentName = async () => {
+        try {
+          const info = await getFamilyInfo(familyId);
+          const mainParentName = info?.parents?.[0]?.name || info?.parentName || '';
+          const isParentNameStillDefault = mainParentName === 'הורה1';
+          
+          // Only show guide if:
+          // 1. Parent name is still "הורה1" (hasn't been changed yet)
+          // 2. We're not already in parents view (haven't gone through the process yet)
+          // 3. Guide hasn't been shown in this session
+          if (isParentNameStillDefault && currentView !== 'parents' && !guideShownRef.current) {
+            guideShownRef.current = true;
+            setShowGuide(true);
+          } else {
+            // Parent name was changed OR we're already in parents view, mark guide as shown
+            guideShownRef.current = true;
+          }
+        } catch (error) {
+          console.error('Error checking parent name:', error);
+          // If error, only show guide if we're not already in parents view
+          if (currentView !== 'parents' && !guideShownRef.current) {
+            guideShownRef.current = true;
+            setShowGuide(true);
+          } else {
+            guideShownRef.current = true;
+          }
+        }
+      };
+      
+      checkParentName();
+      return;
+    }
+    
+    // For existing families, check localStorage
+    if (guideSeen) {
+      guideShownRef.current = true;
+      return;
+    }
+    
+    // For first visit (not new family, but guide not seen)
+    if (!guideShownRef.current && !guideSeen && currentView === 'dashboard') {
+      guideShownRef.current = true;
       setShowGuide(true);
     }
-  }, [currentView, isNewFamilyProp, familyInfoForGuide]);
+  }, [isNewFamily, currentView, familyId]);
 
   const loadData = async () => {
     if (!familyId) return;
     try {
-      const [dataResult, categoriesResult, familyInfoResult, paymentRequestsResult] = await Promise.allSettled([
+      const [dataResult, categoriesResult, familyInfoResult] = await Promise.allSettled([
         getData(familyId),
         getCategories(familyId),
-        getFamilyInfo(familyId),
-        getPaymentRequests(familyId, 'pending').catch(() => [])
+        getFamilyInfo(familyId)
       ]);
-
-      // Check if family was not found (deleted)
-      if (dataResult.status === 'rejected' && dataResult.reason?.message === 'FAMILY_NOT_FOUND') {
-        console.warn('[PARENT-DASHBOARD] Family not found, redirecting to login');
-        // Clear all state and redirect to login
-        if (onLogout) {
-          onLogout();
-        } else {
-          // Fallback: reload page to trigger App.jsx login check
-          window.location.href = '/';
-        }
-        return;
-      }
 
       if (dataResult.status === 'fulfilled' && dataResult.value) {
         setAllData(dataResult.value);
@@ -122,11 +135,6 @@ const ParentDashboard = ({ familyId, isNewFamily: isNewFamilyProp, onChildrenUpd
         if (familyInfoResult.status === 'fulfilled' && familyInfoResult.value) {
           setParentName(familyInfoResult.value.parentName || '');
           setParentProfileImage(familyInfoResult.value.parentProfileImage || null);
-        }
-        
-        // Load pending payment requests
-        if (paymentRequestsResult.status === 'fulfilled') {
-          setPaymentRequests(paymentRequestsResult.value || []);
         }
         
         // Calculate total family balance (only balance with parents, not cashBoxBalance)
@@ -262,94 +270,26 @@ const ParentDashboard = ({ familyId, isNewFamily: isNewFamilyProp, onChildrenUpd
   };
 
   const handleCenterButtonClick = () => {
-    // Show payment requests instead of child selector
-    setShowPaymentRequests(true);
-  };
-
-  const handlePaymentRequestClick = (request) => {
-    setSelectedPaymentRequest(request);
-  };
-
-  const handleApprovePayment = async (requestId) => {
-    if (!familyId) return;
-    try {
-      // Clear cache and reload payment requests to get latest status
-      clearCache(`/families/${familyId}/payment-requests`);
-      clearCache(`/families/${familyId}/payment-requests?status=pending`);
-      
-      // Check if request is still pending (without cache)
-      const currentRequests = await getPaymentRequests(familyId, null, false);
-      const currentRequest = currentRequests.find(r => r._id === requestId);
-      
-      if (!currentRequest) {
-        alert(t('parent.dashboard.requestNotFound', { defaultValue: 'בקשה לא נמצאה' }));
-        await loadData();
-        setSelectedPaymentRequest(null);
-        return;
-      }
-      
-      if (currentRequest.status !== 'pending') {
-        const statusMessage = currentRequest.status === 'approved' 
-          ? t('parent.dashboard.alreadyApproved', { defaultValue: 'הבקשה כבר אושרה' })
-          : t('parent.dashboard.alreadyRejected', { defaultValue: 'הבקשה כבר נדחתה' });
-        alert(statusMessage);
-        await loadData();
-        setSelectedPaymentRequest(null);
-        return;
-      }
-      
-      try {
-        await approvePaymentRequest(familyId, requestId);
-        await loadData();
-        setSelectedPaymentRequest(null);
-      } catch (error) {
-        console.error('Error approving payment:', error);
-        const errorMessage = error.message || error.error || 'שגיאה לא ידועה';
-        alert(t('parent.dashboard.approveError', { defaultValue: 'שגיאה באישור תשלום' }) + ': ' + errorMessage);
-        await loadData();
-        setSelectedPaymentRequest(null);
-        return;
-      }
-      // Show success notification
-      const notification = document.createElement('div');
-      notification.textContent = t('parent.dashboard.paymentApproved', { defaultValue: 'תשלום אושר בהצלחה!' });
-      const isRTL = i18n.language === 'he';
-      const animationName = isRTL ? 'slideInRTL' : 'slideIn';
-      const animationOutName = isRTL ? 'slideOutRTL' : 'slideOut';
-      const rightOrLeft = isRTL ? 'left' : 'right';
-      notification.style.cssText = `
-        position: fixed;
-        bottom: 100px;
-        ${rightOrLeft}: 20px;
-        background: linear-gradient(135deg, #10B981 0%, #059669 100%);
-        color: white;
-        padding: 16px 24px;
-        border-radius: 12px;
-        box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3);
-        z-index: 10005;
-        font-weight: 600;
-        animation: ${animationName} 0.3s ease;
-        max-width: calc(100% - 40px);
-      `;
-      document.body.appendChild(notification);
-      setTimeout(() => {
-        notification.style.animation = `${animationOutName} 0.3s ease`;
-        setTimeout(() => notification.remove(), 300);
-      }, 2000);
-    } catch (error) {
-      alert(t('parent.dashboard.paymentApproveError', { defaultValue: 'שגיאה באישור תשלום' }) + ': ' + error.message);
+    console.log('[ParentDashboard] handleCenterButtonClick called');
+    console.log('[ParentDashboard] childrenList.length:', childrenList.length);
+    
+    // If children list is empty, show message
+    if (childrenList.length === 0) {
+      alert(t('parent.dashboard.noChildren', { defaultValue: 'אין ילדים במשפחה. הוסף ילד בהגדרות.' }));
+      return;
     }
-  };
-
-  const handleRejectPayment = async (requestId) => {
-    if (!familyId) return;
-    try {
-      await rejectPaymentRequest(familyId, requestId);
-      await loadData();
-      setSelectedPaymentRequest(null);
-    } catch (error) {
-      alert(t('parent.dashboard.paymentRejectError', { defaultValue: 'שגיאה בדחיית תשלום' }) + ': ' + error.message);
+    
+    // If only one child, select it automatically
+    if (childrenList.length === 1) {
+      console.log('[ParentDashboard] Only one child, selecting automatically');
+      handleChildSelected(childrenList[0]);
+      return;
     }
+    
+    // Show child selector
+    console.log('[ParentDashboard] Showing child selector');
+    setPendingActionType(null);
+    setShowChildSelector(true);
   };
 
   if (loading) {
@@ -387,10 +327,10 @@ const ParentDashboard = ({ familyId, isNewFamily: isNewFamilyProp, onChildrenUpd
         return parentName || t('parent.dashboard.title', { defaultValue: 'ממשק הורים' });
       case 'categories':
         return t('parent.settings.categories.title', { defaultValue: 'קטגוריות' });
-      case 'tasks':
-        return t('parent.settings.tasks.title', { defaultValue: 'מטלות' });
       case 'profileImages':
         return t('parent.settings.profileImages.title', { defaultValue: 'תמונות פרופיל' });
+      case 'allowances':
+        return t('parent.settings.allowance.title', { defaultValue: 'דמי כיס' });
       case 'children':
         return t('parent.settings.manageChildren', { defaultValue: 'ניהול ילדים' });
       case 'parents':
@@ -769,7 +709,6 @@ const ParentDashboard = ({ familyId, isNewFamily: isNewFamilyProp, onChildrenUpd
         <div className="content-area">
           <Settings 
             familyId={familyId}
-            isNewFamily={isNewFamilyProp && currentView === 'parents'}
             onClose={async () => {
               setCurrentView('dashboard');
               await loadData();
@@ -783,12 +722,14 @@ const ParentDashboard = ({ familyId, isNewFamily: isNewFamilyProp, onChildrenUpd
             inSidebar={false}
             asPage={true}
             onChildrenUpdated={onChildrenUpdated}
-            onTabChange={(tab) => setCurrentView(tab)}
+            isNewFamily={isNewFamily && currentView === 'parents'}
             onParentSaved={() => {
-              if (isNewFamilyProp && onNewFamilyComplete) {
-                onNewFamilyComplete(); // Notify App.jsx that new family setup is complete
-              }
-              localStorage.setItem('guideSeen_parent', 'true'); // Mark guide as seen after initial parent setup
+              setIsNewFamily(false);
+              // Mark guide as seen after parent is saved to prevent showing guide again
+              localStorage.setItem('guideSeen_parent', 'true');
+            }}
+            onTabChange={(tab) => {
+              setCurrentView(tab);
             }}
           />
         </div>
@@ -816,255 +757,53 @@ const ParentDashboard = ({ familyId, isNewFamily: isNewFamilyProp, onChildrenUpd
         />
       )}
 
-      {/* Bottom Navigation Bar - Hidden on settings screens */}
-      {!(['categories', 'tasks', 'children', 'parents', 'deleteFamily'].includes(currentView) || showGuide) && (
+      {/* Bottom Navigation Bar - Hidden in certain views */}
+      {currentView === 'dashboard' && !showGuide && (
         <div className="bottom-nav">
-          {/* Left: Income (Deposit) */}
-          <button 
-            className="nav-item"
-            onClick={(e) => {
-              e.preventDefault();
-              e.stopPropagation();
-              handleBottomNavAction('deposit');
-            }}
-            type="button"
-          >
-            <span style={{ fontSize: '20px' }}>+</span>
-            <span>{t('parent.dashboard.addMoney', { defaultValue: 'הוספת כסף' })}</span>
-          </button>
-          
-          <button 
-            className="fab-btn"
-            onClick={(e) => {
-              e.preventDefault();
-              e.stopPropagation();
-              handleCenterButtonClick();
-            }}
-            type="button"
-            style={{ position: 'relative' }}
-          >
-            {paymentRequests.length > 0 && (
-              <span style={{
-                position: 'absolute',
-                top: '-4px',
-                right: '-4px',
-                background: '#EF4444',
-                color: 'white',
-                borderRadius: '50%',
-                width: '20px',
-                height: '20px',
-                fontSize: '12px',
-                fontWeight: 700,
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                border: '2px solid white'
-              }}>
-                {paymentRequests.length > 9 ? '9+' : paymentRequests.length}
-              </span>
-            )}
-            <span style={{ fontSize: '20px' }}>💰</span>
-          </button>
-          
-          {/* Right: Expense */}
-          <button 
-            className="nav-item"
-            onClick={(e) => {
-              e.preventDefault();
-              e.stopPropagation();
-              handleBottomNavAction('expense');
-            }}
-            type="button"
-          >
-            <span style={{ fontSize: '20px' }}>-</span>
-            <span>{t('parent.dashboard.recordExpense', { defaultValue: 'דיווח הוצאה' })}</span>
-          </button>
-        </div>
-      )}
-
-      {/* Payment Requests Modal */}
-      {showPaymentRequests && (
-        <div className="child-selector-modal-overlay" onClick={() => {
-          setShowPaymentRequests(false);
-          setSelectedPaymentRequest(null);
-        }}>
-          <div className="child-selector-modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '600px' }}>
-            {!selectedPaymentRequest ? (
-              <>
-                <div className="child-selector-header">
-                  <h2>{t('parent.dashboard.paymentRequests', { defaultValue: 'בקשות תשלום' })}</h2>
-                  <button 
-                    className="close-button" 
-                    onClick={() => {
-                      setShowPaymentRequests(false);
-                      setSelectedPaymentRequest(null);
-                    }}
-                  >
-                    ✕
-                  </button>
-                </div>
-                <div className="child-selector-list">
-                  {paymentRequests.length === 0 ? (
-                    <div style={{ padding: '40px', textAlign: 'center', color: 'var(--text-muted)' }}>
-                      {t('parent.dashboard.noPaymentRequests', { defaultValue: 'אין בקשות תשלום ממתינות' })}
-                    </div>
-                  ) : (
-                    paymentRequests.map((request) => (
-                      <button
-                        key={request._id}
-                        className="child-selector-item"
-                        onClick={() => handlePaymentRequestClick(request)}
-                        style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: '8px' }}
-                      >
-                        <div style={{ display: 'flex', justifyContent: 'space-between', width: '100%', alignItems: 'center' }}>
-                          <div>
-                            <div style={{ fontSize: '16px', fontWeight: 600 }}>{request.taskName}</div>
-                            <div style={{ fontSize: '14px', color: 'var(--text-muted)' }}>
-                              {request.childName} - ₪{request.taskPrice.toFixed(2)}
-                            </div>
-                          </div>
-                          <span style={{ fontSize: '20px' }}>→</span>
-                        </div>
-                        {request.note && (
-                          <div style={{ fontSize: '12px', color: 'var(--text-muted)', fontStyle: 'italic' }}>
-                            {request.note.substring(0, 50)}{request.note.length > 50 ? '...' : ''}
-                          </div>
-                        )}
-                      </button>
-                    ))
-                  )}
-                </div>
-              </>
-            ) : (
-              <div style={{ 
-                padding: '20px',
-                display: 'flex',
-                flexDirection: 'column',
-                maxHeight: '80vh',
-                overflow: 'hidden'
-              }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', flexShrink: 0 }}>
-                  <h2 style={{ margin: 0 }}>{selectedPaymentRequest.taskName}</h2>
-                  <button 
-                    className="close-button" 
-                    onClick={() => setSelectedPaymentRequest(null)}
-                  >
-                    ✕
-                  </button>
-                </div>
-                <div style={{ 
-                  display: 'flex', 
-                  flexDirection: 'column', 
-                  gap: '16px',
-                  overflowY: 'auto',
-                  flex: 1,
-                  minHeight: 0,
-                  paddingRight: '8px'
-                }}>
-                  <div>
-                    <div style={{ fontSize: '14px', color: 'var(--text-muted)', marginBottom: '4px' }}>
-                      {t('parent.dashboard.child', { defaultValue: 'ילד' })}
-                    </div>
-                    <div style={{ fontSize: '16px', fontWeight: 600 }}>{selectedPaymentRequest.childName}</div>
-                  </div>
-                  <div>
-                    <div style={{ fontSize: '14px', color: 'var(--text-muted)', marginBottom: '4px' }}>
-                      {t('parent.dashboard.amount', { defaultValue: 'סכום' })}
-                    </div>
-                    <div style={{ fontSize: '20px', fontWeight: 700, color: 'var(--primary)' }}>
-                      ₪{selectedPaymentRequest.taskPrice.toFixed(2)}
-                    </div>
-                  </div>
-                  <div>
-                    <div style={{ fontSize: '14px', color: 'var(--text-muted)', marginBottom: '4px' }}>
-                      {t('parent.dashboard.requestedAt', { defaultValue: 'זמן ביצוע' })}
-                    </div>
-                    <div style={{ fontSize: '14px' }}>
-                      {new Date(selectedPaymentRequest.requestedAt).toLocaleDateString(i18n.language === 'he' ? 'he-IL' : 'en-US', {
-                        year: 'numeric',
-                        month: 'long',
-                        day: 'numeric',
-                        hour: '2-digit',
-                        minute: '2-digit'
-                      })}
-                    </div>
-                  </div>
-                  {selectedPaymentRequest.note && (
-                    <div>
-                      <div style={{ fontSize: '14px', color: 'var(--text-muted)', marginBottom: '4px' }}>
-                        {t('parent.dashboard.note', { defaultValue: 'הערה' })}
-                      </div>
-                      <div style={{ fontSize: '14px', padding: '12px', background: '#F9FAFB', borderRadius: '8px' }}>
-                        {selectedPaymentRequest.note}
-                      </div>
-                    </div>
-                  )}
-                  {selectedPaymentRequest.image && (
-                    <div>
-                      <div style={{ fontSize: '14px', color: 'var(--text-muted)', marginBottom: '4px' }}>
-                        {t('parent.dashboard.image', { defaultValue: 'תמונה' })}
-                      </div>
-                      <img 
-                        src={selectedPaymentRequest.image} 
-                        alt="Task completion" 
-                        style={{
-                          maxWidth: '100%',
-                          maxHeight: '200px',
-                          width: 'auto',
-                          height: 'auto',
-                          borderRadius: '8px',
-                          objectFit: 'contain',
-                          display: 'block'
-                        }}
-                      />
-                    </div>
-                  )}
-                </div>
-                <div style={{ 
-                  display: 'flex', 
-                  gap: '12px', 
-                  marginTop: '20px',
-                  flexShrink: 0,
-                  paddingTop: '16px',
-                  borderTop: '1px solid rgba(0,0,0,0.1)'
-                }}>
-                  <button
-                    onClick={() => handleRejectPayment(selectedPaymentRequest._id)}
-                    style={{
-                      flex: 1,
-                      padding: '12px',
-                      borderRadius: '8px',
-                      background: '#EF4444',
-                      color: 'white',
-                      border: 'none',
-                      fontSize: '16px',
-                      fontWeight: 600,
-                      cursor: 'pointer'
-                    }}
-                  >
-                    {t('parent.dashboard.reject', { defaultValue: 'דחה' })}
-                  </button>
-                  <button
-                    onClick={() => handleApprovePayment(selectedPaymentRequest._id)}
-                    style={{
-                      flex: 1,
-                      padding: '12px',
-                      borderRadius: '8px',
-                      background: 'var(--primary-gradient)',
-                      color: 'white',
-                      border: 'none',
-                      fontSize: '16px',
-                      fontWeight: 600,
-                      cursor: 'pointer'
-                    }}
-                  >
-                    {t('parent.dashboard.approve', { defaultValue: 'אשר תשלום' })}
-                  </button>
-                </div>
-              </div>
-            )}
+            {/* Left: Income (Deposit) */}
+            <button 
+              className="nav-item"
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                handleBottomNavAction('deposit');
+              }}
+              type="button"
+            >
+              <span style={{ fontSize: '20px' }}>+</span>
+              <span>{t('parent.dashboard.addMoney', { defaultValue: 'הוספת כסף' })}</span>
+            </button>
+            
+            <button 
+              className="fab-btn"
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                handleCenterButtonClick();
+              }}
+              type="button"
+            >
+              {selectedChild ? (
+                <span style={{ fontSize: '14px', fontWeight: 700 }}>{selectedChild.name}</span>
+              ) : (
+                <span style={{ fontSize: '14px', fontWeight: 700 }}>{t('parent.dashboard.selectChild', { defaultValue: 'בחירת ילד' })}</span>
+              )}
+            </button>
+            
+            {/* Right: Expense */}
+            <button 
+              className="nav-item"
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                handleBottomNavAction('expense');
+              }}
+              type="button"
+            >
+              <span style={{ fontSize: '20px' }}>-</span>
+              <span>{t('parent.dashboard.recordExpense', { defaultValue: 'דיווח הוצאה' })}</span>
+            </button>
           </div>
-        </div>
       )}
 
       {/* Child Selector Modal */}
@@ -1122,17 +861,19 @@ const ParentDashboard = ({ familyId, isNewFamily: isNewFamilyProp, onChildrenUpd
           userType="parent" 
           onClose={() => {
             setShowGuide(false);
-            guideShownRef.current = true;
-            localStorage.setItem('guideSeen_parent', 'true');
+            guideShownRef.current = true; // Mark as shown to prevent reopening
             
-            // For new families: navigate to parent settings after guide
-            if (isNewFamilyProp) {
+            if (isNewFamily) {
+              // For new family, navigate to parents settings
+              // Don't set isNewFamily to false yet - let Settings handle it after parent is saved
+              setCurrentView('parents');
+              // Only set localStorage if this is the first time (not when coming back from child dashboard)
+              // Check if we're already in parents view - if so, don't set localStorage (parent was already saved)
               if (currentView !== 'parents') {
-                setCurrentView('parents');
-              } else {
-                setCurrentView('dashboard');
+                localStorage.setItem('guideSeen_parent', 'true');
               }
             } else {
+              localStorage.setItem('guideSeen_parent', 'true');
               setCurrentView('dashboard');
             }
           }} 

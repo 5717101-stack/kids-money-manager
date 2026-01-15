@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
-import { getChild, getChildTransactions, updateCashBoxBalance, getSavingsGoal, updateSavingsGoal, deleteSavingsGoal, updateProfileImage, getExpensesByCategory, addTransaction, getCategories, getTasks, requestTaskPayment } from '../utils/api';
-// Camera is imported dynamically when needed
+import { getChild, getChildTransactions, updateCashBoxBalance, getSavingsGoal, updateSavingsGoal, deleteSavingsGoal, updateProfileImage, getExpensesByCategory, addTransaction, getCategories } from '../utils/api';
 import { smartCompressImage } from '../utils/imageCompression';
 import { getCached, setCached } from '../utils/cache';
 import ExpensePieChart from './ExpensePieChart';
@@ -21,9 +20,6 @@ const ChildView = ({ childId, familyId, onBackToParent, onLogout }) => {
   const [expensesPeriod, setExpensesPeriod] = useState('month'); // 'week' or 'month'
   const [expensesByCategory, setExpensesByCategory] = useState([]);
   const [loadingExpenses, setLoadingExpenses] = useState(false);
-  const [chartType, setChartType] = useState('expenses'); // 'expenses' or 'income'
-  const [incomeByCategory, setIncomeByCategory] = useState([]);
-  const [loadingIncome, setLoadingIncome] = useState(false);
   const [filteredCategory, setFilteredCategory] = useState(null); // Category to filter transactions
   const [historyLimit, setHistoryLimit] = useState(() => {
     // Load from localStorage or default to 5
@@ -50,13 +46,7 @@ const ChildView = ({ childId, familyId, onBackToParent, onLogout }) => {
   const [error, setError] = useState(null);
   const [showGuide, setShowGuide] = useState(false);
   const [chartReloadKey, setChartReloadKey] = useState(0);
-  const [tasks, setTasks] = useState([]);
-  const [showTasksList, setShowTasksList] = useState(false);
-  const [selectedTask, setSelectedTask] = useState(null);
-  const [taskNote, setTaskNote] = useState('');
-  const [taskImage, setTaskImage] = useState(null);
-  const [submittingTaskRequest, setSubmittingTaskRequest] = useState(false);
-  const taskImageInputRef = useRef(null);
+  const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
 
   useEffect(() => {
     // Reset loading and error when childId or familyId changes
@@ -75,11 +65,10 @@ const ChildView = ({ childId, familyId, onBackToParent, onLogout }) => {
         // Load child data and transactions in parallel
         // Load more transactions if limit is null (all) or if limit is higher
         const transactionLimit = historyLimit === null ? 50 : Math.max(historyLimit, 10);
-        const [child, trans, goal, tasksData] = await Promise.all([
+        const [child, trans, goal] = await Promise.all([
           getChild(familyId, childId),
           getChildTransactions(familyId, childId, transactionLimit),
-          getSavingsGoal(familyId, childId),
-          getTasks(familyId).catch(() => [])
+          getSavingsGoal(familyId, childId)
         ]);
         
         if (child) {
@@ -115,12 +104,6 @@ const ChildView = ({ childId, familyId, onBackToParent, onLogout }) => {
           setGoalName(goal.name || '');
           setGoalAmount(goal.targetAmount?.toString() || '');
         }
-        
-        // Filter tasks active for this child
-        const activeTasks = (tasksData || []).filter(task => 
-          (task.activeFor || []).includes(childId)
-        );
-        setTasks(activeTasks);
       } catch (err) {
         console.error('Error loading child data:', err);
         setError(err.message || t('child.dashboard.loadError', { defaultValue: 'Error loading data' }));
@@ -136,38 +119,55 @@ const ChildView = ({ childId, familyId, onBackToParent, onLogout }) => {
       setShowGuide(true);
     }
     
-    // Refresh every 30 seconds to show updated balance (reduced frequency for better performance)
+    // Refresh every 15 seconds to show updated balance (reduced frequency for better performance)
     const interval = setInterval(() => {
       if (familyId && childId && !loading) {
         loadChildData();
         loadSavingsGoal();
         // Don't reload expenses chart automatically - only when period changes
       }
-    }, 30000);
+    }, 15000);
     return () => clearInterval(interval);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [childId, familyId, historyLimit]);
 
-  // Load expenses/income when period changes or on initial load
+  // Load expenses when period changes or on initial load
   useEffect(() => {
     if (familyId && childId) {
-      if (chartType === 'expenses') {
-        loadExpensesByCategory();
-      } else {
-        loadIncomeByCategory();
-      }
+      loadExpensesByCategory();
       loadCategories();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [expensesPeriod, familyId, childId, chartType]);
+  }, [expensesPeriod, familyId, childId]);
 
   const loadCategories = async () => {
-    if (!familyId) return;
+    if (!familyId || !childId) return;
     try {
       const cats = await getCategories(familyId);
-      setCategories(cats || []);
+      // Filter categories that are active for this child
+      const activeCategories = (cats || [])
+        .filter(cat => (cat.activeFor || []).includes(childId))
+        .map(cat => cat.name);
+      
+      if (activeCategories.length > 0) {
+        setCategories(activeCategories);
+        // Reset category if current one is not in the active list
+        if (transactionCategory && !activeCategories.includes(transactionCategory)) {
+          setTransactionCategory('');
+        }
+      } else {
+        // Fallback to default categories if none found
+        const defaultCategories = ['משחקים', 'ממתקים', 'בגדים', 'בילויים', 'אחר'];
+        setCategories(defaultCategories);
+        if (transactionCategory && !defaultCategories.includes(transactionCategory)) {
+          setTransactionCategory('');
+        }
+      }
     } catch (error) {
       console.error('Error loading categories:', error);
+      // Fallback to default categories on error
+      const defaultCategories = ['משחקים', 'ממתקים', 'בגדים', 'בילויים', 'אחר'];
+      setCategories(defaultCategories);
     }
   };
 
@@ -264,151 +264,6 @@ const ChildView = ({ childId, familyId, onBackToParent, onLogout }) => {
       setExpensesByCategory([]);
     } finally {
       setLoadingExpenses(false);
-    }
-  };
-
-  const loadIncomeByCategory = async () => {
-    if (!familyId || !childId) return;
-    
-    const days = expensesPeriod === 'week' ? 7 : 30;
-    const cacheKey = `income_by_category_${familyId}_${childId}_${days}`;
-    const cacheTTL = 10 * 60 * 1000; // 10 minutes cache
-    
-    // Check cache first
-    const cached = getCached(cacheKey, cacheTTL);
-    if (cached !== null) {
-      setIncomeByCategory(cached);
-      setLoadingIncome(false);
-      return;
-    }
-    
-    try {
-      setLoadingIncome(true);
-      
-      // Load all transactions for the period
-      const allTransactions = await getChildTransactions(familyId, childId, null);
-      console.log('[INCOME-CHART] Total transactions loaded:', allTransactions?.length || 0);
-      
-      // Calculate date range
-      const endDate = new Date();
-      endDate.setHours(23, 59, 59, 999); // End of today
-      const startDate = new Date();
-      startDate.setDate(startDate.getDate() - days);
-      startDate.setHours(0, 0, 0, 0); // Start of day
-      
-      console.log('[INCOME-CHART] Date range:', { 
-        startDate: startDate.toISOString(), 
-        endDate: endDate.toISOString(), 
-        days,
-        startDateLocal: startDate.toLocaleString('he-IL'),
-        endDateLocal: endDate.toLocaleString('he-IL')
-      });
-      
-      // Filter deposits within date range
-      const deposits = (allTransactions || []).filter(t => {
-        if (!t) {
-          console.log('[INCOME-CHART] Transaction is null/undefined');
-          return false;
-        }
-        
-        console.log('[INCOME-CHART] Checking transaction:', {
-          id: t.id,
-          type: t.type,
-          amount: t.amount,
-          date: t.date,
-          createdAt: t.createdAt
-        });
-        
-        if (t.type !== 'deposit') {
-          console.log('[INCOME-CHART] Not a deposit, type:', t.type);
-          return false;
-        }
-        
-        try {
-          const transactionDate = new Date(t.date || t.createdAt);
-          const isInRange = transactionDate >= startDate && transactionDate <= endDate;
-          
-          console.log('[INCOME-CHART] Date check:', {
-            transactionDate: transactionDate.toISOString(),
-            transactionDateLocal: transactionDate.toLocaleString('he-IL'),
-            isInRange,
-            beforeStart: transactionDate < startDate,
-            afterEnd: transactionDate > endDate
-          });
-          
-          if (isInRange) {
-            console.log('[INCOME-CHART] ✅ Found deposit in range:', { 
-              id: t.id, 
-              amount: t.amount, 
-              description: t.description, 
-              category: t.category,
-              date: transactionDate.toISOString()
-            });
-          }
-          return isInRange;
-        } catch (dateError) {
-          console.error('[INCOME-CHART] Date parsing error:', dateError, t);
-          return false;
-        }
-      });
-      
-      console.log('[INCOME-CHART] Deposits in range:', deposits.length);
-      console.log('[INCOME-CHART] All deposits:', deposits);
-      
-      // Categorize income
-      const incomeCategories = {
-        'הכנסה מריבית': 0,
-        'הכנסה ממטלות': 0,
-        'הכנסה מדמי כיס': 0,
-        'הכנסה אחרת': 0
-      };
-      
-      deposits.forEach(deposit => {
-        const amount = Math.abs(deposit.amount || 0);
-        if (amount === 0) return;
-        
-        // Check if it's interest (id starts with "interest_")
-        if (deposit.id && typeof deposit.id === 'string' && deposit.id.startsWith('interest_')) {
-          incomeCategories['הכנסה מריבית'] += amount;
-          console.log('[INCOME-CHART] Categorized as interest:', amount);
-        }
-        // Check if it's from tasks (id starts with "task_" or category is "משימות בית")
-        else if ((deposit.id && typeof deposit.id === 'string' && deposit.id.startsWith('task_')) ||
-                 deposit.category === 'משימות בית' ||
-                 (deposit.description && deposit.description.includes('משימה'))) {
-          incomeCategories['הכנסה ממטלות'] += amount;
-          console.log('[INCOME-CHART] Categorized as task:', amount);
-        }
-        // Check if it's allowance (description contains "דמי כיס" or "allowance" or category is "דמי כיס")
-        else if ((deposit.description && (deposit.description.includes('דמי כיס') || deposit.description.includes('allowance'))) ||
-                 deposit.category === 'דמי כיס') {
-          incomeCategories['הכנסה מדמי כיס'] += amount;
-          console.log('[INCOME-CHART] Categorized as allowance:', amount);
-        }
-        // Everything else is "other income"
-        else {
-          incomeCategories['הכנסה אחרת'] += amount;
-          console.log('[INCOME-CHART] Categorized as other:', amount, deposit);
-        }
-      });
-      
-      console.log('[INCOME-CHART] Income categories:', incomeCategories);
-      
-      // Convert to array format (only include categories with amount > 0)
-      const incomeArray = Object.entries(incomeCategories)
-        .filter(([_, amount]) => amount > 0)
-        .map(([category, amount]) => ({ category, amount }));
-      
-      console.log('[INCOME-CHART] Final income array:', incomeArray);
-      setIncomeByCategory(incomeArray);
-      
-      // Cache the result
-      setCached(cacheKey, incomeArray, cacheTTL);
-    } catch (error) {
-      console.error('Error loading income by category:', error);
-      setIncomeByCategory([]);
-    } finally {
-      setLoadingIncome(false);
     }
   };
 
@@ -510,12 +365,6 @@ const ChildView = ({ childId, familyId, onBackToParent, onLogout }) => {
 
   const handleCalculatorClick = () => {
     console.log('[ChildView] handleCalculatorClick called');
-    // If there are active tasks, show tasks list instead of calculator
-    if (tasks.length > 0) {
-      setShowTasksList(true);
-      return;
-    }
-    // Otherwise, show calculator as before
     setShowCalculator(true);
     setCalculatorValue('0');
     setCalculatorHistory('');
@@ -651,15 +500,9 @@ const ChildView = ({ childId, familyId, onBackToParent, onLogout }) => {
       
       // Reload data to show updated balance
       await loadChildData();
-      // Reload chart if it was an expense or deposit
-      if (transactionType === 'expense' || transactionType === 'deposit') {
+      // Only reload expenses chart if it was an expense
+      if (transactionType === 'expense') {
         setChartReloadKey(prev => prev + 1);
-        // Clear income cache to force reload
-        if (chartType === 'income') {
-          const days = expensesPeriod === 'week' ? 7 : 30;
-          const cacheKey = `income_by_category_${familyId}_${childId}_${days}`;
-          setCached(cacheKey, null, 0); // Invalidate cache
-        }
       }
     } catch (error) {
       alert(t('parent.dashboard.error', { defaultValue: 'שגיאה' }) + ': ' + error.message);
@@ -830,11 +673,49 @@ const ChildView = ({ childId, familyId, onBackToParent, onLogout }) => {
         </h1>
         {!isParent && onLogout && (
           <button 
-            className="menu-btn"
-            onClick={onLogout}
+            onClick={() => setShowLogoutConfirm(true)}
             title={t('common.logout', { defaultValue: 'התנתק' })}
+            style={{
+              position: 'absolute',
+              [i18n.language === 'he' ? 'right' : 'left']: '20px',
+              top: '50%',
+              transform: 'translateY(-50%)',
+              fontSize: '14px',
+              fontWeight: 600,
+              padding: '10px 16px',
+              borderRadius: '12px',
+              border: 'none',
+              background: 'linear-gradient(135deg, #EF4444 0%, #DC2626 100%)',
+              color: 'white',
+              cursor: 'pointer',
+              transition: 'all 0.3s ease',
+              boxShadow: '0 2px 8px rgba(239, 68, 68, 0.3)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: '6px',
+              whiteSpace: 'nowrap',
+              zIndex: 10
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.background = 'linear-gradient(135deg, #DC2626 0%, #B91C1C 100%)';
+              e.currentTarget.style.boxShadow = '0 4px 12px rgba(239, 68, 68, 0.4)';
+              e.currentTarget.style.transform = 'translateY(-50%) scale(1.05)';
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.background = 'linear-gradient(135deg, #EF4444 0%, #DC2626 100%)';
+              e.currentTarget.style.boxShadow = '0 2px 8px rgba(239, 68, 68, 0.3)';
+              e.currentTarget.style.transform = 'translateY(-50%) scale(1)';
+            }}
+            onMouseDown={(e) => {
+              e.currentTarget.style.transform = 'translateY(-50%) scale(0.98)';
+            }}
+            onMouseUp={(e) => {
+              e.currentTarget.style.transform = 'translateY(-50%) scale(1.05)';
+            }}
           >
-            🚪
+            <span style={{ fontSize: '16px' }}>🚪</span>
+            <span>{t('common.logout', { defaultValue: 'התנתקות' })}</span>
           </button>
         )}
         {isParent && (
@@ -1023,146 +904,63 @@ const ChildView = ({ childId, familyId, onBackToParent, onLogout }) => {
         )}
       </div>
 
-      {/* Expenses/Income Distribution Chart */}
+      {/* Expenses Distribution Chart */}
       <div className="fintech-card">
         <div className="expenses-chart-header">
-          <div style={{ display: 'flex', gap: '12px', alignItems: 'center', marginBottom: '12px' }}>
-            <button
-              className={`period-button ${chartType === 'expenses' ? 'active' : ''}`}
-              onClick={() => setChartType('expenses')}
-              style={{
-                padding: '8px 16px',
-                borderRadius: '8px',
-                border: '1px solid var(--primary)',
-                background: chartType === 'expenses' ? 'var(--primary)' : 'white',
-                color: chartType === 'expenses' ? 'white' : 'var(--primary)',
-                fontSize: '14px',
-                fontWeight: 600,
-                cursor: 'pointer',
-                transition: 'all 0.2s',
-                flex: 1,
-                minWidth: 0
-              }}
-            >
-              {t('child.expenses.title', { defaultValue: 'התפלגות הוצאות' })}
-            </button>
-            <button
-              className={`period-button ${chartType === 'income' ? 'active' : ''}`}
-              onClick={() => setChartType('income')}
-              style={{
-                padding: '8px 16px',
-                borderRadius: '8px',
-                border: '1px solid var(--primary)',
-                background: chartType === 'income' ? 'var(--primary)' : 'white',
-                color: chartType === 'income' ? 'white' : 'var(--primary)',
-                fontSize: '14px',
-                fontWeight: 600,
-                cursor: 'pointer',
-                transition: 'all 0.2s',
-                flex: 1,
-                minWidth: 0
-              }}
-            >
-              {t('child.income.distributionTitle', { defaultValue: 'התפלגות הכנסות' })}
-            </button>
-          </div>
-          <div className="period-toggle" style={{ fontSize: '12px' }}>
+          <h2>{t('child.expenses.title', { defaultValue: 'התפלגות הוצאות' })}</h2>
+          <div className="period-toggle">
             <button
               className={`period-button ${expensesPeriod === 'week' ? 'active' : ''}`}
               onClick={() => setExpensesPeriod('week')}
-              style={{ padding: '6px 12px', fontSize: '12px' }}
             >
-              {t('child.expenses.weekShort', { defaultValue: 'שבוע' })}
+              {t('child.expenses.week', { defaultValue: 'שבוע אחרון' })}
             </button>
             <button
               className={`period-button ${expensesPeriod === 'month' ? 'active' : ''}`}
               onClick={() => setExpensesPeriod('month')}
-              style={{ padding: '6px 12px', fontSize: '12px' }}
             >
-              {t('child.expenses.monthShort', { defaultValue: 'חודש' })}
+              {t('child.expenses.month', { defaultValue: 'חודש אחרון' })}
             </button>
           </div>
         </div>
-        {chartType === 'expenses' ? (
-          loadingExpenses ? (
+        {loadingExpenses ? (
+          <div style={{
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: '40px 20px',
+            gap: '16px'
+          }}>
             <div style={{
-              display: 'flex',
-              flexDirection: 'column',
-              alignItems: 'center',
-              justifyContent: 'center',
-              padding: '40px 20px',
-              gap: '16px'
-            }}>
-              <div style={{
-                width: '40px',
-                height: '40px',
-                border: '4px solid rgba(99, 102, 241, 0.2)',
-                borderTopColor: '#6366F1',
-                borderRadius: '50%',
-                animation: 'spin 0.8s linear infinite'
-              }}></div>
-              <div style={{ color: 'var(--text-muted)', fontSize: '14px', fontWeight: 500 }}>
-                {t('child.expenses.loading', { defaultValue: 'טוען...' })}
-              </div>
+              width: '40px',
+              height: '40px',
+              border: '4px solid rgba(99, 102, 241, 0.2)',
+              borderTopColor: '#6366F1',
+              borderRadius: '50%',
+              animation: 'spin 0.8s linear infinite'
+            }}></div>
+            <div style={{ color: 'var(--text-muted)', fontSize: '14px', fontWeight: 500 }}>
+              {t('common.loading', { defaultValue: 'טוען...' })}
             </div>
-          ) : expensesByCategory && expensesByCategory.length > 0 ? (
-            <ExpensePieChart
-              expensesByCategory={expensesByCategory}
-              title={t('child.expenses.chartTitle', { 
-                period: expensesPeriod === 'week' 
-                  ? t('child.expenses.weekShort', { defaultValue: 'Week' })
-                  : t('child.expenses.monthShort', { defaultValue: 'Month' }),
-                defaultValue: 'Expenses - {period}'
-              })}
-              days={expensesPeriod === 'week' ? 7 : 30}
-              onCategorySelect={setFilteredCategory}
-              selectedCategory={filteredCategory}
-            />
-          ) : (
-            <div className="no-expenses-message">
-              {t('child.expenses.noExpenses', { defaultValue: 'אין הוצאות בתקופה זו' })}
-            </div>
-          )
+          </div>
+        ) : expensesByCategory && expensesByCategory.length > 0 ? (
+          <ExpensePieChart
+            expensesByCategory={expensesByCategory}
+            title={t('child.expenses.chartTitle', { 
+              period: expensesPeriod === 'week' 
+                ? t('child.expenses.week', { defaultValue: 'Last Week' })
+                : t('child.expenses.month', { defaultValue: 'Last Month' }),
+              defaultValue: 'Expenses - {period}'
+            })}
+            days={expensesPeriod === 'week' ? 7 : 30}
+            onCategorySelect={setFilteredCategory}
+            selectedCategory={filteredCategory}
+          />
         ) : (
-          loadingIncome ? (
-            <div style={{
-              display: 'flex',
-              flexDirection: 'column',
-              alignItems: 'center',
-              justifyContent: 'center',
-              padding: '40px 20px',
-              gap: '16px'
-            }}>
-              <div style={{
-                width: '40px',
-                height: '40px',
-                border: '4px solid rgba(99, 102, 241, 0.2)',
-                borderTopColor: '#6366F1',
-                borderRadius: '50%',
-                animation: 'spin 0.8s linear infinite'
-              }}></div>
-              <div style={{ color: 'var(--text-muted)', fontSize: '14px', fontWeight: 500 }}>
-                {t('child.income.loading', { defaultValue: 'טוען...' })}
-              </div>
-            </div>
-          ) : incomeByCategory && incomeByCategory.length > 0 ? (
-            <ExpensePieChart
-              expensesByCategory={incomeByCategory}
-              title={t('child.income.chartTitle', { 
-                period: expensesPeriod === 'week' 
-                  ? t('child.expenses.weekShort', { defaultValue: 'Week' })
-                  : t('child.expenses.monthShort', { defaultValue: 'Month' }),
-                defaultValue: 'Income - {period}'
-              })}
-              days={expensesPeriod === 'week' ? 7 : 30}
-              onCategorySelect={setFilteredCategory}
-              selectedCategory={filteredCategory}
-            />
-          ) : (
-            <div className="no-expenses-message">
-              {t('child.income.noIncome', { defaultValue: 'אין הכנסות בתקופה זו' })}
-            </div>
-          )
+          <div className="no-expenses-message">
+            {t('child.expenses.noExpenses', { defaultValue: 'אין הוצאות בתקופה זו' })}
+          </div>
         )}
       </div>
 
@@ -1493,7 +1291,7 @@ const ChildView = ({ childId, familyId, onBackToParent, onLogout }) => {
                   >
                     <option value="">{t('parent.dashboard.selectCategory', { defaultValue: 'בחר קטגוריה' })}</option>
                     {categories.map(cat => (
-                      <option key={cat._id} value={cat.name}>{cat.name}</option>
+                      <option key={cat} value={cat}>{cat}</option>
                     ))}
                   </select>
                 </div>
@@ -1542,7 +1340,7 @@ const ChildView = ({ childId, familyId, onBackToParent, onLogout }) => {
           <span>{t('child.dashboard.addIncome', { defaultValue: 'הכנסה' })}</span>
         </button>
         
-        {/* Center: Calculator or Tasks */}
+        {/* Center: Calculator */}
         <button 
           className="fab-btn"
           onClick={(e) => {
@@ -1552,7 +1350,7 @@ const ChildView = ({ childId, familyId, onBackToParent, onLogout }) => {
           }}
           type="button"
         >
-          {tasks.length > 0 ? '✅' : '🧮'}
+          🧮
         </button>
         
         {/* Right: Expense - affects cash box */}
@@ -1570,296 +1368,119 @@ const ChildView = ({ childId, familyId, onBackToParent, onLogout }) => {
         </button>
       </div>
 
-      {/* Tasks List Modal */}
-      {showTasksList && !selectedTask && (
-        <div className="calculator-overlay" onClick={() => setShowTasksList(false)}>
-          <div className="calculator-modal" onClick={(e) => e.stopPropagation()} dir={i18n.language === 'he' ? 'rtl' : 'ltr'}>
-            <div className="calculator-header">
-              <h2>{t('child.dashboard.tasks', { defaultValue: 'מטלות' })}</h2>
-              <button 
-                className="calculator-close" 
-                onClick={() => setShowTasksList(false)}
-              >
-                ✕
-              </button>
-            </div>
-            <div style={{ padding: '20px', maxHeight: '60vh', overflowY: 'auto' }}>
-              {tasks.length === 0 ? (
-                <div style={{ textAlign: 'center', padding: '40px', color: 'var(--text-muted)' }}>
-                  {t('child.dashboard.noTasks', { defaultValue: 'אין מטלות פעילות' })}
-                </div>
-              ) : (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                  {tasks.map(task => (
-                    <button
-                      key={task._id}
-                      onClick={() => {
-                        setSelectedTask(task);
-                        setTaskNote('');
-                        setTaskImage(null);
-                      }}
-                      style={{
-                        padding: '16px',
-                        background: 'white',
-                        borderRadius: '12px',
-                        border: '2px solid var(--primary)',
-                        textAlign: 'right',
-                        cursor: 'pointer',
-                        display: 'flex',
-                        justifyContent: 'space-between',
-                        alignItems: 'center'
-                      }}
-                    >
-                      <div>
-                        <div style={{ fontSize: '16px', fontWeight: 600 }}>{task.name}</div>
-                        <div style={{ fontSize: '14px', color: 'var(--text-muted)' }}>
-                          {t('child.dashboard.payment', { defaultValue: 'תשלום' })}: ₪{task.price.toFixed(2)}
-                        </div>
-                      </div>
-                      <span style={{ fontSize: '20px' }}>→</span>
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Task Request Modal */}
-      {selectedTask && (
-        <div className="calculator-overlay" onClick={() => {
-          setSelectedTask(null);
-          setTaskNote('');
-          setTaskImage(null);
-        }}>
-          <div className="calculator-modal" onClick={(e) => e.stopPropagation()} dir={i18n.language === 'he' ? 'rtl' : 'ltr'} style={{ maxWidth: '500px' }}>
-            <div className="calculator-header">
-              <h2>{selectedTask.name}</h2>
-              <button 
-                className="calculator-close" 
-                onClick={() => {
-                  setSelectedTask(null);
-                  setTaskNote('');
-                  setTaskImage(null);
-                }}
-              >
-                ✕
-              </button>
-            </div>
-            <div style={{ padding: '20px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
-              <div>
-                <div style={{ fontSize: '14px', color: 'var(--text-muted)', marginBottom: '8px' }}>
-                  {t('child.dashboard.payment', { defaultValue: 'תשלום' })}
-                </div>
-                <div style={{ fontSize: '24px', fontWeight: 700, color: 'var(--primary)' }}>
-                  ₪{selectedTask.price.toFixed(2)}
-                </div>
-              </div>
-              
-              <div>
-                <label style={{ display: 'block', fontSize: '14px', fontWeight: 600, marginBottom: '8px' }}>
-                  {t('child.dashboard.note', { defaultValue: 'הערה (אופציונלי)' })}
-                </label>
-                <textarea
-                  value={taskNote}
-                  onChange={(e) => setTaskNote(e.target.value)}
-                  placeholder={t('child.dashboard.notePlaceholder', { defaultValue: 'הוסף הערה...' })}
-                  style={{
-                    width: '100%',
-                    minHeight: '80px',
-                    padding: '12px',
-                    borderRadius: '8px',
-                    border: '1px solid rgba(0,0,0,0.1)',
-                    fontSize: '14px',
-                    fontFamily: 'inherit',
-                    resize: 'vertical',
-                    outline: 'none'
-                  }}
-                />
-              </div>
-
-              <div>
-                <label style={{ display: 'block', fontSize: '14px', fontWeight: 600, marginBottom: '8px' }}>
-                  {t('child.dashboard.image', { defaultValue: 'תמונה (אופציונלי)' })}
-                </label>
-                {taskImage ? (
-                  <div style={{ position: 'relative' }}>
-                    <img 
-                      src={taskImage} 
-                      alt="Task" 
-                      style={{
-                        width: '100%',
-                        maxHeight: '200px',
-                        borderRadius: '8px',
-                        objectFit: 'contain'
-                      }}
-                    />
-                    <button
-                      onClick={() => {
-                        taskImageInputRef.current?.click();
-                      }}
-                      style={{
-                        position: 'absolute',
-                        top: '8px',
-                        right: '8px',
-                        padding: '8px',
-                        background: 'rgba(0,0,0,0.7)',
-                        color: 'white',
-                        border: 'none',
-                        borderRadius: '50%',
-                        cursor: 'pointer',
-                        fontSize: '16px'
-                      }}
-                    >
-                      📷
-                    </button>
-                    <button
-                      onClick={() => setTaskImage(null)}
-                      style={{
-                        position: 'absolute',
-                        top: '8px',
-                        left: '8px',
-                        padding: '8px',
-                        background: '#EF4444',
-                        color: 'white',
-                        border: 'none',
-                        borderRadius: '50%',
-                        cursor: 'pointer',
-                        fontSize: '16px'
-                      }}
-                    >
-                      ✕
-                    </button>
-                  </div>
-                ) : (
-                  <label
-                    style={{
-                      width: '100%',
-                      padding: '40px',
-                      background: '#F9FAFB',
-                      border: '2px dashed #D1D5DB',
-                      borderRadius: '8px',
-                      cursor: 'pointer',
-                      fontSize: '16px',
-                      color: 'var(--text-muted)',
-                      display: 'flex',
-                      flexDirection: 'column',
-                      alignItems: 'center',
-                      gap: '8px'
-                    }}
-                  >
-                    <input
-                      ref={taskImageInputRef}
-                      type="file"
-                      accept="image/*"
-                      capture="environment"
-                      onChange={async (e) => {
-                        const file = e.target.files?.[0];
-                        if (!file) return;
-                        
-                        try {
-                          // Compress image before uploading using smart compression
-                          console.log('Compressing task image, original size:', file.size, 'bytes');
-                          const base64Image = await smartCompressImage(file);
-                          console.log('Compressed task image size:', base64Image.length, 'bytes');
-                          
-                          // Check if compressed image is still too large (max 500KB base64)
-                          if (base64Image.length > 500 * 1024) {
-                            alert(t('child.dashboard.errorImageTooLarge', { defaultValue: 'התמונה גדולה מדי גם לאחר דחיסה. אנא בחר תמונה קטנה יותר.' }));
-                            return;
-                          }
-                          
-                          setTaskImage(base64Image);
-                        } catch (error) {
-                          console.error('Error compressing/reading image:', error);
-                          alert(t('child.dashboard.cameraError', { defaultValue: 'שגיאה בצילום תמונה' }) + ': ' + (error.message || 'Unknown error'));
-                        } finally {
-                          // Reset input to allow selecting the same file again
-                          if (taskImageInputRef.current) {
-                            taskImageInputRef.current.value = '';
-                          }
-                        }
-                      }}
-                      style={{ display: 'none' }}
-                    />
-                    <span style={{ fontSize: '32px' }}>📷</span>
-                    <span>{t('child.dashboard.takePhoto', { defaultValue: 'צלם תמונה' })}</span>
-                  </label>
-                )}
-              </div>
-
-              <button
-                onClick={async () => {
-                  if (!familyId || !selectedTask || !childId) return;
-                  setSubmittingTaskRequest(true);
-                  try {
-                    await requestTaskPayment(familyId, selectedTask._id, childId, taskNote || null, taskImage || null);
-                    setSelectedTask(null);
-                    setTaskNote('');
-                    setTaskImage(null);
-                    setShowTasksList(false);
-                    // Show success notification
-                    const notification = document.createElement('div');
-                    notification.textContent = t('child.dashboard.requestSent', { defaultValue: 'בקשת תשלום נשלחה בהצלחה!' });
-                    const isRTL = i18n.language === 'he';
-                    const animationName = isRTL ? 'slideInRTL' : 'slideIn';
-                    const animationOutName = isRTL ? 'slideOutRTL' : 'slideOut';
-                    const rightOrLeft = isRTL ? 'left' : 'right';
-                    notification.style.cssText = `
-                      position: fixed;
-                      bottom: 100px;
-                      ${rightOrLeft}: 20px;
-                      background: linear-gradient(135deg, #10B981 0%, #059669 100%);
-                      color: white;
-                      padding: 16px 24px;
-                      border-radius: 12px;
-                      box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3);
-                      z-index: 10005;
-                      font-weight: 600;
-                      animation: ${animationName} 0.3s ease;
-                      max-width: calc(100% - 40px);
-                    `;
-                    document.body.appendChild(notification);
-                    setTimeout(() => {
-                      notification.style.animation = `${animationOutName} 0.3s ease`;
-                      setTimeout(() => notification.remove(), 300);
-                    }, 2000);
-                  } catch (error) {
-                    alert(t('child.dashboard.requestError', { defaultValue: 'שגיאה בשליחת בקשה' }) + ': ' + error.message);
-                  } finally {
-                    setSubmittingTaskRequest(false);
-                  }
-                }}
-                disabled={submittingTaskRequest}
-                style={{
-                  width: '100%',
-                  padding: '16px',
-                  background: submittingTaskRequest ? '#ccc' : 'var(--primary-gradient)',
-                  color: 'white',
-                  border: 'none',
-                  borderRadius: '8px',
-                  fontSize: '16px',
-                  fontWeight: 600,
-                  cursor: submittingTaskRequest ? 'not-allowed' : 'pointer'
-                }}
-              >
-                {submittingTaskRequest 
-                  ? t('common.saving', { defaultValue: 'שולח...' })
-                  : t('child.dashboard.sendRequest', { defaultValue: 'שלח בקשת תשלום' })
-                }
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
       {/* Guide Modal */}
       {showGuide && (
         <Guide 
           userType="child" 
           onClose={() => setShowGuide(false)} 
         />
+      )}
+
+      {/* Logout Confirmation Modal */}
+      {showLogoutConfirm && (
+        <div 
+          className="modal-overlay"
+          onClick={() => setShowLogoutConfirm(false)}
+          style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            backgroundColor: 'rgba(0, 0, 0, 0.5)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 10000
+          }}
+        >
+          <div 
+            className="modal-content"
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              backgroundColor: 'white',
+              borderRadius: '16px',
+              padding: '24px',
+              maxWidth: '400px',
+              width: '90%',
+              boxShadow: '0 10px 40px rgba(0,0,0,0.2)',
+              textAlign: i18n.language === 'he' ? 'right' : 'left'
+            }}
+          >
+            <h2 style={{ 
+              margin: '0 0 16px 0', 
+              fontSize: '20px', 
+              fontWeight: 600,
+              color: 'var(--text-color)'
+            }}>
+              {t('common.confirmLogout', { defaultValue: 'אישור התנתקות' })}
+            </h2>
+            <p style={{ 
+              margin: '0 0 24px 0', 
+              fontSize: '16px', 
+              color: 'var(--text-muted)',
+              lineHeight: '1.5'
+            }}>
+              {t('common.confirmLogoutMessage', { defaultValue: 'האם אתה בטוח שברצונך להתנתק?' })}
+            </p>
+            <div style={{
+              display: 'flex',
+              gap: '12px',
+              justifyContent: i18n.language === 'he' ? 'flex-start' : 'flex-end',
+              flexDirection: i18n.language === 'he' ? 'row-reverse' : 'row'
+            }}>
+              <button
+                onClick={() => setShowLogoutConfirm(false)}
+                style={{
+                  padding: '10px 20px',
+                  borderRadius: '8px',
+                  border: '1px solid rgba(0,0,0,0.2)',
+                  background: 'white',
+                  color: 'var(--text-color)',
+                  fontSize: '16px',
+                  fontWeight: 500,
+                  cursor: 'pointer',
+                  transition: 'all 0.2s'
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.background = 'rgba(0,0,0,0.05)';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.background = 'white';
+                }}
+              >
+                {t('common.cancel', { defaultValue: 'ביטול' })}
+              </button>
+              <button
+                onClick={() => {
+                  setShowLogoutConfirm(false);
+                  if (onLogout) {
+                    onLogout();
+                  }
+                }}
+                style={{
+                  padding: '10px 20px',
+                  borderRadius: '8px',
+                  border: 'none',
+                  background: '#EF4444',
+                  color: 'white',
+                  fontSize: '16px',
+                  fontWeight: 500,
+                  cursor: 'pointer',
+                  transition: 'all 0.2s'
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.background = '#DC2626';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.background = '#EF4444';
+                }}
+              >
+                {t('common.logout', { defaultValue: 'התנתקות' })}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );
