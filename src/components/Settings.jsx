@@ -74,15 +74,19 @@ const Settings = ({ familyId, isNewFamily, onClose, onLogout, activeTab: externa
     loadData();
   }, []);
 
-  // Auto-edit main parent for new families
+  // Auto-edit main parent for new families (only if name is still "הורה1" or empty)
   useEffect(() => {
     if (isNewFamily && activeTab === 'parents' && familyInfo && familyInfo.parents && familyInfo.parents.length > 0) {
       const mainParentIndex = familyInfo.parents.findIndex(p => p.isMain);
       if (mainParentIndex !== -1 && editingParent !== mainParentIndex) {
         const mainParent = familyInfo.parents[mainParentIndex];
-        setEditingParent(mainParentIndex);
-        setEditParentName('');
-        setEditParentPhone(mainParent.phoneNumber || '');
+        // Only auto-open edit mode if name is still "הורה1" or empty/undefined
+        const parentName = mainParent.name || '';
+        if (parentName === 'הורה1' || parentName === '' || !parentName.trim()) {
+          setEditingParent(mainParentIndex);
+          setEditParentName('');
+          setEditParentPhone(mainParent.phoneNumber || '');
+        }
       }
     }
   }, [isNewFamily, activeTab, familyInfo, editingParent]);
@@ -3087,6 +3091,11 @@ const Settings = ({ familyId, isNewFamily, onClose, onLogout, activeTab: externa
                                 }));
                               }
                               
+                              // Close edit mode BEFORE updating cache to prevent useEffect from reopening it
+                              setEditingParent(null);
+                              setEditParentName('');
+                              setEditParentPhone('');
+                              
                               // Invalidate cache for future loads
                               invalidateFamilyCache(familyId);
                               
@@ -3097,10 +3106,6 @@ const Settings = ({ familyId, isNewFamily, onClose, onLogout, activeTab: externa
                                   onParentSaved();
                                 }
                               }
-                              
-                              setEditingParent(null);
-                              setEditParentName('');
-                              setEditParentPhone('');
                               
                               // Show success notification at bottom
                               const notification = document.createElement('div');

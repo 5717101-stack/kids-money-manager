@@ -105,23 +105,60 @@ const ParentDashboard = ({ familyId, isNewFamily: isNewFamilyProp, onChildrenUpd
     loadFamilyInfo();
   }, [familyId]);
 
-  // Check if guide should be shown on first visit
+  // Track previous view to detect navigation
+  const prevViewRef = useRef(null);
+  const isInitialMountRef = useRef(true);
+  
+  // Check if guide should be shown on first visit (ONLY on initial load, not when returning from child dashboard)
   useEffect(() => {
-    // For new families: show guide if not shown yet and parent name is still "הורה1"
-    if (isNewFamilyProp && !guideShownRef.current && currentView !== 'parents') {
+    const isInitialMount = isInitialMountRef.current;
+    
+    // On first render, mark that we've passed initial mount
+    if (isInitialMount) {
+      isInitialMountRef.current = false;
+      prevViewRef.current = currentView;
+    }
+    
+    // Skip if guide was already shown in this session
+    if (guideShownRef.current) {
+      prevViewRef.current = currentView;
+      return;
+    }
+    
+    // Don't show guide if we're navigating back from another view (like child dashboard)
+    const isNavigatingBack = prevViewRef.current && prevViewRef.current !== currentView;
+    if (isNavigatingBack && prevViewRef.current !== 'dashboard') {
+      prevViewRef.current = currentView;
+      return; // Don't show guide when navigating back
+    }
+    
+    // For new families: show guide if parent name is still "הורה1" and we're not already on parents view
+    // AND this is the initial mount (first time loading the component)
+    if (isNewFamilyProp && currentView !== 'parents' && isInitialMount) {
       const mainParentName = familyInfoForGuide?.parentName || 'הורה1';
       const isParentNameStillDefault = mainParentName === 'הורה1';
       
       if (isParentNameStillDefault) {
-        setShowGuide(true);
-        guideShownRef.current = true; // Mark as shown for this session
+        // Only show if guide hasn't been seen for this family
+        const guideSeenKey = `guideSeen_parent_${familyId}`;
+        if (!localStorage.getItem(guideSeenKey)) {
+          setShowGuide(true);
+          guideShownRef.current = true; // Mark as shown for this session
+        }
       }
     } 
-    // For existing families: show guide only if not seen before and on dashboard
-    else if (!isNewFamilyProp && currentView === 'dashboard' && !localStorage.getItem('guideSeen_parent') && !guideShownRef.current) {
-      setShowGuide(true);
+    // For existing families: show guide only on initial dashboard load (not when returning from other views)
+    else if (!isNewFamilyProp && currentView === 'dashboard' && isInitialMount) {
+      // Only show if guide hasn't been seen before for this family
+      const guideSeenKey = `guideSeen_parent_${familyId}`;
+      if (!localStorage.getItem(guideSeenKey)) {
+        setShowGuide(true);
+        guideShownRef.current = true;
+      }
     }
-  }, [currentView, isNewFamilyProp, familyInfoForGuide]);
+    
+    prevViewRef.current = currentView;
+  }, [currentView, isNewFamilyProp, familyInfoForGuide, familyId]);
 
   const loadData = async () => {
     if (!familyId) return;
@@ -1195,16 +1232,25 @@ const ParentDashboard = ({ familyId, isNewFamily: isNewFamilyProp, onChildrenUpd
           onClose={() => {
             setShowGuide(false);
             guideShownRef.current = true;
-            localStorage.setItem('guideSeen_parent', 'true');
             
-            // For new families: navigate to parent settings after guide
+            // Mark guide as seen for this specific family
+            const guideSeenKey = `guideSeen_parent_${familyId}`;
+            localStorage.setItem(guideSeenKey, 'true');
+            
+            // For new families: navigate to parent settings after guide (only on first time)
             if (isNewFamilyProp) {
-              if (currentView !== 'parents') {
+              const mainParentName = familyInfoForGuide?.parentName || 'הורה1';
+              const isParentNameStillDefault = mainParentName === 'הורה1';
+              
+              // Only navigate to parents if name is still default (first time)
+              if (isParentNameStillDefault && currentView !== 'parents') {
                 setCurrentView('parents');
               } else {
+                // If name was already changed, go to dashboard
                 setCurrentView('dashboard');
               }
             } else {
+              // For existing families, always go to dashboard
               setCurrentView('dashboard');
             }
           }} 

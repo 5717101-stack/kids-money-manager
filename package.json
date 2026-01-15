@@ -1,14 +1,14 @@
 {
   "name": "kids-money-manager",
   "private": true,
-  "version": "5.0.1",
+  "version": "5.0.5",
   "type": "module",
   "scripts": {
     "dev": "vite",
     "dev:server": "cd server && npm run dev",
     "dev:all": "concurrently \"npm run dev:server\" \"npm run dev\"",
     "build": "vite build",
-    "build:mobile": "vite build && npx cap sync",
+    "build:mobile": "./sync_mobile_assets.sh",
     "preview": "vite preview",
     "ios": "npx cap open ios",
     "android": "npx cap open android"

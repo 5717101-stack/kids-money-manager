@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
-import { getChild, getChildTransactions, updateCashBoxBalance, getSavingsGoal, updateSavingsGoal, deleteSavingsGoal, updateProfileImage, getExpensesByCategory, addTransaction, getCategories } from '../utils/api';
+import { getChild, getChildTransactions, updateCashBoxBalance, getSavingsGoal, updateSavingsGoal, deleteSavingsGoal, updateProfileImage, getExpensesByCategory, addTransaction, getCategories, getTasks, requestTaskPayment } from '../utils/api';
 import { smartCompressImage } from '../utils/imageCompression';
 import { getCached, setCached } from '../utils/cache';
 import ExpensePieChart from './ExpensePieChart';
@@ -48,6 +48,34 @@ const ChildView = ({ childId, familyId, onBackToParent, onLogout }) => {
   const [showGuide, setShowGuide] = useState(false);
   const [chartReloadKey, setChartReloadKey] = useState(0);
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
+  const [activeTasks, setActiveTasks] = useState([]);
+  const [showTasksList, setShowTasksList] = useState(false);
+  const [showTaskRequest, setShowTaskRequest] = useState(false);
+  const [selectedTask, setSelectedTask] = useState(null);
+  const [taskNote, setTaskNote] = useState('');
+  const [taskImage, setTaskImage] = useState(null);
+  const [submittingTaskRequest, setSubmittingTaskRequest] = useState(false);
+  const taskImageInputRef = useRef(null);
+
+  // Load active tasks for this child
+  const loadActiveTasks = useCallback(async () => {
+    if (!familyId || !childId) return;
+    try {
+      const tasks = await getTasks(familyId);
+      // Filter tasks that are active for this child
+      const childActiveTasks = (tasks || []).filter(task => 
+        task.activeFor && task.activeFor.includes(childId)
+      );
+      setActiveTasks(childActiveTasks);
+    } catch (error) {
+      console.error('Error loading active tasks:', error);
+      setActiveTasks([]);
+    }
+  }, [familyId, childId]);
+
+  useEffect(() => {
+    loadActiveTasks();
+  }, [loadActiveTasks]);
 
   useEffect(() => {
     // Reset loading and error when childId or familyId changes
@@ -1390,18 +1418,33 @@ const ChildView = ({ childId, familyId, onBackToParent, onLogout }) => {
           <span>{t('child.dashboard.addIncome', { defaultValue: 'הכנסה' })}</span>
         </button>
         
-        {/* Center: Calculator */}
-        <button 
-          className="fab-btn"
-          onClick={(e) => {
-            e.preventDefault();
-            e.stopPropagation();
-            handleCalculatorClick();
-          }}
-          type="button"
-        >
-          🧮
-        </button>
+        {/* Center: Tasks (if active) or Calculator */}
+        {activeTasks.length > 0 ? (
+          <button 
+            className="fab-btn"
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              setShowTasksList(true);
+            }}
+            type="button"
+            title={t('child.tasks.title', { defaultValue: 'מטלות' })}
+          >
+            ✅
+          </button>
+        ) : (
+          <button 
+            className="fab-btn"
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              handleCalculatorClick();
+            }}
+            type="button"
+          >
+            🧮
+          </button>
+        )}
         
         {/* Right: Expense - affects cash box */}
         <button 
@@ -1417,6 +1460,251 @@ const ChildView = ({ childId, familyId, onBackToParent, onLogout }) => {
           <span>{t('child.dashboard.recordExpense', { defaultValue: 'הוצאה' })}</span>
         </button>
       </div>
+
+      {/* Tasks List Modal */}
+      {showTasksList && (
+        <div className="modal-overlay" onClick={() => setShowTasksList(false)}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '500px', maxHeight: '80vh', overflowY: 'auto' }}>
+            <div className="modal-header">
+              <h2>{t('child.tasks.title', { defaultValue: 'מטלות פעילות' })}</h2>
+              <button className="close-button" onClick={() => setShowTasksList(false)}>✕</button>
+            </div>
+            <div style={{ padding: '20px' }}>
+              {activeTasks.length === 0 ? (
+                <div style={{ textAlign: 'center', padding: '20px', color: 'var(--text-muted)' }}>
+                  {t('child.tasks.noTasks', { defaultValue: 'אין מטלות פעילות' })}
+                </div>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                  {activeTasks.map((task) => (
+                    <button
+                      key={task._id}
+                      onClick={() => {
+                        setSelectedTask(task);
+                        setTaskNote('');
+                        setTaskImage(null);
+                        setShowTasksList(false);
+                        setShowTaskRequest(true);
+                      }}
+                      style={{
+                        padding: '16px',
+                        background: 'white',
+                        border: '1px solid #E5E7EB',
+                        borderRadius: '12px',
+                        textAlign: 'right',
+                        cursor: 'pointer',
+                        transition: 'all 0.2s'
+                      }}
+                      onMouseEnter={(e) => {
+                        e.currentTarget.style.background = '#F9FAFB';
+                        e.currentTarget.style.borderColor = 'var(--primary)';
+                      }}
+                      onMouseLeave={(e) => {
+                        e.currentTarget.style.background = 'white';
+                        e.currentTarget.style.borderColor = '#E5E7EB';
+                      }}
+                    >
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <span style={{ fontSize: '18px', fontWeight: 600, color: 'var(--text-main)' }}>
+                          {task.name}
+                        </span>
+                        <span style={{ fontSize: '16px', fontWeight: 600, color: 'var(--primary)' }}>
+                          ₪{task.price?.toFixed(2) || '0.00'}
+                        </span>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Task Request Modal */}
+      {showTaskRequest && selectedTask && (
+        <div className="modal-overlay" onClick={() => setShowTaskRequest(false)}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '500px', maxHeight: '80vh', overflowY: 'auto' }}>
+            <div className="modal-header">
+              <h2>{t('child.tasks.requestPayment', { defaultValue: 'בקשת תשלום' })}</h2>
+              <button className="close-button" onClick={() => setShowTaskRequest(false)}>✕</button>
+            </div>
+            <form
+              onSubmit={async (e) => {
+                e.preventDefault();
+                if (submittingTaskRequest) return;
+                
+                try {
+                  setSubmittingTaskRequest(true);
+                  
+                  let imageBase64 = null;
+                  if (taskImage) {
+                    // Compress image before sending
+                    imageBase64 = await smartCompressImage(taskImage);
+                  }
+                  
+                  await requestTaskPayment(familyId, selectedTask._id, childId, taskNote.trim(), imageBase64);
+                  
+                  // Show success notification
+                  alert(t('child.tasks.requestSent', { defaultValue: 'בקשת התשלום נשלחה בהצלחה!' }));
+                  
+                  // Reset and close
+                  setShowTaskRequest(false);
+                  setSelectedTask(null);
+                  setTaskNote('');
+                  setTaskImage(null);
+                  setShowTasksList(false);
+                  
+                  // Reload tasks
+                  await loadActiveTasks();
+                } catch (error) {
+                  alert(t('child.tasks.requestError', { defaultValue: 'שגיאה בשליחת בקשת התשלום' }) + ': ' + error.message);
+                } finally {
+                  setSubmittingTaskRequest(false);
+                }
+              }}
+              style={{ padding: '20px', display: 'flex', flexDirection: 'column', gap: '16px' }}
+            >
+              <div>
+                <label style={{ display: 'block', marginBottom: '8px', fontWeight: 600 }}>
+                  {t('child.tasks.task', { defaultValue: 'מטלה' })}:
+                </label>
+                <div style={{ padding: '12px', background: '#F9FAFB', borderRadius: '8px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <span style={{ fontSize: '16px', fontWeight: 600 }}>{selectedTask.name}</span>
+                    <span style={{ fontSize: '16px', fontWeight: 600, color: 'var(--primary)' }}>
+                      ₪{selectedTask.price?.toFixed(2) || '0.00'}
+                    </span>
+                  </div>
+                </div>
+              </div>
+              
+              <div>
+                <label style={{ display: 'block', marginBottom: '8px', fontWeight: 600 }}>
+                  {t('child.tasks.note', { defaultValue: 'הערה' })} ({t('common.optional', { defaultValue: 'אופציונלי' })}):
+                </label>
+                <textarea
+                  value={taskNote}
+                  onChange={(e) => setTaskNote(e.target.value)}
+                  placeholder={t('child.tasks.notePlaceholder', { defaultValue: 'הוסף הערה...' })}
+                  style={{
+                    width: '100%',
+                    minHeight: '80px',
+                    padding: '12px',
+                    border: '1px solid #E5E7EB',
+                    borderRadius: '8px',
+                    fontSize: '14px',
+                    fontFamily: 'inherit',
+                    resize: 'vertical'
+                  }}
+                />
+              </div>
+              
+              <div>
+                <label style={{ display: 'block', marginBottom: '8px', fontWeight: 600 }}>
+                  {t('child.tasks.photo', { defaultValue: 'תמונה' })} ({t('common.optional', { defaultValue: 'אופציונלי' })}):
+                </label>
+                <input
+                  ref={taskImageInputRef}
+                  type="file"
+                  accept="image/*"
+                  capture="environment"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (file) {
+                      setTaskImage(file);
+                    }
+                  }}
+                  style={{ display: 'none' }}
+                />
+                <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
+                  <button
+                    type="button"
+                    onClick={() => taskImageInputRef.current?.click()}
+                    style={{
+                      padding: '10px 20px',
+                      background: 'var(--primary)',
+                      color: 'white',
+                      border: 'none',
+                      borderRadius: '8px',
+                      cursor: 'pointer',
+                      fontSize: '14px',
+                      fontWeight: 600
+                    }}
+                  >
+                    {taskImage ? t('child.tasks.changePhoto', { defaultValue: 'שנה תמונה' }) : t('child.tasks.takePhoto', { defaultValue: 'צלם תמונה' })}
+                  </button>
+                  {taskImage && (
+                    <span style={{ fontSize: '14px', color: 'var(--text-muted)' }}>
+                      {taskImage.name}
+                    </span>
+                  )}
+                </div>
+                {taskImage && (
+                  <div style={{ marginTop: '12px' }}>
+                    <img
+                      src={URL.createObjectURL(taskImage)}
+                      alt="Task"
+                      style={{
+                        maxWidth: '100%',
+                        maxHeight: '200px',
+                        borderRadius: '8px',
+                        border: '1px solid #E5E7EB'
+                      }}
+                    />
+                  </div>
+                )}
+              </div>
+              
+              <div style={{ display: 'flex', gap: '12px', marginTop: '8px' }}>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowTaskRequest(false);
+                    setSelectedTask(null);
+                    setTaskNote('');
+                    setTaskImage(null);
+                  }}
+                  style={{
+                    flex: 1,
+                    padding: '12px',
+                    background: 'white',
+                    color: 'var(--text-main)',
+                    border: '1px solid #E5E7EB',
+                    borderRadius: '8px',
+                    cursor: 'pointer',
+                    fontSize: '14px',
+                    fontWeight: 600
+                  }}
+                >
+                  {t('common.cancel', { defaultValue: 'ביטול' })}
+                </button>
+                <button
+                  type="submit"
+                  disabled={submittingTaskRequest}
+                  style={{
+                    flex: 1,
+                    padding: '12px',
+                    background: 'var(--primary)',
+                    color: 'white',
+                    border: 'none',
+                    borderRadius: '8px',
+                    cursor: submittingTaskRequest ? 'not-allowed' : 'pointer',
+                    fontSize: '14px',
+                    fontWeight: 600,
+                    opacity: submittingTaskRequest ? 0.6 : 1
+                  }}
+                >
+                  {submittingTaskRequest
+                    ? t('common.saving', { defaultValue: 'שומר...' })
+                    : t('child.tasks.sendRequest', { defaultValue: 'שלח בקשת תשלום' })
+                  }
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
 
       {/* Guide Modal */}
       {showGuide && (

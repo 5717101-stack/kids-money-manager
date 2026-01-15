@@ -264,6 +264,20 @@
       "week": "שבוע אחרון",
       "month": "חודש אחרון",
       "chartTitle": "הוצאות - {period}"
+    },
+    "tasks": {
+      "title": "מטלות",
+      "noTasks": "אין מטלות פעילות",
+      "requestPayment": "בקשת תשלום",
+      "task": "מטלה",
+      "note": "הערה",
+      "notePlaceholder": "הוסף הערה...",
+      "photo": "תמונה",
+      "takePhoto": "צלם תמונה",
+      "changePhoto": "שנה תמונה",
+      "sendRequest": "שלח בקשת תשלום",
+      "requestSent": "בקשת התשלום נשלחה בהצלחה!",
+      "requestError": "שגיאה בשליחת בקשת התשלום"
     }
   },
   "guide": {
