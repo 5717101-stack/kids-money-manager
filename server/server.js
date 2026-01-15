@@ -869,23 +869,33 @@ async function addChildToFamily(familyId, childName, phoneNumber) {
       if (existingFamily) {
         // Double-check by normalizing
         if (existingFamily.phoneNumber && normalizePhoneNumber(existingFamily.phoneNumber) === normalizedPhone) {
-          throw new Error('מספר טלפון זה כבר בשימוש על ידי הורה');
+          throw new Error('מספר טלפון זה כבר בשימוש על ידי הורה במערכת. אם המשפחה נמחקה, אנא נסה שוב בעוד כמה רגעים.');
         }
         if (existingFamily.children) {
           for (const ch of existingFamily.children) {
             if (ch.phoneNumber && normalizePhoneNumber(ch.phoneNumber) === normalizedPhone) {
               console.error(`[ADD-CHILD] ❌ Phone number already in use by a child: ${normalizedPhone} (found in family ${existingFamily._id}, child ${ch._id})`);
-              throw new Error('מספר טלפון זה כבר בשימוש על ידי ילד אחר');
+              throw new Error('מספר טלפון זה כבר בשימוש על ידי ילד אחר במערכת. אם המשפחה נמחקה, אנא נסה שוב בעוד כמה רגעים.');
             }
           }
         }
         if (existingFamily.additionalParents) {
           for (const parent of existingFamily.additionalParents) {
             if (parent.phoneNumber && normalizePhoneNumber(parent.phoneNumber) === normalizedPhone) {
-              throw new Error('מספר טלפון זה כבר בשימוש על ידי הורה');
+              throw new Error('מספר טלפון זה כבר בשימוש על ידי הורה במערכת. אם המשפחה נמחקה, אנא נסה שוב בעוד כמה רגעים.');
             }
           }
         }
+      }
+      
+      // Also check archived children to provide better error message
+      const archivedChild = await db.collection('archived_children').findOne({
+        'phoneNumber': normalizedPhone
+      });
+      
+      if (archivedChild) {
+        console.error(`[ADD-CHILD] ❌ Phone number found in archived children: ${normalizedPhone}`);
+        throw new Error('מספר טלפון זה שייך לילד שנמחק מהמערכת. אנא השתמש במספר טלפון אחר או פנה לתמיכה.');
       }
     }
   }
@@ -4219,6 +4229,58 @@ app.delete('/api/admin/families/:familyId', async (req, res) => {
     }
     
     console.log(`[DELETE-FAMILY] Deleting family: ${familyId} (${family.phoneNumber || 'no phone'})`);
+    
+    // Step 1: Archive all children separately (for easier querying)
+    let archivedChildrenCount = 0;
+    if (family.children && Array.isArray(family.children)) {
+      for (const child of family.children) {
+        const archivedChild = {
+          ...child,
+          archivedAt: new Date().toISOString(),
+          archivedFromFamily: familyId,
+          familyPhoneNumber: family.phoneNumber
+        };
+        await db.collection('archived_children').insertOne(archivedChild);
+        archivedChildrenCount++;
+      }
+      console.log(`[DELETE-FAMILY] ✅ Archived ${archivedChildrenCount} children`);
+    }
+    
+    // Step 2: Archive all parents separately
+    let archivedParentsCount = 0;
+    if (family.additionalParents && Array.isArray(family.additionalParents)) {
+      for (const parent of family.additionalParents) {
+        const archivedParent = {
+          ...parent,
+          archivedAt: new Date().toISOString(),
+          archivedFromFamily: familyId,
+          familyPhoneNumber: family.phoneNumber
+        };
+        await db.collection('archived_parents').insertOne(archivedParent);
+        archivedParentsCount++;
+      }
+      console.log(`[DELETE-FAMILY] ✅ Archived ${archivedParentsCount} additional parents`);
+    }
+    
+    // Step 3: Archive main parent
+    if (family.phoneNumber) {
+      const archivedMainParent = {
+        phoneNumber: family.phoneNumber,
+        name: family.parentName || 'הורה ראשי',
+        archivedAt: new Date().toISOString(),
+        archivedFromFamily: familyId,
+        familyPhoneNumber: family.phoneNumber
+      };
+      await db.collection('archived_parents').insertOne(archivedMainParent);
+      archivedParentsCount++;
+      console.log(`[DELETE-FAMILY] ✅ Archived main parent`);
+    }
+    
+    // Step 4: Delete OTP codes for this family
+    const otpDeleteResult = await db.collection('otpCodes').deleteMany({ familyId });
+    console.log(`[DELETE-FAMILY] ✅ Deleted ${otpDeleteResult.deletedCount} OTP codes`);
+    
+    // Step 5: Delete family from main collection (this releases phone numbers)
     const deleteResult = await db.collection('families').deleteOne({ _id: familyId });
     
     if (deleteResult.deletedCount === 0) {
@@ -4226,11 +4288,20 @@ app.delete('/api/admin/families/:familyId', async (req, res) => {
       return res.status(500).json({ error: 'שגיאה במחיקת המשפחה' });
     }
     
+    // Step 6: Invalidate cache
+    invalidateFamilyCache(familyId);
+    
     console.log(`[DELETE-FAMILY] ✅ Family deleted successfully`);
+    console.log(`[DELETE-FAMILY]   Archived children: ${archivedChildrenCount}`);
+    console.log(`[DELETE-FAMILY]   Archived parents: ${archivedParentsCount}`);
+    console.log(`[DELETE-FAMILY]   Phone numbers released for reuse`);
+    
     res.json({
       success: true,
       message: 'משפחה נמחקה בהצלחה',
-      deletedCount: deleteResult.deletedCount
+      deletedCount: deleteResult.deletedCount,
+      archivedChildren: archivedChildrenCount,
+      archivedParents: archivedParentsCount
     });
   } catch (error) {
     console.error(`[DELETE-FAMILY] ❌ Error:`, error);

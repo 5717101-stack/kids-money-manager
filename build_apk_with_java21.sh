@@ -44,23 +44,45 @@ echo "   ✅ Capacitor synced"
 echo ""
 
 # Build APK
-echo "3. Building release APK..."
+echo "3. Building signed release APK..."
 cd android
 ./gradlew --stop
 ./gradlew clean
-./gradlew assembleRelease
+
+# Check if key.properties exists
+if [ ! -f "key.properties" ]; then
+    echo "❌ key.properties לא נמצא!"
+    echo "   צריך ליצור את הקובץ android/key.properties עם:"
+    echo "   storePassword=..."
+    echo "   keyPassword=..."
+    echo "   keyAlias=..."
+    echo "   storeFile=app/release.keystore"
+    exit 1
+fi
+
+# Build signed APK for prod flavor
+./gradlew assembleProdRelease
 echo "   ✅ APK built"
 echo ""
 
-# Check if APK exists (try multiple locations)
+# Check if signed APK exists (signed APKs don't have "-unsigned" in the name)
 APK_PATH=""
 if [ -f "app/build/outputs/apk/prod/release/app-prod-release.apk" ]; then
     APK_PATH="app/build/outputs/apk/prod/release/app-prod-release.apk"
+elif [ -f "app/build/outputs/apk/prod/release/app-prod-release-unsigned.apk" ]; then
+    echo "⚠️  Warning: Found unsigned APK. Checking signing config..."
+    APK_PATH="app/build/outputs/apk/prod/release/app-prod-release-unsigned.apk"
 elif [ -f "app/build/outputs/apk/release/app-release.apk" ]; then
     APK_PATH="app/build/outputs/apk/release/app-release.apk"
 else
-    # Try to find any APK
-    APK_PATH=$(find app/build/outputs/apk -name "*.apk" -type f 2>/dev/null | grep -E "prod|release" | head -1)
+    # Try to find any APK (prefer prod release, signed)
+    APK_PATH=$(find app/build/outputs/apk -name "*.apk" -type f 2>/dev/null | grep -E "prod.*release" | grep -v "unsigned" | head -1)
+    if [ -z "$APK_PATH" ]; then
+        APK_PATH=$(find app/build/outputs/apk -name "*.apk" -type f 2>/dev/null | grep -E "prod.*release" | head -1)
+    fi
+    if [ -z "$APK_PATH" ]; then
+        APK_PATH=$(find app/build/outputs/apk -name "*.apk" -type f 2>/dev/null | grep -E "release" | grep -v "unsigned" | head -1)
+    fi
 fi
 
 if [ -n "$APK_PATH" ] && [ -f "$APK_PATH" ]; then
