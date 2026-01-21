@@ -389,13 +389,15 @@ const ChildView = ({ childId, familyId, onBackToParent, onLogout }) => {
   };
 
   const handleBottomNavAction = (type) => {
-    console.log('[ChildView] handleBottomNavAction called with type:', type);
+    console.log('🔵🔵🔵 [ChildView] handleBottomNavAction CALLED with type:', type);
+    console.log('🔵🔵🔵 [ChildView] Setting transactionType to:', type);
     setTransactionType(type);
     setTransactionAmount('');
     setTransactionDescription('');
     setTransactionCategory('');
+    console.log('🔵🔵🔵 [ChildView] Opening transaction modal...');
     setShowTransactionModal(true);
-    console.log('[ChildView] showTransactionModal set to true');
+    console.log('🔵🔵🔵 [ChildView] showTransactionModal should be true now');
   };
 
   const handleCalculatorClick = () => {
@@ -499,20 +501,36 @@ const ChildView = ({ childId, familyId, onBackToParent, onLogout }) => {
   };
 
   const handleSubmitTransaction = async () => {
+    console.log('🔵🔵🔵 [ChildView] ========== handleSubmitTransaction CALLED ==========');
+    console.log('🔵🔵🔵 [ChildView] transactionAmount:', transactionAmount);
+    console.log('🔵🔵🔵 [ChildView] transactionType:', transactionType);
+    console.log('🔵🔵🔵 [ChildView] familyId:', familyId);
+    console.log('🔵🔵🔵 [ChildView] childId:', childId);
+    
     if (!transactionAmount || parseFloat(transactionAmount) <= 0) {
+      console.log('🔵🔵🔵 [ChildView] Invalid amount, returning');
       alert(t('parent.dashboard.invalidAmount', { defaultValue: 'אנא הכנס סכום תקין' }));
       return;
     }
 
     if (transactionType === 'expense' && categories.length > 0 && !transactionCategory) {
+      console.log('🔵🔵🔵 [ChildView] Missing category, returning');
       alert(t('parent.dashboard.selectCategory', { defaultValue: 'אנא בחר קטגוריה' }));
       return;
     }
 
     try {
+      console.log('🔵🔵🔵 [ChildView] Setting submittingTransaction to true');
       setSubmittingTransaction(true);
       const amount = parseFloat(transactionAmount);
       const currentCashBox = childData?.cashBoxBalance || 0;
+      const currentBalance = childData?.balance || 0;
+      
+      console.log('🔵🔵🔵 [ChildView] ========== Transaction Details ==========');
+      console.log('🔵🔵🔵 [ChildView] Type:', transactionType);
+      console.log('🔵🔵🔵 [ChildView] Amount:', amount);
+      console.log('🔵🔵🔵 [ChildView] Before update - cashBoxBalance:', currentCashBox);
+      console.log('🔵🔵🔵 [ChildView] Before update - balance:', currentBalance);
       
       // Update cashBoxBalance based on transaction type
       // Deposit adds to cash box, expense subtracts from cash box
@@ -520,12 +538,29 @@ const ChildView = ({ childId, familyId, onBackToParent, onLogout }) => {
         ? currentCashBox + amount 
         : Math.max(0, currentCashBox - amount);
       
-      // Update cash box balance
-      await updateCashBoxBalance(familyId, childId, newCashBoxBalance);
+      console.log('🔵🔵🔵 [ChildView] New cashBoxBalance:', newCashBoxBalance);
+      console.log('🔵🔵🔵 [ChildView] ============================================');
       
-      // Also add transaction to history (for display purposes)
+      // Update cash box balance
+      console.log('🔵🔵🔵 [ChildView] STEP 1: Calling updateCashBoxBalance...');
+      await updateCashBoxBalance(familyId, childId, newCashBoxBalance);
+      console.log('🔵🔵🔵 [ChildView] STEP 1: updateCashBoxBalance completed');
+      
+      // Add transaction to history WITHOUT updating balance (only for display purposes)
+      // We use a special flag to indicate this is a cash box transaction that shouldn't affect balance
       const category = transactionType === 'expense' ? transactionCategory : null;
-      await addTransaction(familyId, childId, transactionType, transactionAmount, transactionDescription, category);
+      console.log('🔵🔵🔵 [ChildView] STEP 2: Calling addTransaction with cashBoxOnly=true');
+      console.log('🔵🔵🔵 [ChildView] Parameters:', { 
+        familyId, 
+        childId, 
+        type: transactionType, 
+        amount: transactionAmount, 
+        description: transactionDescription, 
+        category, 
+        cashBoxOnly: true 
+      });
+      await addTransaction(familyId, childId, transactionType, transactionAmount, transactionDescription, category, true); // true = cashBoxOnly
+      console.log('🔵🔵🔵 [ChildView] STEP 2: addTransaction completed');
       
       // Reset form
       setTransactionAmount('');
@@ -1326,7 +1361,12 @@ const ChildView = ({ childId, familyId, onBackToParent, onLogout }) => {
               <button className="modal-close" onClick={() => setShowTransactionModal(false)}>✕</button>
             </div>
 
-            <form onSubmit={(e) => { e.preventDefault(); handleSubmitTransaction(); }} className="quick-action-form">
+            <form onSubmit={(e) => { 
+              console.log('🔵🔵🔵 [ChildView] FORM SUBMIT triggered!');
+              e.preventDefault(); 
+              console.log('🔵🔵🔵 [ChildView] Calling handleSubmitTransaction...');
+              handleSubmitTransaction(); 
+            }} className="quick-action-form">
               <div className="form-group">
                 <label>{t('parent.dashboard.amount', { defaultValue: 'סכום' })} (₪):</label>
                 <div style={{ display: 'flex', gap: '8px' }}>

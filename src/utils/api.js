@@ -338,21 +338,31 @@ export const updateChild = async (familyId, childId, name, phoneNumber) => {
 };
 
 // Add transaction (deposit or expense)
-export const addTransaction = async (familyId, childId, type, amount, description, category = null) => {
+// cashBoxOnly: if true, only add to transaction history without updating balance (for child dashboard transactions)
+export const addTransaction = async (familyId, childId, type, amount, description, category = null, cashBoxOnly = false) => {
   if (!familyId || !childId) {
     throw new Error('Family ID and Child ID are required');
   }
   try {
+    console.log('🟢 [API] addTransaction called');
+    console.log('🟢 [API] Parameters:', { familyId, childId, type, amount, description, category, cashBoxOnly });
+    
+    const requestBody = {
+      childId,
+      type,
+      amount: parseFloat(amount),
+      description: description || '',
+      category: category || null,
+      cashBoxOnly: cashBoxOnly // Flag to indicate this shouldn't update balance
+    };
+    console.log('🟢 [API] Request body:', JSON.stringify(requestBody));
+    
     const response = await apiCall(`/families/${familyId}/transactions`, {
       method: 'POST',
-      body: JSON.stringify({
-        childId,
-        type,
-        amount: parseFloat(amount),
-        description: description || '',
-        category: category || null
-      })
+      body: JSON.stringify(requestBody)
     }, { useCache: false });
+    
+    console.log('🟢 [API] Response received:', response);
     
     // Invalidate cache for this child and family
     invalidateChildCache(familyId, childId);

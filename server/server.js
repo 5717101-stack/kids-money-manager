@@ -2431,7 +2431,11 @@ app.get('/api/families/:familyId/children/:childId/transactions', async (req, re
 app.post('/api/families/:familyId/transactions', async (req, res) => {
   try {
     const { familyId } = req.params;
-    const { childId, type, amount, description, category } = req.body;
+    const { childId, type, amount, description, category, cashBoxOnly } = req.body;
+    
+    console.log('🔴 [SERVER] POST /api/families/:familyId/transactions');
+    console.log('🔴 [SERVER] Request body:', JSON.stringify({ childId, type, amount, description, category, cashBoxOnly }));
+    console.log('🔴 [SERVER] cashBoxOnly type:', typeof cashBoxOnly, 'value:', cashBoxOnly);
     
     if (!childId || !type || !amount) {
       return res.status(400).json({ error: 'Missing required fields' });
@@ -2446,6 +2450,8 @@ app.post('/api/families/:familyId/transactions', async (req, res) => {
     if (!child) {
       return res.status(404).json({ error: 'ילד לא נמצא' });
     }
+    
+    console.log('🔴 [SERVER] Child found. Current balance:', child.balance, 'cashBoxBalance:', child.cashBoxBalance);
     
     // Validate category
     if (type === 'expense' && category) {
@@ -2468,28 +2474,52 @@ app.post('/api/families/:familyId/transactions', async (req, res) => {
       amount: parseFloat(amount),
       description: description || '',
       category: type === 'expense' ? (category || 'אחר') : null,
-      childId: childId
+      childId: childId,
+      cashBoxOnly: cashBoxOnly || false // Flag to indicate this is a cash box transaction
     };
     
-    // Calculate balance increment/decrement instead of recalculating all
-    const balanceChange = type === 'deposit' ? parseFloat(amount) : -parseFloat(amount);
-    const newBalance = (child.balance || 0) + balanceChange;
-    
     if (db) {
-      // Use $push to add transaction and $inc to update balance atomically
-      // This is much faster than loading all transactions and recalculating
-      await db.collection('families').updateOne(
-        { _id: familyId, 'children._id': childId },
-        { 
-          $push: { 'children.$.transactions': transaction },
-          $inc: { 'children.$.balance': balanceChange }
-        }
-      );
+      // If cashBoxOnly is true, only add transaction to history without updating balance
+      // This is for transactions made from child dashboard that should only affect cashBoxBalance
+      // Check both boolean true and string "true" for compatibility
+      const isCashBoxOnly = cashBoxOnly === true || cashBoxOnly === 'true' || cashBoxOnly === 1;
+      
+      console.log('🔴 [SERVER] isCashBoxOnly:', isCashBoxOnly, '(cashBoxOnly:', cashBoxOnly, ')');
+      
+      if (isCashBoxOnly) {
+        console.log('🔴 [SERVER] cashBoxOnly=true, NOT updating balance. Type:', type, 'Amount:', amount);
+        await db.collection('families').updateOne(
+          { _id: familyId, 'children._id': childId },
+          { 
+            $push: { 'children.$.transactions': transaction }
+            // Don't update balance - only cashBoxBalance was already updated separately
+          }
+        );
+        console.log('🔴 [SERVER] Transaction added to history WITHOUT updating balance');
+      } else {
+        // Normal transaction: update both transaction history and balance
+        // Calculate balance increment/decrement instead of recalculating all
+        const balanceChange = type === 'deposit' ? parseFloat(amount) : -parseFloat(amount);
+        const newBalance = (child.balance || 0) + balanceChange;
+        console.log('🔴 [SERVER] cashBoxOnly=false, updating balance. Type:', type, 'Amount:', amount, 'BalanceChange:', balanceChange, 'NewBalance:', newBalance);
+        
+        // Use $push to add transaction and $inc to update balance atomically
+        // This is much faster than loading all transactions and recalculating
+        await db.collection('families').updateOne(
+          { _id: familyId, 'children._id': childId },
+          { 
+            $push: { 'children.$.transactions': transaction },
+            $inc: { 'children.$.balance': balanceChange }
+          }
+        );
+        console.log('🔴 [SERVER] Transaction added and balance updated');
+      }
       // Invalidate cache to ensure fresh data on next request
       invalidateFamilyCache(familyId);
     }
     
-    res.json({ transaction, balance: newBalance, updated: true });
+    const currentBalance = cashBoxOnly ? (child.balance || 0) : ((child.balance || 0) + (type === 'deposit' ? parseFloat(amount) : -parseFloat(amount)));
+    res.json({ transaction, balance: currentBalance, updated: true });
   } catch (error) {
     console.error('Error adding transaction:', error);
     res.status(500).json({ error: 'Failed to add transaction' });
