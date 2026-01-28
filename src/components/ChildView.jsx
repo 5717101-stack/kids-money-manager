@@ -1277,6 +1277,7 @@ const ChildView = ({ childId, familyId, onBackToParent, onLogout }) => {
           if (!file) return;
 
           try {
+            setUploadingImage(true);
             // Compress image before upload
             const base64Image = await smartCompressImage(file);
             
@@ -1288,6 +1289,8 @@ const ChildView = ({ childId, familyId, onBackToParent, onLogout }) => {
             }
           } catch (error) {
             alert(t('child.profile.error', { defaultValue: 'שגיאה בעדכון תמונת הפרופיל' }) + ': ' + error.message);
+          } finally {
+            setUploadingImage(false);
           }
           
           // Reset file input so same file can be selected again
@@ -1603,7 +1606,7 @@ const ChildView = ({ childId, familyId, onBackToParent, onLogout }) => {
                   setSubmittingTaskRequest(false);
                 }
               }}
-              style={{ padding: '20px', display: 'flex', flexDirection: 'column', gap: '16px' }}
+              style={{ padding: '20px', display: 'flex', flexDirection: 'column', gap: '16px', minHeight: '100%' }}
             >
               <div>
                 <label style={{ display: 'block', marginBottom: '8px', fontWeight: 600 }}>
@@ -1681,7 +1684,7 @@ const ChildView = ({ childId, familyId, onBackToParent, onLogout }) => {
                   )}
                 </div>
                 {taskImage && (
-                  <div style={{ marginTop: '12px' }}>
+                  <div style={{ marginTop: '12px', marginBottom: '16px' }}>
                     <img
                       src={URL.createObjectURL(taskImage)}
                       alt="Task"
@@ -1696,7 +1699,7 @@ const ChildView = ({ childId, familyId, onBackToParent, onLogout }) => {
                 )}
               </div>
               
-              <div style={{ display: 'flex', gap: '12px', marginTop: '8px' }}>
+              <div style={{ display: 'flex', gap: '12px', marginTop: 'auto', paddingTop: '16px' }}>
                 <button
                   type="button"
                   onClick={() => {

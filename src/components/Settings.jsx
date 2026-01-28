@@ -34,6 +34,7 @@ const Settings = ({ familyId, isNewFamily, onClose, onLogout, activeTab: externa
   const [showTaskHistory, setShowTaskHistory] = useState(false);
   const [taskHistory, setTaskHistory] = useState([]);
   const [selectedHistoryRequest, setSelectedHistoryRequest] = useState(null);
+  const [updatingTaskStatus, setUpdatingTaskStatus] = useState(null); // Track which task status is being updated
   const [allData, setAllData] = useState({ children: {} });
   const [loading, setLoading] = useState(true);
   const [allowanceStates, setAllowanceStates] = useState({});
@@ -736,11 +737,14 @@ const Settings = ({ familyId, isNewFamily, onClose, onLogout, activeTab: externa
   const handleUpdateTaskStatus = async (requestId, newStatus) => {
     if (!familyId) return;
     try {
+      setUpdatingTaskStatus(requestId);
       await updatePaymentRequestStatus(familyId, requestId, newStatus);
       await loadTaskHistory();
       await loadData(); // Reload to update balances
     } catch (error) {
       alert(t('parent.settings.tasks.updateStatusError', { defaultValue: 'שגיאה בעדכון סטטוס' }) + ': ' + error.message);
+    } finally {
+      setUpdatingTaskStatus(null);
     }
   };
 
@@ -1402,6 +1406,7 @@ const Settings = ({ familyId, isNewFamily, onClose, onLogout, activeTab: externa
                       // Update in history list
                       setTaskHistory(taskHistory.map(r => r._id === selectedHistoryRequest._id ? updated : r));
                     }}
+                    disabled={updatingTaskStatus === selectedHistoryRequest._id}
                     style={{
                       flex: 1,
                       padding: '12px',
@@ -1411,10 +1416,14 @@ const Settings = ({ familyId, isNewFamily, onClose, onLogout, activeTab: externa
                       border: 'none',
                       fontSize: '16px',
                       fontWeight: 600,
-                      cursor: 'pointer'
+                      cursor: updatingTaskStatus === selectedHistoryRequest._id ? 'not-allowed' : 'pointer',
+                      opacity: updatingTaskStatus === selectedHistoryRequest._id ? 0.6 : 1,
+                      animation: updatingTaskStatus === selectedHistoryRequest._id ? 'pulse 1.5s ease-in-out infinite' : 'none'
                     }}
                   >
-                    {selectedHistoryRequest.status === 'approved' 
+                    {updatingTaskStatus === selectedHistoryRequest._id
+                      ? t('common.saving', { defaultValue: 'שומר...' })
+                      : selectedHistoryRequest.status === 'approved' 
                       ? t('parent.settings.tasks.reject', { defaultValue: 'דחה' })
                       : t('parent.settings.tasks.approve', { defaultValue: 'אשר' })
                     }
