@@ -25,6 +25,7 @@ const ChildView = ({ childId, familyId, onBackToParent, onLogout }) => {
   const [incomeByCategory, setIncomeByCategory] = useState([]);
   const [loadingIncome, setLoadingIncome] = useState(false);
   const [filteredCategory, setFilteredCategory] = useState(null); // Category to filter transactions
+  const [filteredChartType, setFilteredChartType] = useState(null); // Track which chart type the filter is from ('expenses' or 'income')
   const [historyLimit, setHistoryLimit] = useState(() => {
     // Load from localStorage or default to 5
     if (typeof window !== 'undefined') {
@@ -1110,6 +1111,7 @@ const ChildView = ({ childId, familyId, onBackToParent, onLogout }) => {
                 onClick={() => {
                   setChartType('expenses');
                   setFilteredCategory(null);
+                  setFilteredChartType(null);
                 }}
               >
                 {t('child.expenses.title', { defaultValue: 'הוצאות' })}
@@ -1119,6 +1121,7 @@ const ChildView = ({ childId, familyId, onBackToParent, onLogout }) => {
                 onClick={() => {
                   setChartType('income');
                   setFilteredCategory(null);
+                  setFilteredChartType(null);
                 }}
               >
                 {t('child.income.title', { defaultValue: 'הכנסות' })}
@@ -1182,7 +1185,10 @@ const ChildView = ({ childId, familyId, onBackToParent, onLogout }) => {
                 })
             }
             days={expensesPeriod === 'week' ? 7 : 30}
-            onCategorySelect={setFilteredCategory}
+            onCategorySelect={(category) => {
+              setFilteredCategory(category);
+              setFilteredChartType(chartType);
+            }}
             selectedCategory={filteredCategory}
           />
         ) : (
@@ -1245,7 +1251,10 @@ const ChildView = ({ childId, familyId, onBackToParent, onLogout }) => {
               return (
                 <div className="no-transactions-message">
                   {filteredCategory 
-                    ? t('child.history.noTransactionsForCategory', { category: filteredCategory }).replace('{category}', filteredCategory)
+                    ? (filteredChartType === 'income'
+                        ? t('child.history.noIncomeForCategory', { defaultValue: `אין הכנסות בקטגוריה "${filteredCategory}"` }).replace('{category}', filteredCategory)
+                        : t('child.history.noTransactionsForCategory', { category: filteredCategory }).replace('{category}', filteredCategory)
+                      )
                     : t('child.history.noTransactions', { defaultValue: 'אין עסקאות' })
                   }
                 </div>
