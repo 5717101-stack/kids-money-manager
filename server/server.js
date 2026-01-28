@@ -1063,57 +1063,68 @@ async function processAllowancesForFamily(familyId) {
       
       if (allowanceType === 'weekly') {
         const isCorrectDay = currentDayOfWeek === allowanceDay;
-        // Only process if it's the exact minute or within 1 minute after (to account for processing delay)
-        const isCorrectTime = hour === allowanceHour && minute >= allowanceMinute && minute <= allowanceMinute + 1;
+        // Only process if it's the exact minute (to prevent double processing)
+        const isCorrectTime = hour === allowanceHour && minute === allowanceMinute;
         shouldProcess = isCorrectDay && isCorrectTime;
         
         if (shouldProcess) {
-          // Check if allowance was already paid this week (same day of week)
-          // Calculate the start of the current week (Sunday at 00:00)
-          const weekStart = new Date(now);
-          weekStart.setHours(0, 0, 0, 0);
-          const daysSinceSunday = currentDayOfWeek;
-          weekStart.setDate(now.getDate() - daysSinceSunday);
-          
-          const recentAllowance = (child.transactions || []).find(t => {
-            if (!t || t.type !== 'deposit') return false;
-            if (t.description !== 'דמי כיס שבועיים') return false;
-            const tDate = new Date(t.date);
-            // Check if transaction is from this week and same day of week
-            const tDayOfWeek = tDate.toLocaleString('en-US', { timeZone: 'Asia/Jerusalem', weekday: 'long' });
-            const tCurrentDayOfWeek = dayNameToNumber[tDayOfWeek];
-            return tDate >= weekStart && tCurrentDayOfWeek === currentDayOfWeek;
-          });
-          
-          if (recentAllowance) {
-            console.log(`⏭️ Skipping allowance for ${child.name} - already paid this week at ${recentAllowance.date}`);
-            continue;
+          // Check if allowance was already paid today using lastAllowancePayment
+          const lastPayment = child.lastAllowancePayment ? new Date(child.lastAllowancePayment) : null;
+          if (lastPayment) {
+            // Check if last payment was today (same day, same hour, same minute)
+            const lastPaymentDay = lastPayment.toLocaleString('en-US', { timeZone: 'Asia/Jerusalem', weekday: 'long' });
+            const lastPaymentDayOfWeek = dayNameToNumber[lastPaymentDay];
+            const lastPaymentHour = parseInt(new Intl.DateTimeFormat('en-US', {
+              timeZone: 'Asia/Jerusalem',
+              hour: 'numeric',
+              hour12: false
+            }).formatToParts(lastPayment).find(part => part.type === 'hour').value);
+            const lastPaymentMinute = parseInt(new Intl.DateTimeFormat('en-US', {
+              timeZone: 'Asia/Jerusalem',
+              minute: 'numeric'
+            }).formatToParts(lastPayment).find(part => part.type === 'minute').value);
+            
+            // If last payment was today at the same time, skip
+            if (lastPaymentDayOfWeek === currentDayOfWeek && 
+                lastPaymentHour === allowanceHour && 
+                lastPaymentMinute === allowanceMinute) {
+              console.log(`⏭️ Skipping allowance for ${child.name} - already paid today at ${lastPayment.toISOString()}`);
+              continue;
+            }
           }
         }
       } else if (allowanceType === 'monthly') {
         const isCorrectDay = dayOfMonth === allowanceDay;
-        // Only process if it's the exact minute or within 1 minute after (to account for processing delay)
-        const isCorrectTime = hour === allowanceHour && minute >= allowanceMinute && minute <= allowanceMinute + 1;
+        // Only process if it's the exact minute (to prevent double processing)
+        const isCorrectTime = hour === allowanceHour && minute === allowanceMinute;
         shouldProcess = isCorrectDay && isCorrectTime;
         
         if (shouldProcess) {
-          // Check if allowance was already paid this month (same day of month)
-          const monthStart = new Date(now);
-          monthStart.setDate(1);
-          monthStart.setHours(0, 0, 0, 0);
-          
-          const recentAllowance = (child.transactions || []).find(t => {
-            if (!t || t.type !== 'deposit') return false;
-            if (t.description !== 'דמי כיס חודשיים') return false;
-            const tDate = new Date(t.date);
-            // Check if transaction is from this month and same day of month
-            const tDayOfMonth = tDate.getDate();
-            return tDate >= monthStart && tDayOfMonth === dayOfMonth;
-          });
-          
-          if (recentAllowance) {
-            console.log(`⏭️ Skipping allowance for ${child.name} - already paid this month at ${recentAllowance.date}`);
-            continue;
+          // Check if allowance was already paid today using lastAllowancePayment
+          const lastPayment = child.lastAllowancePayment ? new Date(child.lastAllowancePayment) : null;
+          if (lastPayment) {
+            // Check if last payment was today (same day of month, same hour, same minute)
+            const lastPaymentDayOfMonth = parseInt(new Intl.DateTimeFormat('en-US', {
+              timeZone: 'Asia/Jerusalem',
+              day: 'numeric'
+            }).formatToParts(lastPayment).find(part => part.type === 'day').value);
+            const lastPaymentHour = parseInt(new Intl.DateTimeFormat('en-US', {
+              timeZone: 'Asia/Jerusalem',
+              hour: 'numeric',
+              hour12: false
+            }).formatToParts(lastPayment).find(part => part.type === 'hour').value);
+            const lastPaymentMinute = parseInt(new Intl.DateTimeFormat('en-US', {
+              timeZone: 'Asia/Jerusalem',
+              minute: 'numeric'
+            }).formatToParts(lastPayment).find(part => part.type === 'minute').value);
+            
+            // If last payment was today at the same time, skip
+            if (lastPaymentDayOfMonth === dayOfMonth && 
+                lastPaymentHour === allowanceHour && 
+                lastPaymentMinute === allowanceMinute) {
+              console.log(`⏭️ Skipping allowance for ${child.name} - already paid today at ${lastPayment.toISOString()}`);
+              continue;
+            }
           }
         }
       }
@@ -1168,15 +1179,26 @@ async function processInterestForFamily(familyId) {
       if (!child.balance || child.balance <= 0) continue;
 
       const lastCalcDate = child.lastInterestCalculation ? new Date(child.lastInterestCalculation) : null;
-      const oneDayAgo = new Date(now);
-      oneDayAgo.setDate(now.getDate() - 1);
-      oneDayAgo.setHours(0, 0, 0, 0);
 
       // Calculate interest daily (weekly rate divided by 7)
       const dailyInterestRate = child.weeklyInterestRate / 7;
       
-      // Only calculate if it's been at least 1 day since last calculation
-      if (!lastCalcDate || lastCalcDate <= oneDayAgo) {
+      // Only calculate if it's been at least 24 hours since last calculation
+      // Use precise time difference to prevent double calculation
+      let shouldCalculate = false;
+      let timeDiff = 0;
+      const oneDayInMs = 24 * 60 * 60 * 1000; // 24 hours in milliseconds
+      
+      if (!lastCalcDate) {
+        // First time calculating interest
+        shouldCalculate = true;
+      } else {
+        // Check if at least 24 hours have passed
+        timeDiff = now.getTime() - lastCalcDate.getTime();
+        shouldCalculate = timeDiff >= oneDayInMs;
+      }
+      
+      if (shouldCalculate) {
         const interestAmount = (child.balance || 0) * (dailyInterestRate / 100);
         if (interestAmount > 0) {
           const newBalance = (child.balance || 0) + interestAmount;
@@ -1208,8 +1230,10 @@ async function processInterestForFamily(familyId) {
           );
           invalidateFamilyCache(familyId);
           
-          console.log(`✅ Added ${interestAmount.toFixed(2)} daily interest (${dailyInterestRate.toFixed(4)}%) to ${child.name} in family ${familyId}`);
+          console.log(`✅ Added ${interestAmount.toFixed(2)} daily interest (${dailyInterestRate.toFixed(4)}%) to ${child.name} in family ${familyId} at ${new Date().toISOString()}`);
         }
+      } else if (lastCalcDate) {
+        console.log(`⏭️ Skipping interest for ${child.name} - less than 24 hours since last calculation (${timeDiff}ms < ${oneDayInMs}ms)`);
       }
     }
   } catch (error) {
@@ -2598,9 +2622,12 @@ app.get('/api/families/:familyId/children/:childId/expenses-by-category', async 
       return res.status(404).json({ error: 'ילד לא נמצא' });
     }
     
+    // Calculate cutoff date: last N days including today
+    // For days=7: last 7 days including today = 8 days total
+    // For days=30: last 30 days including today = 31 days total
     const cutoffDate = new Date();
     cutoffDate.setHours(0, 0, 0, 0);
-    cutoffDate.setDate(cutoffDate.getDate() - days + 1);
+    cutoffDate.setDate(cutoffDate.getDate() - days + 1); // +1 to include today
     
     const expenses = (child.transactions || [])
       .filter(t => {

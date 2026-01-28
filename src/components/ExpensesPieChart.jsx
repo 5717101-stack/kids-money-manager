@@ -74,14 +74,19 @@ const ExpensesPieChart = ({ familyId, children, categories, onCategorySelect, se
   const [expensesByCategory, setExpensesByCategory] = useState([]);
 
   // Calculate date range based on filter
+  // Week = last 7 days including today (8 days total)
+  // Month = last 30 days including today (31 days total)
   const getDateRange = () => {
     const now = new Date();
     const startDate = new Date();
+    startDate.setHours(0, 0, 0, 0); // Start of day
     
     if (timeFilter === 'week') {
+      // Last 7 days including today = 8 days total
       startDate.setDate(now.getDate() - 7);
     } else {
-      startDate.setMonth(now.getMonth() - 1);
+      // Last 30 days including today = 31 days total
+      startDate.setDate(now.getDate() - 30);
     }
     
     return { startDate, endDate: now };
@@ -356,6 +361,8 @@ const ExpensesPieChart = ({ familyId, children, categories, onCategorySelect, se
     color: getCategoryColor(item.category)
   }));
 
+  // Days parameter: week = 7 days (8 including today), month = 30 days (31 including today)
+  // This matches the backend calculation
   const days = timeFilter === 'week' ? 7 : 30;
 
   return (
