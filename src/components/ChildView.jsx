@@ -1606,8 +1606,16 @@ const ChildView = ({ childId, familyId, onBackToParent, onLogout }) => {
                   setSubmittingTaskRequest(false);
                 }
               }}
-              style={{ padding: '20px', display: 'flex', flexDirection: 'column', gap: '16px', minHeight: '100%' }}
+              style={{ 
+                padding: '20px', 
+                display: 'flex', 
+                flexDirection: 'column', 
+                gap: '16px',
+                height: '100%',
+                maxHeight: 'calc(80vh - 60px)'
+              }}
             >
+              <div style={{ flex: '1 1 auto', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '16px' }}>
               <div>
                 <label style={{ display: 'block', marginBottom: '8px', fontWeight: 600 }}>
                   {t('child.tasks.task', { defaultValue: 'מטלה' })}:
@@ -1684,7 +1692,7 @@ const ChildView = ({ childId, familyId, onBackToParent, onLogout }) => {
                   )}
                 </div>
                 {taskImage && (
-                  <div style={{ marginTop: '12px', marginBottom: '16px' }}>
+                  <div style={{ marginTop: '12px' }}>
                     <img
                       src={URL.createObjectURL(taskImage)}
                       alt="Task"
@@ -1692,14 +1700,16 @@ const ChildView = ({ childId, familyId, onBackToParent, onLogout }) => {
                         maxWidth: '100%',
                         maxHeight: '200px',
                         borderRadius: '8px',
-                        border: '1px solid #E5E7EB'
+                        border: '1px solid #E5E7EB',
+                        objectFit: 'contain'
                       }}
                     />
                   </div>
                 )}
               </div>
+              </div>
               
-              <div style={{ display: 'flex', gap: '12px', marginTop: 'auto', paddingTop: '16px' }}>
+              <div style={{ display: 'flex', gap: '12px', flexShrink: 0, paddingTop: '16px', borderTop: '1px solid rgba(0,0,0,0.1)' }}>
                 <button
                   type="button"
                   onClick={() => {

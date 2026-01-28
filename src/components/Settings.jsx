@@ -737,14 +737,13 @@ const Settings = ({ familyId, isNewFamily, onClose, onLogout, activeTab: externa
   const handleUpdateTaskStatus = async (requestId, newStatus) => {
     if (!familyId) return;
     try {
-      setUpdatingTaskStatus(requestId);
+      // Note: updatingTaskStatus is set by the caller for immediate visual feedback
       await updatePaymentRequestStatus(familyId, requestId, newStatus);
       await loadTaskHistory();
       await loadData(); // Reload to update balances
     } catch (error) {
       alert(t('parent.settings.tasks.updateStatusError', { defaultValue: 'שגיאה בעדכון סטטוס' }) + ': ' + error.message);
-    } finally {
-      setUpdatingTaskStatus(null);
+      throw error; // Re-throw so caller can handle it
     }
   };
 
@@ -1399,12 +1398,24 @@ const Settings = ({ familyId, isNewFamily, onClose, onLogout, activeTab: externa
                     <button
                     onClick={async () => {
                       const newStatus = selectedHistoryRequest.status === 'approved' ? 'rejected' : 'approved';
-                      await handleUpdateTaskStatus(selectedHistoryRequest._id, newStatus);
-                      // Update local state
-                      const updated = { ...selectedHistoryRequest, status: newStatus };
-                      setSelectedHistoryRequest(updated);
-                      // Update in history list
-                      setTaskHistory(taskHistory.map(r => r._id === selectedHistoryRequest._id ? updated : r));
+                      const requestId = selectedHistoryRequest._id;
+                      
+                      // Set updating state immediately for visual feedback
+                      setUpdatingTaskStatus(requestId);
+                      
+                      try {
+                        await handleUpdateTaskStatus(requestId, newStatus);
+                        // Update local state
+                        const updated = { ...selectedHistoryRequest, status: newStatus };
+                        setSelectedHistoryRequest(updated);
+                        // Update in history list
+                        setTaskHistory(taskHistory.map(r => r._id === requestId ? updated : r));
+                      } catch (error) {
+                        // Error is already handled in handleUpdateTaskStatus
+                        console.error('Error updating task status:', error);
+                      } finally {
+                        setUpdatingTaskStatus(null);
+                      }
                     }}
                     disabled={updatingTaskStatus === selectedHistoryRequest._id}
                     style={{
@@ -1417,16 +1428,30 @@ const Settings = ({ familyId, isNewFamily, onClose, onLogout, activeTab: externa
                       fontSize: '16px',
                       fontWeight: 600,
                       cursor: updatingTaskStatus === selectedHistoryRequest._id ? 'not-allowed' : 'pointer',
-                      opacity: updatingTaskStatus === selectedHistoryRequest._id ? 0.6 : 1,
-                      animation: updatingTaskStatus === selectedHistoryRequest._id ? 'pulse 1.5s ease-in-out infinite' : 'none'
+                      opacity: updatingTaskStatus === selectedHistoryRequest._id ? 0.7 : 1,
+                      transition: 'opacity 0.2s',
+                      animation: updatingTaskStatus === selectedHistoryRequest._id ? 'pulse 1.5s ease-in-out infinite' : 'none',
+                      position: 'relative'
                     }}
                   >
-                    {updatingTaskStatus === selectedHistoryRequest._id
-                      ? t('common.saving', { defaultValue: 'שומר...' })
-                      : selectedHistoryRequest.status === 'approved' 
-                      ? t('parent.settings.tasks.reject', { defaultValue: 'דחה' })
-                      : t('parent.settings.tasks.approve', { defaultValue: 'אשר' })
-                    }
+                    {updatingTaskStatus === selectedHistoryRequest._id ? (
+                      <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
+                        <span style={{
+                          width: '16px',
+                          height: '16px',
+                          border: '2px solid rgba(255, 255, 255, 0.3)',
+                          borderTop: '2px solid white',
+                          borderRadius: '50%',
+                          animation: 'spin 0.8s linear infinite',
+                          display: 'inline-block'
+                        }}></span>
+                        {t('common.saving', { defaultValue: 'שומר...' })}
+                      </span>
+                    ) : (
+                      selectedHistoryRequest.status === 'approved' 
+                        ? t('parent.settings.tasks.reject', { defaultValue: 'דחה' })
+                        : t('parent.settings.tasks.approve', { defaultValue: 'אשר' })
+                    )}
                   </button>
                 </div>
               </div>
