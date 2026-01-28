@@ -1240,12 +1240,16 @@ const ChildView = ({ childId, familyId, onBackToParent, onLogout }) => {
         </div>
         <div className="history-content">
           {(() => {
-            const filtered = filteredCategory && filteredChartType
+            const filtered = filteredCategory
               ? transactions.filter(t => {
-                  if (filteredChartType === 'expenses') {
+                  // If filteredChartType is not set, try to infer from category name
+                  // (for backward compatibility with old filters)
+                  const chartType = filteredChartType || (['ריבית', 'מטלות', 'אחר'].includes(filteredCategory) ? 'income' : 'expenses');
+                  
+                  if (chartType === 'expenses') {
                     // Filter expenses by category
                     return t.type === 'expense' && t.category === filteredCategory;
-                  } else if (filteredChartType === 'income') {
+                  } else if (chartType === 'income') {
                     // Filter income by income category (ריבית, מטלות, אחר)
                     if (t.type !== 'deposit') return false;
                     
