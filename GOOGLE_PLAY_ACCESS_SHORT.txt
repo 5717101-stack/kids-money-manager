@@ -1,0 +1,14 @@
+This app uses phone number authentication with SMS OTP verification.
+
+ACCESS:
+1. Enter your phone number (with country code, e.g., +1XXXXXXXXXX)
+2. Receive SMS with 6-digit code
+3. Enter code to login
+4. New family account created automatically
+
+NOTES:
+- Use your own phone number - no special account needed
+- OTP valid for 10 minutes
+- After login, explore: add children, set allowances, view balances, approve payments
+
+Contact: support@familybank.app

@@ -5,7 +5,8 @@
 # Usage: ./update_version.sh <new_version>
 # Example: ./update_version.sh 5.0.10
 
-set -e
+# Don't exit on error - we want to continue even if push fails
+set +e
 
 if [ -z "$1" ]; then
   echo "❌ Error: Version number required"
@@ -59,6 +60,46 @@ echo "🧹 Cleaning iOS build artifacts..."
 rm -rf ~/Library/Developer/Xcode/DerivedData 2>/dev/null || true
 # Note: Don't delete ios/App/App/public - Capacitor needs it
 
+# Commit and push changes
+echo ""
+echo "📝 Committing changes to git..."
+git add -A
+
+# Check if there are changes to commit
+if git diff --staged --quiet 2>/dev/null; then
+  echo "ℹ️  No changes to commit"
+else
+  git commit -m "גרסה $NEW_VERSION: עדכון גרסה אוטומטי" 2>&1
+  COMMIT_RESULT=$?
+  
+    if [ $COMMIT_RESULT -eq 0 ]; then
+      echo "✅ Changes committed"
+      
+      echo "🚀 Pushing to GitHub..."
+      # Use credential helper for authentication
+      GIT_TERMINAL_PROMPT=0 git push origin main 2>&1
+      PUSH_RESULT=$?
+      
+      if [ $PUSH_RESULT -ne 0 ]; then
+        echo "⚠️  Push failed"
+        echo "💡 Trying with stored credentials..."
+        # Try with credential helper
+        git push origin main 2>&1
+        PUSH_RESULT=$?
+      fi
+      
+      if [ $PUSH_RESULT -eq 0 ]; then
+        echo "✅ Pushed to GitHub successfully"
+        echo "🌐 Vercel will automatically deploy the new version"
+      else
+        echo "⚠️  Push failed"
+        echo "💡 Please check GitHub credentials"
+      fi
+  else
+    echo "⚠️  Commit failed (maybe no changes or already committed)"
+  fi
+fi
+
 echo ""
 echo "✅ Version update complete!"
 echo ""
@@ -67,6 +108,8 @@ echo "   ✅ package.json: $NEW_VERSION"
 echo "   ✅ server/package.json: $NEW_VERSION"
 echo "   ✅ android/app/build.gradle: $NEW_VERSION"
 echo "   ✅ ios/App/App.xcodeproj/project.pbxproj: $NEW_VERSION"
+echo ""
+echo "🌐 Vercel will automatically deploy the new version"
 echo ""
 echo "🔧 Next steps for iOS:"
 echo "   1. Open Xcode"

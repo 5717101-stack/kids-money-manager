@@ -37,6 +37,56 @@ const OTPVerification = ({ phoneNumber, isExistingFamily, onVerified, onBack }) 
     const sendOTP = async () => {
       if (!phoneNumber || otpSent) return;
       
+      // Test phone numbers for Apple review - auto-verify
+      const TEST_PHONE_NUMBERS = {
+        PARENT: '+1123456789',
+        CHILD: '+1123412345'
+      };
+      
+      if (phoneNumber === TEST_PHONE_NUMBERS.PARENT || phoneNumber === TEST_PHONE_NUMBERS.CHILD) {
+        console.log('[OTP] 🧪 TEST PHONE NUMBER DETECTED - Auto-verifying');
+        // Auto-verify test numbers
+        setTimeout(async () => {
+          try {
+            let apiUrl;
+            if (typeof window !== 'undefined' && window.Capacitor?.isNativePlatform()) {
+              apiUrl = 'https://kids-money-manager-server.onrender.com/api';
+            } else {
+              apiUrl = import.meta.env.VITE_API_URL || 'https://kids-money-manager-server.onrender.com/api';
+            }
+            
+            const url = `${apiUrl}/auth/verify-otp`;
+            const response = await fetch(url, {
+              method: 'POST',
+              mode: 'cors',
+              credentials: 'omit',
+              headers: {
+                'Content-Type': 'application/json',
+                'Accept': 'application/json',
+              },
+              body: JSON.stringify({
+                phoneNumber,
+                otpCode: '123456' // Fake OTP for test numbers
+              })
+            });
+            
+            const data = await response.json();
+            
+            if (!response.ok) {
+              throw new Error(data.error || 'שגיאה באימות');
+            }
+            
+            // Auto-verify successful
+            onVerified(data.familyId, data.phoneNumber, data.isNewFamily, data.isChild, data.childId, data.isAdditionalParent);
+          } catch (error) {
+            console.error('[OTP] Error auto-verifying test phone:', error);
+            setError(error.message || 'שגיאה באימות');
+            setSendingOTP(false);
+          }
+        }, 500); // Small delay to show loading state
+        return;
+      }
+      
       setSendingOTP(true);
       setError('');
       

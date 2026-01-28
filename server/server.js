@@ -580,6 +580,18 @@ async function initializeData() {
   }
 }
 
+// Test phone numbers for Apple review (bypass OTP)
+const TEST_PHONE_NUMBERS = {
+  PARENT: '+1123456789',
+  CHILD: '+1123412345'
+};
+
+// Helper function to check if phone is a test number
+function isTestPhoneNumber(phoneNumber) {
+  const normalized = normalizePhoneNumber(phoneNumber);
+  return normalized === TEST_PHONE_NUMBERS.PARENT || normalized === TEST_PHONE_NUMBERS.CHILD;
+}
+
 // Helper functions
 // Normalize phone number - ensure it has country code
 function normalizePhoneNumber(phoneNumber, defaultCountryCode = '+972') {
@@ -1383,9 +1395,16 @@ app.post('/api/auth/send-otp', async (req, res) => {
     process.stderr.write(`[SEND-OTP] Raw phone: ${phoneNumber.trim()}\n`);
     process.stderr.write(`[SEND-OTP] Normalized phone: ${normalizedPhone}\n`);
     
+    // Check if this is a test phone number (bypass OTP for Apple review)
+    const isTestPhone = isTestPhoneNumber(normalizedPhone);
+    if (isTestPhone) {
+      console.log(`[SEND-OTP] 🧪 TEST PHONE NUMBER DETECTED - Bypassing OTP`);
+      process.stderr.write(`[SEND-OTP] 🧪 TEST PHONE NUMBER DETECTED - Bypassing OTP\n`);
+    }
+    
     console.log(`[SEND-OTP] ========================================`);
     console.log(`[SEND-OTP] Step 2: Generating OTP...`);
-    const otpCode = generateOTP();
+    const otpCode = isTestPhone ? '123456' : generateOTP(); // Use fixed OTP for test numbers
     const expiresAt = Date.now() + (10 * 60 * 1000); // 10 minutes
     console.log(`[SEND-OTP]   Generated OTP: ${otpCode}`);
     console.log(`[SEND-OTP]   OTP expires at: ${new Date(expiresAt).toISOString()}`);
@@ -1493,10 +1512,18 @@ app.post('/api/auth/send-otp', async (req, res) => {
     process.stderr.write(`[SEND-OTP] To: ${normalizedPhone}\n`);
     process.stderr.write(`[SEND-OTP] OTP: ${otpCode}\n`);
     
-    // Format SMS for iOS AutoFill - must include the code in a recognizable format
-    // iOS recognizes patterns like: "Your code is: 123456" or "123456 is your code"
-    const smsMessage = `${otpCode} הוא קוד האימות שלך. קוד זה תקף ל-10 דקות.`;
-    const smsResult = await sendSMS(normalizedPhone, smsMessage);
+    // For test phone numbers, skip SMS sending
+    let smsResult;
+    if (isTestPhone) {
+      console.log(`[SEND-OTP] 🧪 Skipping SMS for test phone number`);
+      process.stderr.write(`[SEND-OTP] 🧪 Skipping SMS for test phone number\n`);
+      smsResult = { success: true, sid: 'test-sms-bypass' };
+    } else {
+      // Format SMS for iOS AutoFill - must include the code in a recognizable format
+      // iOS recognizes patterns like: "Your code is: 123456" or "123456 is your code"
+      const smsMessage = `${otpCode} הוא קוד האימות שלך. קוד זה תקף ל-10 דקות.`;
+      smsResult = await sendSMS(normalizedPhone, smsMessage);
+    }
     
     console.log(`[SEND-OTP] ========================================`);
     console.log(`[SEND-OTP] Step 6: SMS result received`);
@@ -1600,6 +1627,9 @@ app.post('/api/auth/verify-otp', async (req, res) => {
     
     // Normalize phone number to ensure consistent format (same as in send-otp)
     const normalizedPhone = normalizePhoneNumber(phoneNumber.trim());
+    
+    // Check if this is a test phone number (bypass OTP for Apple review)
+    const isTestPhone = isTestPhoneNumber(normalizedPhone);
     let storedOTP = otpStore.get(normalizedPhone);
     
     // Also try non-normalized version (for backward compatibility with old OTPs)
@@ -1611,12 +1641,28 @@ app.post('/api/auth/verify-otp', async (req, res) => {
       }
     }
     
-    if (!storedOTP || storedOTP.expiresAt < Date.now()) {
-      return res.status(400).json({ error: 'קוד אימות לא תקין או פג תוקף' });
-    }
-    
-    if (storedOTP.code !== otpCode) {
-      return res.status(400).json({ error: 'קוד אימות שגוי' });
+    if (isTestPhone) {
+      console.log(`[VERIFY-OTP] 🧪 TEST PHONE NUMBER DETECTED - Bypassing OTP verification`);
+      // For test numbers, use stored OTP if exists (from send-otp), otherwise create a fake one
+      if (!storedOTP) {
+        storedOTP = {
+          code: otpCode, // Accept any OTP code for test numbers
+          expiresAt: Date.now() + (10 * 60 * 1000), // 10 minutes
+          familyId: null,
+          isChild: normalizedPhone === TEST_PHONE_NUMBERS.CHILD,
+          childId: null
+        };
+      }
+      console.log(`[VERIFY-OTP] 🧪 Test phone - accepting OTP code: ${otpCode}`);
+    } else {
+      // For non-test phones, validate OTP
+      if (!storedOTP || storedOTP.expiresAt < Date.now()) {
+        return res.status(400).json({ error: 'קוד אימות לא תקין או פג תוקף' });
+      }
+      
+      if (storedOTP.code !== otpCode) {
+        return res.status(400).json({ error: 'קוד אימות שגוי' });
+      }
     }
     
     // Use information from OTP store (set during send-otp)

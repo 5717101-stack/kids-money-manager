@@ -81,6 +81,7 @@ const PhoneLogin = ({ onOTPSent }) => {
     console.log('[FRONTEND] Full Phone Number:', fullPhoneNumber);
     
     // Navigate to OTP screen immediately, OTP will be sent automatically in OTP screen
+    // For test phone numbers, OTPVerification will auto-verify
     onOTPSent(fullPhoneNumber, true); // Pass true as default, will be updated when OTP is sent
   };
 
