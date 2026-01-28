@@ -21,6 +21,9 @@ const ChildView = ({ childId, familyId, onBackToParent, onLogout }) => {
   const [expensesPeriod, setExpensesPeriod] = useState('month'); // 'week' or 'month'
   const [expensesByCategory, setExpensesByCategory] = useState([]);
   const [loadingExpenses, setLoadingExpenses] = useState(false);
+  const [chartType, setChartType] = useState('expenses'); // 'expenses' or 'income'
+  const [incomeByCategory, setIncomeByCategory] = useState([]);
+  const [loadingIncome, setLoadingIncome] = useState(false);
   const [filteredCategory, setFilteredCategory] = useState(null); // Category to filter transactions
   const [historyLimit, setHistoryLimit] = useState(() => {
     // Load from localStorage or default to 5
@@ -160,14 +163,18 @@ const ChildView = ({ childId, familyId, onBackToParent, onLogout }) => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [childId, familyId, historyLimit]);
 
-  // Load expenses when period changes or on initial load
+  // Load expenses/income when period or chart type changes or on initial load
   useEffect(() => {
     if (familyId && childId) {
-      loadExpensesByCategory();
+      if (chartType === 'expenses') {
+        loadExpensesByCategory();
+      } else {
+        loadIncomeByCategory();
+      }
       loadCategories();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [expensesPeriod, familyId, childId]);
+  }, [expensesPeriod, familyId, childId, chartType]);
 
   const loadCategories = async () => {
     if (!familyId || !childId) return;
@@ -293,6 +300,82 @@ const ChildView = ({ childId, familyId, onBackToParent, onLogout }) => {
       setExpensesByCategory([]);
     } finally {
       setLoadingExpenses(false);
+    }
+  };
+
+  const loadIncomeByCategory = async () => {
+    if (!familyId || !childId) return;
+    
+    const days = expensesPeriod === 'week' ? 7 : 30;
+    const cacheKey = `income_by_category_${familyId}_${childId}_${days}`;
+    const cacheTTL = 10 * 60 * 1000; // 10 minutes cache
+    
+    // Check cache first
+    const cached = getCached(cacheKey, cacheTTL);
+    if (cached !== null) {
+      setIncomeByCategory(cached);
+      setLoadingIncome(false);
+      return;
+    }
+    
+    try {
+      setLoadingIncome(true);
+      
+      // Load all transactions
+      const allTransactions = await getChildTransactions(familyId, childId, null);
+      
+      // Calculate date range
+      const cutoffDate = new Date();
+      cutoffDate.setHours(0, 0, 0, 0);
+      cutoffDate.setDate(cutoffDate.getDate() - days + 1);
+      
+      // Filter deposits within date range
+      const deposits = (allTransactions || []).filter(t => {
+        if (!t || t.type !== 'deposit') return false;
+        const transactionDate = new Date(t.date || t.createdAt);
+        transactionDate.setHours(0, 0, 0, 0);
+        return transactionDate >= cutoffDate;
+      });
+      
+      // Categorize deposits
+      const incomeCategories = {
+        'ריבית': 0,
+        'מטלות': 0,
+        'אחר': 0
+      };
+      
+      deposits.forEach(deposit => {
+        const description = (deposit.description || '').toLowerCase();
+        const id = deposit.id || '';
+        
+        // Check if it's interest
+        if (description.includes('ריבית') || description.includes('interest') || id.startsWith('interest_')) {
+          incomeCategories['ריבית'] += deposit.amount || 0;
+        }
+        // Check if it's from tasks
+        else if (description.includes('תשלום על משימה') || description.includes('משימה') || description.includes('task') || id.startsWith('task_')) {
+          incomeCategories['מטלות'] += deposit.amount || 0;
+        }
+        // Everything else (allowances, manual deposits, etc.)
+        else {
+          incomeCategories['אחר'] += deposit.amount || 0;
+        }
+      });
+      
+      // Convert to array format
+      const incomeArray = Object.entries(incomeCategories)
+        .filter(([_, amount]) => amount > 0)
+        .map(([category, amount]) => ({ category, amount }));
+      
+      setIncomeByCategory(incomeArray);
+      
+      // Cache the result
+      setCached(cacheKey, incomeArray, cacheTTL);
+    } catch (error) {
+      console.error('Error loading income by category:', error);
+      setIncomeByCategory([]);
+    } finally {
+      setLoadingIncome(false);
     }
   };
 
@@ -1017,26 +1100,75 @@ const ChildView = ({ childId, familyId, onBackToParent, onLogout }) => {
         )}
       </div>
 
-      {/* Expenses Distribution Chart */}
+      {/* Expenses/Income Distribution Chart */}
       <div className="fintech-card">
         <div className="expenses-chart-header">
-          <h2>{t('child.expenses.title', { defaultValue: 'התפלגות הוצאות' })}</h2>
-          <div className="period-toggle">
-            <button
-              className={`period-button ${expensesPeriod === 'week' ? 'active' : ''}`}
-              onClick={() => setExpensesPeriod('week')}
-            >
-              {t('child.expenses.week', { defaultValue: 'שבוע אחרון' })}
-            </button>
-            <button
-              className={`period-button ${expensesPeriod === 'month' ? 'active' : ''}`}
-              onClick={() => setExpensesPeriod('month')}
-            >
-              {t('child.expenses.month', { defaultValue: 'חודש אחרון' })}
-            </button>
+          <h2>
+            {chartType === 'expenses' 
+              ? t('child.expenses.title', { defaultValue: 'התפלגות הוצאות' })
+              : t('child.income.title', { defaultValue: 'התפלגות הכנסות' })
+            }
+          </h2>
+          <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+            <div className="period-toggle" style={{ marginRight: '8px' }}>
+              <button
+                className={`period-button ${chartType === 'expenses' ? 'active' : ''}`}
+                onClick={() => {
+                  setChartType('expenses');
+                  setFilteredCategory(null);
+                }}
+                style={{
+                  padding: '6px 12px',
+                  fontSize: '14px',
+                  fontWeight: 600,
+                  borderRadius: '8px',
+                  border: 'none',
+                  background: chartType === 'expenses' ? 'var(--primary)' : 'transparent',
+                  color: chartType === 'expenses' ? 'white' : 'var(--text-muted)',
+                  cursor: 'pointer',
+                  transition: 'all 0.2s'
+                }}
+              >
+                {t('child.expenses.title', { defaultValue: 'הוצאות' })}
+              </button>
+              <button
+                className={`period-button ${chartType === 'income' ? 'active' : ''}`}
+                onClick={() => {
+                  setChartType('income');
+                  setFilteredCategory(null);
+                }}
+                style={{
+                  padding: '6px 12px',
+                  fontSize: '14px',
+                  fontWeight: 600,
+                  borderRadius: '8px',
+                  border: 'none',
+                  background: chartType === 'income' ? 'var(--primary)' : 'transparent',
+                  color: chartType === 'income' ? 'white' : 'var(--text-muted)',
+                  cursor: 'pointer',
+                  transition: 'all 0.2s'
+                }}
+              >
+                {t('child.income.title', { defaultValue: 'הכנסות' })}
+              </button>
+            </div>
+            <div className="period-toggle">
+              <button
+                className={`period-button ${expensesPeriod === 'week' ? 'active' : ''}`}
+                onClick={() => setExpensesPeriod('week')}
+              >
+                {t('child.expenses.week', { defaultValue: 'שבוע אחרון' })}
+              </button>
+              <button
+                className={`period-button ${expensesPeriod === 'month' ? 'active' : ''}`}
+                onClick={() => setExpensesPeriod('month')}
+              >
+                {t('child.expenses.month', { defaultValue: 'חודש אחרון' })}
+              </button>
+            </div>
           </div>
         </div>
-        {loadingExpenses ? (
+        {(chartType === 'expenses' ? loadingExpenses : loadingIncome) ? (
           <div style={{
             display: 'flex',
             flexDirection: 'column',
@@ -1057,22 +1189,36 @@ const ChildView = ({ childId, familyId, onBackToParent, onLogout }) => {
               {t('common.loading', { defaultValue: 'טוען...' })}
             </div>
           </div>
-        ) : expensesByCategory && expensesByCategory.length > 0 ? (
+        ) : (chartType === 'expenses' 
+          ? (expensesByCategory && expensesByCategory.length > 0)
+          : (incomeByCategory && incomeByCategory.length > 0)
+        ) ? (
           <ExpensePieChart
-            expensesByCategory={expensesByCategory}
-            title={t('child.expenses.chartTitle', { 
-              period: expensesPeriod === 'week' 
-                ? t('child.expenses.week', { defaultValue: 'Last Week' })
-                : t('child.expenses.month', { defaultValue: 'Last Month' }),
-              defaultValue: 'Expenses - {period}'
-            })}
+            expensesByCategory={chartType === 'expenses' ? expensesByCategory : incomeByCategory}
+            title={chartType === 'expenses'
+              ? t('child.expenses.chartTitle', { 
+                  period: expensesPeriod === 'week' 
+                    ? t('child.expenses.week', { defaultValue: 'Last Week' })
+                    : t('child.expenses.month', { defaultValue: 'Last Month' }),
+                  defaultValue: 'Expenses - {period}'
+                })
+              : t('child.income.chartTitle', { 
+                  period: expensesPeriod === 'week' 
+                    ? t('child.expenses.week', { defaultValue: 'Last Week' })
+                    : t('child.expenses.month', { defaultValue: 'Last Month' }),
+                  defaultValue: 'Income - {period}'
+                })
+            }
             days={expensesPeriod === 'week' ? 7 : 30}
             onCategorySelect={setFilteredCategory}
             selectedCategory={filteredCategory}
           />
         ) : (
           <div className="no-expenses-message">
-            {t('child.expenses.noExpenses', { defaultValue: 'אין הוצאות בתקופה זו' })}
+            {chartType === 'expenses'
+              ? t('child.expenses.noExpenses', { defaultValue: 'אין הוצאות בתקופה זו' })
+              : t('child.income.noIncome', { defaultValue: 'אין הכנסות בתקופה זו' })
+            }
           </div>
         )}
       </div>
