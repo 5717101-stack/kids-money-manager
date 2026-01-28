@@ -46,6 +46,7 @@ const ParentDashboard = ({ familyId, isNewFamily: isNewFamilyProp, onChildrenUpd
   const [paymentRequests, setPaymentRequests] = useState([]);
   const [showPaymentRequests, setShowPaymentRequests] = useState(false);
   const [selectedPaymentRequest, setSelectedPaymentRequest] = useState(null);
+  const [approvingPayment, setApprovingPayment] = useState(null); // Track which payment is being approved
   
   // Track if guide has been shown in this session
   const guideShownRef = useRef(false);
@@ -344,6 +345,10 @@ const ParentDashboard = ({ familyId, isNewFamily: isNewFamilyProp, onChildrenUpd
 
   const handleApprovePayment = async (requestId) => {
     if (!familyId) return;
+    
+    // Set approving state immediately for visual feedback
+    setApprovingPayment(requestId);
+    
     try {
       // Clear cache and reload payment requests to get latest status
       clearCache(`/families/${familyId}/payment-requests`);
@@ -357,6 +362,7 @@ const ParentDashboard = ({ familyId, isNewFamily: isNewFamilyProp, onChildrenUpd
         alert(t('parent.dashboard.requestNotFound', { defaultValue: 'בקשה לא נמצאה' }));
         await loadData();
         setSelectedPaymentRequest(null);
+        setApprovingPayment(null);
         return;
       }
       
@@ -367,6 +373,7 @@ const ParentDashboard = ({ familyId, isNewFamily: isNewFamilyProp, onChildrenUpd
         alert(statusMessage);
         await loadData();
         setSelectedPaymentRequest(null);
+        setApprovingPayment(null);
         return;
       }
       
@@ -381,6 +388,8 @@ const ParentDashboard = ({ familyId, isNewFamily: isNewFamilyProp, onChildrenUpd
         await loadData();
         setSelectedPaymentRequest(null);
         return;
+      } finally {
+        setApprovingPayment(null);
       }
       // Show success notification
       const notification = document.createElement('div');
@@ -1155,19 +1164,31 @@ const ParentDashboard = ({ familyId, isNewFamily: isNewFamilyProp, onChildrenUpd
                   </button>
                   <button
                     onClick={() => handleApprovePayment(selectedPaymentRequest._id)}
+                    disabled={approvingPayment === selectedPaymentRequest._id}
                     style={{
                       flex: 1,
                       padding: '12px',
                       borderRadius: '8px',
-                      background: 'var(--primary-gradient)',
+                      background: approvingPayment === selectedPaymentRequest._id 
+                        ? '#8B5CF6' // Bright purple when approving
+                        : 'var(--primary-gradient)',
                       color: 'white',
                       border: 'none',
                       fontSize: '16px',
                       fontWeight: 600,
-                      cursor: 'pointer'
+                      cursor: approvingPayment === selectedPaymentRequest._id ? 'not-allowed' : 'pointer',
+                      opacity: approvingPayment === selectedPaymentRequest._id ? 1 : 1,
+                      transition: 'background 0.3s ease',
+                      animation: approvingPayment === selectedPaymentRequest._id ? 'pulse 1.5s ease-in-out infinite' : 'none',
+                      boxShadow: approvingPayment === selectedPaymentRequest._id 
+                        ? '0 0 20px rgba(139, 92, 246, 0.6)' 
+                        : 'none'
                     }}
                   >
-                    {t('parent.dashboard.approve', { defaultValue: 'אשר תשלום' })}
+                    {approvingPayment === selectedPaymentRequest._id
+                      ? t('common.saving', { defaultValue: 'שומר...' })
+                      : t('parent.dashboard.approve', { defaultValue: 'אשר תשלום' })
+                    }
                   </button>
                 </div>
               </div>
