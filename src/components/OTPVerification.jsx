@@ -40,10 +40,13 @@ const OTPVerification = ({ phoneNumber, isExistingFamily, onVerified, onBack }) 
       // Test phone numbers for Apple review - auto-verify
       const TEST_PHONE_NUMBERS = {
         PARENT: '+1123456789',
-        CHILD: '+1123412345'
+        CHILD: '+1123412345',
+        CHILD_ALT: '+1123451234' // Alternative child number
       };
       
-      if (phoneNumber === TEST_PHONE_NUMBERS.PARENT || phoneNumber === TEST_PHONE_NUMBERS.CHILD) {
+      if (phoneNumber === TEST_PHONE_NUMBERS.PARENT || 
+          phoneNumber === TEST_PHONE_NUMBERS.CHILD || 
+          phoneNumber === TEST_PHONE_NUMBERS.CHILD_ALT) {
         console.log('[OTP] 🧪 TEST PHONE NUMBER DETECTED - Auto-verifying');
         // Auto-verify test numbers
         setTimeout(async () => {

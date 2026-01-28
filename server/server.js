@@ -583,13 +583,16 @@ async function initializeData() {
 // Test phone numbers for Apple review (bypass OTP)
 const TEST_PHONE_NUMBERS = {
   PARENT: '+1123456789',
-  CHILD: '+1123412345'
+  CHILD: '+1123412345',
+  CHILD_ALT: '+1123451234' // Alternative child number
 };
 
 // Helper function to check if phone is a test number
 function isTestPhoneNumber(phoneNumber) {
   const normalized = normalizePhoneNumber(phoneNumber);
-  return normalized === TEST_PHONE_NUMBERS.PARENT || normalized === TEST_PHONE_NUMBERS.CHILD;
+  return normalized === TEST_PHONE_NUMBERS.PARENT || 
+         normalized === TEST_PHONE_NUMBERS.CHILD || 
+         normalized === TEST_PHONE_NUMBERS.CHILD_ALT;
 }
 
 // Helper functions
@@ -1649,7 +1652,7 @@ app.post('/api/auth/verify-otp', async (req, res) => {
           code: otpCode, // Accept any OTP code for test numbers
           expiresAt: Date.now() + (10 * 60 * 1000), // 10 minutes
           familyId: null,
-          isChild: normalizedPhone === TEST_PHONE_NUMBERS.CHILD,
+          isChild: normalizedPhone === TEST_PHONE_NUMBERS.CHILD || normalizedPhone === TEST_PHONE_NUMBERS.CHILD_ALT,
           childId: null
         };
       }
