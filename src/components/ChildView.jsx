@@ -1240,7 +1240,7 @@ const ChildView = ({ childId, familyId, onBackToParent, onLogout }) => {
         </div>
         <div className="history-content">
           {(() => {
-            const filtered = filteredCategory 
+            const filtered = filteredCategory && filteredChartType
               ? transactions.filter(t => {
                   if (filteredChartType === 'expenses') {
                     // Filter expenses by category
