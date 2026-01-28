@@ -1241,7 +1241,31 @@ const ChildView = ({ childId, familyId, onBackToParent, onLogout }) => {
         <div className="history-content">
           {(() => {
             const filtered = filteredCategory 
-              ? transactions.filter(t => t.category === filteredCategory)
+              ? transactions.filter(t => {
+                  if (filteredChartType === 'expenses') {
+                    // Filter expenses by category
+                    return t.type === 'expense' && t.category === filteredCategory;
+                  } else if (filteredChartType === 'income') {
+                    // Filter income by income category (ריבית, מטלות, אחר)
+                    if (t.type !== 'deposit') return false;
+                    
+                    const description = (t.description || '').toLowerCase();
+                    const id = t.id || '';
+                    
+                    if (filteredCategory === 'ריבית') {
+                      return description.includes('ריבית') || description.includes('interest') || id.startsWith('interest_');
+                    } else if (filteredCategory === 'מטלות') {
+                      return description.includes('תשלום על משימה') || description.includes('משימה') || description.includes('task') || id.startsWith('task_');
+                    } else if (filteredCategory === 'אחר') {
+                      // Everything else (allowances, manual deposits, etc.)
+                      const isInterest = description.includes('ריבית') || description.includes('interest') || id.startsWith('interest_');
+                      const isTask = description.includes('תשלום על משימה') || description.includes('משימה') || description.includes('task') || id.startsWith('task_');
+                      return !isInterest && !isTask;
+                    }
+                    return false;
+                  }
+                  return false;
+                })
               : transactions;
             
             // Apply limit if not null
