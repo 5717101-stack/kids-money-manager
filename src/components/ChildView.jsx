@@ -1102,31 +1102,14 @@ const ChildView = ({ childId, familyId, onBackToParent, onLogout }) => {
 
       {/* Expenses/Income Distribution Chart */}
       <div className="fintech-card">
-        <div className="expenses-chart-header">
-          <h2>
-            {chartType === 'expenses' 
-              ? t('child.expenses.title', { defaultValue: 'התפלגות הוצאות' })
-              : t('child.income.title', { defaultValue: 'התפלגות הכנסות' })
-            }
-          </h2>
-          <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-            <div className="period-toggle" style={{ marginRight: '8px' }}>
+        <div className="expenses-chart-header" style={{ marginBottom: '16px' }}>
+          <div style={{ display: 'flex', gap: '12px', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap' }}>
+            <div className="period-toggle">
               <button
                 className={`period-button ${chartType === 'expenses' ? 'active' : ''}`}
                 onClick={() => {
                   setChartType('expenses');
                   setFilteredCategory(null);
-                }}
-                style={{
-                  padding: '6px 12px',
-                  fontSize: '14px',
-                  fontWeight: 600,
-                  borderRadius: '8px',
-                  border: 'none',
-                  background: chartType === 'expenses' ? 'var(--primary)' : 'transparent',
-                  color: chartType === 'expenses' ? 'white' : 'var(--text-muted)',
-                  cursor: 'pointer',
-                  transition: 'all 0.2s'
                 }}
               >
                 {t('child.expenses.title', { defaultValue: 'הוצאות' })}
@@ -1136,17 +1119,6 @@ const ChildView = ({ childId, familyId, onBackToParent, onLogout }) => {
                 onClick={() => {
                   setChartType('income');
                   setFilteredCategory(null);
-                }}
-                style={{
-                  padding: '6px 12px',
-                  fontSize: '14px',
-                  fontWeight: 600,
-                  borderRadius: '8px',
-                  border: 'none',
-                  background: chartType === 'income' ? 'var(--primary)' : 'transparent',
-                  color: chartType === 'income' ? 'white' : 'var(--text-muted)',
-                  cursor: 'pointer',
-                  transition: 'all 0.2s'
                 }}
               >
                 {t('child.income.title', { defaultValue: 'הכנסות' })}
