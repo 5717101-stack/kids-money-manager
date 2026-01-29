@@ -38,3 +38,5 @@ android/app/src/main/assets/public/
 android/key.properties
 android/app/*.keystore
 android/app/release.keystore
+.env.bak
+*.bak
