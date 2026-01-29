@@ -16,7 +16,7 @@ class Settings(BaseSettings):
     
     # Server Settings
     host: str = "0.0.0.0"
-    port: int = 8000
+    port: int = 8000  # Will be overridden by PORT env var in main.py
     debug: bool = False
     
     # LLM Provider Settings
@@ -26,11 +26,21 @@ class Settings(BaseSettings):
     default_model: str = "gpt-4o"  # or "claude-3-5-sonnet-20241022"
     
     # Database Settings
-    sqlite_db_path: str = "data/sqlite/daily_sync.db"
-    chroma_db_path: str = "data/chroma"
+    mongodb_uri: Optional[str] = None  # MongoDB connection string (from MONGODB_URI env var)
+    mongodb_db_name: str = "daily_sync"  # MongoDB database name
+    chroma_db_path: str = "data/chroma"  # ChromaDB for vector storage (local file system)
+    
+    # Backward compatibility - map MONGODB_URI env var
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        # Map MONGODB_URI env var if not set
+        if not self.mongodb_uri:
+            import os
+            self.mongodb_uri = os.getenv("MONGODB_URI")
     
     # Whisper Settings
-    whisper_model: str = "base"  # tiny, base, small, medium, large
+    whisper_model: str = "base"  # tiny, base, small, medium, large (for local Whisper)
+    use_whisper_api: bool = True  # Use OpenAI Whisper API instead of local (supports MP3 directly, no ffmpeg needed)
     
     # Vector Store Settings
     embedding_model: str = "text-embedding-3-small"  # OpenAI embedding model
@@ -40,6 +50,8 @@ class Settings(BaseSettings):
         env_file = ".env"
         env_file_encoding = "utf-8"
         case_sensitive = False
+        # Allow extra fields for backward compatibility
+        extra = "ignore"
 
 
 settings = Settings()

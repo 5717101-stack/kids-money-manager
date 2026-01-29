@@ -1,8 +1,9 @@
 """
-Database setup and utilities for SQLite and ChromaDB.
+Database setup and utilities for MongoDB and ChromaDB.
 """
 
-import aiosqlite
+from motor.motor_asyncio import AsyncIOMotorClient
+from pymongo.errors import ConnectionFailure
 import chromadb
 from pathlib import Path
 from typing import Optional
@@ -11,65 +12,75 @@ from chromadb.config import Settings as ChromaSettings
 from app.core.config import settings
 
 
-# SQLite Database
-def get_db_path():
-    """Get the database path, creating directories if needed."""
-    db_path = Path(settings.sqlite_db_path)
-    db_path.parent.mkdir(parents=True, exist_ok=True)
-    return db_path
+# MongoDB Database
+_mongo_client: Optional[AsyncIOMotorClient] = None
+_mongo_db = None
 
 
-async def init_sqlite_db():
-    """Initialize SQLite database with required tables."""
-    db_path = Path(settings.sqlite_db_path)
-    db_path.parent.mkdir(parents=True, exist_ok=True)
-    async with aiosqlite.connect(db_path) as db:
-        # Create ingestion logs table
-        await db.execute("""
-            CREATE TABLE IF NOT EXISTS ingestion_logs (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                timestamp TEXT NOT NULL,
-                data_type TEXT NOT NULL,
-                content_hash TEXT,
-                raw_content TEXT,
-                processed_content TEXT,
-                metadata TEXT,
-                created_at TEXT DEFAULT CURRENT_TIMESTAMP
+async def get_mongo_client() -> AsyncIOMotorClient:
+    """Get or create MongoDB client."""
+    global _mongo_client
+    if _mongo_client is None:
+        if not settings.mongodb_uri:
+            raise ValueError(
+                "MONGODB_URI not set. Please set MONGODB_URI in .env file or environment variables."
             )
-        """)
-        
-        # Create daily digests table
-        await db.execute("""
-            CREATE TABLE IF NOT EXISTS daily_digests (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                date TEXT NOT NULL UNIQUE,
-                summary TEXT,
-                leadership_insights TEXT,
-                strategy_insights TEXT,
-                parenting_insights TEXT,
-                action_items TEXT,
-                full_digest TEXT,
-                created_at TEXT DEFAULT CURRENT_TIMESTAMP
-            )
-        """)
-        
-        # Create agent responses table
-        await db.execute("""
-            CREATE TABLE IF NOT EXISTS agent_responses (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                digest_id INTEGER,
-                agent_type TEXT NOT NULL,
-                input_content TEXT,
-                response TEXT,
-                created_at TEXT DEFAULT CURRENT_TIMESTAMP,
-                FOREIGN KEY (digest_id) REFERENCES daily_digests(id)
-            )
-        """)
-        
-        await db.commit()
+        _mongo_client = AsyncIOMotorClient(
+            settings.mongodb_uri,
+            serverSelectionTimeoutMS=5000,
+            connectTimeoutMS=10000,
+        )
+    return _mongo_client
 
 
-# ChromaDB Vector Store
+async def get_mongo_db():
+    """Get MongoDB database instance."""
+    global _mongo_db
+    if _mongo_db is None:
+        client = await get_mongo_client()
+        _mongo_db = client[settings.mongodb_db_name]
+    return _mongo_db
+
+
+async def init_mongodb():
+    """Initialize MongoDB database with required collections and indexes."""
+    try:
+        db = await get_mongo_db()
+        
+        # Create collections if they don't exist (MongoDB creates them automatically on first insert)
+        # But we'll create indexes for better performance
+        
+        # Ingestion logs collection
+        ingestion_logs = db.ingestion_logs
+        await ingestion_logs.create_index("timestamp")
+        await ingestion_logs.create_index("content_hash")
+        await ingestion_logs.create_index("data_type")
+        await ingestion_logs.create_index([("timestamp", 1), ("data_type", 1)])
+        
+        # Daily digests collection
+        daily_digests = db.daily_digests
+        await daily_digests.create_index("date", unique=True)
+        await daily_digests.create_index("created_at")
+        
+        # Agent responses collection
+        agent_responses = db.agent_responses
+        await agent_responses.create_index("digest_id")
+        await agent_responses.create_index("agent_type")
+        await agent_responses.create_index([("digest_id", 1), ("agent_type", 1)])
+        await agent_responses.create_index("created_at")
+        
+        # Test connection
+        await db.command("ping")
+        print("✅ MongoDB connected and initialized")
+        
+    except ConnectionFailure as e:
+        raise ConnectionFailure(f"Failed to connect to MongoDB: {str(e)}")
+    except Exception as e:
+        print(f"⚠️  MongoDB initialization warning: {str(e)}")
+        # Don't fail if indexes already exist
+
+
+# ChromaDB Vector Store (kept for vector embeddings)
 _chroma_client: Optional[chromadb.ClientAPI] = None
 _chroma_collection: Optional[chromadb.Collection] = None
 
@@ -97,3 +108,14 @@ def get_chroma_collection() -> chromadb.Collection:
         except Exception:
             _chroma_collection = client.create_collection(name=settings.collection_name)
     return _chroma_collection
+
+
+# Backward compatibility - keep old function names but use MongoDB
+async def init_sqlite_db():
+    """Initialize database (now using MongoDB). Kept for backward compatibility."""
+    await init_mongodb()
+
+
+def get_db_path():
+    """Get database path (deprecated - now using MongoDB). Kept for backward compatibility."""
+    return None

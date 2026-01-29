@@ -1,0 +1,588 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Daily Sync - AI Life Coach</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+            direction: rtl;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            overflow: hidden;
+        }
+
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 30px;
+            text-align: center;
+        }
+
+        .header h1 {
+            font-size: 2.5em;
+            margin-bottom: 10px;
+        }
+
+        .header p {
+            opacity: 0.9;
+            font-size: 1.1em;
+        }
+
+        .content {
+            padding: 40px;
+        }
+
+        .upload-section {
+            margin-bottom: 30px;
+        }
+
+        .upload-box {
+            border: 3px dashed #667eea;
+            border-radius: 15px;
+            padding: 40px;
+            text-align: center;
+            background: #f8f9ff;
+            transition: all 0.3s;
+            margin-bottom: 20px;
+        }
+
+        .upload-box:hover {
+            border-color: #764ba2;
+            background: #f0f2ff;
+        }
+
+        .upload-box.dragover {
+            border-color: #764ba2;
+            background: #e8ebff;
+            transform: scale(1.02);
+        }
+
+        .file-input {
+            display: none;
+        }
+
+        .file-label {
+            display: inline-block;
+            padding: 15px 30px;
+            background: #667eea;
+            color: white;
+            border-radius: 10px;
+            cursor: pointer;
+            font-size: 1.1em;
+            transition: all 0.3s;
+            margin: 10px;
+        }
+
+        .file-label:hover {
+            background: #764ba2;
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+        }
+
+        .text-input {
+            width: 100%;
+            min-height: 150px;
+            padding: 15px;
+            border: 2px solid #ddd;
+            border-radius: 10px;
+            font-size: 1em;
+            font-family: inherit;
+            resize: vertical;
+            margin-top: 10px;
+        }
+
+        .text-input:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+
+        .file-list {
+            margin-top: 20px;
+        }
+
+        .file-item {
+            background: #f8f9ff;
+            padding: 15px;
+            border-radius: 10px;
+            margin-bottom: 10px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .file-item .file-info {
+            flex: 1;
+        }
+
+        .file-item .file-name {
+            font-weight: bold;
+            color: #333;
+        }
+
+        .file-item .file-size {
+            color: #666;
+            font-size: 0.9em;
+        }
+
+        .remove-btn {
+            background: #ff4757;
+            color: white;
+            border: none;
+            padding: 8px 15px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 0.9em;
+        }
+
+        .remove-btn:hover {
+            background: #ff3838;
+        }
+
+        .run-btn {
+            width: 100%;
+            padding: 20px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            border-radius: 15px;
+            font-size: 1.3em;
+            font-weight: bold;
+            cursor: pointer;
+            transition: all 0.3s;
+            margin-top: 20px;
+        }
+
+        .run-btn:hover:not(:disabled) {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 30px rgba(102, 126, 234, 0.4);
+        }
+
+        .run-btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+
+        .loading {
+            display: none;
+            text-align: center;
+            padding: 40px;
+        }
+
+        .loading.active {
+            display: block;
+        }
+
+        .spinner {
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #667eea;
+            border-radius: 50%;
+            width: 50px;
+            height: 50px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 20px;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .results {
+            display: none;
+            margin-top: 30px;
+        }
+
+        .results.active {
+            display: block;
+        }
+
+        .result-section {
+            background: #f8f9ff;
+            border-radius: 15px;
+            padding: 25px;
+            margin-bottom: 20px;
+        }
+
+        .result-section h2 {
+            color: #667eea;
+            margin-bottom: 15px;
+            font-size: 1.5em;
+        }
+
+        .result-content {
+            background: white;
+            padding: 20px;
+            border-radius: 10px;
+            white-space: pre-wrap;
+            line-height: 1.6;
+            max-height: 500px;
+            overflow-y: auto;
+        }
+
+        .action-items {
+            list-style: none;
+        }
+
+        .action-items li {
+            background: white;
+            padding: 15px;
+            margin-bottom: 10px;
+            border-radius: 8px;
+            border-right: 4px solid #667eea;
+        }
+
+        .error {
+            background: #ffebee;
+            color: #c62828;
+            padding: 20px;
+            border-radius: 10px;
+            margin-top: 20px;
+            display: none;
+        }
+
+        .error.active {
+            display: block;
+        }
+
+        .tabs {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+            border-bottom: 2px solid #eee;
+        }
+
+        .tab {
+            padding: 15px 25px;
+            background: none;
+            border: none;
+            cursor: pointer;
+            font-size: 1em;
+            color: #666;
+            border-bottom: 3px solid transparent;
+            transition: all 0.3s;
+        }
+
+        .tab.active {
+            color: #667eea;
+            border-bottom-color: #667eea;
+        }
+
+        .tab-content {
+            display: none;
+        }
+
+        .tab-content.active {
+            display: block;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🧠 Daily Sync - AI Life Coach</h1>
+            <p>העלה קבצי אודיו וטקסט, וקבל ניתוח יומי עם תובנות ופעולות</p>
+        </div>
+
+        <div class="content">
+            <!-- Upload Section -->
+            <div class="upload-section">
+                <h2>📤 העלאת קבצים</h2>
+                
+                <!-- Audio Upload -->
+                <div class="upload-box" id="audioBox">
+                    <p style="font-size: 1.2em; margin-bottom: 15px;">🎤 קבצי אודיו</p>
+                    <label for="audioInput" class="file-label">בחר קובץ אודיו</label>
+                    <input type="file" id="audioInput" class="file-input" accept="audio/*" multiple>
+                    <p style="margin-top: 10px; color: #666;">או גרור קבצים לכאן</p>
+                </div>
+
+                <!-- Text Input -->
+                <div style="margin-top: 20px;">
+                    <label style="display: block; margin-bottom: 10px; font-weight: bold;">📝 טקסט חופשי:</label>
+                    <textarea id="textInput" class="text-input" placeholder="הזן טקסט כאן... (הערות, מחשבות, יומן, וכו')"></textarea>
+                </div>
+
+                <!-- File List -->
+                <div class="file-list" id="fileList"></div>
+            </div>
+
+            <!-- Run Button -->
+            <button class="run-btn" id="runBtn" onclick="runAnalysis()">
+                🚀 הרץ ניתוח AI
+            </button>
+
+            <!-- Loading -->
+            <div class="loading" id="loading">
+                <div class="spinner"></div>
+                <p style="font-size: 1.2em; color: #667eea;">מעבד את הנתונים... זה יכול לקחת כמה דקות</p>
+            </div>
+
+            <!-- Error -->
+            <div class="error" id="error"></div>
+
+            <!-- Results -->
+            <div class="results" id="results">
+                <div class="tabs">
+                    <button class="tab active" onclick="showTab('summary')">סיכום</button>
+                    <button class="tab" onclick="showTab('leadership')">Leadership</button>
+                    <button class="tab" onclick="showTab('strategy')">Strategy</button>
+                    <button class="tab" onclick="showTab('parenting')">Parenting</button>
+                    <button class="tab" onclick="showTab('actions')">פעולות</button>
+                </div>
+
+                <div id="summaryTab" class="tab-content active">
+                    <div class="result-section">
+                        <h2>📊 סיכום יומי</h2>
+                        <div class="result-content" id="summaryContent"></div>
+                    </div>
+                </div>
+
+                <div id="leadershipTab" class="tab-content">
+                    <div class="result-section">
+                        <h2>💡 Leadership Coach (Simon Sinek)</h2>
+                        <div class="result-content" id="leadershipContent"></div>
+                    </div>
+                </div>
+
+                <div id="strategyTab" class="tab-content">
+                    <div class="result-section">
+                        <h2>📈 Strategy Consultant</h2>
+                        <div class="result-content" id="strategyContent"></div>
+                    </div>
+                </div>
+
+                <div id="parentingTab" class="tab-content">
+                    <div class="result-section">
+                        <h2>👨‍👩‍👧 Parenting Coach (Adler Institute)</h2>
+                        <div class="result-content" id="parentingContent"></div>
+                    </div>
+                </div>
+
+                <div id="actionsTab" class="tab-content">
+                    <div class="result-section">
+                        <h2>✅ פעולות לפעולה</h2>
+                        <div class="result-content" id="actionsContent"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // API Base URL - Auto-detect based on environment
+        // In production (Vercel), this will use the Render backend URL
+        // In development, uses localhost
+        const API_BASE = (() => {
+            // Check if we're in production (Vercel)
+            if (window.location.hostname.includes('vercel.app') || 
+                window.location.hostname.includes('vercel.com')) {
+                // Use environment variable or default Render URL
+                return process?.env?.VITE_API_URL || 'https://daily-sync-backend.onrender.com';
+            }
+            // Development - use localhost
+            return 'http://localhost:8000';
+        })();
+        let selectedFiles = [];
+
+        // Audio file input
+        document.getElementById('audioInput').addEventListener('change', handleFileSelect);
+        
+        // Drag and drop
+        const audioBox = document.getElementById('audioBox');
+        audioBox.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            audioBox.classList.add('dragover');
+        });
+        audioBox.addEventListener('dragleave', () => {
+            audioBox.classList.remove('dragover');
+        });
+        audioBox.addEventListener('drop', (e) => {
+            e.preventDefault();
+            audioBox.classList.remove('dragover');
+            handleFiles(e.dataTransfer.files);
+        });
+
+        function handleFileSelect(e) {
+            handleFiles(e.target.files);
+        }
+
+        function handleFiles(files) {
+            Array.from(files).forEach(file => {
+                if (file.type.startsWith('audio/') || file.type.startsWith('text/')) {
+                    selectedFiles.push(file);
+                    updateFileList();
+                }
+            });
+        }
+
+        function updateFileList() {
+            const fileList = document.getElementById('fileList');
+            fileList.innerHTML = '';
+            
+            selectedFiles.forEach((file, index) => {
+                const fileItem = document.createElement('div');
+                fileItem.className = 'file-item';
+                fileItem.innerHTML = `
+                    <div class="file-info">
+                        <div class="file-name">${file.name}</div>
+                        <div class="file-size">${formatFileSize(file.size)}</div>
+                    </div>
+                    <button class="remove-btn" onclick="removeFile(${index})">הסר</button>
+                `;
+                fileList.appendChild(fileItem);
+            });
+        }
+
+        function removeFile(index) {
+            selectedFiles.splice(index, 1);
+            updateFileList();
+        }
+
+        function formatFileSize(bytes) {
+            if (bytes === 0) return '0 Bytes';
+            const k = 1024;
+            const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+            const i = Math.floor(Math.log(bytes) / Math.log(k));
+            return Math.round(bytes / Math.pow(k, i) * 100) / 100 + ' ' + sizes[i];
+        }
+
+        async function runAnalysis() {
+            const runBtn = document.getElementById('runBtn');
+            const loading = document.getElementById('loading');
+            const results = document.getElementById('results');
+            const error = document.getElementById('error');
+            
+            // Reset
+            runBtn.disabled = true;
+            loading.classList.add('active');
+            results.classList.remove('active');
+            error.classList.remove('active');
+
+            try {
+                // Get text input
+                const textInput = document.getElementById('textInput').value.trim();
+                
+                // Upload audio files
+                for (const file of selectedFiles) {
+                    if (file.type.startsWith('audio/')) {
+                        const formData = new FormData();
+                        formData.append('file', file);
+                        
+                        const response = await fetch(`${API_BASE}/ingest/audio`, {
+                            method: 'POST',
+                            body: formData
+                        });
+                        
+                        if (!response.ok) {
+                            const errorData = await response.json();
+                            throw new Error(errorData.detail || 'Error uploading audio');
+                        }
+                        
+                        // Audio is transcribed and saved automatically
+                        console.log(`Uploaded audio: ${file.name}`);
+                    }
+                }
+
+                // Upload text if provided
+                if (textInput) {
+                    const formData = new FormData();
+                    formData.append('text', textInput);
+                    
+                    const response = await fetch(`${API_BASE}/ingest/text`, {
+                        method: 'POST',
+                        body: formData
+                    });
+                    
+                    if (!response.ok) {
+                        const errorData = await response.json();
+                        throw new Error(errorData.detail || 'Error uploading text');
+                    }
+                    
+                    console.log('Uploaded text');
+                }
+
+                // Check if we have any content
+                if (selectedFiles.length === 0 && !textInput) {
+                    throw new Error('אנא העלה קבצי אודיו או הזן טקסט');
+                }
+
+                // Generate digest (it will use today's date and all ingested content)
+                const digestResponse = await fetch(`${API_BASE}/digest/generate?date=${new Date().toISOString().split('T')[0]}`, {
+                    method: 'POST'
+                });
+
+                if (!digestResponse.ok) {
+                    const errorData = await digestResponse.json();
+                    throw new Error(errorData.detail || 'Error generating digest');
+                }
+
+                const digestData = await digestResponse.json();
+                displayResults(digestData.digest);
+
+            } catch (err) {
+                error.textContent = `שגיאה: ${err.message}`;
+                error.classList.add('active');
+            } finally {
+                runBtn.disabled = false;
+                loading.classList.remove('active');
+            }
+        }
+
+        function displayResults(digest) {
+            // Summary
+            document.getElementById('summaryContent').textContent = 
+                digest.summary || digest.full_digest || 'לא זמין';
+
+            // Leadership
+            document.getElementById('leadershipContent').textContent = 
+                digest.leadership_insights || 'לא זמין';
+
+            // Strategy
+            document.getElementById('strategyContent').textContent = 
+                digest.strategy_insights || 'לא זמין';
+
+            // Parenting
+            document.getElementById('parentingContent').textContent = 
+                digest.parenting_insights || 'לא זמין';
+
+            // Actions
+            const actionsContent = document.getElementById('actionsContent');
+            if (digest.action_items) {
+                actionsContent.innerHTML = `<ul class="action-items">${digest.action_items.split('\n').filter(item => item.trim()).map(item => `<li>${item.trim()}</li>`).join('')}</ul>`;
+            } else {
+                actionsContent.textContent = 'לא זמין';
+            }
+
+            // Show results
+            document.getElementById('results').classList.add('active');
+        }
+
+        function showTab(tabName) {
+            // Hide all tabs
+            document.querySelectorAll('.tab').forEach(tab => tab.classList.remove('active'));
+            document.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
+
+            // Show selected tab
+            event.target.classList.add('active');
+            document.getElementById(tabName + 'Tab').classList.add('active');
+        }
+    </script>
+</body>
+</html>

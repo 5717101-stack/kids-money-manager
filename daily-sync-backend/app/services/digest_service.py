@@ -9,8 +9,7 @@ from langchain_core.prompts import ChatPromptTemplate, SystemMessagePromptTempla
 from langchain_core.output_parsers import StrOutputParser
 
 from app.core.llm import get_llm
-import aiosqlite
-from app.core.database import get_db_path
+from app.core.database import get_mongo_db
 
 
 class DigestService:
@@ -38,45 +37,43 @@ class DigestService:
         if date_str is None:
             date_str = date.today().isoformat()
         
-        # Extract insights from each agent
-        leadership_insights = agent_responses.get("leadership_coach", {}).get("response", "")
-        strategy_insights = agent_responses.get("strategy_consultant", {}).get("response", "")
-        parenting_insights = agent_responses.get("parenting_coach", {}).get("response", "")
+        # Extract insights from each agent and truncate to avoid token limits
+        # OpenAI has token limits per request, so we need to keep responses concise
+        MAX_INSIGHT_LENGTH = 2000  # Characters per insight (roughly 500 tokens)
         
-        # Create synthesis prompt
-        synthesis_prompt = """You are a synthesis expert. Your role is to combine insights from three specialized coaches into a cohesive, actionable daily digest.
+        leadership_full = agent_responses.get("leadership_coach", {}).get("response", "")
+        strategy_full = agent_responses.get("strategy_consultant", {}).get("response", "")
+        parenting_full = agent_responses.get("parenting_coach", {}).get("response", "")
+        
+        # Truncate if too long, keeping the most important parts (beginning and key sections)
+        leadership_insights = self._truncate_insight(leadership_full, MAX_INSIGHT_LENGTH)
+        strategy_insights = self._truncate_insight(strategy_full, MAX_INSIGHT_LENGTH)
+        parenting_insights = self._truncate_insight(parenting_full, MAX_INSIGHT_LENGTH)
+        
+        # Create synthesis prompt (concise to save tokens)
+        synthesis_prompt = """You are a synthesis expert. Combine insights from three specialized coaches into a concise, actionable daily digest.
 
 ## Input from Three Experts:
 
-**Leadership Coach (Simon Sinek persona):**
+**Leadership Coach:**
 {leadership_insights}
 
 **Strategy Consultant:**
 {strategy_insights}
 
-**Parenting & Home Coach (Adler Institute persona):**
+**Parenting & Home Coach:**
 {parenting_insights}
 
 ## Your Task:
 
-Create a comprehensive Daily Digest for {date} that includes:
+Create a Daily Digest for {date} with:
 
 1. **Executive Summary** (2-3 sentences)
-   - A high-level overview of the day's key themes
+2. **Key Insights** by category (Leadership, Strategy, Home & Parenting)
+3. **Action Items** (3-5 prioritized, specific items)
+4. **Reflection Questions** (2-3 questions)
 
-2. **Insights by Category**
-   - **Leadership:** Key leadership insights and opportunities
-   - **Strategy:** Strategic observations and recommendations
-   - **Home & Parenting:** Family and home life insights
-
-3. **Action Items for Tomorrow**
-   - 3-5 concrete, actionable items prioritized by impact
-   - Each item should be specific, measurable, and tied to one of the three domains
-
-4. **Reflection Questions**
-   - 2-3 thought-provoking questions to consider
-
-Make the digest practical, inspiring, and actionable. Write in a warm but professional tone."""
+Keep it concise, practical, and actionable. Write in a warm but professional tone."""
 
         prompt = ChatPromptTemplate.from_messages([
             SystemMessagePromptTemplate.from_template(synthesis_prompt),
@@ -147,63 +144,88 @@ Make the digest practical, inspiring, and actionable. Write in a warm but profes
         
         return "\n".join(action_lines) if action_lines else "See full digest for action items."
     
+    def _truncate_insight(self, text: str, max_length: int) -> str:
+        """
+        Truncate insight text intelligently, keeping the most important parts.
+        Tries to keep the beginning and any key sections.
+        """
+        if len(text) <= max_length:
+            return text
+        
+        # If text is too long, take the first part and add a note
+        # Try to cut at a sentence boundary
+        truncated = text[:max_length - 100]  # Leave room for note
+        
+        # Find last sentence boundary
+        last_period = truncated.rfind('.')
+        last_newline = truncated.rfind('\n')
+        cut_point = max(last_period, last_newline)
+        
+        if cut_point > max_length * 0.7:  # If we found a good cut point
+            truncated = truncated[:cut_point + 1]
+        
+        truncated += f"\n\n[Note: Response truncated from {len(text)} to {len(truncated)} characters to fit token limits. Full response available in agent_responses table.]"
+        
+        return truncated
+    
     async def _save_digest(
         self,
         digest_data: Dict[str, Any],
         agent_responses: Dict[str, Any]
     ):
-        """Save digest and agent responses to database."""
-        db_path = get_db_path()
-        async with aiosqlite.connect(db_path) as db:
-            # Insert digest
-            cursor = await db.execute("""
-                INSERT OR REPLACE INTO daily_digests 
-                (date, summary, leadership_insights, strategy_insights, parenting_insights, action_items, full_digest)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
-            """, (
-                digest_data["date"],
-                digest_data["summary"],
-                digest_data["leadership_insights"],
-                digest_data["strategy_insights"],
-                digest_data["parenting_insights"],
-                digest_data["action_items"],
-                digest_data["full_digest"]
-            ))
-            digest_id = cursor.lastrowid
-            await db.commit()
-            
-            # Insert agent responses
-            for agent_type, response_data in agent_responses.items():
-                await db.execute("""
-                    INSERT INTO agent_responses 
-                    (digest_id, agent_type, input_content, response)
-                    VALUES (?, ?, ?, ?)
-                """, (
-                    digest_id,
-                    agent_type,
-                    response_data.get("content_analyzed", ""),
-                    response_data.get("response", "")
-                ))
-            await db.commit()
+        """Save digest and agent responses to MongoDB."""
+        db = await get_mongo_db()
+        
+        # Prepare digest document
+        digest_doc = {
+            "date": digest_data["date"],
+            "summary": digest_data["summary"],
+            "leadership_insights": digest_data["leadership_insights"],
+            "strategy_insights": digest_data["strategy_insights"],
+            "parenting_insights": digest_data["parenting_insights"],
+            "action_items": digest_data["action_items"],
+            "full_digest": digest_data["full_digest"],
+            "created_at": datetime.utcnow().isoformat()
+        }
+        
+        # Insert or update digest (using date as unique identifier)
+        result = await db.daily_digests.update_one(
+            {"date": digest_data["date"]},
+            {"$set": digest_doc},
+            upsert=True
+        )
+        
+        # Get the digest ID (either from update or insert)
+        if result.upserted_id:
+            digest_id = result.upserted_id
+        else:
+            digest = await db.daily_digests.find_one({"date": digest_data["date"]})
+            digest_id = digest["_id"]
+        
+        # Delete old agent responses for this digest
+        await db.agent_responses.delete_many({"digest_id": digest_id})
+        
+        # Insert agent responses
+        agent_docs = []
+        for agent_type, response_data in agent_responses.items():
+            agent_docs.append({
+                "digest_id": digest_id,
+                "agent_type": agent_type,
+                "input_content": response_data.get("content_analyzed", ""),
+                "response": response_data.get("response", ""),
+                "created_at": datetime.utcnow().isoformat()
+            })
+        
+        if agent_docs:
+            await db.agent_responses.insert_many(agent_docs)
     
     async def get_digest_by_date(self, date_str: str) -> Optional[Dict[str, Any]]:
-        """Retrieve a digest by date."""
-        db_path = get_db_path()
-        async with aiosqlite.connect(db_path) as db:
-            async with db.execute("""
-                SELECT * FROM daily_digests WHERE date = ?
-            """, (date_str,)) as cursor:
-                row = await cursor.fetchone()
-                if row:
-                    return {
-                        "id": row[0],
-                        "date": row[1],
-                        "summary": row[2],
-                        "leadership_insights": row[3],
-                        "strategy_insights": row[4],
-                        "parenting_insights": row[5],
-                        "action_items": row[6],
-                        "full_digest": row[7],
-                        "created_at": row[8]
-                    }
-                return None
+        """Retrieve a digest by date from MongoDB."""
+        db = await get_mongo_db()
+        digest = await db.daily_digests.find_one({"date": date_str})
+        
+        if digest:
+            # Convert ObjectId to string and remove _id
+            digest["id"] = str(digest.pop("_id"))
+            return digest
+        return None

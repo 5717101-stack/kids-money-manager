@@ -9,8 +9,7 @@ import asyncio
 
 from app.services.agent_service import AgentService
 from app.services.digest_service import DigestService
-import aiosqlite
-from app.core.database import get_db_path
+from app.core.database import get_mongo_db
 
 router = APIRouter(prefix="/digest", tags=["digest"])
 
@@ -35,16 +34,15 @@ async def generate_digest(
         else:
             target_date = date.today()
         
-        # Get all ingested content for the date
-        db_path = get_db_path()
-        async with aiosqlite.connect(db_path) as db:
-            async with db.execute("""
-                SELECT processed_content, data_type, metadata
-                FROM ingestion_logs
-                WHERE DATE(timestamp) = ?
-                ORDER BY timestamp
-            """, (target_date.isoformat(),)) as cursor:
-                rows = await cursor.fetchall()
+        # Get all ingested content for the date from MongoDB
+        db = await get_mongo_db()
+        # Query for documents where timestamp starts with the date (YYYY-MM-DD)
+        date_str = target_date.isoformat()
+        cursor = db.ingestion_logs.find({
+            "timestamp": {"$regex": f"^{date_str}"}
+        }).sort("timestamp", 1)
+        
+        rows = await cursor.to_list(length=None)
         
         if not rows:
             raise HTTPException(
@@ -52,15 +50,32 @@ async def generate_digest(
                 detail=f"No content found for date {target_date.isoformat()}"
             )
         
-        # Combine all content
+        # Combine all content, but limit total size to avoid token limits
+        # OpenAI has token limits (e.g., 30K tokens per minute for gpt-4o)
+        # We'll limit to roughly 20K tokens (~80K characters) to be safe
+        MAX_CONTENT_LENGTH = 80000  # Characters (roughly 20K tokens)
+        
         content_parts = []
+        total_length = 0
         for row in rows:
-            content = row[0]
-            data_type = row[1]
+            content = row.get("processed_content", "")
+            data_type = row.get("data_type", "unknown")
             if content:
-                content_parts.append(f"[{data_type.upper()}]: {content}")
+                content_str = f"[{data_type.upper()}]: {content}"
+                # If adding this would exceed limit, truncate it
+                if total_length + len(content_str) > MAX_CONTENT_LENGTH:
+                    remaining = MAX_CONTENT_LENGTH - total_length - 100  # Leave room for note
+                    if remaining > 1000:  # Only add if we have meaningful space
+                        content_str = content_str[:remaining] + "\n[Content truncated due to length...]"
+                        content_parts.append(content_str)
+                    break
+                content_parts.append(content_str)
+                total_length += len(content_str)
         
         combined_content = "\n\n".join(content_parts)
+        
+        if total_length >= MAX_CONTENT_LENGTH:
+            combined_content += "\n\n[Note: Some content was truncated to fit token limits. Consider splitting into multiple days or using shorter recordings.]"
         
         # Initialize services
         agent_service = AgentService(provider=provider, model=model)
@@ -129,21 +144,15 @@ async def list_digests(
     - **offset**: Number of digests to skip
     """
     try:
-        db_path = get_db_path()
-        async with aiosqlite.connect(db_path) as db:
-            async with db.execute("""
-                SELECT date, summary, created_at
-                FROM daily_digests
-                ORDER BY date DESC
-                LIMIT ? OFFSET ?
-            """, (limit, offset)) as cursor:
-                rows = await cursor.fetchall()
+        db = await get_mongo_db()
+        cursor = db.daily_digests.find().sort("date", -1).skip(offset).limit(limit)
+        rows = await cursor.to_list(length=limit)
         
         digests = [
             {
-                "date": row[0],
-                "summary": row[1],
-                "created_at": row[2]
+                "date": row["date"],
+                "summary": row.get("summary", ""),
+                "created_at": row.get("created_at", "")
             }
             for row in rows
         ]
