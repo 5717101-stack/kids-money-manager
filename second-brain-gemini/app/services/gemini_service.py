@@ -99,9 +99,14 @@ class GeminiService:
     def __init__(self):
         """Initialize Gemini service with API key."""
         if not settings.google_api_key:
-            raise ValueError("GOOGLE_API_KEY not set. Please set GOOGLE_API_KEY in .env file.")
+            print("⚠️  WARNING: GOOGLE_API_KEY not set. Please set GOOGLE_API_KEY in environment variables.")
+            print("   The service will start but Gemini analysis will not work until API key is configured.")
+            self.model = None
+            self.is_configured = False
+            return
         
         genai.configure(api_key=settings.google_api_key)
+        self.is_configured = True
         # Use gemini-2.5-pro (available model) or gemini-pro-latest as fallback
         model_name = getattr(settings, 'gemini_model', 'gemini-2.5-pro')
         # Map old model names to new ones
@@ -318,6 +323,9 @@ class GeminiService:
         
         Args:
             audio_paths: List of paths to audio files (MP3, WAV, etc.)
+        
+        Raises:
+            ValueError: If GOOGLE_API_KEY is not configured
             image_paths: List of paths to image files (JPG, PNG)
             text_inputs: List of text notes/inputs
         
