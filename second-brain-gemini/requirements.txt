@@ -20,3 +20,8 @@ python-bidi==0.4.2
 
 # Twilio for WhatsApp/SMS
 twilio==9.3.0
+
+# Google Drive API (for meeting processing cron job)
+google-api-python-client==2.144.0
+google-auth==2.35.0
+google-auth-httplib2==0.2.0
