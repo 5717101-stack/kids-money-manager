@@ -219,10 +219,28 @@ class GeminiService:
         try:
             logger.info(f"📤 Uploading audio file: {audio_path.name}")
             
-            # Upload file to Gemini
+            # Determine MIME type from file extension
+            mime_type_map = {
+                '.mp3': 'audio/mpeg',
+                '.wav': 'audio/wav',
+                '.wave': 'audio/wav',
+                '.m4a': 'audio/mp4',
+                '.aac': 'audio/aac',
+                '.ogg': 'audio/ogg',
+                '.flac': 'audio/flac',
+                '.mp4': 'audio/mp4',  # Some MP4 files are audio-only
+            }
+            
+            file_ext = audio_path.suffix.lower()
+            mime_type = mime_type_map.get(file_ext, 'audio/mpeg')  # Default to MP3
+            
+            logger.info(f"📋 Detected MIME type: {mime_type} for extension: {file_ext}")
+            
+            # Upload file to Gemini with explicit MIME type
             file_ref = genai.upload_file(
                 path=str(audio_path),
-                display_name=audio_path.name
+                display_name=audio_path.name,
+                mime_type=mime_type
             )
             
             # Wait for file to be processed
