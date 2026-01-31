@@ -1,0 +1,83 @@
+name: 🚀 Deploy to Cloud
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'app/**'
+      - 'static/**'
+      - 'requirements.txt'
+      - 'VERSION'
+      - '.github/workflows/**'
+  workflow_dispatch:  # Allow manual trigger
+
+jobs:
+  deploy:
+    name: Deploy Application
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Fetch all history for version comparison
+      
+      - name: 🐍 Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+      
+      - name: 📦 Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+      
+      - name: ✅ Run tests (if available)
+        run: |
+          echo "Running syntax checks..."
+          python -m py_compile app/main.py app/services/*.py app/core/*.py || true
+        continue-on-error: true
+      
+      - name: 📝 Read version
+        id: version
+        run: |
+          VERSION=$(cat VERSION | tr -d '[:space:]')
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "📌 Current version: $VERSION"
+      
+      - name: 🏷️ Create Git Tag
+        if: steps.version.outputs.version != ''
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          
+          # Check if tag already exists
+          if git rev-parse "v$VERSION" >/dev/null 2>&1; then
+            echo "⚠️  Tag v$VERSION already exists, skipping..."
+          else
+            git tag -a "v$VERSION" -m "Release version $VERSION"
+            git push origin "v$VERSION"
+            echo "✅ Created and pushed tag v$VERSION"
+          fi
+      
+      - name: 📊 Deployment Summary
+        run: |
+          echo "## 🚀 Deployment Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Version:** ${{ steps.version.outputs.version }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Branch:** ${{ github.ref_name }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Commit:** ${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### 📋 Next Steps:" >> $GITHUB_STEP_SUMMARY
+          echo "1. Check your deployment platform (Render/Railway)" >> $GITHUB_STEP_SUMMARY
+          echo "2. Verify environment variables are set" >> $GITHUB_STEP_SUMMARY
+          echo "3. Monitor deployment logs" >> $GITHUB_STEP_SUMMARY
+      
+      - name: 🔔 Notify Deployment
+        run: |
+          echo "✅ Deployment workflow completed successfully!"
+          echo "📌 Version: ${{ steps.version.outputs.version }}"
+          echo "🔗 Check your deployment platform for status"

@@ -1,0 +1,963 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Second Brain - Daily Sync (Gemini Edition)</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+            direction: rtl;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            overflow: hidden;
+        }
+
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 30px;
+            text-align: center;
+        }
+
+        .header h1 {
+            font-size: 2.5em;
+            margin-bottom: 10px;
+        }
+
+        .header p {
+            opacity: 0.9;
+            font-size: 1.1em;
+        }
+
+        .test-btn {
+            background: rgba(255, 255, 255, 0.2);
+            color: white;
+            border: 2px solid white;
+            padding: 10px 20px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 0.9em;
+            margin-top: 15px;
+            transition: all 0.3s;
+            font-weight: bold;
+        }
+
+        .test-btn:hover {
+            background: rgba(255, 255, 255, 0.3);
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(0,0,0,0.2);
+        }
+
+        .test-btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .content {
+            padding: 40px;
+        }
+
+        .upload-section {
+            margin-bottom: 30px;
+        }
+
+        .upload-box {
+            border: 3px dashed #667eea;
+            border-radius: 15px;
+            padding: 40px;
+            text-align: center;
+            background: #f8f9ff;
+            transition: all 0.3s;
+            margin-bottom: 20px;
+            cursor: pointer;
+        }
+
+        .upload-box:hover {
+            border-color: #764ba2;
+            background: #f0f2ff;
+        }
+
+        .upload-box.dragover {
+            border-color: #764ba2;
+            background: #e8ebff;
+            transform: scale(1.02);
+        }
+
+        .file-input {
+            display: none;
+        }
+
+        .file-label {
+            display: inline-block;
+            padding: 15px 30px;
+            background: #667eea;
+            color: white;
+            border-radius: 10px;
+            cursor: pointer;
+            font-size: 1.1em;
+            transition: all 0.3s;
+            margin: 10px;
+        }
+
+        .file-label:hover {
+            background: #764ba2;
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+        }
+
+        .text-input {
+            width: 100%;
+            min-height: 150px;
+            padding: 15px;
+            border: 2px solid #ddd;
+            border-radius: 10px;
+            font-size: 1em;
+            font-family: inherit;
+            resize: vertical;
+            margin-top: 10px;
+        }
+
+        .text-input:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+
+        .file-list {
+            margin-top: 20px;
+        }
+
+        .file-item {
+            background: #f8f9ff;
+            padding: 15px;
+            border-radius: 10px;
+            margin-bottom: 10px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .file-item .file-info {
+            flex: 1;
+        }
+
+        .file-item .file-name {
+            font-weight: bold;
+            color: #333;
+        }
+
+        .file-item .file-size {
+            color: #666;
+            font-size: 0.9em;
+        }
+
+        .remove-btn {
+            background: #ff4757;
+            color: white;
+            border: none;
+            padding: 8px 15px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 0.9em;
+        }
+
+        .remove-btn:hover {
+            background: #ff3838;
+        }
+
+        .run-btn {
+            width: 100%;
+            padding: 20px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            border-radius: 15px;
+            font-size: 1.3em;
+            font-weight: bold;
+            cursor: pointer;
+            transition: all 0.3s;
+            margin-top: 20px;
+        }
+
+        .run-btn:hover:not(:disabled) {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 30px rgba(102, 126, 234, 0.4);
+        }
+
+        .run-btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+
+        .loading {
+            display: none;
+            text-align: center;
+            padding: 40px;
+        }
+
+        .loading.active {
+            display: block;
+        }
+
+        .spinner {
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #667eea;
+            border-radius: 50%;
+            width: 50px;
+            height: 50px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 20px;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .results {
+            display: none;
+            margin-top: 30px;
+        }
+
+        .results.active {
+            display: block;
+        }
+
+        .result-section {
+            background: #f8f9ff;
+            border-radius: 15px;
+            padding: 25px;
+            margin-bottom: 20px;
+        }
+
+        .result-section h2 {
+            color: #667eea;
+            margin-bottom: 15px;
+            font-size: 1.5em;
+        }
+
+        .result-content {
+            background: white;
+            padding: 20px;
+            border-radius: 10px;
+            white-space: pre-wrap;
+            line-height: 1.6;
+            max-height: 500px;
+            overflow-y: auto;
+        }
+
+        .action-items {
+            list-style: none;
+        }
+
+        .action-items li {
+            background: white;
+            padding: 15px;
+            margin-bottom: 10px;
+            border-radius: 8px;
+            border-right: 4px solid #667eea;
+        }
+
+        .error {
+            background: #ffebee;
+            color: #c62828;
+            padding: 20px;
+            border-radius: 10px;
+            margin-top: 20px;
+            display: none;
+        }
+
+        .error.active {
+            display: block;
+        }
+
+        .tabs {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+            border-bottom: 2px solid #eee;
+            flex-wrap: wrap;
+        }
+
+        .tab {
+            padding: 15px 25px;
+            background: none;
+            border: none;
+            cursor: pointer;
+            font-size: 1em;
+            color: #666;
+            border-bottom: 3px solid transparent;
+            transition: all 0.3s;
+        }
+
+        .tab.active {
+            color: #667eea;
+            border-bottom-color: #667eea;
+        }
+
+        .tab-content {
+            display: none;
+        }
+
+        .tab-content.active {
+            display: block;
+        }
+
+        .json-view {
+            background: #f5f5f5;
+            padding: 15px;
+            border-radius: 8px;
+            font-family: 'Courier New', monospace;
+            font-size: 0.9em;
+            overflow-x: auto;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🧠 Second Brain - Daily Sync</h1>
+            <p>העלה הקלטות, תמונות וטקסט, וקבל ניתוח יומי עם 3 פרספקטיבות מומחים</p>
+            <p style="margin-top: 10px; font-size: 0.9em; opacity: 0.8;">גרסה <span id="versionNumber">1.0.0</span></p>
+            <div style="display: flex; gap: 15px; justify-content: center; margin-top: 15px;">
+                <button class="test-btn" id="testWhatsAppBtn" onclick="sendTestWhatsApp()">
+                    📱 שלח הודעת בדיקה WhatsApp (testing)
+                </button>
+                <button class="test-btn" id="testSmsBtn" onclick="sendTestSMS()">
+                    💬 שלח הודעת בדיקה SMS (testing)
+                </button>
+            </div>
+        </div>
+
+        <div class="content">
+            <!-- Upload Section -->
+            <div class="upload-section">
+                <h2>📤 העלאת קבצים</h2>
+                
+                <!-- Audio Upload -->
+                <div class="upload-box" id="audioBox">
+                    <p style="font-size: 1.2em; margin-bottom: 15px;">🎤 קבצי אודיו</p>
+                    <label for="audioInput" class="file-label">בחר קבצי אודיו</label>
+                    <input type="file" id="audioInput" class="file-input" accept="audio/*" multiple>
+                    <p style="margin-top: 10px; color: #666;">או גרור קבצים לכאן</p>
+                </div>
+
+                <!-- Image Upload -->
+                <div class="upload-box" id="imageBox">
+                    <p style="font-size: 1.2em; margin-bottom: 15px;">📷 תמונות</p>
+                    <label for="imageInput" class="file-label">בחר תמונות</label>
+                    <input type="file" id="imageInput" class="file-input" accept="image/*" multiple>
+                    <p style="margin-top: 10px; color: #666;">או גרור קבצים לכאן</p>
+                </div>
+
+                <!-- Text Input -->
+                <div style="margin-top: 20px;">
+                    <label style="display: block; margin-bottom: 10px; font-weight: bold;">📝 טקסט חופשי:</label>
+                    <textarea id="textInput" class="text-input" placeholder="הזן טקסט כאן... (הערות, מחשבות, יומן, וכו')"></textarea>
+                </div>
+
+                <!-- File Lists -->
+                <div class="file-list" id="audioFileList"></div>
+                <div class="file-list" id="imageFileList"></div>
+            </div>
+
+            <!-- Run Button -->
+            <button class="run-btn" id="runBtn" onclick="runAnalysis()">
+                🚀 הרץ ניתוח AI עם Gemini
+            </button>
+
+            <!-- Loading -->
+            <div class="loading" id="loading">
+                <div class="spinner"></div>
+                <p style="font-size: 1.2em; color: #667eea;">מעבד את הנתונים עם Gemini 1.5 Pro... זה יכול לקחת כמה דקות</p>
+            </div>
+
+            <!-- Error -->
+            <div class="error" id="error"></div>
+
+            <!-- Results -->
+            <div class="results" id="results">
+                <div style="margin-bottom: 20px; text-align: center;">
+                    <button class="file-label" onclick="downloadPDF()" style="font-size: 1.1em; padding: 15px 30px; cursor: pointer;">
+                        📥 הורד PDF
+                    </button>
+                </div>
+                <div class="tabs">
+                    <button class="tab active" onclick="showTab('summary')">סיכום</button>
+                    <button class="tab" onclick="showTab('leadership')">Leadership</button>
+                    <button class="tab" onclick="showTab('strategy')">Strategy</button>
+                    <button class="tab" onclick="showTab('parenting')">Parenting</button>
+                    <button class="tab" onclick="showTab('actions')">פעולות</button>
+                    <button class="tab" onclick="showTab('json')">JSON מלא</button>
+                </div>
+
+                <div id="summaryTab" class="tab-content active">
+                    <div class="result-section">
+                        <h2>📊 סיכום יומי</h2>
+                        <div class="result-content" id="summaryContent"></div>
+                    </div>
+                </div>
+
+                <div id="leadershipTab" class="tab-content">
+                    <div class="result-section">
+                        <h2>💡 Leadership Coach (Simon Sinek)</h2>
+                        <div class="result-content" id="leadershipContent"></div>
+                    </div>
+                </div>
+
+                <div id="strategyTab" class="tab-content">
+                    <div class="result-section">
+                        <h2>📈 Strategy Consultant</h2>
+                        <div class="result-content" id="strategyContent"></div>
+                    </div>
+                </div>
+
+                <div id="parentingTab" class="tab-content">
+                    <div class="result-section">
+                        <h2>👨‍👩‍👧 Parenting Coach (Adler Institute)</h2>
+                        <div class="result-content" id="parentingContent"></div>
+                    </div>
+                </div>
+
+                <div id="actionsTab" class="tab-content">
+                    <div class="result-section">
+                        <h2>✅ פעולות לפעולה</h2>
+                        <div class="result-content" id="actionsContent"></div>
+                    </div>
+                </div>
+
+                <div id="jsonTab" class="tab-content">
+                    <div class="result-section">
+                        <h2>📄 JSON מלא</h2>
+                        <div class="json-view" id="jsonContent"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Auto-detect API base URL (works in both local and production)
+        const API_BASE = window.location.origin;
+        let audioFiles = [];
+        let imageFiles = [];
+        let currentAnalysisData = null; // Store current analysis results
+
+        // Load version number on page load
+        async function loadVersion() {
+            try {
+                const response = await fetch(`${API_BASE}/version`);
+                const data = await response.json();
+                if (data.version) {
+                    document.getElementById('versionNumber').textContent = data.version;
+                }
+            } catch (err) {
+                console.error('Failed to load version:', err);
+            }
+        }
+
+        // Send test WhatsApp message
+        async function sendTestWhatsApp() {
+            const btn = document.getElementById('testWhatsAppBtn');
+            const originalText = btn.textContent;
+            
+            // Disable button
+            btn.disabled = true;
+            btn.textContent = '📤 שולח...';
+            
+            try {
+                console.log('📱 Sending test WhatsApp message...');
+                
+                const response = await fetch(`${API_BASE}/test-whatsapp`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ message: 'testing' })
+                });
+
+                if (!response.ok) {
+                    const errorData = await response.json();
+                    throw new Error(errorData.detail || `שגיאת שרת: ${response.status}`);
+                }
+
+                const result = await response.json();
+                
+                if (result.success) {
+                    alert('✅ הודעת הבדיקה WhatsApp נשלחה בהצלחה!\n\nSID: ' + result.sid + '\nStatus: ' + result.status);
+                    console.log('✅ Test WhatsApp message sent:', result);
+                } else {
+                    throw new Error(result.error || 'שגיאה לא ידועה');
+                }
+            } catch (err) {
+                console.error('❌ Error sending test WhatsApp message:', err);
+                alert('❌ שגיאה בשליחת הודעת הבדיקה WhatsApp:\n' + err.message);
+            } finally {
+                // Re-enable button
+                btn.disabled = false;
+                btn.textContent = originalText;
+            }
+        }
+
+        // Send test SMS message
+        async function sendTestSMS() {
+            const btn = document.getElementById('testSmsBtn');
+            const originalText = btn.textContent;
+            
+            // Disable button
+            btn.disabled = true;
+            btn.textContent = '📤 שולח...';
+            
+            try {
+                console.log('💬 Sending test SMS message...');
+                
+                const response = await fetch(`${API_BASE}/test-sms`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ message: 'testing' })
+                });
+
+                if (!response.ok) {
+                    const errorData = await response.json();
+                    throw new Error(errorData.detail || `שגיאת שרת: ${response.status}`);
+                }
+
+                const result = await response.json();
+                
+                if (result.success) {
+                    alert('✅ הודעת הבדיקה SMS נשלחה בהצלחה!\n\nSID: ' + result.sid + '\nStatus: ' + result.status);
+                    console.log('✅ Test SMS message sent:', result);
+                } else {
+                    throw new Error(result.error || 'שגיאה לא ידועה');
+                }
+            } catch (err) {
+                console.error('❌ Error sending test SMS message:', err);
+                alert('❌ שגיאה בשליחת הודעת הבדיקה SMS:\n' + err.message);
+            } finally {
+                // Re-enable button
+                btn.disabled = false;
+                btn.textContent = originalText;
+            }
+        }
+        
+        // Load version when page loads
+        loadVersion();
+
+        // Audio file input
+        document.getElementById('audioInput').addEventListener('change', (e) => {
+            handleFiles(e.target.files, 'audio');
+        });
+
+        // Image file input
+        document.getElementById('imageInput').addEventListener('change', (e) => {
+            handleFiles(e.target.files, 'image');
+        });
+
+        // Drag and drop for audio
+        const audioBox = document.getElementById('audioBox');
+        audioBox.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            audioBox.classList.add('dragover');
+        });
+        audioBox.addEventListener('dragleave', () => {
+            audioBox.classList.remove('dragover');
+        });
+        audioBox.addEventListener('drop', (e) => {
+            e.preventDefault();
+            audioBox.classList.remove('dragover');
+            handleFiles(e.dataTransfer.files, 'audio');
+        });
+
+        // Drag and drop for images
+        const imageBox = document.getElementById('imageBox');
+        imageBox.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            imageBox.classList.add('dragover');
+        });
+        imageBox.addEventListener('dragleave', () => {
+            imageBox.classList.remove('dragover');
+        });
+        imageBox.addEventListener('drop', (e) => {
+            e.preventDefault();
+            imageBox.classList.remove('dragover');
+            handleFiles(e.dataTransfer.files, 'image');
+        });
+
+        function handleFiles(files, type) {
+            Array.from(files).forEach(file => {
+                if (type === 'audio' && file.type.startsWith('audio/')) {
+                    audioFiles.push(file);
+                } else if (type === 'image' && file.type.startsWith('image/')) {
+                    imageFiles.push(file);
+                }
+            });
+            updateFileLists();
+        }
+
+        function updateFileLists() {
+            // Audio files
+            const audioList = document.getElementById('audioFileList');
+            audioList.innerHTML = '';
+            if (audioFiles.length > 0) {
+                audioList.innerHTML = '<h3 style="margin-bottom: 10px;">קבצי אודיו:</h3>';
+            }
+            audioFiles.forEach((file, index) => {
+                const fileItem = document.createElement('div');
+                fileItem.className = 'file-item';
+                fileItem.innerHTML = `
+                    <div class="file-info">
+                        <div class="file-name">${file.name}</div>
+                        <div class="file-size">${formatFileSize(file.size)}</div>
+                    </div>
+                    <button class="remove-btn" onclick="removeFile(${index}, 'audio')">הסר</button>
+                `;
+                audioList.appendChild(fileItem);
+            });
+
+            // Image files
+            const imageList = document.getElementById('imageFileList');
+            imageList.innerHTML = '';
+            if (imageFiles.length > 0) {
+                imageList.innerHTML = '<h3 style="margin-bottom: 10px;">תמונות:</h3>';
+            }
+            imageFiles.forEach((file, index) => {
+                const fileItem = document.createElement('div');
+                fileItem.className = 'file-item';
+                fileItem.innerHTML = `
+                    <div class="file-info">
+                        <div class="file-name">${file.name}</div>
+                        <div class="file-size">${formatFileSize(file.size)}</div>
+                    </div>
+                    <button class="remove-btn" onclick="removeFile(${index}, 'image')">הסר</button>
+                `;
+                imageList.appendChild(fileItem);
+            });
+        }
+
+        function removeFile(index, type) {
+            if (type === 'audio') {
+                audioFiles.splice(index, 1);
+            } else {
+                imageFiles.splice(index, 1);
+            }
+            updateFileLists();
+        }
+
+        function formatFileSize(bytes) {
+            if (bytes === 0) return '0 Bytes';
+            const k = 1024;
+            const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+            const i = Math.floor(Math.log(bytes) / Math.log(k));
+            return Math.round(bytes / Math.pow(k, i) * 100) / 100 + ' ' + sizes[i];
+        }
+
+        async function runAnalysis() {
+            const runBtn = document.getElementById('runBtn');
+            const loading = document.getElementById('loading');
+            const results = document.getElementById('results');
+            const error = document.getElementById('error');
+            
+            // Reset
+            runBtn.disabled = true;
+            loading.classList.add('active');
+            results.classList.remove('active');
+            error.classList.remove('active');
+
+            try {
+                // Get text input
+                const textInput = document.getElementById('textInput').value.trim();
+                
+                // Check if we have any inputs
+                if (audioFiles.length === 0 && imageFiles.length === 0 && !textInput) {
+                    throw new Error('אנא העלה לפחות קובץ אודיו אחד, תמונה אחת, או הזן טקסט');
+                }
+
+                // Prepare FormData
+                const formData = new FormData();
+                
+                // Add audio files
+                audioFiles.forEach(file => {
+                    formData.append('audio_files', file);
+                });
+
+                // Add image files
+                imageFiles.forEach(file => {
+                    formData.append('image_files', file);
+                });
+
+                // Add text notes
+                if (textInput) {
+                    formData.append('text_notes', textInput);
+                }
+
+                console.log('📤 Sending request to Gemini...');
+                
+                // Create AbortController for timeout
+                const controller = new AbortController();
+                const timeoutId = setTimeout(() => controller.abort(), 600000); // 10 minutes timeout
+                
+                let response;
+                try {
+                    // Send to API
+                    response = await fetch(`${API_BASE}/analyze`, {
+                        method: 'POST',
+                        body: formData,
+                        signal: controller.signal
+                    });
+                    
+                    clearTimeout(timeoutId);
+                } catch (fetchError) {
+                    clearTimeout(timeoutId);
+                    if (fetchError.name === 'AbortError') {
+                        throw new Error('הבקשה ארכה יותר מדי זמן. נסה שוב או הפחת את מספר הקבצים.');
+                    }
+                    throw fetchError;
+                }
+
+                if (!response.ok) {
+                    let errorMessage = `שגיאת שרת: ${response.status} ${response.statusText}`;
+                    try {
+                        const errorData = await response.json();
+                        console.error('Server error response:', errorData);
+                        
+                        // Extract error message from various possible formats
+                        if (errorData.detail) {
+                            // Handle array of validation errors (FastAPI format)
+                            if (Array.isArray(errorData.detail)) {
+                                const errors = errorData.detail.map(err => {
+                                    if (typeof err === 'string') {
+                                        return err;
+                                    } else if (err.msg) {
+                                        return `${err.loc ? err.loc.join('.') + ': ' : ''}${err.msg}`;
+                                    } else if (err.message) {
+                                        return err.message;
+                                    } else {
+                                        return JSON.stringify(err);
+                                    }
+                                }).join('\n');
+                                errorMessage = `שגיאת ולידציה:\n${errors}`;
+                            } else if (typeof errorData.detail === 'string') {
+                                errorMessage = errorData.detail;
+                            } else if (typeof errorData.detail === 'object') {
+                                errorMessage = JSON.stringify(errorData.detail, null, 2);
+                            } else {
+                                errorMessage = String(errorData.detail);
+                            }
+                        } else if (errorData.message) {
+                            errorMessage = errorData.message;
+                        } else if (typeof errorData === 'string') {
+                            errorMessage = errorData;
+                        } else if (errorData.error) {
+                            errorMessage = errorData.error;
+                        } else {
+                            // Try to stringify the whole object
+                            errorMessage = JSON.stringify(errorData, null, 2);
+                        }
+                    } catch (parseError) {
+                        // If JSON parsing fails, try to get text
+                        try {
+                            const errorText = await response.text();
+                            errorMessage = errorText || errorMessage;
+                        } catch (e) {
+                            console.error('Failed to parse error response:', e);
+                        }
+                    }
+                    throw new Error(errorMessage);
+                }
+
+                const result = await response.json();
+                console.log('✅ Analysis complete!', result);
+                
+                // Store analysis data for PDF generation
+                currentAnalysisData = result;
+                
+                displayResults(result);
+
+            } catch (err) {
+                console.error('❌ Error:', err);
+                
+                // Extract error message properly
+                let errorMessage = 'שגיאה לא ידועה';
+                if (err instanceof Error) {
+                    errorMessage = err.message;
+                    // Handle specific error types
+                    if (err.name === 'AbortError') {
+                        errorMessage = 'הבקשה ארכה יותר מדי זמן. נסה שוב או הפחת את מספר הקבצים.';
+                    } else if (err.message.includes('Failed to fetch') || err.message.includes('NetworkError')) {
+                        errorMessage = 'שגיאת רשת: לא ניתן להתחבר לשרת. ודא שהשרת רץ על פורט 8001.';
+                    } else if (err.message.includes('504') || err.message.includes('Deadline Exceeded')) {
+                        errorMessage = 'הבקשה ארכה יותר מדי זמן. Gemini לא הצליח לעבד את הקבצים בזמן. נסה שוב או הפחת את מספר הקבצים.';
+                    } else if (err.message.includes('500')) {
+                        errorMessage = 'שגיאת שרת פנימית. בדוק את הלוגים של השרת.';
+                    }
+                } else if (typeof err === 'string') {
+                    errorMessage = err;
+                } else if (err && err.message) {
+                    errorMessage = err.message;
+                } else if (err && err.detail) {
+                    errorMessage = err.detail;
+                } else if (err && typeof err === 'object') {
+                    // Try to stringify the error object
+                    try {
+                        errorMessage = JSON.stringify(err);
+                    } catch (e) {
+                        errorMessage = String(err);
+                    }
+                } else {
+                    errorMessage = String(err);
+                }
+                
+                error.textContent = `שגיאה: ${errorMessage}`;
+                error.classList.add('active');
+            } finally {
+                runBtn.disabled = false;
+                loading.classList.remove('active');
+            }
+        }
+
+        function displayResults(data) {
+            // Summary
+            document.getElementById('summaryContent').textContent = 
+                data.summary || 'לא זמין';
+
+            // Leadership
+            const leadershipText = data.leadership_feedback ? 
+                `The Why: ${data.leadership_feedback.the_why || 'N/A'}\n\n` +
+                `Circle of Safety: ${data.leadership_feedback.circle_of_safety || 'N/A'}\n\n` +
+                `Trust Building: ${data.leadership_feedback.trust_building || 'N/A'}\n\n` +
+                `Leadership Moments: ${data.leadership_feedback.leadership_moments || 'N/A'}\n\n` +
+                `Recommendations: ${data.leadership_feedback.recommendations || 'N/A'}`
+                : 'לא זמין';
+            document.getElementById('leadershipContent').textContent = leadershipText;
+
+            // Strategy
+            const strategyText = data.strategy_feedback ?
+                `Operational Efficiency: ${data.strategy_feedback.operational_efficiency || 'N/A'}\n\n` +
+                `KPIs: ${Array.isArray(data.strategy_feedback.kpis) ? data.strategy_feedback.kpis.join(', ') : 'N/A'}\n\n` +
+                `Action Items: ${Array.isArray(data.strategy_feedback.action_items) ? data.strategy_feedback.action_items.join('\n') : 'N/A'}\n\n` +
+                `Strategic Gaps: ${data.strategy_feedback.strategic_gaps || 'N/A'}\n\n` +
+                `Resource Allocation: ${data.strategy_feedback.resource_allocation || 'N/A'}\n\n` +
+                `Recommendations: ${data.strategy_feedback.recommendations || 'N/A'}`
+                : 'לא זמין';
+            document.getElementById('strategyContent').textContent = strategyText;
+
+            // Parenting
+            const parentingText = data.parenting_feedback ?
+                `Encouragement Analysis: ${data.parenting_feedback.encouragement_analysis || 'N/A'}\n\n` +
+                `Atmosphere: ${data.parenting_feedback.atmosphere || 'N/A'}\n\n` +
+                `Cooperation: ${data.parenting_feedback.cooperation || 'N/A'}\n\n` +
+                `Mutual Respect: ${data.parenting_feedback.mutual_respect || 'N/A'}\n\n` +
+                `Problem Solving: ${data.parenting_feedback.problem_solving || 'N/A'}\n\n` +
+                `Recommendations: ${data.parenting_feedback.recommendations || 'N/A'}`
+                : 'לא זמין';
+            document.getElementById('parentingContent').textContent = parentingText;
+
+            // Actions
+            const actionsContent = document.getElementById('actionsContent');
+            if (data.action_items && Array.isArray(data.action_items) && data.action_items.length > 0) {
+                actionsContent.innerHTML = `<ul class="action-items">${data.action_items.map(item => {
+                    const title = typeof item === 'object' ? item.title : item;
+                    const priority = typeof item === 'object' ? item.priority : '';
+                    const category = typeof item === 'object' ? item.category : '';
+                    const description = typeof item === 'object' ? item.description : '';
+                    return `<li><strong>${title}</strong> ${priority ? `[${priority}]` : ''} ${category ? `(${category})` : ''}${description ? `<br>${description}` : ''}</li>`;
+                }).join('')}</ul>`;
+            } else {
+                actionsContent.textContent = 'לא זמין';
+            }
+
+            // JSON
+            document.getElementById('jsonContent').textContent = JSON.stringify(data, null, 2);
+
+            // Show results
+            document.getElementById('results').classList.add('active');
+        }
+
+        function showTab(tabName) {
+            // Hide all tabs
+            document.querySelectorAll('.tab').forEach(tab => tab.classList.remove('active'));
+            document.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
+
+            // Show selected tab
+            event.target.classList.add('active');
+            document.getElementById(tabName + 'Tab').classList.add('active');
+        }
+
+        async function downloadPDF() {
+            if (!currentAnalysisData) {
+                alert('אין נתונים להורדה. אנא הרץ ניתוח קודם.');
+                return;
+            }
+
+            try {
+                console.log('📄 Generating PDF...');
+                console.log('📄 Data:', currentAnalysisData);
+                
+                const response = await fetch(`${API_BASE}/generate-pdf`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify(currentAnalysisData)
+                });
+
+                console.log('📄 Response status:', response.status);
+                console.log('📄 Response headers:', response.headers);
+
+                if (!response.ok) {
+                    const errorText = await response.text();
+                    console.error('❌ Server error response:', errorText);
+                    throw new Error(`שגיאת שרת: ${response.status} - ${errorText}`);
+                }
+
+                // Get PDF blob
+                const blob = await response.blob();
+                console.log('📄 PDF blob size:', blob.size);
+                
+                if (blob.size === 0) {
+                    throw new Error('הקובץ PDF שנוצר ריק');
+                }
+                
+                // Create download link
+                const url = window.URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `second-brain-analysis-${currentAnalysisData.date || 'report'}.pdf`;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                window.URL.revokeObjectURL(url);
+                
+                console.log('✅ PDF downloaded successfully');
+            } catch (err) {
+                console.error('❌ Error downloading PDF:', err);
+                let errorMessage = 'שגיאה לא ידועה';
+                if (err instanceof Error) {
+                    errorMessage = err.message;
+                } else if (typeof err === 'string') {
+                    errorMessage = err;
+                }
+                alert(`שגיאה בהורדת PDF: ${errorMessage}`);
+            }
+        }
+    </script>
+</body>
+</html>
