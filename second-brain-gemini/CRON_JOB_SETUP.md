@@ -91,13 +91,18 @@ TWILIO_SMS_FROM=+17692878554
    ```
    Name: process-meetings
    Schedule: 0 */6 * * *  (כל 6 שעות)
-   Command: cd second-brain-gemini && python process_meetings.py
+   Command: python process_meetings.py
    Environment: Python 3
    ```
-3. בחר את ה-repository שלך
-4. הגדר **Root Directory**: `second-brain-gemini`
+3. בחר את ה-repository שלך: `kids-money-manager`
+4. הגדר **Root Directory**: `second-brain-gemini` ⚠️ זה חשוב!
 5. הוסף את כל ה-Environment Variables (כמו ב-Web Service)
 6. לחץ **"Create Cron Job"**
+
+**⚠️ חשוב:** 
+- Root Directory חייב להיות `second-brain-gemini`
+- Command צריך להיות רק `python process_meetings.py` (בלי `cd`)
+- Render כבר נמצא בתיקייה הנכונה בגלל Root Directory
 
 ### אופציה 2: Scheduled Job (Alternative)
 
