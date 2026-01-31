@@ -401,9 +401,11 @@ def process_meeting_file(
     temp_file = None
     
     try:
-        # Create temporary file
+        # Create temporary file with original extension
         temp_dir = Path(tempfile.gettempdir())
-        temp_file = temp_dir / f"meeting_{file_id}_{int(time.time())}"
+        # Preserve file extension for MIME type detection
+        file_ext = Path(file_name).suffix or '.mp3'  # Default to .mp3 if no extension
+        temp_file = temp_dir / f"meeting_{file_id}_{int(time.time())}{file_ext}"
         
         # Download file
         logger.info(f"📥 Processing: {file_name}")
