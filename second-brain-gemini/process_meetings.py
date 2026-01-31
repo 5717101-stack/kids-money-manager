@@ -231,10 +231,21 @@ class GeminiService:
                 '.mp4': 'audio/mp4',  # Some MP4 files are audio-only
             }
             
+            # Get file extension (handle files without extension)
             file_ext = audio_path.suffix.lower()
+            if not file_ext:
+                # Try to get extension from filename
+                file_name_lower = audio_path.name.lower()
+                for ext in mime_type_map.keys():
+                    if file_name_lower.endswith(ext):
+                        file_ext = ext
+                        break
+            
             mime_type = mime_type_map.get(file_ext, 'audio/mpeg')  # Default to MP3
             
-            logger.info(f"📋 Detected MIME type: {mime_type} for extension: {file_ext}")
+            logger.info(f"📋 File: {audio_path.name}")
+            logger.info(f"📋 Extension: {file_ext or 'none'}")
+            logger.info(f"📋 MIME type: {mime_type}")
             
             # Upload file to Gemini with explicit MIME type
             file_ref = genai.upload_file(
