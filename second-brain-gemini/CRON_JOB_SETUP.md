@@ -84,7 +84,7 @@ TWILIO_SMS_FROM=+17692878554
 
 ## 🚀 הגדרת Cron Job ב-Render
 
-### אופציה 1: Render Cron Jobs (מומלץ)
+### שלב 1: צור Cron Job
 
 1. ב-Render Dashboard, לחץ **"New +"** → **"Cron Job"**
 2. הגדר:
@@ -96,8 +96,44 @@ TWILIO_SMS_FROM=+17692878554
    ```
 3. בחר את ה-repository שלך: `kids-money-manager`
 4. הגדר **Root Directory**: `second-brain-gemini` ⚠️ זה חשוב!
-5. הוסף את כל ה-Environment Variables (כמו ב-Web Service)
-6. לחץ **"Create Cron Job"**
+5. לחץ **"Create Cron Job"**
+
+### שלב 2: הוסף Environment Variables (חובה!)
+
+**⚠️ חשוב:** הסקריפט לא יעבוד בלי המשתנים האלה!
+
+לך ל-Cron Job → **Environment** tab והוסף:
+
+#### משתנים חובה (Minimum Required):
+```
+DRIVE_INBOX_ID=your-inbox-folder-id
+DRIVE_ARCHIVE_ID=your-archive-folder-id
+MY_PHONE_NUMBER=+972505717101
+```
+
+#### Google Drive Service Account (חובה):
+```
+GOOGLE_PROJECT_ID=your-project-id
+GOOGLE_PRIVATE_KEY_ID=your-private-key-id
+GOOGLE_PRIVATE_KEY="-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----\n"
+GOOGLE_CLIENT_EMAIL=your-service-account@project.iam.gserviceaccount.com
+GOOGLE_CLIENT_ID=your-client-id
+GOOGLE_CLIENT_X509_CERT_URL=https://www.googleapis.com/robot/v1/metadata/x509/...
+```
+
+#### Google Gemini (חובה):
+```
+GOOGLE_API_KEY=your-google-api-key
+```
+
+#### Twilio (חובה לשליחת SMS):
+```
+TWILIO_ACCOUNT_SID=your-account-sid
+TWILIO_AUTH_TOKEN=your-auth-token
+TWILIO_SMS_FROM=+17692878554
+```
+
+**💡 טיפ:** אתה יכול להעתיק את המשתנים מה-Web Service שלך (Settings → Environment → Copy from another service)
 
 **⚠️ חשוב:** 
 - Root Directory חייב להיות `second-brain-gemini`
