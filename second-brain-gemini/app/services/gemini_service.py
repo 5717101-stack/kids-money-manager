@@ -336,6 +336,14 @@ class GeminiService:
         image_paths = image_paths or []
         text_inputs = text_inputs or []
         
+        # Check if service is configured
+        if not self.is_configured or self.model is None:
+            raise ValueError(
+                "GOOGLE_API_KEY is not configured. "
+                "Please set GOOGLE_API_KEY in Render Dashboard → Environment Variables. "
+                "The server started successfully, but Gemini analysis requires the API key."
+            )
+        
         # Upload all files and wait for processing
         uploaded_files = []  # Store refreshed File objects with state='ACTIVE'
         
