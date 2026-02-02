@@ -165,6 +165,58 @@ async def test_sms(request: Request):
         )
 
 
+@app.post("/whatsapp")
+async def whatsapp_webhook(request: Request):
+    """
+    Handle incoming WhatsApp messages from Twilio webhook.
+    Extracts sender number and message body, logs to console,
+    and returns a TwiML response.
+    """
+    from twilio.twiml.messaging_response import MessagingResponse
+    
+    try:
+        # Get form data from Twilio request
+        form = await request.form()
+        
+        # Extract sender's number and message body from Twilio request
+        sender_number = form.get('From', '')
+        message_body = form.get('Body', '')
+        
+        # Print incoming message to console logs
+        print(f"\n{'='*50}")
+        print(f"📱 Incoming WhatsApp Message")
+        print(f"{'='*50}")
+        print(f"From: {sender_number}")
+        print(f"Message: {message_body}")
+        print(f"{'='*50}\n")
+        
+        # Create TwiML response
+        response = MessagingResponse()
+        response.message('Message received and saved to memory.')
+        
+        # Return TwiML XML response
+        from fastapi.responses import Response
+        return Response(
+            content=str(response),
+            media_type='text/xml',
+            status_code=200
+        )
+        
+    except Exception as e:
+        print(f"❌ Error processing WhatsApp message: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        # Return error response
+        response = MessagingResponse()
+        response.message('Sorry, an error occurred while processing your message.')
+        from fastapi.responses import Response
+        return Response(
+            content=str(response),
+            media_type='text/xml',
+            status_code=500
+        )
+
+
 @app.post("/generate-pdf")
 async def generate_pdf(request: Request):
     """
