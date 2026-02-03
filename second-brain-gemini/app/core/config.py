@@ -38,6 +38,7 @@ class Settings(BaseSettings):
     whatsapp_cloud_api_token: Optional[str] = None  # Meta WhatsApp API access token
     whatsapp_phone_number_id: Optional[str] = None  # Meta WhatsApp Phone Number ID
     whatsapp_verify_token: Optional[str] = None     # Meta WhatsApp webhook verification token
+    whatsapp_to: Optional[str] = None               # Meta WhatsApp recipient number (E.164 format: +972XXXXXXXXX)
     
     class Config:
         env_file = ".env"

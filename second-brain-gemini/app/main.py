@@ -154,7 +154,15 @@ async def test_whatsapp(request: Request):
                 detail="WhatsApp provider not configured. Please check your environment variables."
             )
         
-        result = whatsapp_provider.send_whatsapp(message)
+        # Get recipient from request or use default from config
+        recipient = data.get('to', None)
+        
+        # For Meta, we need a recipient number
+        if whatsapp_provider.get_provider_name() == 'meta' and not recipient:
+            # Try to use default from config
+            recipient = settings.whatsapp_to
+        
+        result = whatsapp_provider.send_whatsapp(message, recipient)
         
         if result.get('success'):
             return JSONResponse(content=result)
@@ -422,7 +430,12 @@ async def analyze_day(
                 # Send WhatsApp via configured provider (Twilio or Meta)
                 if whatsapp_provider:
                     try:
-                        whatsapp_result = whatsapp_provider.send_whatsapp(formatted_message)
+                        # Get recipient - for Meta we need it, for Twilio it's optional
+                        whatsapp_recipient = None
+                        if whatsapp_provider.get_provider_name() == 'meta':
+                            whatsapp_recipient = settings.whatsapp_to
+                        
+                        whatsapp_result = whatsapp_provider.send_whatsapp(formatted_message, whatsapp_recipient)
                         results["whatsapp"] = whatsapp_result
                         if whatsapp_result.get('success'):
                             print(f"✅ Summary sent to WhatsApp successfully via {whatsapp_provider.get_provider_name()}")

@@ -64,11 +64,13 @@ class MetaWhatsAppService:
                 "message": "Meta WhatsApp credentials not set"
             }
         
-        if not to:
+        # Use provided 'to' or fallback to config default
+        recipient = to or settings.whatsapp_to
+        if not recipient:
             return {
                 "success": False,
                 "error": "Recipient number required",
-                "message": "Recipient phone number must be provided for Meta WhatsApp"
+                "message": "Recipient phone number must be provided. Set WHATSAPP_TO environment variable or provide 'to' parameter."
             }
         
         # Ensure phone number is in E.164 format (remove whatsapp: prefix if present)
