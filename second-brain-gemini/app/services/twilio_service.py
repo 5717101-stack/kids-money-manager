@@ -7,15 +7,16 @@ from twilio.rest import Client
 from twilio.base.exceptions import TwilioRestException
 
 from app.core.config import settings
+from app.services.whatsapp_provider import WhatsAppProvider
 
 
-class TwilioService:
+class TwilioService(WhatsAppProvider):
     """Service for sending WhatsApp and SMS messages via Twilio."""
     
     def __init__(self):
         """Initialize Twilio service."""
         self.client = None
-        self.is_configured = False
+        self.is_configured_flag = False
         
         if settings.twilio_account_sid and settings.twilio_auth_token:
             try:
@@ -23,7 +24,7 @@ class TwilioService:
                     settings.twilio_account_sid,
                     settings.twilio_auth_token
                 )
-                self.is_configured = True
+                self.is_configured_flag = True
                 print("✅ Twilio client initialized successfully")
             except Exception as e:
                 print(f"⚠️  Failed to initialize Twilio client: {e}")
@@ -129,7 +130,7 @@ class TwilioService:
         Returns:
             Dictionary with success status and details
         """
-        if not self.is_configured:
+        if not self.is_configured_flag:
             return {
                 "success": False,
                 "error": "Twilio not configured",
@@ -152,7 +153,8 @@ class TwilioService:
             }
         
         try:
-            print(f"📱 Sending WhatsApp message to {recipient}...")
+            print(f"📱 [TwilioService] Sending WhatsApp message to {recipient}...")
+            print(f"   Provider: Twilio (via WhatsAppProvider interface)")
             
             message_obj = self.client.messages.create(
                 body=message,
@@ -200,7 +202,7 @@ class TwilioService:
         Returns:
             Dictionary with success status and details
         """
-        if not self.is_configured:
+        if not self.is_configured_flag:
             return {
                 "success": False,
                 "error": "Twilio not configured",
@@ -302,6 +304,14 @@ class TwilioService:
             results["sms"] = self.send_sms(message, to_sms)
         
         return results
+    
+    def is_configured(self) -> bool:
+        """Check if Twilio is properly configured."""
+        return self.is_configured_flag
+    
+    def get_provider_name(self) -> str:
+        """Get the provider name."""
+        return "twilio"
 
 
 # Singleton instance

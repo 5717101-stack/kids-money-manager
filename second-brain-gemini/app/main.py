@@ -16,7 +16,20 @@ from pathlib import Path
 from app.core.config import settings
 from app.services.gemini_service import gemini_service
 from app.services.pdf_service import pdf_service
-from app.services.twilio_service import twilio_service
+from app.services.twilio_service import twilio_service  # Keep for SMS and message formatting
+from app.services.whatsapp_provider import WhatsAppProviderFactory
+
+# Initialize WhatsApp provider based on configuration
+whatsapp_provider = WhatsAppProviderFactory.create_provider()
+
+# Debug: Print which provider was selected
+if whatsapp_provider:
+    print(f"📱 WhatsApp provider initialized: {whatsapp_provider.get_provider_name()}")
+    print(f"   Config setting: {settings.whatsapp_provider}")
+else:
+    print(f"⚠️  WhatsApp provider not initialized!")
+    print(f"   Config setting: {settings.whatsapp_provider}")
+    print(f"   Available providers: {WhatsAppProviderFactory.get_available_providers()}")
 
 
 # Create FastAPI app
@@ -97,6 +110,24 @@ async def get_version():
     return {"version": "1.0.0"}
 
 
+@app.get("/whatsapp-provider-status")
+async def get_whatsapp_provider_status():
+    """Get current WhatsApp provider status and configuration."""
+    status = {
+        "configured_provider": settings.whatsapp_provider,
+        "active_provider": whatsapp_provider.get_provider_name() if whatsapp_provider else None,
+        "available_providers": WhatsAppProviderFactory.get_available_providers(),
+        "meta_configured": bool(settings.whatsapp_cloud_api_token and settings.whatsapp_phone_number_id),
+        "twilio_configured": bool(settings.twilio_account_sid and settings.twilio_auth_token),
+        "meta_config": {
+            "has_token": bool(settings.whatsapp_cloud_api_token),
+            "has_phone_id": bool(settings.whatsapp_phone_number_id),
+            "has_verify_token": bool(settings.whatsapp_verify_token)
+        }
+    }
+    return JSONResponse(content=status)
+
+
 @app.post("/test-whatsapp")
 async def test_whatsapp(request: Request):
     """
@@ -109,8 +140,17 @@ async def test_whatsapp(request: Request):
         message = data.get('message', 'testing')
         
         print(f"📱 Test WhatsApp request received: {message}")
+        print(f"🔍 Current WhatsApp provider: {whatsapp_provider.get_provider_name() if whatsapp_provider else 'None'}")
+        print(f"🔍 Config setting: {settings.whatsapp_provider}")
         
-        result = twilio_service.send_whatsapp(message)
+        # Use WhatsApp provider (Twilio or Meta based on config)
+        if not whatsapp_provider:
+            raise HTTPException(
+                status_code=500,
+                detail="WhatsApp provider not configured. Please check your environment variables."
+            )
+        
+        result = whatsapp_provider.send_whatsapp(message)
         
         if result.get('success'):
             return JSONResponse(content=result)
@@ -365,25 +405,44 @@ async def analyze_day(
             )
             print(f"✅ Gemini analysis complete")
             
-            # Send summary via both WhatsApp and SMS if configured
+            # Send summary via WhatsApp and SMS if configured
             try:
-                results = twilio_service.send_summary_both(result)
+                # Format the summary message (using TwilioService formatter, works for all providers)
+                formatted_message = twilio_service.format_summary_message(result)
                 
-                if results.get('whatsapp'):
-                    whatsapp_result = results['whatsapp']
-                    if whatsapp_result.get('success'):
-                        print(f"✅ Summary sent to WhatsApp successfully")
-                    else:
-                        print(f"⚠️  Failed to send WhatsApp: {whatsapp_result.get('error', 'Unknown error')}")
+                results = {
+                    "whatsapp": None,
+                    "sms": None
+                }
                 
-                if results.get('sms'):
-                    sms_result = results['sms']
-                    if sms_result.get('success'):
-                        print(f"✅ Summary sent to SMS successfully")
-                    else:
-                        print(f"⚠️  Failed to send SMS: {sms_result.get('error', 'Unknown error')}")
+                # Send WhatsApp via configured provider (Twilio or Meta)
+                if whatsapp_provider:
+                    try:
+                        whatsapp_result = whatsapp_provider.send_whatsapp(formatted_message)
+                        results["whatsapp"] = whatsapp_result
+                        if whatsapp_result.get('success'):
+                            print(f"✅ Summary sent to WhatsApp successfully via {whatsapp_provider.get_provider_name()}")
+                        else:
+                            print(f"⚠️  Failed to send WhatsApp: {whatsapp_result.get('error', 'Unknown error')}")
+                    except Exception as whatsapp_error:
+                        print(f"⚠️  Error sending WhatsApp: {whatsapp_error}")
+                
+                # Send SMS via Twilio (SMS is only supported by Twilio)
+                if twilio_service.is_configured_flag and settings.twilio_sms_from:
+                    try:
+                        sms_result = twilio_service.send_sms(formatted_message)
+                        results["sms"] = sms_result
+                        if sms_result.get('success'):
+                            print(f"✅ Summary sent to SMS successfully")
+                        else:
+                            print(f"⚠️  Failed to send SMS: {sms_result.get('error', 'Unknown error')}")
+                    except Exception as sms_error:
+                        print(f"⚠️  Error sending SMS: {sms_error}")
+                
             except Exception as messaging_error:
                 print(f"⚠️  Error sending messages (non-fatal): {messaging_error}")
+                import traceback
+                traceback.print_exc()
                 # Don't fail the request if messaging fails
             
         except Exception as gemini_error:
