@@ -88,8 +88,10 @@ class MetaWhatsAppService(WhatsAppProvider):
                 }
             }
             
+            print(f"\n{'='*60}")
             print(f"📱 [MetaWhatsAppService] Sending WhatsApp message via Meta API to {recipient}...")
-            print(f"   Provider: Meta WhatsApp Cloud API")
+            print(f"   ✅ USING META WHATSAPP CLOUD API")
+            print(f"{'='*60}\n")
             
             response = requests.post(url, json=payload, headers=headers)
             response.raise_for_status()

@@ -153,8 +153,13 @@ class TwilioService(WhatsAppProvider):
             }
         
         try:
+            print(f"\n{'='*60}")
             print(f"📱 [TwilioService] Sending WhatsApp message to {recipient}...")
-            print(f"   Provider: Twilio (via WhatsAppProvider interface)")
+            print(f"   ⚠️  USING TWILIO PROVIDER (not Meta)")
+            print(f"   This means either:")
+            print(f"   1. WHATSAPP_PROVIDER is set to 'twilio'")
+            print(f"   2. Meta is not configured and fallback to Twilio occurred")
+            print(f"{'='*60}\n")
             
             message_obj = self.client.messages.create(
                 body=message,

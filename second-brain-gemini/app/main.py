@@ -139,9 +139,13 @@ async def test_whatsapp(request: Request):
         data = await request.json()
         message = data.get('message', 'testing')
         
+        print(f"\n{'='*60}")
         print(f"📱 Test WhatsApp request received: {message}")
+        print(f"{'='*60}")
         print(f"🔍 Current WhatsApp provider: {whatsapp_provider.get_provider_name() if whatsapp_provider else 'None'}")
-        print(f"🔍 Config setting: {settings.whatsapp_provider}")
+        print(f"🔍 Config setting (WHATSAPP_PROVIDER): {settings.whatsapp_provider}")
+        print(f"🔍 Provider type: {type(whatsapp_provider).__name__ if whatsapp_provider else 'None'}")
+        print(f"{'='*60}\n")
         
         # Use WhatsApp provider (Twilio or Meta based on config)
         if not whatsapp_provider:
