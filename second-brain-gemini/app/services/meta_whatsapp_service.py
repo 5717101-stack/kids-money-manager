@@ -2,13 +2,16 @@
 Meta WhatsApp Cloud API service for sending WhatsApp messages.
 """
 
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, TYPE_CHECKING
 import requests
 from app.core.config import settings
-from app.services.whatsapp_provider import WhatsAppProvider
+
+# Lazy import to avoid circular dependency
+if TYPE_CHECKING:
+    from app.services.whatsapp_provider import WhatsAppProvider
 
 
-class MetaWhatsAppService(WhatsAppProvider):
+class MetaWhatsAppService:
     """Service for sending WhatsApp messages via Meta WhatsApp Cloud API."""
     
     BASE_URL = "https://graph.facebook.com/v18.0"

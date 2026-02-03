@@ -47,7 +47,7 @@ class WhatsAppProviderFactory:
         cls._providers[name] = provider_class
     
     @classmethod
-    def create_provider(cls, provider_name: Optional[str] = None, fallback: bool = True) -> Optional[WhatsAppProvider]:
+    def create_provider(cls, provider_name: Optional[str] = None, fallback: bool = True):
         """
         Create a WhatsApp provider instance based on configuration.
         
@@ -120,19 +120,28 @@ class WhatsAppProviderFactory:
 # Import providers to register them
 def register_providers():
     """Register all available WhatsApp providers."""
-    from app.services.twilio_service import TwilioService
+    # Lazy imports to avoid circular dependencies
+    try:
+        from app.services.twilio_service import TwilioService
+        WhatsAppProviderFactory.register_provider('twilio', TwilioService)
+        print("✅ Registered Twilio provider")
+    except ImportError as e:
+        print(f"⚠️  Failed to register Twilio provider: {e}")
     
-    # Register Twilio provider
-    WhatsAppProviderFactory.register_provider('twilio', TwilioService)
-    
-    # Register Meta provider (will be created next)
+    # Register Meta provider
     try:
         from app.services.meta_whatsapp_service import MetaWhatsAppService
         WhatsAppProviderFactory.register_provider('meta', MetaWhatsAppService)
-    except ImportError:
-        # Meta service not yet implemented, that's okay
-        pass
+        print("✅ Registered Meta provider")
+    except ImportError as e:
+        print(f"⚠️  Failed to register Meta provider: {e}")
 
 
 # Auto-register providers when module is imported
-register_providers()
+# Use lazy registration to avoid circular imports
+try:
+    register_providers()
+except Exception as e:
+    print(f"⚠️  Error registering providers: {e}")
+    import traceback
+    traceback.print_exc()

@@ -2,15 +2,18 @@
 Twilio service for sending WhatsApp and SMS messages.
 """
 
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, TYPE_CHECKING
 from twilio.rest import Client
 from twilio.base.exceptions import TwilioRestException
 
 from app.core.config import settings
-from app.services.whatsapp_provider import WhatsAppProvider
+
+# Lazy import to avoid circular dependency
+if TYPE_CHECKING:
+    from app.services.whatsapp_provider import WhatsAppProvider
 
 
-class TwilioService(WhatsAppProvider):
+class TwilioService:
     """Service for sending WhatsApp and SMS messages via Twilio."""
     
     def __init__(self):
