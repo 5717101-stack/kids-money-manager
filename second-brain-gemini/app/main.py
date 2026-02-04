@@ -335,10 +335,82 @@ async def webhook(request: Request):
             print(f"\n{'='*60}")
             print(f"📱 WhatsApp Cloud API Webhook Received")
             print(f"{'='*60}")
-            print(f"Full Payload:")
             import json
             print(json.dumps(payload, indent=2))
             print(f"{'='*60}\n")
+            
+            # Process the webhook payload
+            if "entry" in payload:
+                for entry in payload.get("entry", []):
+                    changes = entry.get("changes", [])
+                    for change in changes:
+                        value = change.get("value", {})
+                        field = change.get("field")
+                        
+                        # Handle incoming messages
+                        if field == "messages" and "messages" in value:
+                            messages = value.get("messages", [])
+                            metadata = value.get("metadata", {})
+                            phone_number_id = metadata.get("phone_number_id")
+                            
+                            for message in messages:
+                                from_number = message.get("from")
+                                message_body = message.get("text", {}).get("body", "")
+                                message_id = message.get("id")
+                                message_type = message.get("type")
+                                timestamp = message.get("timestamp")
+                                
+                                print(f"📨 Processing Incoming Message:")
+                                print(f"   From: {from_number}")
+                                print(f"   Message: {message_body}")
+                                print(f"   Message ID: {message_id}")
+                                print(f"   Type: {message_type}")
+                                print(f"   Timestamp: {timestamp}")
+                                
+                                # Process the message (you can add your logic here)
+                                # For example: save to database, analyze with AI, etc.
+                                
+                                # Send auto-reply (optional)
+                                if whatsapp_provider and message_type == "text":
+                                    try:
+                                        # Format response message
+                                        reply_message = "Message received and saved to memory."
+                                        
+                                        # Send reply via Meta WhatsApp
+                                        reply_result = whatsapp_provider.send_whatsapp(
+                                            message=reply_message,
+                                            to=f"+{from_number}"  # Add + prefix for E.164 format
+                                        )
+                                        
+                                        if reply_result.get('success'):
+                                            print(f"✅ Auto-reply sent successfully")
+                                        else:
+                                            print(f"⚠️  Failed to send auto-reply: {reply_result.get('error')}")
+                                    except Exception as reply_error:
+                                        print(f"⚠️  Error sending auto-reply: {reply_error}")
+                        
+                        # Handle message status updates
+                        elif field == "messages" and "statuses" in value:
+                            statuses = value.get("statuses", [])
+                            for status in statuses:
+                                message_id = status.get("id")
+                                status_type = status.get("status")
+                                recipient = status.get("recipient_id")
+                                
+                                print(f"📊 Message Status Update:")
+                                print(f"   Message ID: {message_id}")
+                                print(f"   Status: {status_type}")
+                                print(f"   Recipient: {recipient}")
+                                
+                                if status_type == "failed":
+                                    error = status.get("errors", [{}])[0]
+                                    error_code = error.get("code")
+                                    error_title = error.get("title")
+                                    print(f"   ❌ Error: {error_title} (Code: {error_code})")
+                                elif status_type == "delivered":
+                                    print(f"   ✅ Message delivered!")
+                                elif status_type == "read":
+                                    print(f"   ✅ Message read!")
             
             # Return 200 immediately (acknowledge receipt)
             return JSONResponse(content={"status": "ok"})
