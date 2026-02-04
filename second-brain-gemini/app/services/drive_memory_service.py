@@ -177,6 +177,11 @@ class DriveMemoryService:
                 self._memory_cache = (memory_data.copy(), None, None)
             return memory_data.copy()
         
+        # Initialize variables (in case of exception)
+        remote_modified_time = None
+        file_mime_type = ''
+        is_google_docs_file = False
+        
         # Fetch file metadata (ID, modifiedTime, and mimeType) from Drive
         try:
             drive_file = self.service.files().get(
