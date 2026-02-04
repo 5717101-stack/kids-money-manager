@@ -287,21 +287,29 @@ class DriveMemoryService:
                 'parents': [archive_folder_id]
             }
             
-            # Ensure stream is at position 0 before upload
+            # CRITICAL: Ensure stream is at position 0 before upload
             if hasattr(file_obj, 'seek'):
                 file_obj.seek(0)
+                print(f"   Stream position reset to: {file_obj.tell()}")
+            elif hasattr(file_obj, 'tell'):
+                current_pos = file_obj.tell()
+                if current_pos != 0:
+                    print(f"   ⚠️  Warning: Stream position is {current_pos}, not 0")
             
+            print(f"   Creating MediaIoBaseUpload with mime_type={mime_type}, resumable=True")
             media = MediaIoBaseUpload(
                 file_obj,
                 mimetype=mime_type,
                 resumable=True
             )
             
+            print(f"   Calling Drive API files().create()...")
             file = self.service.files().create(
                 body=file_metadata,
                 media_body=media,
                 fields='id,webContentLink,webViewLink'
             ).execute()
+            print(f"   ✅ Drive API call successful")
             
             file_id = file.get('id')
             web_content_link = file.get('webContentLink', '')
