@@ -111,6 +111,9 @@ class DriveMemoryService:
         if not self.is_configured or not self.service:
             return None
         
+        # Refresh credentials if needed before API call
+        self._refresh_credentials_if_needed()
+        
         try:
             # Check if audio_archive folder already exists
             query = f"name = 'audio_archive' and '{self.folder_id}' in parents and mimeType = 'application/vnd.google-apps.folder' and trashed = false"
@@ -167,6 +170,9 @@ class DriveMemoryService:
         if not self.is_configured or not self.service:
             logger.warning("⚠️  Drive Memory Service not configured. Cannot upload audio.")
             return None
+        
+        # Refresh credentials if needed before API call
+        self._refresh_credentials_if_needed()
         
         try:
             print("🔍 Checking for audio_archive folder...")
@@ -273,6 +279,9 @@ class DriveMemoryService:
         """
         if not self.is_configured or not self.service:
             return None
+        
+        # Refresh credentials if needed before API call
+        self._refresh_credentials_if_needed()
         
         try:
             # Explicitly exclude trashed files
@@ -828,6 +837,9 @@ class DriveMemoryService:
         """
         if not self.is_configured or not self.service:
             return False
+        
+        # Refresh credentials if needed before API call
+        self._refresh_credentials_if_needed()
         
         try:
             # Convert to JSON string
