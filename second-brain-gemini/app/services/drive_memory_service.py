@@ -311,7 +311,11 @@ class DriveMemoryService:
             logger.error(f"❌ Error uploading audio to archive: {e}")
             print(f"❌ CRITICAL AUDIO ERROR: {str(e)}")
             import traceback
+            print("=" * 60)
+            print("FULL TRACEBACK:")
+            print("=" * 60)
             traceback.print_exc()
+            print("=" * 60)
             return None
     
     def _find_memory_file(self) -> Optional[str]:
