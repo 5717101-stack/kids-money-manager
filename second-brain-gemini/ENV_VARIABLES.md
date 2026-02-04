@@ -34,7 +34,17 @@ WHATSAPP_CLOUD_API_TOKEN=your_meta_whatsapp_access_token
 WHATSAPP_PHONE_NUMBER_ID=your_meta_phone_number_id
 WHATSAPP_VERIFY_TOKEN=your_webhook_verification_token
 WHATSAPP_TO=+972XXXXXXXXX  # Recipient phone number (E.164 format, required for Meta)
+
+# Optional: For automatic token refresh (recommended to prevent daily errors)
+WHATSAPP_APP_ID=your_meta_app_id
+WHATSAPP_APP_SECRET=your_meta_app_secret
 ```
+
+**Important Notes:**
+- Access tokens expire after 60 days (or sooner for short-lived tokens)
+- To enable automatic token refresh, set both `WHATSAPP_APP_ID` and `WHATSAPP_APP_SECRET`
+- Without these, you'll need to manually update `WHATSAPP_CLOUD_API_TOKEN` when it expires
+- To get a long-lived token (60 days), use Meta's Graph API Explorer or exchange a short-lived token
 
 ## Server Settings
 ```bash

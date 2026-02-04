@@ -21,13 +21,21 @@ class MetaWhatsAppService:
         self.is_configured_flag = False
         self.phone_number_id = None
         self.access_token = None
+        self.app_id = None
+        self.app_secret = None
         
         if settings.whatsapp_cloud_api_token and settings.whatsapp_phone_number_id:
             try:
                 self.access_token = settings.whatsapp_cloud_api_token
                 self.phone_number_id = settings.whatsapp_phone_number_id
+                self.app_id = settings.whatsapp_app_id
+                self.app_secret = settings.whatsapp_app_secret
                 self.is_configured_flag = True
                 print("✅ Meta WhatsApp Cloud API initialized successfully")
+                if self.app_id and self.app_secret:
+                    print("   ✅ Token refresh enabled (App ID and Secret configured)")
+                else:
+                    print("   ⚠️  Token refresh disabled - set WHATSAPP_APP_ID and WHATSAPP_APP_SECRET for automatic token refresh")
             except Exception as e:
                 print(f"⚠️  Failed to initialize Meta WhatsApp: {e}")
         else:
@@ -44,6 +52,59 @@ class MetaWhatsAppService:
     def get_provider_name(self) -> str:
         """Get the provider name."""
         return "meta"
+    
+    def _is_token_expired_error(self, error_message: str) -> bool:
+        """Check if error indicates token expiration."""
+        expired_indicators = [
+            "session has expired",
+            "error validating access token",
+            "token expired",
+            "invalid access token",
+            "access token has expired"
+        ]
+        error_lower = error_message.lower()
+        return any(indicator in error_lower for indicator in expired_indicators)
+    
+    def _refresh_access_token(self) -> Optional[str]:
+        """
+        Attempt to refresh the access token using App ID and Secret.
+        
+        Returns:
+            New access token if refresh successful, None otherwise
+        """
+        if not self.app_id or not self.app_secret or not self.access_token:
+            return None
+        
+        try:
+            print("🔄 Attempting to refresh Meta WhatsApp access token...")
+            
+            # Exchange short-lived token for long-lived token
+            url = f"{self.BASE_URL}/oauth/access_token"
+            params = {
+                "grant_type": "fb_exchange_token",
+                "client_id": self.app_id,
+                "client_secret": self.app_secret,
+                "fb_exchange_token": self.access_token
+            }
+            
+            response = requests.get(url, params=params)
+            response.raise_for_status()
+            
+            result = response.json()
+            new_token = result.get("access_token")
+            
+            if new_token:
+                print(f"✅ Successfully refreshed Meta WhatsApp access token!")
+                print(f"   New token expires in: {result.get('expires_in', 'unknown')} seconds")
+                self.access_token = new_token
+                return new_token
+            else:
+                print("⚠️  Token refresh response did not contain access_token")
+                return None
+                
+        except Exception as e:
+            print(f"❌ Failed to refresh Meta WhatsApp token: {e}")
+            return None
     
     def send_whatsapp(self, message: str, to: Optional[str] = None) -> Dict[str, Any]:
         """
@@ -74,7 +135,8 @@ class MetaWhatsAppService:
             }
         
         # Ensure phone number is in E.164 format (remove whatsapp: prefix if present)
-        recipient = to.replace("whatsapp:", "") if to.startswith("whatsapp:") else to
+        if recipient.startswith("whatsapp:"):
+            recipient = recipient.replace("whatsapp:", "")
         
         try:
             url = f"{self.BASE_URL}/{self.phone_number_id}/messages"
@@ -115,17 +177,60 @@ class MetaWhatsAppService:
             
         except requests.exceptions.HTTPError as e:
             error_detail = "Unknown error"
+            error_code = None
             try:
                 error_response = e.response.json()
                 error_detail = error_response.get('error', {}).get('message', str(e))
+                error_code = error_response.get('error', {}).get('code')
             except:
                 error_detail = str(e)
+            
+            # Check if token expired and try to refresh
+            if self._is_token_expired_error(error_detail):
+                print(f"⚠️  Meta WhatsApp token expired: {error_detail}")
+                print("🔄 Attempting automatic token refresh...")
+                
+                new_token = self._refresh_access_token()
+                if new_token:
+                    print("🔄 Retrying message send with refreshed token...")
+                    # Retry the request with new token
+                    try:
+                        headers["Authorization"] = f"Bearer {new_token}"
+                        response = requests.post(url, json=payload, headers=headers)
+                        response.raise_for_status()
+                        
+                        result_data = response.json()
+                        print(f"✅ WhatsApp message sent successfully after token refresh!")
+                        print(f"   Message ID: {result_data.get('messages', [{}])[0].get('id', 'N/A')}")
+                        
+                        return {
+                            "success": True,
+                            "message_id": result_data.get('messages', [{}])[0].get('id'),
+                            "status": "sent",
+                            "message": "WhatsApp message sent successfully via Meta API (after token refresh)"
+                        }
+                    except Exception as retry_error:
+                        print(f"❌ Retry failed after token refresh: {retry_error}")
+                        return {
+                            "success": False,
+                            "error": f"Token expired and refresh failed: {str(retry_error)}",
+                            "code": error_code,
+                            "message": "Meta WhatsApp token expired. Please update WHATSAPP_CLOUD_API_TOKEN in your environment variables. For automatic refresh, set WHATSAPP_APP_ID and WHATSAPP_APP_SECRET."
+                        }
+                else:
+                    print("❌ Token refresh not available or failed")
+                    return {
+                        "success": False,
+                        "error": error_detail,
+                        "code": error_code,
+                        "message": f"Meta WhatsApp token expired. Please update WHATSAPP_CLOUD_API_TOKEN in your environment variables. For automatic refresh, set WHATSAPP_APP_ID and WHATSAPP_APP_SECRET. Error: {error_detail}"
+                    }
             
             print(f"❌ Meta WhatsApp API error: {error_detail}")
             return {
                 "success": False,
                 "error": error_detail,
-                "code": e.response.status_code if hasattr(e, 'response') else None,
+                "code": error_code or (e.response.status_code if hasattr(e, 'response') else None),
                 "message": f"Failed to send WhatsApp via Meta API: {error_detail}"
             }
         except Exception as e:
