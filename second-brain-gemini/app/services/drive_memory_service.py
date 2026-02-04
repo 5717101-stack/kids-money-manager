@@ -177,15 +177,19 @@ class DriveMemoryService:
                 self._memory_cache = (memory_data.copy(), None, None)
             return memory_data.copy()
         
-        # Fetch file metadata (ID and modifiedTime) from Drive
+        # Fetch file metadata (ID, modifiedTime, and mimeType) from Drive
         try:
             drive_file = self.service.files().get(
                 fileId=file_id,
-                fields='id,modifiedTime'
+                fields='id,modifiedTime,mimeType'
             ).execute()
             
             remote_modified_time_str = drive_file.get('modifiedTime')
             remote_modified_time = self._parse_timestamp(remote_modified_time_str)
+            file_mime_type = drive_file.get('mimeType', '')
+            
+            # Check if this is a Google Docs file (needs export, not download)
+            is_google_docs_file = file_mime_type.startswith('application/vnd.google-apps.')
             
             if remote_modified_time is None:
                 logger.warning(f"⚠️  Could not parse remote modifiedTime: {remote_modified_time_str}")
@@ -272,13 +276,28 @@ class DriveMemoryService:
         # Step 3: Download and update cache if needed
         if should_reload:
             try:
-                # Download the file
-                request = self.service.files().get_media(fileId=file_id)
-                file_content = BytesIO()
-                downloader = MediaIoBaseDownload(file_content, request)
-                done = False
-                while not done:
-                    status, done = downloader.next_chunk()
+                # Check if this is a Google Docs file (needs export, not download)
+                if is_google_docs_file:
+                    # Export Google Docs file as JSON
+                    logger.info(f"📄 Detected Google Docs file (mimeType: {file_mime_type}). Using export method...")
+                    request = self.service.files().export_media(
+                        fileId=file_id,
+                        mimeType='application/json'
+                    )
+                    file_content = BytesIO()
+                    downloader = MediaIoBaseDownload(file_content, request)
+                    done = False
+                    while not done:
+                        status, done = downloader.next_chunk()
+                else:
+                    # Regular file - download directly
+                    logger.debug(f"📄 Regular file (mimeType: {file_mime_type}). Using get_media method...")
+                    request = self.service.files().get_media(fileId=file_id)
+                    file_content = BytesIO()
+                    downloader = MediaIoBaseDownload(file_content, request)
+                    done = False
+                    while not done:
+                        status, done = downloader.next_chunk()
                 
                 # Parse JSON
                 file_content.seek(0)
