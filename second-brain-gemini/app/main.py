@@ -387,8 +387,191 @@ async def webhook(request: Request, background_tasks: BackgroundTasks):
                                 print(f"   Type: {message_type}")
                                 print(f"   Timestamp: {timestamp}")
                                 
+                                # Handle audio messages
+                                if message_type == "audio":
+                                    try:
+                                        print("🎤 Audio message detected - starting processing...")
+                                        
+                                        # Get audio media info from message
+                                        audio_data = message.get("audio", {})
+                                        media_id = audio_data.get("id")
+                                        
+                                        if not media_id:
+                                            print("❌ CRITICAL AUDIO ERROR: No media ID found in audio message")
+                                            continue
+                                        
+                                        print(f"📥 Media ID: {media_id}")
+                                        
+                                        # Get WhatsApp API token (Meta)
+                                        from app.services.meta_whatsapp_service import meta_whatsapp_service
+                                        if not meta_whatsapp_service.is_configured:
+                                            print("❌ CRITICAL AUDIO ERROR: Meta WhatsApp service not configured")
+                                            continue
+                                        
+                                        access_token = meta_whatsapp_service.access_token
+                                        phone_number_id = meta_whatsapp_service.phone_number_id
+                                        
+                                        if not access_token:
+                                            print("❌ CRITICAL AUDIO ERROR: WhatsApp API token not available")
+                                            continue
+                                        
+                                        print("🔐 Attempting to download media from WhatsApp...")
+                                        
+                                        # Step 1: Get media URL from WhatsApp API
+                                        import requests
+                                        media_url = f"https://graph.facebook.com/v18.0/{media_id}"
+                                        headers = {
+                                            "Authorization": f"Bearer {access_token}"
+                                        }
+                                        
+                                        print(f"   Requesting media URL from: {media_url}")
+                                        media_response = requests.get(media_url, headers=headers, timeout=30)
+                                        
+                                        if media_response.status_code != 200:
+                                            print(f"❌ CRITICAL AUDIO ERROR: Failed to get media URL. Status: {media_response.status_code}")
+                                            print(f"   Response: {media_response.text[:500]}")
+                                            continue
+                                        
+                                        media_info = media_response.json()
+                                        download_url = media_info.get("url")
+                                        
+                                        if not download_url:
+                                            print("❌ CRITICAL AUDIO ERROR: No download URL in media response")
+                                            print(f"   Media info: {media_info}")
+                                            continue
+                                        
+                                        print(f"✅ Media URL retrieved: {download_url[:100]}...")
+                                        
+                                        # Step 2: Download the actual audio file
+                                        print("📥 Downloading audio file from WhatsApp...")
+                                        download_headers = {
+                                            "Authorization": f"Bearer {access_token}"
+                                        }
+                                        
+                                        audio_response = requests.get(download_url, headers=download_headers, timeout=60)
+                                        
+                                        if audio_response.status_code != 200:
+                                            print(f"❌ CRITICAL AUDIO ERROR: Failed to download audio. Status: {audio_response.status_code}")
+                                            print(f"   Response: {audio_response.text[:500]}")
+                                            continue
+                                        
+                                        audio_bytes = audio_response.content
+                                        print(f"✅ Media downloaded successfully. Size: {len(audio_bytes)} bytes")
+                                        
+                                        # Step 3: Upload to Drive archive
+                                        print("📤 Attempting to upload to Google Drive...")
+                                        audio_metadata = drive_memory_service.upload_audio_to_archive(
+                                            audio_bytes=audio_bytes,
+                                            filename=f"whatsapp_audio_{message_id}.ogg",
+                                            mime_type="audio/ogg"
+                                        )
+                                        
+                                        if not audio_metadata:
+                                            print("❌ CRITICAL AUDIO ERROR: Failed to upload audio to Drive")
+                                            continue
+                                        
+                                        print(f"✅ Audio archived successfully. File ID: {audio_metadata.get('file_id')}")
+                                        
+                                        # Step 4: Process with Gemini (save to temp file first)
+                                        import tempfile
+                                        with tempfile.NamedTemporaryFile(delete=False, suffix='.ogg') as tmp_file:
+                                            tmp_file.write(audio_bytes)
+                                            tmp_path = tmp_file.name
+                                        
+                                        print("🤖 Processing audio with Gemini...")
+                                        try:
+                                            result = gemini_service.analyze_day(
+                                                audio_paths=[tmp_path],
+                                                audio_file_metadata=[audio_metadata]
+                                            )
+                                            
+                                            print("✅ Gemini analysis complete")
+                                            
+                                            # Extract transcript and summary
+                                            transcript = result.get('transcript', '')
+                                            summary = result.get('summary', '')
+                                            
+                                            print(f"   Transcript length: {len(transcript)} characters")
+                                            print(f"   Summary length: {len(summary)} characters")
+                                            
+                                            # Save structured audio interaction to memory
+                                            audio_interaction = {
+                                                "timestamp": datetime.utcnow().isoformat() + "Z",
+                                                "type": "audio",
+                                                "file_id": audio_metadata.get('file_id', ''),
+                                                "web_content_link": audio_metadata.get('web_content_link', ''),
+                                                "web_view_link": audio_metadata.get('web_view_link', ''),
+                                                "filename": audio_metadata.get('filename', ''),
+                                                "transcript": transcript,
+                                                "summary": summary,
+                                                "speakers": ["User", "Unknown"],
+                                                "message_id": message_id,
+                                                "from_number": from_number
+                                            }
+                                            
+                                            success = drive_memory_service.update_memory(audio_interaction, background_tasks=background_tasks)
+                                            if success:
+                                                print(f"✅ Saved audio interaction to memory")
+                                                
+                                                # Send summary back to user
+                                                if summary:
+                                                    reply_message = f"🎤 הקלטה נשמרה!\n\n📝 סיכום:\n{summary[:500]}"
+                                                    if len(summary) > 500:
+                                                        reply_message += "..."
+                                                    
+                                                    reply_result = whatsapp_provider.send_whatsapp(
+                                                        message=reply_message,
+                                                        to=f"+{from_number}"
+                                                    )
+                                                    
+                                                    if reply_result.get('success'):
+                                                        print("✅ Summary sent to user")
+                                                    else:
+                                                        print(f"⚠️  Failed to send summary: {reply_result.get('error')}")
+                                            else:
+                                                print("⚠️  Failed to save audio interaction to memory")
+                                            
+                                            # Cleanup temp file
+                                            try:
+                                                os.unlink(tmp_path)
+                                            except:
+                                                pass
+                                                
+                                        except Exception as gemini_error:
+                                            print(f"❌ CRITICAL AUDIO ERROR: Gemini processing failed: {gemini_error}")
+                                            import traceback
+                                            traceback.print_exc()
+                                            
+                                            # Still save the audio interaction without transcript/summary
+                                            audio_interaction = {
+                                                "timestamp": datetime.utcnow().isoformat() + "Z",
+                                                "type": "audio",
+                                                "file_id": audio_metadata.get('file_id', ''),
+                                                "web_content_link": audio_metadata.get('web_content_link', ''),
+                                                "web_view_link": audio_metadata.get('web_view_link', ''),
+                                                "filename": audio_metadata.get('filename', ''),
+                                                "transcript": "",
+                                                "summary": "Processing failed",
+                                                "speakers": ["User", "Unknown"],
+                                                "message_id": message_id,
+                                                "from_number": from_number
+                                            }
+                                            
+                                            drive_memory_service.update_memory(audio_interaction, background_tasks=background_tasks)
+                                            
+                                            # Cleanup temp file
+                                            try:
+                                                os.unlink(tmp_path)
+                                            except:
+                                                pass
+                                        
+                                    except Exception as audio_error:
+                                        print(f"❌ CRITICAL AUDIO ERROR: {str(audio_error)}")
+                                        import traceback
+                                        traceback.print_exc()
+                                
                                 # Process message with memory
-                                if whatsapp_provider and message_type == "text" and message_body:
+                                elif whatsapp_provider and message_type == "text" and message_body:
                                     try:
                                         # CRITICAL: Get memory at the very start to trigger cache refresh check
                                         # This ensures we detect manual edits before processing the message

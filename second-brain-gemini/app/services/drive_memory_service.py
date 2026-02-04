@@ -143,15 +143,19 @@ class DriveMemoryService:
     
     def upload_audio_to_archive(
         self,
-        audio_path: str,
-        filename: str = None
+        audio_path: str = None,
+        audio_bytes: bytes = None,
+        filename: str = None,
+        mime_type: str = None
     ) -> Optional[Dict[str, str]]:
         """
         Upload an audio file to the audio_archive folder in Drive.
         
         Args:
-            audio_path: Path to the audio file on disk
+            audio_path: Path to the audio file on disk (optional if audio_bytes provided)
+            audio_bytes: Binary audio data (optional if audio_path provided)
             filename: Optional filename (uses path basename if not provided)
+            mime_type: Optional MIME type (auto-detected from extension if not provided)
         
         Returns:
             Dictionary with 'file_id' and 'web_content_link', or None if upload failed
@@ -161,34 +165,59 @@ class DriveMemoryService:
             return None
         
         try:
+            print("🔍 Checking for audio_archive folder...")
             # Ensure audio_archive folder exists
             archive_folder_id = self._ensure_audio_archive_folder()
             if not archive_folder_id:
                 logger.error("❌ Cannot upload audio: audio_archive folder not available")
+                print("❌ CRITICAL AUDIO ERROR: audio_archive folder not available")
+                return None
+            print(f"✅ Audio archive folder verified (ID: {archive_folder_id})")
+            
+            # Get file content - either from path or bytes
+            if audio_bytes:
+                print(f"📦 Using provided audio bytes (size: {len(audio_bytes)} bytes)")
+                file_content = audio_bytes
+                if not filename:
+                    filename = "audio_message.ogg"  # Default for WhatsApp audio
+            elif audio_path:
+                print(f"📂 Reading audio file from path: {audio_path}")
+                with open(audio_path, 'rb') as f:
+                    file_content = f.read()
+                print(f"✅ Audio file read successfully. Size: {len(file_content)} bytes")
+                if not filename:
+                    filename = Path(audio_path).name
+            else:
+                logger.error("❌ Either audio_path or audio_bytes must be provided")
+                print("❌ CRITICAL AUDIO ERROR: Either audio_path or audio_bytes must be provided")
                 return None
             
-            # Get filename
-            if not filename:
-                filename = Path(audio_path).name
+            # Determine MIME type from extension if not provided
+            if not mime_type:
+                mime_type_map = {
+                    '.mp3': 'audio/mpeg',
+                    '.wav': 'audio/wav',
+                    '.wave': 'audio/wav',
+                    '.m4a': 'audio/mp4',
+                    '.aac': 'audio/aac',
+                    '.ogg': 'audio/ogg',
+                    '.oga': 'audio/ogg',
+                    '.flac': 'audio/flac',
+                    '.mp4': 'audio/mp4',
+                }
+                
+                if audio_path:
+                    file_ext = Path(audio_path).suffix.lower()
+                else:
+                    # Try to infer from filename
+                    file_ext = Path(filename).suffix.lower() if filename else '.ogg'
+                
+                mime_type = mime_type_map.get(file_ext, 'audio/ogg')  # Default to OGG for WhatsApp
             
-            # Determine MIME type from extension
-            mime_type_map = {
-                '.mp3': 'audio/mpeg',
-                '.wav': 'audio/wav',
-                '.wave': 'audio/wav',
-                '.m4a': 'audio/mp4',
-                '.aac': 'audio/aac',
-                '.ogg': 'audio/ogg',
-                '.flac': 'audio/flac',
-                '.mp4': 'audio/mp4',
-            }
-            
-            file_ext = Path(audio_path).suffix.lower()
-            mime_type = mime_type_map.get(file_ext, 'audio/mpeg')
-            
-            # Read file content
-            with open(audio_path, 'rb') as f:
-                file_content = f.read()
+            print(f"📤 Attempting to upload to Google Drive...")
+            print(f"   Filename: {filename}")
+            print(f"   MIME type: {mime_type}")
+            print(f"   File size: {len(file_content)} bytes")
             
             # Upload to Drive
             file_metadata = {
@@ -214,6 +243,8 @@ class DriveMemoryService:
             
             logger.info(f"✅ Uploaded audio to archive: {filename} (ID: {file_id})")
             logger.debug(f"   Web content link: {web_content_link}")
+            print(f"✅ Upload successful. File ID: {file_id}")
+            print(f"   Web content link: {web_content_link}")
             
             return {
                 'file_id': file_id,
@@ -224,6 +255,7 @@ class DriveMemoryService:
             
         except Exception as e:
             logger.error(f"❌ Error uploading audio to archive: {e}")
+            print(f"❌ CRITICAL AUDIO ERROR: {str(e)}")
             import traceback
             traceback.print_exc()
             return None
