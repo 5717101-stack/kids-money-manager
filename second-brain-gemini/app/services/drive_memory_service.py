@@ -157,11 +157,16 @@ class DriveMemoryService:
             file_content.seek(0)
             content_str = file_content.read().decode('utf-8')
             
+            # Debug logging: Print content length
+            content_length = len(content_str)
+            logger.info(f"📊 Downloaded file content length: {content_length} characters")
+            
             # Validate JSON structure
             try:
                 memory_data = json.loads(content_str)
             except json.JSONDecodeError as e:
                 logger.error(f"❌ JSON parsing failed for file {file_id}: {e}")
+                logger.error(f"   Content length: {content_length} characters")
                 logger.error(f"   Content preview (first 500 chars): {content_str[:500]}")
                 raise  # Re-raise to prevent silent data loss
             
@@ -185,9 +190,18 @@ class DriveMemoryService:
                 logger.warning("⚠️  'user_profile' is not a dict. Converting...")
                 memory_data['user_profile'] = {}
             
-            logger.debug(f"✅ Successfully downloaded and parsed file {file_id}")
-            logger.debug(f"   chat_history entries: {len(memory_data.get('chat_history', []))}")
-            logger.debug(f"   user_profile keys: {list(memory_data.get('user_profile', {}).keys())}")
+            logger.info(f"✅ Successfully downloaded and parsed file {file_id}")
+            logger.info(f"   Content length: {content_length} characters")
+            logger.info(f"   chat_history entries: {len(memory_data.get('chat_history', []))}")
+            
+            # Debug logging: Print user profile info
+            user_profile = memory_data.get('user_profile', {})
+            if user_profile:
+                user_name = user_profile.get('name', 'Unknown')
+                logger.info(f"✅ Successfully loaded profile for user: {user_name}")
+                logger.info(f"   User profile keys: {list(user_profile.keys())}")
+            else:
+                logger.warning("⚠️  User profile is empty in downloaded file")
             
             return memory_data
             
@@ -253,7 +267,8 @@ class DriveMemoryService:
         file_id = self._find_memory_file()
         
         if not file_id:
-            logger.info(f"📝 Memory file '{MEMORY_FILE_NAME}' not found. Returning empty memory.")
+            # File doesn't exist yet - this is OK for first run
+            logger.info(f"📝 Memory file '{MEMORY_FILE_NAME}' not found. File will be created on first save.")
             memory_data = DEFAULT_MEMORY_STRUCTURE.copy()
             # Cache the default structure (no file_id, no modifiedTime)
             with self._cache_lock:
@@ -391,14 +406,15 @@ class DriveMemoryService:
                         logger.warning("⚠️  Using cached data due to download/parse error (preventing data loss)")
                         return cached_memory.copy()
                 
-                # No cache available - this is a critical error
-                logger.error("❌ CRITICAL: Cannot retrieve memory and no cache available!")
-                logger.error("   Returning default structure. User profile data may be lost if file exists.")
-                logger.error("   Please check the Drive file manually.")
-                # Only return default if we're absolutely sure the file doesn't exist
-                # Otherwise, we risk overwriting existing data
-                memory_data = DEFAULT_MEMORY_STRUCTURE.copy()
-                return memory_data.copy()
+                # No cache available - RAISE exception instead of returning default
+                # Better to crash (500 Error) than to wipe the user's brain
+                error_msg = (
+                    f"Cannot download/parse memory file (file_id: {file_id}) and no cache available. "
+                    "Raising exception to prevent data loss."
+                )
+                logger.error(f"❌ CRITICAL: {error_msg}")
+                logger.error("   Better to crash than overwrite existing data with empty structure")
+                raise RuntimeError(error_msg) from e
             except Exception as e:
                 # Unexpected error - try cache first
                 logger.error(f"❌ Unexpected error retrieving memory: {e}")
@@ -410,13 +426,16 @@ class DriveMemoryService:
                         logger.warning("⚠️  Using cached data due to unexpected error (preventing data loss)")
                         return cached_memory.copy()
                 
-                # No cache - return default (but log critical warning)
-                logger.error("❌ CRITICAL: Unexpected error and no cache available!")
-                memory_data = DEFAULT_MEMORY_STRUCTURE.copy()
-                return memory_data.copy()
+                # No cache - RAISE exception instead of returning default
+                error_msg = (
+                    f"Unexpected error retrieving memory (file_id: {file_id}) and no cache available. "
+                    "Raising exception to prevent data loss."
+                )
+                logger.error(f"❌ CRITICAL: {error_msg}")
+                raise RuntimeError(error_msg) from e
         
-        # Should not reach here, but return default if we do
-        return DEFAULT_MEMORY_STRUCTURE.copy()
+        # Should not reach here - if we do, raise exception
+        raise RuntimeError("Unexpected code path in get_memory() - this should not happen")
     
     def update_memory(self, new_interaction: Dict[str, Any], background_tasks=None) -> bool:
         """
@@ -461,37 +480,22 @@ class DriveMemoryService:
             # Step 3: Append new interaction to chat_history
             memory['chat_history'].append(new_interaction)
             
-            # Step 4: CRITICAL SAFETY CHECK - Ensure user_profile exists before saving
-            # If user_profile is missing or empty, try to recover from Drive
-            if 'user_profile' not in memory or not memory.get('user_profile'):
-                logger.warning("⚠️  CRITICAL: user_profile is missing or empty!")
-                logger.warning("   Attempting to recover from Drive to prevent data loss...")
-                
-                file_id = self._find_memory_file()
-                if file_id:
-                    try:
-                        # Check if it's a Google Docs file
-                        file_metadata = self.service.files().get(
-                            fileId=file_id,
-                            fields='mimeType'
-                        ).execute()
-                        file_mime_type = file_metadata.get('mimeType', '')
-                        is_google_docs = file_mime_type.startswith('application/vnd.google-apps.')
-                        
-                        # Try to re-fetch the existing file from Drive to rescue the profile data
-                        existing_file = self._download_file(file_id, is_google_docs_file=is_google_docs)
-                        
-                        # Merge: Keep existing user_profile, update chat_history
-                        if 'user_profile' in existing_file and existing_file['user_profile']:
-                            logger.info("✅ Recovered user_profile from Drive!")
-                            memory['user_profile'] = existing_file['user_profile']
-                        else:
-                            logger.warning("⚠️  Existing file also has empty user_profile")
-                    except Exception as e:
-                        logger.error(f"❌ Failed to recover user_profile from Drive: {e}")
-                        logger.error("   Proceeding with save (user_profile will be empty)")
-                else:
-                    logger.warning("⚠️  No file found in Drive. Cannot recover user_profile.")
+            # Step 4: STRICT SAFETY LOCK - Prevent overwriting with empty user_profile
+            # CRITICAL: Before ANY upload logic, check if user_profile exists
+            if "user_profile" not in memory or not memory.get("user_profile"):
+                error_msg = (
+                    "CRITICAL ERROR: Attempted to save memory without 'user_profile'. "
+                    "Aborting to prevent data loss."
+                )
+                logger.error(f"❌ {error_msg}")
+                logger.error(f"   Memory keys: {list(memory.keys())}")
+                logger.error(f"   user_profile value: {memory.get('user_profile', 'MISSING')}")
+                print(f"❌ {error_msg}")  # Also print to stdout for visibility
+                raise ValueError("Safety Lock Engaged: Cannot overwrite Drive file because user_profile is missing.")
+            
+            # Log successful safety check
+            user_name = memory.get('user_profile', {}).get('name', 'Unknown')
+            logger.info(f"✅ Safety Lock: user_profile verified (user: {user_name})")
             
             # Step 5: Get file_id for cache update
             file_id = self._find_memory_file()
