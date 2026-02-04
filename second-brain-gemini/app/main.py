@@ -113,6 +113,41 @@ async def get_version():
 @app.get("/whatsapp-provider-status")
 async def get_whatsapp_provider_status():
     """Get current WhatsApp provider status and configuration."""
+    meta_token_info = None
+    if whatsapp_provider and whatsapp_provider.get_provider_name() == 'meta':
+        # Try to get token info
+        try:
+            from app.services.meta_whatsapp_service import meta_whatsapp_service
+            import requests
+            from datetime import datetime
+            
+            token = meta_whatsapp_service.access_token
+            if token:
+                url = f"https://graph.facebook.com/v18.0/debug_token"
+                params = {
+                    "input_token": token,
+                    "access_token": token
+                }
+                response = requests.get(url, params=params)
+                if response.status_code == 200:
+                    data = response.json()
+                    token_data = data.get('data', {})
+                    expires_at = token_data.get('expires_at')
+                    if expires_at:
+                        exp_time = datetime.fromtimestamp(expires_at)
+                        now = datetime.now()
+                        days_left = (exp_time - now).days
+                        hours_left = (exp_time - now).total_seconds() / 3600
+                        meta_token_info = {
+                            "expires_at": exp_time.isoformat(),
+                            "days_left": days_left,
+                            "hours_left": round(hours_left, 1),
+                            "is_long_lived": days_left > 30,
+                            "is_short_lived": hours_left < 24
+                        }
+        except Exception as e:
+            meta_token_info = {"error": str(e)}
+    
     status = {
         "configured_provider": settings.whatsapp_provider,
         "active_provider": whatsapp_provider.get_provider_name() if whatsapp_provider else None,
@@ -122,7 +157,10 @@ async def get_whatsapp_provider_status():
         "meta_config": {
             "has_token": bool(settings.whatsapp_cloud_api_token),
             "has_phone_id": bool(settings.whatsapp_phone_number_id),
-            "has_verify_token": bool(settings.whatsapp_verify_token)
+            "has_verify_token": bool(settings.whatsapp_verify_token),
+            "has_app_id": bool(settings.whatsapp_app_id),
+            "has_app_secret": bool(settings.whatsapp_app_secret),
+            "token_info": meta_token_info
         }
     }
     return JSONResponse(content=status)
