@@ -36,6 +36,9 @@ class MetaWhatsAppService:
                     print("   ✅ Token refresh enabled (App ID and Secret configured)")
                 else:
                     print("   ⚠️  Token refresh disabled - set WHATSAPP_APP_ID and WHATSAPP_APP_SECRET for automatic token refresh")
+                
+                # Check token type and expiration
+                self._check_token_info()
             except Exception as e:
                 print(f"⚠️  Failed to initialize Meta WhatsApp: {e}")
         else:
@@ -52,6 +55,52 @@ class MetaWhatsAppService:
     def get_provider_name(self) -> str:
         """Get the provider name."""
         return "meta"
+    
+    def _check_token_info(self):
+        """Check token type and expiration date."""
+        if not self.access_token:
+            return
+        
+        try:
+            # Use debug_token endpoint to check token info
+            url = f"{self.BASE_URL}/debug_token"
+            params = {
+                "input_token": self.access_token,
+                "access_token": self.access_token
+            }
+            
+            response = requests.get(url, params=params)
+            if response.status_code == 200:
+                data = response.json()
+                token_data = data.get('data', {})
+                
+                expires_at = token_data.get('expires_at')
+                is_valid = token_data.get('is_valid', False)
+                
+                if expires_at:
+                    from datetime import datetime
+                    exp_time = datetime.fromtimestamp(expires_at)
+                    now = datetime.now()
+                    days_left = (exp_time - now).days
+                    hours_left = (exp_time - now).total_seconds() / 3600
+                    
+                    if days_left > 30:
+                        print(f"   ✅ Token is Long-Lived (expires in {days_left} days)")
+                    elif hours_left > 1:
+                        print(f"   ⚠️  Token is Short-Lived (expires in {int(hours_left)} hours)")
+                        print(f"   ⚠️  WARNING: Short-Lived tokens expire after 1 hour!")
+                        print(f"   ⚠️  To fix: Convert to Long-Lived token (60 days) using:")
+                        print(f"      curl -X GET \"https://graph.facebook.com/v18.0/oauth/access_token?grant_type=fb_exchange_token&client_id=YOUR_APP_ID&client_secret=YOUR_APP_SECRET&fb_exchange_token=YOUR_TOKEN\"")
+                    else:
+                        print(f"   ❌ Token expires soon (in {int(hours_left)} hours)")
+                elif is_valid:
+                    print(f"   ⚠️  Token is valid but expiration date unknown")
+                else:
+                    print(f"   ❌ Token is invalid")
+            else:
+                print(f"   ⚠️  Could not check token info (status: {response.status_code})")
+        except Exception as e:
+            print(f"   ⚠️  Could not check token info: {e}")
     
     def _is_token_expired_error(self, error_message: str) -> bool:
         """Check if error indicates token expiration."""
