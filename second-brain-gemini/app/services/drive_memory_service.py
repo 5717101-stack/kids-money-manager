@@ -104,18 +104,24 @@ class DriveMemoryService:
             return None
         
         try:
-            query = f"'{self.folder_id}' in parents and name='{MEMORY_FILE_NAME}' and trashed=false"
+            # Explicitly exclude trashed files
+            query = f"name = '{MEMORY_FILE_NAME}' and '{self.folder_id}' in parents and trashed = false"
             results = self.service.files().list(
                 q=query,
-                fields="files(id, name)"
+                fields="files(id, name, trashed)"
             ).execute()
             
             files = results.get('files', [])
             if files:
-                return files[0]['id']
+                file_id = files[0]['id']
+                logger.debug(f"✅ Found memory file: {MEMORY_FILE_NAME} (ID: {file_id})")
+                return file_id
+            logger.debug(f"📝 Memory file '{MEMORY_FILE_NAME}' not found in folder")
             return None
         except HttpError as e:
-            logger.error(f"❌ Error finding memory file: {e}")
+            logger.error(f"❌ DRIVE API ERROR finding memory file: {e}")
+            logger.error(f"   Error details: {e.error_details if hasattr(e, 'error_details') else 'N/A'}")
+            logger.error(f"   Status code: {e.resp.status if hasattr(e, 'resp') else 'N/A'}")
             return None
     
     def _download_file(self, file_id: str, is_google_docs_file: bool = False) -> Dict[str, Any]:
@@ -165,10 +171,18 @@ class DriveMemoryService:
             try:
                 memory_data = json.loads(content_str)
             except json.JSONDecodeError as e:
-                logger.error(f"❌ JSON parsing failed for file {file_id}: {e}")
+                logger.error(f"❌ JSON PARSING ERROR for file {file_id}: {e}")
+                logger.error(f"   Error message: {str(e)}")
+                logger.error(f"   Error position: line {e.lineno}, column {e.colno}" if hasattr(e, 'lineno') else f"   Error position: {e.pos}")
                 logger.error(f"   Content length: {content_length} characters")
-                logger.error(f"   Content preview (first 500 chars): {content_str[:500]}")
-                raise  # Re-raise to prevent silent data loss
+                logger.error(f"   Content preview (first 100 chars): {content_str[:100]}")
+                logger.error(f"   Content preview (last 100 chars): {content_str[-100:] if len(content_str) > 100 else content_str}")
+                # Re-raise with original message
+                raise json.JSONDecodeError(
+                    msg=f"JSON PARSING ERROR: {e.msg}",
+                    doc=e.doc,
+                    pos=e.pos
+                ) from e
             
             # Validate required structure
             if not isinstance(memory_data, dict):
@@ -206,13 +220,25 @@ class DriveMemoryService:
             return memory_data
             
         except HttpError as e:
-            logger.error(f"❌ HttpError downloading file {file_id}: {e}")
-            raise  # Re-raise to prevent silent data loss
+            logger.error(f"❌ DRIVE API ERROR downloading file {file_id}: {e}")
+            logger.error(f"   Error details: {e.error_details if hasattr(e, 'error_details') else 'N/A'}")
+            logger.error(f"   Status code: {e.resp.status if hasattr(e, 'resp') else 'N/A'}")
+            logger.error(f"   Error message: {e.error_msg if hasattr(e, 'error_msg') else str(e)}")
+            # Re-raise with original message
+            raise HttpError(
+                resp=e.resp,
+                content=e.content,
+                uri=e.uri
+            ) from e
         except json.JSONDecodeError as e:
-            logger.error(f"❌ JSONDecodeError parsing file {file_id}: {e}")
+            # This should already be caught and logged above, but just in case
+            logger.error(f"❌ JSON PARSING ERROR in _download_file for file {file_id}: {e}")
             raise  # Re-raise to prevent silent data loss
         except Exception as e:
             logger.error(f"❌ Unexpected error downloading file {file_id}: {e}")
+            logger.error(f"   Error type: {type(e).__name__}")
+            import traceback
+            logger.error(f"   Traceback: {traceback.format_exc()}")
             raise  # Re-raise to prevent silent data loss
     
     def _parse_timestamp(self, timestamp_str: Optional[str]) -> Optional[datetime]:
@@ -392,9 +418,11 @@ class DriveMemoryService:
                 logger.info(f"   User profile keys: {list(memory_data.get('user_profile', {}).keys())}")
                 
                 return memory_data.copy()
-            except (HttpError, json.JSONDecodeError, ValueError) as e:
+            except HttpError as e:
                 # CRITICAL: Don't return DEFAULT_MEMORY_STRUCTURE - try to use cache
-                logger.error(f"❌ Error downloading/parsing memory file: {e}")
+                logger.error(f"❌ DRIVE API ERROR downloading/parsing memory file: {e}")
+                logger.error(f"   Error details: {e.error_details if hasattr(e, 'error_details') else 'N/A'}")
+                logger.error(f"   Status code: {e.resp.status if hasattr(e, 'resp') else 'N/A'}")
                 logger.error("   Attempting to use cached data to prevent data loss...")
                 
                 # Try to use cached data if available
@@ -403,14 +431,59 @@ class DriveMemoryService:
                 if cached_data is not None:
                     cached_memory, _, cached_file_id = cached_data
                     if cached_file_id == file_id:
-                        logger.warning("⚠️  Using cached data due to download/parse error (preventing data loss)")
+                        logger.warning("⚠️  Using cached data due to Drive API error (preventing data loss)")
                         return cached_memory.copy()
                 
-                # No cache available - RAISE exception instead of returning default
-                # Better to crash (500 Error) than to wipe the user's brain
+                # No cache available - RAISE exception with original message
                 error_msg = (
-                    f"Cannot download/parse memory file (file_id: {file_id}) and no cache available. "
-                    "Raising exception to prevent data loss."
+                    f"DRIVE API ERROR: Cannot download memory file (file_id: {file_id}) and no cache available. "
+                    f"Original error: {str(e)}"
+                )
+                logger.error(f"❌ CRITICAL: {error_msg}")
+                logger.error("   Better to crash than overwrite existing data with empty structure")
+                raise RuntimeError(error_msg) from e
+            except json.JSONDecodeError as e:
+                # CRITICAL: Don't return DEFAULT_MEMORY_STRUCTURE - try to use cache
+                logger.error(f"❌ JSON PARSING ERROR in memory file: {e}")
+                logger.error(f"   Error message: {str(e)}")
+                logger.error("   Attempting to use cached data to prevent data loss...")
+                
+                # Try to use cached data if available
+                with self._cache_lock:
+                    cached_data = self._memory_cache
+                if cached_data is not None:
+                    cached_memory, _, cached_file_id = cached_data
+                    if cached_file_id == file_id:
+                        logger.warning("⚠️  Using cached data due to JSON parsing error (preventing data loss)")
+                        return cached_memory.copy()
+                
+                # No cache available - RAISE exception with original message
+                error_msg = (
+                    f"JSON PARSING ERROR: Cannot parse memory file (file_id: {file_id}) and no cache available. "
+                    f"Original error: {str(e)}"
+                )
+                logger.error(f"❌ CRITICAL: {error_msg}")
+                logger.error("   Better to crash than overwrite existing data with empty structure")
+                raise RuntimeError(error_msg) from e
+            except ValueError as e:
+                # CRITICAL: Don't return DEFAULT_MEMORY_STRUCTURE - try to use cache
+                logger.error(f"❌ VALUE ERROR in memory file: {e}")
+                logger.error(f"   Error message: {str(e)}")
+                logger.error("   Attempting to use cached data to prevent data loss...")
+                
+                # Try to use cached data if available
+                with self._cache_lock:
+                    cached_data = self._memory_cache
+                if cached_data is not None:
+                    cached_memory, _, cached_file_id = cached_data
+                    if cached_file_id == file_id:
+                        logger.warning("⚠️  Using cached data due to value error (preventing data loss)")
+                        return cached_memory.copy()
+                
+                # No cache available - RAISE exception with original message
+                error_msg = (
+                    f"VALUE ERROR: Invalid memory file structure (file_id: {file_id}) and no cache available. "
+                    f"Original error: {str(e)}"
                 )
                 logger.error(f"❌ CRITICAL: {error_msg}")
                 logger.error("   Better to crash than overwrite existing data with empty structure")
