@@ -10,7 +10,8 @@ import tempfile
 from typing import Dict, Any, Optional, List
 from pathlib import Path
 from datetime import datetime, timezone
-from google.oauth2 import service_account
+from google.oauth2.credentials import Credentials
+from google.auth.transport.requests import Request
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaIoBaseDownload, MediaIoBaseUpload
 from googleapiclient.errors import HttpError
@@ -38,7 +39,7 @@ class DriveMemoryService:
     
     def __init__(self, folder_id: Optional[str] = None):
         """
-        Initialize Drive Memory Service.
+        Initialize Drive Memory Service using OAuth 2.0 User Credentials.
         
         Args:
             folder_id: Google Drive folder ID where memory file is stored.
@@ -49,51 +50,54 @@ class DriveMemoryService:
         if not self.folder_id:
             logger.warning("⚠️  DRIVE_MEMORY_FOLDER_ID not set. Memory service will not work.")
             self.service = None
+            self.creds = None
             self.is_configured = False
             return
         
-        # Initialize Google Drive service (reuse auth logic from process_meetings.py)
-        service_account_info = {
-            "type": "service_account",
-            "project_id": os.environ.get("GOOGLE_PROJECT_ID"),
-            "private_key_id": os.environ.get("GOOGLE_PRIVATE_KEY_ID"),
-            "private_key": os.environ.get("GOOGLE_PRIVATE_KEY", "").replace("\\n", "\n"),
-            "client_email": os.environ.get("GOOGLE_CLIENT_EMAIL"),
-            "client_id": os.environ.get("GOOGLE_CLIENT_ID"),
-            "auth_uri": "https://accounts.google.com/o/oauth2/auth",
-            "token_uri": "https://oauth2.googleapis.com/token",
-            "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
-            "client_x509_cert_url": os.environ.get("GOOGLE_CLIENT_X509_CERT_URL", "")
-        }
+        # Initialize OAuth 2.0 User Credentials
+        client_id = os.environ.get("GOOGLE_CLIENT_ID")
+        client_secret = os.environ.get("GOOGLE_CLIENT_SECRET")
+        refresh_token = os.environ.get("GOOGLE_REFRESH_TOKEN")
         
-        if not all([
-            service_account_info["private_key"],
-            service_account_info["client_email"],
-            service_account_info["project_id"]
-        ]):
+        if not all([client_id, client_secret, refresh_token]):
             logger.warning(
-                "⚠️  Missing Google Drive credentials. Required: "
-                "GOOGLE_PRIVATE_KEY, GOOGLE_CLIENT_EMAIL, GOOGLE_PROJECT_ID"
+                "⚠️  Missing Google Drive OAuth credentials. Required: "
+                "GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, GOOGLE_REFRESH_TOKEN"
             )
             self.service = None
+            self.creds = None
             self.is_configured = False
             return
         
         try:
-            credentials = service_account.Credentials.from_service_account_info(
-                service_account_info,
-                scopes=['https://www.googleapis.com/auth/drive']
+            # Initialize OAuth 2.0 credentials
+            self.creds = Credentials(
+                None,  # No access token initially
+                refresh_token=refresh_token,
+                token_uri="https://oauth2.googleapis.com/token",
+                client_id=client_id,
+                client_secret=client_secret
             )
             
-            self.service = build('drive', 'v3', credentials=credentials)
+            # Refresh token to get initial access token
+            if self.creds.expired and self.creds.refresh_token:
+                logger.info("🔄 Refreshing OAuth token on initialization...")
+                self.creds.refresh(Request())
+                logger.info("✅ OAuth token refreshed successfully")
+            
+            # Build Drive service with OAuth credentials
+            self.service = build('drive', 'v3', credentials=self.creds)
             self.is_configured = True
-            logger.info("✅ Drive Memory Service initialized successfully")
+            logger.info("✅ Drive Memory Service initialized successfully (OAuth 2.0)")
             
             # Ensure audio_archive folder exists
             self._ensure_audio_archive_folder()
         except Exception as e:
             logger.error(f"❌ Failed to initialize Drive Memory Service: {e}")
+            import traceback
+            traceback.print_exc()
             self.service = None
+            self.creds = None
             self.is_configured = False
     
     def _ensure_audio_archive_folder(self) -> Optional[str]:
