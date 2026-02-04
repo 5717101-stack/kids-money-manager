@@ -47,6 +47,35 @@ WHATSAPP_APP_SECRET=your_meta_app_secret
 - Without these, you'll need to manually update `WHATSAPP_CLOUD_API_TOKEN` when it expires
 - To get a long-lived token (60 days), use Meta's Graph API Explorer or exchange a short-lived token
 
+## Google Drive Memory (Persistent Conversation History)
+
+To enable persistent memory for conversations, configure Google Drive access:
+
+```bash
+# Google Drive Service Account Credentials (same as process_meetings.py)
+GOOGLE_PROJECT_ID=your_google_project_id
+GOOGLE_PRIVATE_KEY_ID=your_private_key_id
+GOOGLE_PRIVATE_KEY="-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----\n"
+GOOGLE_CLIENT_EMAIL=your-service-account@project.iam.gserviceaccount.com
+GOOGLE_CLIENT_ID=your_client_id
+GOOGLE_CLIENT_X509_CERT_URL=your_cert_url
+
+# Google Drive Folder ID where memory file will be stored
+DRIVE_MEMORY_FOLDER_ID=your_google_drive_folder_id
+```
+
+**How to get Google Drive Folder ID:**
+1. Create a folder in Google Drive (or use an existing one)
+2. Open the folder
+3. Copy the folder ID from the URL: `https://drive.google.com/drive/folders/FOLDER_ID_HERE`
+
+**Memory File:**
+- The system automatically creates/updates `second_brain_memory.json` in the specified folder
+- This file contains conversation history and user profile data
+- Format: `{"chat_history": [...], "user_profile": {...}}`
+
+**Note:** If `DRIVE_MEMORY_FOLDER_ID` is not set, the memory service will be disabled and conversations will not be persisted.
+
 ## Server Settings
 ```bash
 PORT=8000
