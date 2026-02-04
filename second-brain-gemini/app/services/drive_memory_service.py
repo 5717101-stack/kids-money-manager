@@ -100,6 +100,23 @@ class DriveMemoryService:
             self.creds = None
             self.is_configured = False
     
+    def _refresh_credentials_if_needed(self):
+        """
+        Refresh OAuth credentials if they are expired.
+        This should be called before any API operation.
+        """
+        if not self.creds:
+            return
+        
+        try:
+            if self.creds.expired and self.creds.refresh_token:
+                logger.debug("🔄 OAuth token expired, refreshing...")
+                self.creds.refresh(Request())
+                logger.debug("✅ OAuth token refreshed successfully")
+        except Exception as e:
+            logger.error(f"❌ Failed to refresh OAuth token: {e}")
+            raise
+    
     def _ensure_audio_archive_folder(self) -> Optional[str]:
         """
         Ensure the audio_archive subfolder exists in the main memory folder.
