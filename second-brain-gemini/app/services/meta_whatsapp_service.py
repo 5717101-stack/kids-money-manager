@@ -210,17 +210,56 @@ class MetaWhatsAppService:
             print(f"{'='*60}\n")
             
             response = requests.post(url, json=payload, headers=headers)
-            response.raise_for_status()
+            
+            # Check response status
+            if response.status_code != 200:
+                error_data = response.json() if response.content else {}
+                error_msg = error_data.get('error', {}).get('message', f'HTTP {response.status_code}')
+                print(f"❌ Meta WhatsApp API returned error: {error_msg}")
+                response.raise_for_status()
             
             result_data = response.json()
             
+            # Check if message was actually sent
+            messages = result_data.get('messages', [])
+            if not messages:
+                print(f"⚠️  Meta API response does not contain message data")
+                print(f"   Full response: {result_data}")
+                return {
+                    "success": False,
+                    "error": "No message data in API response",
+                    "response": result_data,
+                    "message": "Meta API did not return message confirmation"
+                }
+            
+            message_id = messages[0].get('id')
+            contacts = result_data.get('contacts', [])
+            
             print(f"✅ WhatsApp message sent successfully via Meta API!")
-            print(f"   Message ID: {result_data.get('messages', [{}])[0].get('id', 'N/A')}")
+            print(f"   Message ID: {message_id}")
+            if contacts:
+                contact = contacts[0]
+                print(f"   Recipient: {contact.get('wa_id', 'N/A')}")
+                print(f"   Input: {contact.get('input', 'N/A')}")
+            
+            # Check for errors in response
+            errors = result_data.get('errors', [])
+            if errors:
+                error_msg = errors[0].get('message', 'Unknown error')
+                print(f"⚠️  Warning: API returned errors: {error_msg}")
+                return {
+                    "success": False,
+                    "error": error_msg,
+                    "message_id": message_id,
+                    "response": result_data,
+                    "message": f"Meta API returned error: {error_msg}"
+                }
             
             return {
                 "success": True,
-                "message_id": result_data.get('messages', [{}])[0].get('id'),
+                "message_id": message_id,
                 "status": "sent",
+                "response": result_data,
                 "message": "WhatsApp message sent successfully via Meta API"
             }
             
