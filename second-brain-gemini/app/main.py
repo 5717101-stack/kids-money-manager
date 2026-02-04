@@ -412,6 +412,9 @@ async def whatsapp_webhook(request: Request):
                                 print(f"   From: {from_number}")
                                 print(f"   Message: {message_body}")
                                 print(f"   Message ID: {message_id}")
+                                
+                                # TODO: Add auto-reply here if needed
+                                # You can send a response using whatsapp_provider.send_whatsapp()
                 
                 print(f"{'='*60}\n")
                 return JSONResponse(content={"status": "ok"})
