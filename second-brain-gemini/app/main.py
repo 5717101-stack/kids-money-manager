@@ -306,53 +306,99 @@ async def whatsapp_webhook_verify(request: Request):
 @app.post("/whatsapp")
 async def whatsapp_webhook(request: Request):
     """
-    Handle incoming WhatsApp messages from Twilio webhook.
-    Extracts sender number and message body, logs to console,
-    and returns a TwiML response.
+    Handle incoming WhatsApp messages and webhooks.
+    Supports both Twilio (form data) and Meta (JSON) webhooks.
     """
-    from twilio.twiml.messaging_response import MessagingResponse
-    
     try:
-        # Get form data from Twilio request
-        form = await request.form()
+        content_type = request.headers.get("content-type", "")
         
-        # Extract sender's number and message body from Twilio request
-        sender_number = form.get('From', '')
-        message_body = form.get('Body', '')
+        # Check if it's Meta WhatsApp webhook (JSON)
+        if "application/json" in content_type:
+            data = await request.json()
+            
+            # Meta webhook structure
+            if "entry" in data:
+                print(f"\n{'='*60}")
+                print(f"📱 Meta WhatsApp Webhook Received")
+                print(f"{'='*60}")
+                
+                for entry in data.get("entry", []):
+                    changes = entry.get("changes", [])
+                    for change in changes:
+                        value = change.get("value", {})
+                        
+                        # Message status updates
+                        if "statuses" in value:
+                            statuses = value.get("statuses", [])
+                            for status in statuses:
+                                message_id = status.get("id")
+                                status_type = status.get("status")
+                                recipient = status.get("recipient_id")
+                                
+                                print(f"📊 Message Status Update:")
+                                print(f"   Message ID: {message_id}")
+                                print(f"   Status: {status_type}")
+                                print(f"   Recipient: {recipient}")
+                                
+                                if status_type == "failed":
+                                    error = status.get("errors", [{}])[0]
+                                    error_code = error.get("code")
+                                    error_title = error.get("title")
+                                    print(f"   ❌ Error: {error_title} (Code: {error_code})")
+                                
+                                if status_type == "delivered":
+                                    print(f"   ✅ Message delivered!")
+                                
+                                if status_type == "read":
+                                    print(f"   ✅ Message read!")
+                        
+                        # Incoming messages
+                        if "messages" in value:
+                            messages = value.get("messages", [])
+                            for message in messages:
+                                from_number = message.get("from")
+                                message_body = message.get("text", {}).get("body", "")
+                                message_id = message.get("id")
+                                
+                                print(f"📨 Incoming Message:")
+                                print(f"   From: {from_number}")
+                                print(f"   Message: {message_body}")
+                                print(f"   Message ID: {message_id}")
+                
+                print(f"{'='*60}\n")
+                return JSONResponse(content={"status": "ok"})
         
-        # Print incoming message to console logs
+        # Twilio webhook (form data)
+        form_data = await request.form()
+        sender_number = form_data.get('From', '')
+        message_body = form_data.get('Body', '')
+        
         print(f"\n{'='*50}")
-        print(f"📱 Incoming WhatsApp Message")
+        print(f"📱 Incoming WhatsApp Message (Twilio)")
         print(f"{'='*50}")
         print(f"From: {sender_number}")
         print(f"Message: {message_body}")
         print(f"{'='*50}\n")
         
-        # Create TwiML response
+        # Return TwiML response
+        from twilio.twiml.messaging_response import MessagingResponse
         response = MessagingResponse()
         response.message('Message received and saved to memory.')
-        
-        # Return TwiML XML response
-        from fastapi.responses import Response
-        return Response(
-            content=str(response),
-            media_type='text/xml',
-            status_code=200
-        )
+        return Response(content=str(response), media_type='text/xml')
         
     except Exception as e:
-        print(f"❌ Error processing WhatsApp message: {str(e)}")
+        print(f"❌ Error processing WhatsApp webhook: {str(e)}")
         import traceback
         traceback.print_exc()
-        # Return error response
-        response = MessagingResponse()
-        response.message('Sorry, an error occurred while processing your message.')
-        from fastapi.responses import Response
-        return Response(
-            content=str(response),
-            media_type='text/xml',
-            status_code=500
-        )
+        
+        # Try to return appropriate response
+        try:
+            from twilio.twiml.messaging_response import MessagingResponse
+            response = MessagingResponse()
+            response.message('Sorry, an error occurred while processing your message.')
+            return Response(content=str(response), media_type='text/xml')
+        except:
+            return JSONResponse(content={"status": "error", "message": str(e)}, status_code=500)
 
 
 @app.post("/generate-pdf")
