@@ -220,11 +220,23 @@ async def test_whatsapp(request: Request):
         result = whatsapp_provider.send_whatsapp(message, recipient)
         
         if result.get('success'):
+            # Log additional info for debugging
+            if 'message_id' in result:
+                print(f"✅ Message ID: {result.get('message_id')}")
+            if 'response' in result:
+                response_data = result.get('response', {})
+                if 'contacts' in response_data:
+                    print(f"📱 Contact info: {response_data.get('contacts')}")
+                if 'errors' in response_data:
+                    print(f"⚠️  Response errors: {response_data.get('errors')}")
             return JSONResponse(content=result)
         else:
+            error_msg = result.get('error', 'Failed to send WhatsApp message')
+            error_detail = result.get('message', error_msg)
+            print(f"❌ Failed to send WhatsApp: {error_detail}")
             raise HTTPException(
                 status_code=500,
-                detail=result.get('error', 'Failed to send WhatsApp message')
+                detail=error_detail
             )
     except HTTPException:
         raise
