@@ -6,7 +6,7 @@ Main FastAPI application entry point.
 from fastapi import FastAPI, UploadFile, File, Form, HTTPException, Request, Depends
 from fastapi.datastructures import FormData
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse, FileResponse, RedirectResponse
+from fastapi.responses import JSONResponse, FileResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 from typing import Optional, List
 import tempfile
@@ -282,6 +282,25 @@ async def test_sms(request: Request):
             status_code=500,
             detail=f"Error sending test SMS: {str(e)}"
         )
+
+
+@app.get("/whatsapp")
+async def whatsapp_webhook_verify(request: Request):
+    """
+    Meta WhatsApp webhook verification endpoint.
+    """
+    from app.services.meta_whatsapp_service import meta_whatsapp_service
+    
+    mode = request.query_params.get("hub.mode")
+    token = request.query_params.get("hub.verify_token")
+    challenge = request.query_params.get("hub.challenge")
+    
+    if mode and token and challenge:
+        result = meta_whatsapp_service.verify_webhook(mode, token, challenge)
+        if result:
+            return int(result)
+    
+    raise HTTPException(status_code=403, detail="Webhook verification failed")
 
 
 @app.post("/whatsapp")
