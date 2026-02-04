@@ -11,6 +11,7 @@ from fastapi.staticfiles import StaticFiles
 from typing import Optional, List
 import tempfile
 import os
+import io
 import requests
 from pathlib import Path
 from datetime import datetime
@@ -461,8 +462,10 @@ async def webhook(request: Request, background_tasks: BackgroundTasks):
                                         
                                         # Step 3: Upload to Drive archive
                                         print("📤 Attempting to upload to Google Drive...")
+                                        # Wrap bytes in BytesIO for file-like object
+                                        file_stream = io.BytesIO(audio_bytes)
                                         audio_metadata = drive_memory_service.upload_audio_to_archive(
-                                            audio_bytes=audio_bytes,
+                                            audio_file_obj=file_stream,
                                             filename=f"whatsapp_audio_{message_id}.ogg",
                                             mime_type="audio/ogg"
                                         )

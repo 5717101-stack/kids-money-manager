@@ -169,6 +169,7 @@ class DriveMemoryService:
         self,
         audio_path: str = None,
         audio_bytes: bytes = None,
+        audio_file_obj = None,
         filename: str = None,
         mime_type: str = None
     ) -> Optional[Dict[str, str]]:
@@ -176,8 +177,9 @@ class DriveMemoryService:
         Upload an audio file to the audio_archive folder in Drive.
         
         Args:
-            audio_path: Path to the audio file on disk (optional if audio_bytes provided)
-            audio_bytes: Binary audio data (optional if audio_path provided)
+            audio_path: Path to the audio file on disk (optional if audio_file_obj or audio_bytes provided)
+            audio_bytes: Binary audio data (optional if audio_file_obj or audio_path provided)
+            audio_file_obj: File-like object (BytesIO stream) (optional if audio_bytes or audio_path provided)
             filename: Optional filename (uses path basename if not provided)
             mime_type: Optional MIME type (auto-detected from extension if not provided)
         
@@ -201,10 +203,31 @@ class DriveMemoryService:
                 return None
             print(f"✅ Audio archive folder verified (ID: {archive_folder_id})")
             
-            # Get file content - either from path or bytes
-            if audio_bytes:
+            # Get file content - prioritize file_obj, then bytes, then path
+            file_obj = None
+            if audio_file_obj:
+                print(f"📦 Using provided file-like object (stream)")
+                file_obj = audio_file_obj
+                # Ensure stream is at position 0
+                if hasattr(file_obj, 'seek'):
+                    file_obj.seek(0)
+                # Get size if possible
+                if hasattr(file_obj, 'getvalue'):
+                    file_size = len(file_obj.getvalue())
+                    print(f"   Stream size: {file_size} bytes")
+                elif hasattr(file_obj, 'read'):
+                    # Read to get size, then reset
+                    content = file_obj.read()
+                    file_size = len(content)
+                    file_obj.seek(0)
+                    print(f"   Stream size: {file_size} bytes")
+                else:
+                    file_size = "unknown"
+                if not filename:
+                    filename = "audio_message.ogg"  # Default for WhatsApp audio
+            elif audio_bytes:
                 print(f"📦 Using provided audio bytes (size: {len(audio_bytes)} bytes)")
-                file_content = audio_bytes
+                file_obj = BytesIO(audio_bytes)
                 if not filename:
                     filename = "audio_message.ogg"  # Default for WhatsApp audio
             elif audio_path:
@@ -212,11 +235,12 @@ class DriveMemoryService:
                 with open(audio_path, 'rb') as f:
                     file_content = f.read()
                 print(f"✅ Audio file read successfully. Size: {len(file_content)} bytes")
+                file_obj = BytesIO(file_content)
                 if not filename:
                     filename = Path(audio_path).name
             else:
-                logger.error("❌ Either audio_path or audio_bytes must be provided")
-                print("❌ CRITICAL AUDIO ERROR: Either audio_path or audio_bytes must be provided")
+                logger.error("❌ Either audio_path, audio_bytes, or audio_file_obj must be provided")
+                print("❌ CRITICAL AUDIO ERROR: Either audio_path, audio_bytes, or audio_file_obj must be provided")
                 return None
             
             # Determine MIME type from extension if not provided
@@ -244,16 +268,19 @@ class DriveMemoryService:
             print(f"📤 Attempting to upload to Google Drive...")
             print(f"   Filename: {filename}")
             print(f"   MIME type: {mime_type}")
-            print(f"   File size: {len(file_content)} bytes")
             
-            # Upload to Drive
+            # Upload to Drive using MediaIoBaseUpload for file-like objects
             file_metadata = {
                 'name': filename,
                 'parents': [archive_folder_id]
             }
             
+            # Ensure stream is at position 0 before upload
+            if hasattr(file_obj, 'seek'):
+                file_obj.seek(0)
+            
             media = MediaIoBaseUpload(
-                BytesIO(file_content),
+                file_obj,
                 mimetype=mime_type,
                 resumable=True
             )
