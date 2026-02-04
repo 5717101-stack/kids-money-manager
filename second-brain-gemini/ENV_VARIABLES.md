@@ -33,6 +33,7 @@ TWILIO_SMS_TO=+972XXXXXXXXX
 WHATSAPP_CLOUD_API_TOKEN=your_meta_whatsapp_access_token
 WHATSAPP_PHONE_NUMBER_ID=your_meta_phone_number_id
 WHATSAPP_VERIFY_TOKEN=your_webhook_verification_token
+WHATSAPP_FROM=+972XXXXXXXXX  # Sender phone number (E.164 format, optional - Phone Number ID is used by default)
 WHATSAPP_TO=+972XXXXXXXXX  # Recipient phone number (E.164 format, required for Meta)
 
 # Optional: For automatic token refresh (recommended to prevent daily errors)
