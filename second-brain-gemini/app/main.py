@@ -58,6 +58,16 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Startup event: Pre-warm memory cache
+@app.on_event("startup")
+async def startup_event():
+    """Pre-warm memory cache on server startup."""
+    if drive_memory_service.is_configured:
+        print("🔥 Pre-warming memory cache...")
+        drive_memory_service.preload_memory()
+    else:
+        print("⚠️  Skipping memory cache pre-warm (Drive Memory Service not configured)")
+
 # Get the project root directory (parent of app/)
 _base_dir = Path(__file__).parent.parent.resolve()
 _static_dir = _base_dir / "static"
@@ -403,7 +413,7 @@ async def webhook(request: Request, background_tasks: BackgroundTasks):
                                         if reply_result.get('success'):
                                             print(f"✅ AI response sent successfully")
                                             
-                                            # Save interaction to memory (in background)
+                                            # Save interaction to memory (cache updated immediately, Drive sync in background)
                                             new_interaction = {
                                                 "user_message": message_body,
                                                 "ai_response": ai_response,
@@ -412,15 +422,12 @@ async def webhook(request: Request, background_tasks: BackgroundTasks):
                                                 "from_number": from_number
                                             }
                                             
-                                            # Save interaction to memory in background (non-blocking)
-                                            def save_to_memory(interaction):
-                                                success = drive_memory_service.update_memory(interaction)
-                                                if success:
-                                                    print(f"✅ Saved interaction to memory")
-                                                else:
-                                                    print(f"⚠️  Failed to save interaction to memory")
-                                            
-                                            background_tasks.add_task(save_to_memory, new_interaction)
+                                            # Update cache immediately, sync to Drive in background
+                                            success = drive_memory_service.update_memory(new_interaction, background_tasks=background_tasks)
+                                            if success:
+                                                print(f"✅ Saved interaction to memory cache (Drive sync in background)")
+                                            else:
+                                                print(f"⚠️  Failed to save interaction to memory")
                                         else:
                                             print(f"⚠️  Failed to send AI response: {reply_result.get('error')}")
                                     except Exception as reply_error:
@@ -569,7 +576,7 @@ async def whatsapp_webhook(request: Request, background_tasks: BackgroundTasks):
                 
                 print(f"🤖 Generated AI response: {ai_response[:100]}...")
                 
-                # Save interaction to memory in background
+                # Save interaction to memory (cache updated immediately, Drive sync in background)
                 new_interaction = {
                     "user_message": message_body,
                     "ai_response": ai_response,
@@ -577,14 +584,12 @@ async def whatsapp_webhook(request: Request, background_tasks: BackgroundTasks):
                     "from_number": sender_number
                 }
                 
-                def save_to_memory():
-                    success = drive_memory_service.update_memory(new_interaction)
-                    if success:
-                        print(f"✅ Saved interaction to memory")
-                    else:
-                        print(f"⚠️  Failed to save interaction to memory")
-                
-                background_tasks.add_task(save_to_memory)
+                # Update cache immediately, sync to Drive in background
+                success = drive_memory_service.update_memory(new_interaction, background_tasks=background_tasks)
+                if success:
+                    print(f"✅ Saved interaction to memory cache (Drive sync in background)")
+                else:
+                    print(f"⚠️  Failed to save interaction to memory")
                 
                 # Return TwiML response with AI reply
                 from twilio.twiml.messaging_response import MessagingResponse
