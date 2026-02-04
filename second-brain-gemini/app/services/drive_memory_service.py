@@ -1,7 +1,7 @@
 """
 Google Drive Memory Service
 Manages persistent conversation memory stored in Google Drive.
-Uses in-memory caching for fast response times with background Drive sync.
+Uses in-memory caching with robust timestamp-based stale-while-revalidate logic.
 """
 
 import os
@@ -9,6 +9,7 @@ import json
 import tempfile
 from typing import Dict, Any, Optional, List
 from pathlib import Path
+from datetime import datetime, timezone
 from google.oauth2 import service_account
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaIoBaseDownload, MediaIoBaseUpload
@@ -16,6 +17,7 @@ from googleapiclient.errors import HttpError
 from io import BytesIO
 import logging
 from threading import Lock
+from dateutil import parser as date_parser
 
 logger = logging.getLogger(__name__)
 
@@ -27,10 +29,10 @@ DEFAULT_MEMORY_STRUCTURE = {
 
 
 class DriveMemoryService:
-    """Service for managing persistent memory in Google Drive with in-memory caching."""
+    """Service for managing persistent memory in Google Drive with robust caching."""
     
     # Class-level in-memory cache
-    # Structure: (memory_data: Dict, modified_time: str, file_id: str)
+    # Structure: (memory_data: Dict, modified_time: datetime, file_id: str)
     _memory_cache: Optional[tuple] = None
     _cache_lock = Lock()  # Thread-safe cache access
     
@@ -116,14 +118,44 @@ class DriveMemoryService:
             logger.error(f"❌ Error finding memory file: {e}")
             return None
     
+    def _parse_timestamp(self, timestamp_str: Optional[str]) -> Optional[datetime]:
+        """
+        Parse Google Drive RFC 3339 timestamp string to timezone-aware UTC datetime.
+        
+        Args:
+            timestamp_str: RFC 3339 timestamp string from Google Drive API
+        
+        Returns:
+            timezone-aware UTC datetime object, or None if parsing fails
+        """
+        if not timestamp_str:
+            return None
+        
+        try:
+            # Parse RFC 3339 timestamp (e.g., "2025-02-04T10:00:00.000Z")
+            dt = date_parser.isoparse(timestamp_str)
+            
+            # Ensure timezone-aware (Google Drive timestamps are in UTC)
+            if dt.tzinfo is None:
+                dt = dt.replace(tzinfo=timezone.utc)
+            else:
+                # Convert to UTC if not already
+                dt = dt.astimezone(timezone.utc)
+            
+            return dt
+        except Exception as e:
+            logger.error(f"❌ Error parsing timestamp '{timestamp_str}': {e}")
+            return None
+    
     def get_memory(self) -> Dict[str, Any]:
         """
-        Retrieve memory with Smart Cache (Stale-While-Revalidate).
+        Retrieve memory with robust Smart Cache (Stale-While-Revalidate).
         
         Strategy:
-        1. If cache exists, do lightweight check of Drive modifiedTime
-        2. If Drive is newer, download and update cache
-        3. If timestamps match, return cached data (fast path)
+        1. ALWAYS fetch file metadata (ID and modifiedTime) from Drive API first
+        2. Compare remote_modified_time vs local_cached_modified_time using datetime objects
+        3. If remote > local OR cache is None: Download and update cache
+        4. Else: Return cached data (fast path)
         
         Returns:
             Memory dictionary with chat_history and user_profile.
@@ -134,6 +166,7 @@ class DriveMemoryService:
             memory_data = DEFAULT_MEMORY_STRUCTURE.copy()
             return memory_data.copy()
         
+        # Step 1: ALWAYS fetch file metadata first
         file_id = self._find_memory_file()
         
         if not file_id:
@@ -144,97 +177,154 @@ class DriveMemoryService:
                 self._memory_cache = (memory_data.copy(), None, None)
             return memory_data.copy()
         
-        # Check cache and compare with Drive modifiedTime
+        # Fetch file metadata (ID and modifiedTime) from Drive
+        try:
+            drive_file = self.service.files().get(
+                fileId=file_id,
+                fields='id,modifiedTime'
+            ).execute()
+            
+            remote_modified_time_str = drive_file.get('modifiedTime')
+            remote_modified_time = self._parse_timestamp(remote_modified_time_str)
+            
+            if remote_modified_time is None:
+                logger.warning(f"⚠️  Could not parse remote modifiedTime: {remote_modified_time_str}")
+                logger.warning("   Proceeding with download to be safe...")
+        except HttpError as e:
+            logger.error(f"❌ Error fetching file metadata from Drive: {e}")
+            # Fallback: try to use cached data if available
+            with self._cache_lock:
+                cached_data = self._memory_cache
+            if cached_data is not None:
+                cached_memory, _, cached_file_id = cached_data
+                if cached_file_id == file_id:
+                    logger.warning("⚠️  Using cached data due to metadata fetch error")
+                    return cached_memory.copy()
+            # No cache available, return default
+            return DEFAULT_MEMORY_STRUCTURE.copy()
+        except Exception as e:
+            logger.error(f"❌ Unexpected error fetching file metadata: {e}")
+            # Fallback: try to use cached data if available
+            with self._cache_lock:
+                cached_data = self._memory_cache
+            if cached_data is not None:
+                cached_memory, _, cached_file_id = cached_data
+                if cached_file_id == file_id:
+                    logger.warning("⚠️  Using cached data due to metadata fetch error")
+                    return cached_memory.copy()
+            # No cache available, return default
+            return DEFAULT_MEMORY_STRUCTURE.copy()
+        
+        # Step 2: Compare timestamps
         with self._cache_lock:
             cached_data = self._memory_cache
         
+        local_cached_modified_time = None
+        should_reload = False
+        
         if cached_data is not None:
-            cached_memory, cached_modified_time, cached_file_id = cached_data
+            cached_memory, local_cached_modified_time, cached_file_id = cached_data
             
-            # If file_id matches, check if Drive file is newer
+            # Check if file_id matches
             if cached_file_id == file_id:
-                try:
-                    # Lightweight check: get only modifiedTime from Drive
-                    drive_file = self.service.files().get(
-                        fileId=file_id,
-                        fields='modifiedTime'
-                    ).execute()
-                    
-                    drive_modified_time = drive_file.get('modifiedTime')
-                    
-                    # If timestamps match, return cached data (fast path)
-                    if drive_modified_time == cached_modified_time:
-                        logger.debug(f"💨 Retrieved memory from cache (0ms latency, timestamps match)")
+                # Compare timestamps using datetime objects
+                if remote_modified_time is not None and local_cached_modified_time is not None:
+                    # Both are datetime objects - compare directly
+                    if remote_modified_time > local_cached_modified_time:
+                        should_reload = True
+                        logger.info(
+                            f"🔄 Cache stale detected! "
+                            f"Remote: {remote_modified_time.isoformat()} > "
+                            f"Local: {local_cached_modified_time.isoformat()}. "
+                            f"Reloading from Drive..."
+                        )
+                    else:
+                        # Cache is fresh - return immediately (fast path)
+                        logger.debug(
+                            f"💨 Cache hit! "
+                            f"Remote: {remote_modified_time.isoformat()}, "
+                            f"Local: {local_cached_modified_time.isoformat()}. "
+                            f"Returning cached data (0ms latency)"
+                        )
                         logger.debug(f"   Chat history entries: {len(cached_memory.get('chat_history', []))}")
                         return cached_memory.copy()
-                    
-                    # Drive is newer - need to reload
-                    logger.info(f"🔄 Drive file is newer (cache: {cached_modified_time}, drive: {drive_modified_time})")
-                    logger.info(f"   Reloading from Drive to sync with manual edits...")
-                except HttpError as e:
-                    logger.warning(f"⚠️  Error checking Drive modifiedTime: {e}. Using cached data.")
-                    return cached_memory.copy()
-                except Exception as e:
-                    logger.warning(f"⚠️  Unexpected error checking Drive modifiedTime: {e}. Using cached data.")
-                    return cached_memory.copy()
+                elif remote_modified_time is not None:
+                    # Remote has timestamp but local doesn't - reload
+                    should_reload = True
+                    logger.info(
+                        f"🔄 Cache missing timestamp. "
+                        f"Remote: {remote_modified_time.isoformat()}. "
+                        f"Reloading from Drive..."
+                    )
+                else:
+                    # Remote timestamp parsing failed - reload to be safe
+                    should_reload = True
+                    logger.warning("⚠️  Remote timestamp parsing failed. Reloading to be safe...")
+            else:
+                # File ID changed - reload
+                should_reload = True
+                logger.info(f"🔄 File ID changed (cache: {cached_file_id}, drive: {file_id}). Reloading...")
+        else:
+            # Cache is None - reload
+            should_reload = True
+            logger.info("🔄 Cache is empty. Loading from Drive...")
         
-        # Cache miss or Drive is newer - fetch from Drive
-        try:
-            # Get file metadata (including modifiedTime)
-            drive_file = self.service.files().get(
-                fileId=file_id,
-                fields='modifiedTime'
-            ).execute()
-            drive_modified_time = drive_file.get('modifiedTime')
-            
-            # Download the file
-            request = self.service.files().get_media(fileId=file_id)
-            file_content = BytesIO()
-            downloader = MediaIoBaseDownload(file_content, request)
-            done = False
-            while not done:
-                status, done = downloader.next_chunk()
-            
-            # Parse JSON
-            file_content.seek(0)
-            content_str = file_content.read().decode('utf-8')
-            memory_data = json.loads(content_str)
-            
-            # Populate cache with data, modifiedTime, and file_id
-            with self._cache_lock:
-                self._memory_cache = (memory_data.copy(), drive_modified_time, file_id)
-            
-            logger.info(f"✅ Retrieved memory from Drive and cached (file ID: {file_id})")
-            logger.info(f"   Modified time: {drive_modified_time}")
-            logger.info(f"   Chat history entries: {len(memory_data.get('chat_history', []))}")
-            
-            return memory_data.copy()
-        except HttpError as e:
-            logger.error(f"❌ Error downloading memory file: {e}")
-            memory_data = DEFAULT_MEMORY_STRUCTURE.copy()
-            with self._cache_lock:
-                self._memory_cache = (memory_data.copy(), None, None)
-            return memory_data.copy()
-        except json.JSONDecodeError as e:
-            logger.error(f"❌ Error parsing memory file JSON: {e}")
-            memory_data = DEFAULT_MEMORY_STRUCTURE.copy()
-            with self._cache_lock:
-                self._memory_cache = (memory_data.copy(), None, None)
-            return memory_data.copy()
-        except Exception as e:
-            logger.error(f"❌ Unexpected error retrieving memory: {e}")
-            memory_data = DEFAULT_MEMORY_STRUCTURE.copy()
-            with self._cache_lock:
-                self._memory_cache = (memory_data.copy(), None, None)
-            return memory_data.copy()
+        # Step 3: Download and update cache if needed
+        if should_reload:
+            try:
+                # Download the file
+                request = self.service.files().get_media(fileId=file_id)
+                file_content = BytesIO()
+                downloader = MediaIoBaseDownload(file_content, request)
+                done = False
+                while not done:
+                    status, done = downloader.next_chunk()
+                
+                # Parse JSON
+                file_content.seek(0)
+                content_str = file_content.read().decode('utf-8')
+                memory_data = json.loads(content_str)
+                
+                # Update cache with data, modifiedTime (as datetime), and file_id
+                with self._cache_lock:
+                    self._memory_cache = (memory_data.copy(), remote_modified_time, file_id)
+                
+                logger.info(f"✅ Retrieved memory from Drive and cached (file ID: {file_id})")
+                logger.info(f"   Modified time: {remote_modified_time.isoformat() if remote_modified_time else 'None'}")
+                logger.info(f"   Chat history entries: {len(memory_data.get('chat_history', []))}")
+                
+                return memory_data.copy()
+            except HttpError as e:
+                logger.error(f"❌ Error downloading memory file: {e}")
+                memory_data = DEFAULT_MEMORY_STRUCTURE.copy()
+                with self._cache_lock:
+                    self._memory_cache = (memory_data.copy(), None, None)
+                return memory_data.copy()
+            except json.JSONDecodeError as e:
+                logger.error(f"❌ Error parsing memory file JSON: {e}")
+                memory_data = DEFAULT_MEMORY_STRUCTURE.copy()
+                with self._cache_lock:
+                    self._memory_cache = (memory_data.copy(), None, None)
+                return memory_data.copy()
+            except Exception as e:
+                logger.error(f"❌ Unexpected error retrieving memory: {e}")
+                memory_data = DEFAULT_MEMORY_STRUCTURE.copy()
+                with self._cache_lock:
+                    self._memory_cache = (memory_data.copy(), None, None)
+                return memory_data.copy()
+        
+        # Should not reach here, but return default if we do
+        return DEFAULT_MEMORY_STRUCTURE.copy()
     
     def update_memory(self, new_interaction: Dict[str, Any], background_tasks=None) -> bool:
         """
         Update memory with a new interaction.
         
         Strategy:
-        1. Update in-memory cache immediately (0 latency)
-        2. Sync to Drive in background (non-blocking)
+        1. Get current memory (triggers cache refresh check)
+        2. Update in-memory cache immediately (0 latency)
+        3. Sync to Drive in background (non-blocking)
+        4. CRITICAL: Update cache timestamp after successful upload
         
         Args:
             new_interaction: Dictionary with 'user_message' and 'ai_response' keys.
@@ -254,7 +344,7 @@ class DriveMemoryService:
             return False
         
         try:
-            # Get current memory (from cache if available)
+            # Get current memory (this triggers cache refresh check if Drive is newer)
             memory = self.get_memory()
             
             # Append new interaction to chat_history
@@ -263,15 +353,17 @@ class DriveMemoryService:
             
             memory['chat_history'].append(new_interaction)
             
+            # Get file_id for cache update
+            file_id = self._find_memory_file()
+            
             # Update cache immediately (0 latency)
             # Note: modifiedTime will be updated after Drive upload completes
-            file_id = self._find_memory_file()
             with self._cache_lock:
-                # Keep existing modifiedTime if available, will be updated after upload
+                # Keep existing modifiedTime temporarily (will be updated after upload)
                 if self._memory_cache is not None:
                     _, cached_modified_time, cached_file_id = self._memory_cache
                     if cached_file_id == file_id:
-                        # Keep the existing modifiedTime temporarily (will be updated after upload)
+                        # Keep the existing modifiedTime temporarily
                         self._memory_cache = (memory.copy(), cached_modified_time, file_id)
                     else:
                         # New file or file_id changed
@@ -304,7 +396,9 @@ class DriveMemoryService:
         """
         Internal method to upload memory to Google Drive.
         Called in background task for async sync.
-        Updates cache with new modifiedTime after successful upload.
+        
+        CRITICAL: Updates cache with new modifiedTime after successful upload
+        to prevent false reload on next read.
         
         Args:
             memory: Memory dictionary to upload
@@ -335,17 +429,22 @@ class DriveMemoryService:
                 updated_file = self.service.files().update(
                     fileId=file_id,
                     media_body=media,
-                    fields='modifiedTime'
+                    fields='id,modifiedTime'
                 ).execute()
                 
-                new_modified_time = updated_file.get('modifiedTime')
+                new_modified_time_str = updated_file.get('modifiedTime')
+                new_modified_time = self._parse_timestamp(new_modified_time_str)
                 
-                # Update cache with new modifiedTime
+                # CRITICAL: Update cache with new modifiedTime immediately
+                # This prevents false reload on next read
                 with self._cache_lock:
                     self._memory_cache = (memory.copy(), new_modified_time, file_id)
                 
                 logger.info(f"✅ Synced memory to Drive (file ID: {file_id})")
-                logger.debug(f"   Updated cache with new modifiedTime: {new_modified_time}")
+                logger.info(
+                    f"   Updated cache with new modifiedTime: "
+                    f"{new_modified_time.isoformat() if new_modified_time else 'None'}"
+                )
             else:
                 # Create new file
                 file_metadata = {
@@ -366,14 +465,18 @@ class DriveMemoryService:
                 ).execute()
                 
                 new_file_id = file['id']
-                new_modified_time = file.get('modifiedTime')
+                new_modified_time_str = file.get('modifiedTime')
+                new_modified_time = self._parse_timestamp(new_modified_time_str)
                 
-                # Update cache with new file_id and modifiedTime
+                # CRITICAL: Update cache with new file_id and modifiedTime
                 with self._cache_lock:
                     self._memory_cache = (memory.copy(), new_modified_time, new_file_id)
                 
                 logger.info(f"✅ Created new memory file in Drive (file ID: {new_file_id})")
-                logger.debug(f"   Updated cache with modifiedTime: {new_modified_time}")
+                logger.info(
+                    f"   Updated cache with modifiedTime: "
+                    f"{new_modified_time.isoformat() if new_modified_time else 'None'}"
+                )
             
             return True
             

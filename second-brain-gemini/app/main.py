@@ -390,7 +390,8 @@ async def webhook(request: Request, background_tasks: BackgroundTasks):
                                 # Process message with memory
                                 if whatsapp_provider and message_type == "text" and message_body:
                                     try:
-                                        # Get conversation history from Drive
+                                        # CRITICAL: Get memory at the very start to trigger cache refresh check
+                                        # This ensures we detect manual edits before processing the message
                                         memory = drive_memory_service.get_memory()
                                         chat_history = memory.get('chat_history', [])
                                         
@@ -562,7 +563,8 @@ async def whatsapp_webhook(request: Request, background_tasks: BackgroundTasks):
         # Process message with memory (if message body exists)
         if message_body and drive_memory_service.is_configured:
             try:
-                # Get conversation history from Drive
+                # CRITICAL: Get memory at the very start to trigger cache refresh check
+                # This ensures we detect manual edits before processing the message
                 memory = drive_memory_service.get_memory()
                 chat_history = memory.get('chat_history', [])
                 
