@@ -44,6 +44,9 @@ class Settings(BaseSettings):
     whatsapp_app_id: Optional[str] = None            # Meta App ID (for token refresh)
     whatsapp_app_secret: Optional[str] = None        # Meta App Secret (for token refresh)
     
+    # Google Drive Memory Settings
+    drive_memory_folder_id: Optional[str] = None     # Google Drive folder ID for storing memory file
+    
     class Config:
         env_file = ".env"
         env_file_encoding = "utf-8"

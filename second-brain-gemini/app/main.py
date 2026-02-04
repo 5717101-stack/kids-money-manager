@@ -3,7 +3,7 @@ Second Brain - Daily Sync (Gemini Edition)
 Main FastAPI application entry point.
 """
 
-from fastapi import FastAPI, UploadFile, File, Form, HTTPException, Request, Depends
+from fastapi import FastAPI, UploadFile, File, Form, HTTPException, Request, Depends, BackgroundTasks
 from fastapi.datastructures import FormData
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, FileResponse, RedirectResponse, Response
@@ -12,12 +12,14 @@ from typing import Optional, List
 import tempfile
 import os
 from pathlib import Path
+from datetime import datetime
 
 from app.core.config import settings
 from app.services.gemini_service import gemini_service
 from app.services.pdf_service import pdf_service
 from app.services.twilio_service import twilio_service  # Keep for SMS and message formatting
 from app.services.whatsapp_provider import WhatsAppProviderFactory
+from app.services.drive_memory_service import DriveMemoryService
 
 # Initialize WhatsApp provider based on configuration
 whatsapp_provider = WhatsAppProviderFactory.create_provider()
@@ -30,6 +32,14 @@ else:
     print(f"⚠️  WhatsApp provider not initialized!")
     print(f"   Config setting: {settings.whatsapp_provider}")
     print(f"   Available providers: {WhatsAppProviderFactory.get_available_providers()}")
+
+# Initialize Drive Memory Service
+drive_memory_service = DriveMemoryService()
+if drive_memory_service.is_configured:
+    print(f"✅ Drive Memory Service initialized")
+    print(f"   Memory folder ID: {drive_memory_service.folder_id}")
+else:
+    print(f"⚠️  Drive Memory Service not configured (DRIVE_MEMORY_FOLDER_ID not set)")
 
 
 # Create FastAPI app
@@ -305,7 +315,7 @@ async def whatsapp_webhook_verify(request: Request):
 
 @app.get("/webhook")
 @app.post("/webhook")
-async def webhook(request: Request):
+async def webhook(request: Request, background_tasks: BackgroundTasks):
     """
     Handle WhatsApp Cloud API webhook for Meta.
     GET: Webhook verification
@@ -367,27 +377,66 @@ async def webhook(request: Request):
                                 print(f"   Type: {message_type}")
                                 print(f"   Timestamp: {timestamp}")
                                 
-                                # Process the message (you can add your logic here)
-                                # For example: save to database, analyze with AI, etc.
-                                
-                                # Send auto-reply (optional)
-                                if whatsapp_provider and message_type == "text":
+                                # Process message with memory
+                                if whatsapp_provider and message_type == "text" and message_body:
                                     try:
-                                        # Format response message
-                                        reply_message = "Message received and saved to memory."
+                                        # Get conversation history from Drive
+                                        memory = drive_memory_service.get_memory()
+                                        chat_history = memory.get('chat_history', [])
                                         
-                                        # Send reply via Meta WhatsApp
+                                        print(f"💾 Retrieved memory: {len(chat_history)} previous interactions")
+                                        
+                                        # Generate AI response with context
+                                        ai_response = gemini_service.chat_with_memory(
+                                            user_message=message_body,
+                                            chat_history=chat_history
+                                        )
+                                        
+                                        print(f"🤖 Generated AI response: {ai_response[:100]}...")
+                                        
+                                        # Send AI response via WhatsApp
                                         reply_result = whatsapp_provider.send_whatsapp(
-                                            message=reply_message,
+                                            message=ai_response,
                                             to=f"+{from_number}"  # Add + prefix for E.164 format
                                         )
                                         
                                         if reply_result.get('success'):
-                                            print(f"✅ Auto-reply sent successfully")
+                                            print(f"✅ AI response sent successfully")
+                                            
+                                            # Save interaction to memory (in background)
+                                            new_interaction = {
+                                                "user_message": message_body,
+                                                "ai_response": ai_response,
+                                                "timestamp": datetime.utcnow().isoformat() + "Z",
+                                                "message_id": message_id,
+                                                "from_number": from_number
+                                            }
+                                            
+                                            # Save interaction to memory in background (non-blocking)
+                                            def save_to_memory(interaction):
+                                                success = drive_memory_service.update_memory(interaction)
+                                                if success:
+                                                    print(f"✅ Saved interaction to memory")
+                                                else:
+                                                    print(f"⚠️  Failed to save interaction to memory")
+                                            
+                                            background_tasks.add_task(save_to_memory, new_interaction)
                                         else:
-                                            print(f"⚠️  Failed to send auto-reply: {reply_result.get('error')}")
+                                            print(f"⚠️  Failed to send AI response: {reply_result.get('error')}")
                                     except Exception as reply_error:
-                                        print(f"⚠️  Error sending auto-reply: {reply_error}")
+                                        print(f"⚠️  Error processing message with AI: {reply_error}")
+                                        import traceback
+                                        traceback.print_exc()
+                                        
+                                        # Fallback: Send simple acknowledgment
+                                        try:
+                                            fallback_message = "Message received and saved to memory."
+                                            whatsapp_provider.send_whatsapp(
+                                                message=fallback_message,
+                                                to=f"+{from_number}"
+                                            )
+                                        except:
+                                            pass
                         
                         # Handle message status updates
                         elif field == "messages" and "statuses" in value:
@@ -424,7 +473,7 @@ async def webhook(request: Request):
 
 
 @app.post("/whatsapp")
-async def whatsapp_webhook(request: Request):
+async def whatsapp_webhook(request: Request, background_tasks: BackgroundTasks):
     """
     Handle incoming WhatsApp messages and webhooks.
     Supports both Twilio (form data) and Meta (JSON) webhooks.
@@ -503,7 +552,51 @@ async def whatsapp_webhook(request: Request):
         print(f"Message: {message_body}")
         print(f"{'='*50}\n")
         
-        # Return TwiML response
+        # Process message with memory (if message body exists)
+        if message_body and drive_memory_service.is_configured:
+            try:
+                # Get conversation history from Drive
+                memory = drive_memory_service.get_memory()
+                chat_history = memory.get('chat_history', [])
+                
+                print(f"💾 Retrieved memory: {len(chat_history)} previous interactions")
+                
+                # Generate AI response with context
+                ai_response = gemini_service.chat_with_memory(
+                    user_message=message_body,
+                    chat_history=chat_history
+                )
+                
+                print(f"🤖 Generated AI response: {ai_response[:100]}...")
+                
+                # Save interaction to memory in background
+                new_interaction = {
+                    "user_message": message_body,
+                    "ai_response": ai_response,
+                    "timestamp": datetime.utcnow().isoformat() + "Z",
+                    "from_number": sender_number
+                }
+                
+                def save_to_memory():
+                    success = drive_memory_service.update_memory(new_interaction)
+                    if success:
+                        print(f"✅ Saved interaction to memory")
+                    else:
+                        print(f"⚠️  Failed to save interaction to memory")
+                
+                background_tasks.add_task(save_to_memory)
+                
+                # Return TwiML response with AI reply
+                from twilio.twiml.messaging_response import MessagingResponse
+                response = MessagingResponse()
+                response.message(ai_response)
+                return Response(content=str(response), media_type='text/xml')
+            except Exception as e:
+                print(f"⚠️  Error processing message with AI: {e}")
+                import traceback
+                traceback.print_exc()
+        
+        # Fallback: Return simple acknowledgment
         from twilio.twiml.messaging_response import MessagingResponse
         response = MessagingResponse()
         response.message('Message received and saved to memory.')

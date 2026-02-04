@@ -312,11 +312,102 @@ class GeminiService:
         
         raise TimeoutError(f"File processing timeout: {file_id}")
     
+    def chat_with_memory(
+        self,
+        user_message: str,
+        chat_history: List[Dict[str, Any]] = None
+    ) -> str:
+        """
+        Chat with Gemini using conversation history.
+        
+        Args:
+            user_message: Current user message
+            chat_history: List of previous interactions, each with 'user_message' and 'ai_response'
+        
+        Returns:
+            AI response text
+        """
+        chat_history = chat_history or []
+        
+        # Check if service is configured
+        if not self.is_configured or self.model is None:
+            raise ValueError(
+                "GOOGLE_API_KEY is not configured. "
+                "Please set GOOGLE_API_KEY in environment variables."
+            )
+        
+        # Build conversation context
+        contents = []
+        
+        # Add system prompt
+        contents.append(SYSTEM_PROMPT)
+        
+        # Add chat history if available
+        if chat_history:
+            contents.append("\n## Previous Conversation History:\n")
+            for i, interaction in enumerate(chat_history, 1):
+                user_msg = interaction.get('user_message', '')
+                ai_resp = interaction.get('ai_response', '')
+                timestamp = interaction.get('timestamp', '')
+                
+                contents.append(f"\n### Conversation {i} ({timestamp}):\n")
+                contents.append(f"**User:** {user_msg}\n")
+                contents.append(f"**AI:** {ai_resp}\n")
+        
+        # Add current user message
+        contents.append("\n## Current User Message:\n")
+        contents.append(user_message)
+        contents.append("\n\nPlease provide a helpful response in Hebrew.")
+        
+        print(f"💬 Chatting with Gemini (history: {len(chat_history)} entries)")
+        
+        # Generate response with retry logic
+        max_retries = 3
+        retry_delay = 5
+        response = None
+        
+        for attempt in range(max_retries):
+            try:
+                print(f"🤖 Attempt {attempt + 1}/{max_retries}: Calling model.generate_content...")
+                response = self.model.generate_content(
+                    contents,
+                    generation_config={'max_output_tokens': 2048},
+                    request_options={'timeout': 120}
+                )
+                print(f"✅ Successfully received response from Gemini")
+                break
+            except Exception as e:
+                error_str = str(e)
+                is_connection_error = (
+                    'Connection reset' in error_str or 
+                    '503' in error_str or 
+                    'recvmsg' in error_str or 
+                    'Connection' in error_str or
+                    'timeout' in error_str.lower()
+                )
+                
+                if is_connection_error and attempt < max_retries - 1:
+                    print(f"⚠️  Connection error (attempt {attempt + 1}/{max_retries}): {error_str[:200]}")
+                    print(f"⏳ Retrying in {retry_delay} seconds...")
+                    import time
+                    time.sleep(retry_delay)
+                    retry_delay *= 2
+                    continue
+                else:
+                    print(f"❌ Error generating content: {error_str}")
+                    raise
+        
+        if response is None:
+            raise RuntimeError("Failed to generate content after all retries")
+        
+        return response.text.strip()
+    
     def analyze_day(
         self,
         audio_paths: List[str] = None,
         image_paths: List[str] = None,
-        text_inputs: List[str] = None
+        text_inputs: List[str] = None,
+        chat_history: List[Dict[str, Any]] = None
     ) -> Dict[str, Any]:
         """
         Analyze a day's worth of inputs using Gemini 1.5 Pro.
@@ -365,6 +456,19 @@ class GeminiService:
         
         # Add the system prompt string
         contents.append(SYSTEM_PROMPT)
+        
+        # Add chat history if available (for context)
+        if chat_history:
+            contents.append("\n## Previous Conversation History:\n")
+            for i, interaction in enumerate(chat_history[-5:], 1):  # Last 5 interactions for context
+                user_msg = interaction.get('user_message', '')
+                ai_resp = interaction.get('ai_response', '')
+                timestamp = interaction.get('timestamp', '')
+                
+                contents.append(f"\n### Previous Interaction {i} ({timestamp}):\n")
+                contents.append(f"**User:** {user_msg}\n")
+                contents.append(f"**AI:** {ai_resp}\n")
+            contents.append("\n---\n")
         
         # Add text inputs if any
         if text_inputs:
