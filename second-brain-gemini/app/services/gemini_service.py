@@ -9,7 +9,7 @@ from pathlib import Path
 import google.generativeai as genai
 
 from app.core.config import settings
-from app.prompts import SYSTEM_PROMPT
+from app.prompts import SYSTEM_PROMPT, AUDIO_ANALYSIS_PROMPT
 
 
 class GeminiService:
@@ -428,7 +428,8 @@ Here is structured data about the user. You MUST use this to answer personal que
         audio_paths: List[str] = None,
         image_paths: List[str] = None,
         text_inputs: List[str] = None,
-        chat_history: List[Dict[str, Any]] = None
+        chat_history: List[Dict[str, Any]] = None,
+        audio_file_metadata: List[Dict[str, str]] = None
     ) -> Dict[str, Any]:
         """
         Analyze a day's worth of inputs using Gemini 1.5 Pro.
@@ -475,8 +476,13 @@ Here is structured data about the user. You MUST use this to answer personal que
         # model.generate_content expects a single list of parts (strings and File objects)
         contents = []
         
-        # Add the system prompt string
-        contents.append(SYSTEM_PROMPT)
+        # Use AUDIO_ANALYSIS_PROMPT if we have audio files, otherwise use regular SYSTEM_PROMPT
+        if audio_paths:
+            # For audio analysis, we need structured output (transcript + summary)
+            contents.append(AUDIO_ANALYSIS_PROMPT)
+        else:
+            # Regular text/image analysis
+            contents.append(SYSTEM_PROMPT)
         
         # Add chat history if available (for context)
         if chat_history:
@@ -570,12 +576,33 @@ Here is structured data about the user. You MUST use this to answer personal que
         if response is None:
             raise RuntimeError("Failed to generate content after all retries")
         
-        # Extract JSON from response
-        try:
-            response_text = response.text.strip()
-            original_length = len(response_text)
-            print(f"📄 Response length: {original_length} characters")
+        # Extract response text
+        response_text = response.text.strip()
+        original_length = len(response_text)
+        print(f"📄 Response length: {original_length} characters")
+        
+        # Check if this is an audio analysis response (has transcript and summary sections)
+        if audio_paths and ("=== TRANSCRIPT ===" in response_text or "TRANSCRIPT" in response_text.upper()):
+            # Parse audio analysis response (transcript + summary format)
+            print("🎤 Detected audio analysis response - parsing transcript and summary...")
+            transcript, summary = self._parse_audio_response(response_text)
             
+            # Return structured audio analysis result
+            result = {
+                "type": "audio_analysis",
+                "transcript": transcript,
+                "summary": summary,
+                "audio_file_metadata": audio_file_metadata or []
+            }
+            
+            print("✅ Audio analysis complete!")
+            print(f"   Transcript length: {len(transcript)} characters")
+            print(f"   Summary length: {len(summary)} characters")
+            
+            return result
+        
+        # Regular JSON response (for non-audio analysis)
+        try:
             # Try to extract JSON if wrapped in markdown code blocks
             if "```json" in response_text:
                 response_text = response_text.split("```json")[1].split("```")[0].strip()
@@ -651,6 +678,68 @@ Here is structured data about the user. You MUST use this to answer personal que
             import traceback
             traceback.print_exc()
             raise
+    
+    def _parse_audio_response(self, response_text: str) -> tuple[str, str]:
+        """
+        Parse audio analysis response to extract transcript and summary.
+        
+        Expected format:
+        === TRANSCRIPT ===
+        [transcript text]
+        
+        === SUMMARY ===
+        [summary text]
+        
+        Args:
+            response_text: Full response text from Gemini
+        
+        Returns:
+            Tuple of (transcript, summary)
+        """
+        transcript = ""
+        summary = ""
+        
+        try:
+            # Try to find transcript section
+            if "=== TRANSCRIPT ===" in response_text:
+                parts = response_text.split("=== TRANSCRIPT ===", 1)
+                if len(parts) > 1:
+                    transcript_part = parts[1].split("===", 1)[0].strip()
+                    transcript = transcript_part
+                    
+                    # Try to find summary section
+                    if "=== SUMMARY ===" in parts[1]:
+                        summary_part = parts[1].split("=== SUMMARY ===", 1)
+                        if len(summary_part) > 1:
+                            summary = summary_part[1].strip()
+            elif "TRANSCRIPT" in response_text.upper():
+                # Try alternative format (without === markers)
+                transcript_idx = response_text.upper().find("TRANSCRIPT")
+                summary_idx = response_text.upper().find("SUMMARY")
+                
+                if transcript_idx >= 0:
+                    if summary_idx > transcript_idx:
+                        transcript = response_text[transcript_idx:summary_idx].split(":", 1)[-1].strip()
+                        summary = response_text[summary_idx:].split(":", 1)[-1].strip()
+                    else:
+                        transcript = response_text[transcript_idx:].split(":", 1)[-1].strip()
+            
+            # Fallback: if we couldn't parse, use the whole response as summary
+            if not transcript and not summary:
+                print("⚠️  Could not parse transcript/summary format, using full response as summary")
+                summary = response_text
+            elif not summary:
+                # If we have transcript but no summary, use a portion as summary
+                summary = transcript[:500] + "..." if len(transcript) > 500 else transcript
+                print("⚠️  No summary found, using transcript excerpt as summary")
+            
+        except Exception as e:
+            print(f"⚠️  Error parsing audio response: {e}")
+            # Fallback: return full response as summary
+            summary = response_text
+            transcript = ""
+        
+        return transcript, summary
     
     def cleanup_files(self):
         """Delete all uploaded files from Google's storage."""

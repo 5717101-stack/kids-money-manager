@@ -664,7 +664,8 @@ async def generate_pdf(request: Request):
 
 @app.post("/analyze")
 async def analyze_day(
-    request: Request
+    request: Request,
+    background_tasks: BackgroundTasks
 ):
     """
     Analyze a day's worth of inputs using Gemini 1.5 Pro.
@@ -722,14 +723,17 @@ async def analyze_day(
         
         print(f"[ANALYZE] Parsed text inputs: {len(text_inputs)}")
         
-        # Process audio files - use duck typing (check for read() and filename)
+        # Process audio files - upload to Drive archive first, then process with Gemini
         print(f"[ANALYZE] Processing {len(audio_files_list)} audio files...")
+        audio_file_metadata = []  # Store Drive file metadata for each audio file
+        
         for i, audio_file in enumerate(audio_files_list):
             print(f"[ANALYZE] Audio file {i+1}: type={type(audio_file)}, has read={hasattr(audio_file, 'read')}, has filename={hasattr(audio_file, 'filename')}")
             # Check if it has the methods we need (read, filename) - this works for any UploadFile-like object
             if hasattr(audio_file, 'read') and hasattr(audio_file, 'filename'):
                 print(f"[ANALYZE] ✅ Has read() and filename - treating as UploadFile")
                 print(f"[ANALYZE] Processing UploadFile: {audio_file.filename}")
+                
                 # Create temp file
                 suffix = Path(audio_file.filename).suffix if audio_file.filename else '.mp3'
                 with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp_file:
@@ -739,6 +743,25 @@ async def analyze_day(
                     temp_files.append(tmp_path)
                     audio_paths.append(tmp_path)
                     print(f"📥 Saved audio: {audio_file.filename} -> {tmp_path}")
+                
+                # Upload to Drive archive (The Vault)
+                if drive_memory_service.is_configured:
+                    try:
+                        print(f"📤 Uploading audio to Drive archive: {audio_file.filename}")
+                        archive_metadata = drive_memory_service.upload_audio_to_archive(
+                            audio_path=tmp_path,
+                            filename=audio_file.filename
+                        )
+                        if archive_metadata:
+                            audio_file_metadata.append(archive_metadata)
+                            print(f"✅ Audio archived: file_id={archive_metadata.get('file_id')}")
+                        else:
+                            print(f"⚠️  Failed to archive audio file, continuing with analysis...")
+                    except Exception as e:
+                        print(f"⚠️  Error archiving audio: {e}")
+                        import traceback
+                        traceback.print_exc()
+                        # Continue with analysis even if archiving fails
             else:
                 print(f"[ANALYZE] ⚠️  Audio file {i+1} doesn't have read() or filename")
                 print(f"[ANALYZE] ⚠️  Attributes: {[attr for attr in dir(audio_file) if not attr.startswith('_')][:10]}")
@@ -776,9 +799,42 @@ async def analyze_day(
             result = gemini_service.analyze_day(
                 audio_paths=audio_paths,
                 image_paths=image_paths,
-                text_inputs=text_inputs
+                text_inputs=text_inputs,
+                audio_file_metadata=audio_file_metadata
             )
             print(f"✅ Gemini analysis complete")
+            
+            # If we have audio files, save structured audio interaction to memory
+            if audio_paths and drive_memory_service.is_configured and result.get('type') == 'audio_analysis':
+                try:
+                    # Extract transcript and summary from result
+                    transcript = result.get('transcript', '')
+                    summary = result.get('summary', '')
+                    
+                    # Create structured audio interaction entry
+                    for i, audio_meta in enumerate(audio_file_metadata):
+                        audio_interaction = {
+                            "timestamp": datetime.utcnow().isoformat() + "Z",
+                            "type": "audio",
+                            "file_id": audio_meta.get('file_id', ''),
+                            "web_content_link": audio_meta.get('web_content_link', ''),
+                            "web_view_link": audio_meta.get('web_view_link', ''),
+                            "filename": audio_meta.get('filename', ''),
+                            "transcript": transcript if i == 0 else "",  # Use same transcript for all files in batch
+                            "summary": summary if i == 0 else "",  # Use same summary for all files in batch
+                            "speakers": ["User", "Unknown"]  # Placeholder for now
+                        }
+                        
+                        # Save to memory
+                        success = drive_memory_service.update_memory(audio_interaction, background_tasks=background_tasks)
+                        if success:
+                            print(f"✅ Saved audio interaction to memory: {audio_meta.get('filename')}")
+                        else:
+                            print(f"⚠️  Failed to save audio interaction to memory")
+                except Exception as e:
+                    print(f"⚠️  Error saving audio interaction to memory: {e}")
+                    import traceback
+                    traceback.print_exc()
             
             # Send summary via WhatsApp and SMS if configured
             try:

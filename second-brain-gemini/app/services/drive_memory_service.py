@@ -88,10 +88,145 @@ class DriveMemoryService:
             self.service = build('drive', 'v3', credentials=credentials)
             self.is_configured = True
             logger.info("✅ Drive Memory Service initialized successfully")
+            
+            # Ensure audio_archive folder exists
+            self._ensure_audio_archive_folder()
         except Exception as e:
             logger.error(f"❌ Failed to initialize Drive Memory Service: {e}")
             self.service = None
             self.is_configured = False
+    
+    def _ensure_audio_archive_folder(self) -> Optional[str]:
+        """
+        Ensure the audio_archive subfolder exists in the main memory folder.
+        Creates it if it doesn't exist.
+        
+        Returns:
+            Folder ID of audio_archive, or None if creation failed
+        """
+        if not self.is_configured or not self.service:
+            return None
+        
+        try:
+            # Check if audio_archive folder already exists
+            query = f"name = 'audio_archive' and '{self.folder_id}' in parents and mimeType = 'application/vnd.google-apps.folder' and trashed = false"
+            results = self.service.files().list(
+                q=query,
+                fields="files(id, name)"
+            ).execute()
+            
+            files = results.get('files', [])
+            if files:
+                folder_id = files[0]['id']
+                logger.info(f"✅ Audio archive folder already exists (ID: {folder_id})")
+                return folder_id
+            
+            # Create audio_archive folder
+            folder_metadata = {
+                'name': 'audio_archive',
+                'mimeType': 'application/vnd.google-apps.folder',
+                'parents': [self.folder_id]
+            }
+            
+            folder = self.service.files().create(
+                body=folder_metadata,
+                fields='id'
+            ).execute()
+            
+            folder_id = folder.get('id')
+            logger.info(f"✅ Created audio_archive folder (ID: {folder_id})")
+            return folder_id
+            
+        except Exception as e:
+            logger.error(f"❌ Error ensuring audio_archive folder: {e}")
+            return None
+    
+    def upload_audio_to_archive(
+        self,
+        audio_path: str,
+        filename: str = None
+    ) -> Optional[Dict[str, str]]:
+        """
+        Upload an audio file to the audio_archive folder in Drive.
+        
+        Args:
+            audio_path: Path to the audio file on disk
+            filename: Optional filename (uses path basename if not provided)
+        
+        Returns:
+            Dictionary with 'file_id' and 'web_content_link', or None if upload failed
+        """
+        if not self.is_configured or not self.service:
+            logger.warning("⚠️  Drive Memory Service not configured. Cannot upload audio.")
+            return None
+        
+        try:
+            # Ensure audio_archive folder exists
+            archive_folder_id = self._ensure_audio_archive_folder()
+            if not archive_folder_id:
+                logger.error("❌ Cannot upload audio: audio_archive folder not available")
+                return None
+            
+            # Get filename
+            if not filename:
+                filename = Path(audio_path).name
+            
+            # Determine MIME type from extension
+            mime_type_map = {
+                '.mp3': 'audio/mpeg',
+                '.wav': 'audio/wav',
+                '.wave': 'audio/wav',
+                '.m4a': 'audio/mp4',
+                '.aac': 'audio/aac',
+                '.ogg': 'audio/ogg',
+                '.flac': 'audio/flac',
+                '.mp4': 'audio/mp4',
+            }
+            
+            file_ext = Path(audio_path).suffix.lower()
+            mime_type = mime_type_map.get(file_ext, 'audio/mpeg')
+            
+            # Read file content
+            with open(audio_path, 'rb') as f:
+                file_content = f.read()
+            
+            # Upload to Drive
+            file_metadata = {
+                'name': filename,
+                'parents': [archive_folder_id]
+            }
+            
+            media = MediaIoBaseUpload(
+                BytesIO(file_content),
+                mimetype=mime_type,
+                resumable=True
+            )
+            
+            file = self.service.files().create(
+                body=file_metadata,
+                media_body=media,
+                fields='id,webContentLink,webViewLink'
+            ).execute()
+            
+            file_id = file.get('id')
+            web_content_link = file.get('webContentLink', '')
+            web_view_link = file.get('webViewLink', '')
+            
+            logger.info(f"✅ Uploaded audio to archive: {filename} (ID: {file_id})")
+            logger.debug(f"   Web content link: {web_content_link}")
+            
+            return {
+                'file_id': file_id,
+                'web_content_link': web_content_link,
+                'web_view_link': web_view_link,
+                'filename': filename
+            }
+            
+        except Exception as e:
+            logger.error(f"❌ Error uploading audio to archive: {e}")
+            import traceback
+            traceback.print_exc()
+            return None
     
     def _find_memory_file(self) -> Optional[str]:
         """
