@@ -33,6 +33,7 @@ class Settings(BaseSettings):
     twilio_whatsapp_to: Optional[str] = None    # Format: whatsapp:+972XXXXXXXXX
     twilio_sms_from: Optional[str] = None       # Format: +14155238886 (regular phone number)
     twilio_sms_to: Optional[str] = None         # Format: +972XXXXXXXXX (regular phone number)
+    enable_sms: bool = False                     # Enable/disable SMS sending (default: False)
     
     # Meta WhatsApp Cloud API Settings
     whatsapp_cloud_api_token: Optional[str] = None  # Meta WhatsApp API access token

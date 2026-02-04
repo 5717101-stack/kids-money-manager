@@ -566,18 +566,51 @@ async def analyze_day(
                         whatsapp_recipient = None
                         if whatsapp_provider.get_provider_name() == 'meta':
                             whatsapp_recipient = settings.whatsapp_to
-                        
-                        whatsapp_result = whatsapp_provider.send_whatsapp(formatted_message, whatsapp_recipient)
-                        results["whatsapp"] = whatsapp_result
-                        if whatsapp_result.get('success'):
-                            print(f"✅ Summary sent to WhatsApp successfully via {whatsapp_provider.get_provider_name()}")
+                            if not whatsapp_recipient:
+                                print(f"⚠️  WHATSAPP_TO not set - required for Meta provider")
+                                results["whatsapp"] = {
+                                    "success": False,
+                                    "error": "WHATSAPP_TO not configured",
+                                    "message": "Meta WhatsApp requires WHATSAPP_TO environment variable"
+                                }
+                            else:
+                                print(f"📱 Sending WhatsApp via Meta to {whatsapp_recipient}")
+                                whatsapp_result = whatsapp_provider.send_whatsapp(formatted_message, whatsapp_recipient)
+                                results["whatsapp"] = whatsapp_result
+                                if whatsapp_result.get('success'):
+                                    print(f"✅ Summary sent to WhatsApp successfully via {whatsapp_provider.get_provider_name()}")
+                                else:
+                                    print(f"⚠️  Failed to send WhatsApp: {whatsapp_result.get('error', 'Unknown error')}")
+                                    print(f"   Full error details: {whatsapp_result}")
                         else:
-                            print(f"⚠️  Failed to send WhatsApp: {whatsapp_result.get('error', 'Unknown error')}")
+                            # Twilio provider
+                            print(f"📱 Sending WhatsApp via Twilio")
+                            whatsapp_result = whatsapp_provider.send_whatsapp(formatted_message, whatsapp_recipient)
+                            results["whatsapp"] = whatsapp_result
+                            if whatsapp_result.get('success'):
+                                print(f"✅ Summary sent to WhatsApp successfully via {whatsapp_provider.get_provider_name()}")
+                            else:
+                                print(f"⚠️  Failed to send WhatsApp: {whatsapp_result.get('error', 'Unknown error')}")
                     except Exception as whatsapp_error:
                         print(f"⚠️  Error sending WhatsApp: {whatsapp_error}")
+                        import traceback
+                        traceback.print_exc()
+                        results["whatsapp"] = {
+                            "success": False,
+                            "error": str(whatsapp_error),
+                            "message": "Exception occurred while sending WhatsApp"
+                        }
+                else:
+                    print(f"⚠️  WhatsApp provider not configured")
+                    results["whatsapp"] = {
+                        "success": False,
+                        "error": "WhatsApp provider not configured",
+                        "message": "Please configure WhatsApp provider in environment variables"
+                    }
                 
                 # Send SMS via Twilio (SMS is only supported by Twilio)
-                if twilio_service.is_configured_flag and settings.twilio_sms_from:
+                # Only send SMS if explicitly enabled
+                if settings.enable_sms and twilio_service.is_configured_flag and settings.twilio_sms_from:
                     try:
                         sms_result = twilio_service.send_sms(formatted_message)
                         results["sms"] = sms_result
@@ -587,6 +620,10 @@ async def analyze_day(
                             print(f"⚠️  Failed to send SMS: {sms_result.get('error', 'Unknown error')}")
                     except Exception as sms_error:
                         print(f"⚠️  Error sending SMS: {sms_error}")
+                else:
+                    if not settings.enable_sms:
+                        print(f"ℹ️  SMS sending is disabled (ENABLE_SMS=false)")
+                    results["sms"] = {"success": False, "message": "SMS sending is disabled"}
                 
             except Exception as messaging_error:
                 print(f"⚠️  Error sending messages (non-fatal): {messaging_error}")

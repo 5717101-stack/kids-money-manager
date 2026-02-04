@@ -50,6 +50,7 @@ WHATSAPP_APP_SECRET=your_meta_app_secret
 ```bash
 PORT=8000
 DEBUG=false
+ENABLE_SMS=false  # Set to 'true' to enable SMS sending (default: false)
 ```
 
 ## Notes
