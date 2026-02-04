@@ -303,6 +303,54 @@ async def whatsapp_webhook_verify(request: Request):
     raise HTTPException(status_code=403, detail="Webhook verification failed")
 
 
+@app.get("/webhook")
+@app.post("/webhook")
+async def webhook(request: Request):
+    """
+    Handle WhatsApp Cloud API webhook for Meta.
+    GET: Webhook verification
+    POST: Incoming messages and status updates
+    """
+    if request.method == "GET":
+        # Webhook verification
+        mode = request.query_params.get("hub.mode")
+        token = request.query_params.get("hub.verify_token")
+        challenge = request.query_params.get("hub.challenge")
+        
+        verify_token = os.environ.get("WEBHOOK_VERIFY_TOKEN")
+        
+        if mode == "subscribe" and token == verify_token:
+            print(f"✅ Webhook verified successfully")
+            return int(challenge) if challenge else JSONResponse(content={"status": "verified"})
+        else:
+            print(f"❌ Webhook verification failed: mode={mode}, token_match={token == verify_token}")
+            raise HTTPException(status_code=403, detail="Webhook verification failed")
+    
+    elif request.method == "POST":
+        # Handle incoming messages and status updates
+        try:
+            payload = await request.json()
+            
+            # Print entire payload for debugging
+            print(f"\n{'='*60}")
+            print(f"📱 WhatsApp Cloud API Webhook Received")
+            print(f"{'='*60}")
+            print(f"Full Payload:")
+            import json
+            print(json.dumps(payload, indent=2))
+            print(f"{'='*60}\n")
+            
+            # Return 200 immediately (acknowledge receipt)
+            return JSONResponse(content={"status": "ok"})
+            
+        except Exception as e:
+            print(f"❌ Error processing webhook: {str(e)}")
+            import traceback
+            traceback.print_exc()
+            # Still return 200 to avoid retries
+            return JSONResponse(content={"status": "error", "message": str(e)})
+
+
 @app.post("/whatsapp")
 async def whatsapp_webhook(request: Request):
     """
