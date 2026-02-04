@@ -39,10 +39,17 @@ class IngestionService:
     
     def _get_openai_client(self):
         """Get OpenAI client for Whisper API."""
-        if self.openai_client is None:
-            if not settings.openai_api_key:
-                raise ValueError("OpenAI API key not set. Please set OPENAI_API_KEY in .env file.")
-            self.openai_client = OpenAI(api_key=settings.openai_api_key)
+        # Always check if API key changed and recreate client if needed
+        current_key = settings.openai_api_key
+        if not current_key:
+            raise ValueError("OpenAI API key not set. Please set OPENAI_API_KEY in .env file.")
+        
+        # If client exists but key changed, recreate it
+        if self.openai_client is None or (hasattr(self, '_last_api_key') and self._last_api_key != current_key):
+            self.openai_client = OpenAI(api_key=current_key)
+            self._last_api_key = current_key
+            print(f"[INGESTION] OpenAI client created/recreated with key: {current_key[:30]}...")
+        
         return self.openai_client
         return self.whisper_model
     

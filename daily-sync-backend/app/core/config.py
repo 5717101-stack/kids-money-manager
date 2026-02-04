@@ -37,6 +37,11 @@ class Settings(BaseSettings):
         if not self.mongodb_uri:
             import os
             self.mongodb_uri = os.getenv("MONGODB_URI")
+        # Also check from dotenv directly
+        if not self.mongodb_uri:
+            from dotenv import load_dotenv
+            load_dotenv(override=True)
+            self.mongodb_uri = os.getenv("MONGODB_URI")
     
     # Whisper Settings
     whisper_model: str = "base"  # tiny, base, small, medium, large (for local Whisper)
@@ -52,6 +57,20 @@ class Settings(BaseSettings):
         case_sensitive = False
         # Allow extra fields for backward compatibility
         extra = "ignore"
+        # Force reload .env file
+        env_file_override = True
+    
+    def model_post_init(self, __context):
+        """Post-init hook to ensure MONGODB_URI is loaded."""
+        import os
+        from pathlib import Path
+        # If mongodb_uri is still None, try loading from .env directly
+        if not self.mongodb_uri:
+            env_path = Path(".env")
+            if env_path.exists():
+                from dotenv import load_dotenv
+                load_dotenv(env_path, override=True)
+                self.mongodb_uri = os.getenv("MONGODB_URI")
 
 
 settings = Settings()
