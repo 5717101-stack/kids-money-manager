@@ -315,19 +315,22 @@ class GeminiService:
     def chat_with_memory(
         self,
         user_message: str,
-        chat_history: List[Dict[str, Any]] = None
+        chat_history: List[Dict[str, Any]] = None,
+        user_profile: Dict[str, Any] = None
     ) -> str:
         """
-        Chat with Gemini using conversation history.
+        Chat with Gemini using conversation history and user profile.
         
         Args:
             user_message: Current user message
             chat_history: List of previous interactions, each with 'user_message' and 'ai_response'
+            user_profile: Dictionary containing user profile data (name, family members, etc.)
         
         Returns:
             AI response text
         """
         chat_history = chat_history or []
+        user_profile = user_profile or {}
         
         # Check if service is configured
         if not self.is_configured or self.model is None:
@@ -339,8 +342,25 @@ class GeminiService:
         # Build conversation context
         contents = []
         
-        # Add system prompt
-        contents.append(SYSTEM_PROMPT)
+        # CRITICAL: Dynamically construct System Prompt with user profile
+        system_instruction = SYSTEM_PROMPT
+        
+        # Append user profile to system instructions if available
+        if user_profile:
+            user_profile_json = json.dumps(user_profile, indent=2, ensure_ascii=False)
+            system_instruction += f"""
+
+=== USER PROFILE / CONTEXT ===
+Here is structured data about the user. You MUST use this to answer personal questions accurately:
+
+{user_profile_json}
+
+**Important:** When the user asks personal questions (e.g., "Who is my son?", "What is my name?", "Tell me about my family"), you MUST reference this profile data to provide accurate answers.
+"""
+            print(f"👤 User profile injected into system prompt ({len(user_profile)} keys)")
+        
+        # Add enhanced system prompt
+        contents.append(system_instruction)
         
         # Add chat history if available
         if chat_history:

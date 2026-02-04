@@ -394,13 +394,17 @@ async def webhook(request: Request, background_tasks: BackgroundTasks):
                                         # This ensures we detect manual edits before processing the message
                                         memory = drive_memory_service.get_memory()
                                         chat_history = memory.get('chat_history', [])
+                                        user_profile = memory.get('user_profile', {})
                                         
                                         print(f"💾 Retrieved memory: {len(chat_history)} previous interactions")
+                                        if user_profile:
+                                            print(f"👤 User profile loaded: {list(user_profile.keys())}")
                                         
-                                        # Generate AI response with context
+                                        # Generate AI response with context and user profile
                                         ai_response = gemini_service.chat_with_memory(
                                             user_message=message_body,
-                                            chat_history=chat_history
+                                            chat_history=chat_history,
+                                            user_profile=user_profile
                                         )
                                         
                                         print(f"🤖 Generated AI response: {ai_response[:100]}...")
@@ -567,13 +571,17 @@ async def whatsapp_webhook(request: Request, background_tasks: BackgroundTasks):
                 # This ensures we detect manual edits before processing the message
                 memory = drive_memory_service.get_memory()
                 chat_history = memory.get('chat_history', [])
+                user_profile = memory.get('user_profile', {})
                 
                 print(f"💾 Retrieved memory: {len(chat_history)} previous interactions")
+                if user_profile:
+                    print(f"👤 User profile loaded: {list(user_profile.keys())}")
                 
-                # Generate AI response with context
+                # Generate AI response with context and user profile
                 ai_response = gemini_service.chat_with_memory(
                     user_message=message_body,
-                    chat_history=chat_history
+                    chat_history=chat_history,
+                    user_profile=user_profile
                 )
                 
                 print(f"🤖 Generated AI response: {ai_response[:100]}...")
