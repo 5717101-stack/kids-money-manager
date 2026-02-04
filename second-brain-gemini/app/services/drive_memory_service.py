@@ -324,29 +324,47 @@ class DriveMemoryService:
                 logger.warning(f"⚠️  Could not parse remote modifiedTime: {remote_modified_time_str}")
                 logger.warning("   Proceeding with download to be safe...")
         except HttpError as e:
-            logger.error(f"❌ Error fetching file metadata from Drive: {e}")
-            # Fallback: try to use cached data if available
+            logger.error(f"❌ DRIVE API ERROR fetching file metadata: {e}")
+            logger.error(f"   Error details: {e.error_details if hasattr(e, 'error_details') else 'N/A'}")
+            logger.error(f"   Status code: {e.resp.status if hasattr(e, 'resp') else 'N/A'}")
+            # Fallback: try to use cached data if available (prevent data loss)
             with self._cache_lock:
                 cached_data = self._memory_cache
             if cached_data is not None:
                 cached_memory, _, cached_file_id = cached_data
                 if cached_file_id == file_id:
-                    logger.warning("⚠️  Using cached data due to metadata fetch error")
+                    logger.warning("⚠️  Using cached data due to metadata fetch error (preventing data loss)")
                     return cached_memory.copy()
-            # No cache available, return default
-            return DEFAULT_MEMORY_STRUCTURE.copy()
+            # No cache available - RAISE exception instead of returning default
+            # Better to crash (500 Error) than to wipe the user's brain
+            error_msg = (
+                f"DRIVE API ERROR: Cannot fetch file metadata (file_id: {file_id}) and no cache available. "
+                f"Original error: {str(e)}"
+            )
+            logger.error(f"❌ CRITICAL: {error_msg}")
+            logger.error("   Raising exception to prevent data loss (better to crash than overwrite)")
+            raise RuntimeError(error_msg) from e
         except Exception as e:
             logger.error(f"❌ Unexpected error fetching file metadata: {e}")
-            # Fallback: try to use cached data if available
+            logger.error(f"   Error type: {type(e).__name__}")
+            import traceback
+            logger.error(f"   Traceback: {traceback.format_exc()}")
+            # Fallback: try to use cached data if available (prevent data loss)
             with self._cache_lock:
                 cached_data = self._memory_cache
             if cached_data is not None:
                 cached_memory, _, cached_file_id = cached_data
                 if cached_file_id == file_id:
-                    logger.warning("⚠️  Using cached data due to metadata fetch error")
+                    logger.warning("⚠️  Using cached data due to metadata fetch error (preventing data loss)")
                     return cached_memory.copy()
-            # No cache available, return default
-            return DEFAULT_MEMORY_STRUCTURE.copy()
+            # No cache available - RAISE exception instead of returning default
+            error_msg = (
+                f"Unexpected error fetching metadata (file_id: {file_id}) and no cache available. "
+                f"Original error: {str(e)}"
+            )
+            logger.error(f"❌ CRITICAL: {error_msg}")
+            logger.error("   Raising exception to prevent data loss (better to crash than overwrite)")
+            raise RuntimeError(error_msg) from e
         
         # Step 2: Compare timestamps
         with self._cache_lock:
