@@ -355,9 +355,10 @@ class GeminiService:
                 contents.append(f"**AI:** {ai_resp}\n")
         
         # Add current user message
-        contents.append("\n## Current User Message:\n")
-        contents.append(user_message)
-        contents.append("\n\nPlease provide a helpful response in Hebrew.")
+        contents.append(f"\n## Current User Message:\n{user_message}")
+        
+        # Add instruction for natural response
+        contents.append("\n\nPlease provide a natural, conversational response. Do NOT output JSON unless explicitly asked. Respond in Hebrew (or English if the user wrote in English).")
         
         print(f"💬 Chatting with Gemini (history: {len(chat_history)} entries)")
         
