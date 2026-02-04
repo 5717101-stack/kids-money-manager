@@ -470,8 +470,16 @@ class DriveMemoryService:
                 file_id = self._find_memory_file()
                 if file_id:
                     try:
+                        # Check if it's a Google Docs file
+                        file_metadata = self.service.files().get(
+                            fileId=file_id,
+                            fields='mimeType'
+                        ).execute()
+                        file_mime_type = file_metadata.get('mimeType', '')
+                        is_google_docs = file_mime_type.startswith('application/vnd.google-apps.')
+                        
                         # Try to re-fetch the existing file from Drive to rescue the profile data
-                        existing_file = self._download_file(file_id, is_google_docs_file=False)
+                        existing_file = self._download_file(file_id, is_google_docs_file=is_google_docs)
                         
                         # Merge: Keep existing user_profile, update chat_history
                         if 'user_profile' in existing_file and existing_file['user_profile']:
