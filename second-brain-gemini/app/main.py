@@ -572,7 +572,11 @@ async def webhook(request: Request, background_tasks: BackgroundTasks):
                                     except Exception as audio_error:
                                         print(f"❌ CRITICAL AUDIO ERROR: {str(audio_error)}")
                                         import traceback
+                                        print("=" * 60)
+                                        print("FULL TRACEBACK:")
+                                        print("=" * 60)
                                         traceback.print_exc()
+                                        print("=" * 60)
                                 
                                 # Process message with memory
                                 elif whatsapp_provider and message_type == "text" and message_body:
