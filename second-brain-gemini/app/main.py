@@ -11,6 +11,7 @@ from fastapi.staticfiles import StaticFiles
 from typing import Optional, List
 import tempfile
 import os
+import requests
 from pathlib import Path
 from datetime import datetime
 
