@@ -211,18 +211,30 @@ class DriveMemoryService:
                 # Ensure stream is at position 0
                 if hasattr(file_obj, 'seek'):
                     file_obj.seek(0)
-                # Get size if possible
-                if hasattr(file_obj, 'getvalue'):
-                    file_size = len(file_obj.getvalue())
-                    print(f"   Stream size: {file_size} bytes")
-                elif hasattr(file_obj, 'read'):
-                    # Read to get size, then reset
-                    content = file_obj.read()
-                    file_size = len(content)
-                    file_obj.seek(0)
-                    print(f"   Stream size: {file_size} bytes")
-                else:
+                # Get size if possible (without consuming the stream)
+                try:
+                    if hasattr(file_obj, 'getvalue'):
+                        # BytesIO.getvalue() doesn't consume the stream
+                        file_size = len(file_obj.getvalue())
+                        print(f"   Stream size: {file_size} bytes")
+                    elif hasattr(file_obj, 'read'):
+                        # Save current position
+                        current_pos = file_obj.tell() if hasattr(file_obj, 'tell') else 0
+                        # Read to get size, then reset
+                        content = file_obj.read()
+                        file_size = len(content)
+                        # Reset to beginning
+                        file_obj.seek(0)
+                        print(f"   Stream size: {file_size} bytes")
+                    else:
+                        file_size = "unknown"
+                        print(f"   Stream size: {file_size} (cannot determine)")
+                except Exception as size_error:
+                    print(f"   ⚠️  Could not determine stream size: {size_error}")
                     file_size = "unknown"
+                    # Ensure stream is at position 0
+                    if hasattr(file_obj, 'seek'):
+                        file_obj.seek(0)
                 if not filename:
                     filename = "audio_message.ogg"  # Default for WhatsApp audio
             elif audio_bytes:
