@@ -128,7 +128,7 @@ async def get_whatsapp_provider_status():
                     "input_token": token,
                     "access_token": token
                 }
-                response = requests.get(url, params=params)
+                response = requests.get(url, params=params, timeout=10)
                 if response.status_code == 200:
                     data = response.json()
                     token_data = data.get('data', {})
@@ -145,8 +145,25 @@ async def get_whatsapp_provider_status():
                             "is_long_lived": days_left > 30,
                             "is_short_lived": hours_left < 24
                         }
+                    else:
+                        meta_token_info = {
+                            "error": "No expiration date in token data",
+                            "token_data": token_data
+                        }
+                else:
+                    error_data = response.json() if response.content else {}
+                    meta_token_info = {
+                        "error": f"API returned status {response.status_code}",
+                        "message": error_data.get('error', {}).get('message', 'Unknown error')
+                    }
+            else:
+                meta_token_info = {"error": "Token not available in service"}
         except Exception as e:
-            meta_token_info = {"error": str(e)}
+            import traceback
+            meta_token_info = {
+                "error": str(e),
+                "traceback": traceback.format_exc()
+            }
     
     status = {
         "configured_provider": settings.whatsapp_provider,
