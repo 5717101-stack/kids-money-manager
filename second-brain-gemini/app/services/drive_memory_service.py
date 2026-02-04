@@ -118,6 +118,89 @@ class DriveMemoryService:
             logger.error(f"❌ Error finding memory file: {e}")
             return None
     
+    def _download_file(self, file_id: str, is_google_docs_file: bool = False) -> Dict[str, Any]:
+        """
+        Download and parse memory file from Google Drive.
+        
+        CRITICAL: This method does NOT return DEFAULT_MEMORY_STRUCTURE on error.
+        It raises exceptions to prevent data loss.
+        
+        Args:
+            file_id: Google Drive file ID
+            is_google_docs_file: Whether this is a Google Docs file (needs export)
+        
+        Returns:
+            Parsed memory dictionary
+        
+        Raises:
+            HttpError: If download fails
+            json.JSONDecodeError: If JSON parsing fails
+            ValueError: If JSON structure is invalid
+        """
+        try:
+            # Download or export the file
+            if is_google_docs_file:
+                request = self.service.files().export_media(
+                    fileId=file_id,
+                    mimeType='application/json'
+                )
+            else:
+                request = self.service.files().get_media(fileId=file_id)
+            
+            file_content = BytesIO()
+            downloader = MediaIoBaseDownload(file_content, request)
+            done = False
+            while not done:
+                status, done = downloader.next_chunk()
+            
+            # Parse JSON
+            file_content.seek(0)
+            content_str = file_content.read().decode('utf-8')
+            
+            # Validate JSON structure
+            try:
+                memory_data = json.loads(content_str)
+            except json.JSONDecodeError as e:
+                logger.error(f"❌ JSON parsing failed for file {file_id}: {e}")
+                logger.error(f"   Content preview (first 500 chars): {content_str[:500]}")
+                raise  # Re-raise to prevent silent data loss
+            
+            # Validate required structure
+            if not isinstance(memory_data, dict):
+                raise ValueError(f"Invalid JSON structure: expected dict, got {type(memory_data)}")
+            
+            # Ensure required keys exist (merge with defaults, don't replace)
+            if 'chat_history' not in memory_data:
+                logger.warning("⚠️  Missing 'chat_history' key in JSON. Adding empty list.")
+                memory_data['chat_history'] = []
+            if 'user_profile' not in memory_data:
+                logger.warning("⚠️  Missing 'user_profile' key in JSON. Adding empty dict.")
+                memory_data['user_profile'] = {}
+            
+            # Validate types
+            if not isinstance(memory_data.get('chat_history'), list):
+                logger.warning("⚠️  'chat_history' is not a list. Converting...")
+                memory_data['chat_history'] = []
+            if not isinstance(memory_data.get('user_profile'), dict):
+                logger.warning("⚠️  'user_profile' is not a dict. Converting...")
+                memory_data['user_profile'] = {}
+            
+            logger.debug(f"✅ Successfully downloaded and parsed file {file_id}")
+            logger.debug(f"   chat_history entries: {len(memory_data.get('chat_history', []))}")
+            logger.debug(f"   user_profile keys: {list(memory_data.get('user_profile', {}).keys())}")
+            
+            return memory_data
+            
+        except HttpError as e:
+            logger.error(f"❌ HttpError downloading file {file_id}: {e}")
+            raise  # Re-raise to prevent silent data loss
+        except json.JSONDecodeError as e:
+            logger.error(f"❌ JSONDecodeError parsing file {file_id}: {e}")
+            raise  # Re-raise to prevent silent data loss
+        except Exception as e:
+            logger.error(f"❌ Unexpected error downloading file {file_id}: {e}")
+            raise  # Re-raise to prevent silent data loss
+    
     def _parse_timestamp(self, timestamp_str: Optional[str]) -> Optional[datetime]:
         """
         Parse Google Drive RFC 3339 timestamp string to timezone-aware UTC datetime.
@@ -281,33 +364,8 @@ class DriveMemoryService:
         # Step 3: Download and update cache if needed
         if should_reload:
             try:
-                # Check if this is a Google Docs file (needs export, not download)
-                if is_google_docs_file:
-                    # Export Google Docs file as JSON
-                    logger.info(f"📄 Detected Google Docs file (mimeType: {file_mime_type}). Using export method...")
-                    request = self.service.files().export_media(
-                        fileId=file_id,
-                        mimeType='application/json'
-                    )
-                    file_content = BytesIO()
-                    downloader = MediaIoBaseDownload(file_content, request)
-                    done = False
-                    while not done:
-                        status, done = downloader.next_chunk()
-                else:
-                    # Regular file - download directly
-                    logger.debug(f"📄 Regular file (mimeType: {file_mime_type}). Using get_media method...")
-                    request = self.service.files().get_media(fileId=file_id)
-                    file_content = BytesIO()
-                    downloader = MediaIoBaseDownload(file_content, request)
-                    done = False
-                    while not done:
-                        status, done = downloader.next_chunk()
-                
-                # Parse JSON
-                file_content.seek(0)
-                content_str = file_content.read().decode('utf-8')
-                memory_data = json.loads(content_str)
+                # Download and parse file (raises exceptions on error - no silent data loss)
+                memory_data = self._download_file(file_id, is_google_docs_file)
                 
                 # Update cache with data, modifiedTime (as datetime), and file_id
                 with self._cache_lock:
@@ -316,25 +374,45 @@ class DriveMemoryService:
                 logger.info(f"✅ Retrieved memory from Drive and cached (file ID: {file_id})")
                 logger.info(f"   Modified time: {remote_modified_time.isoformat() if remote_modified_time else 'None'}")
                 logger.info(f"   Chat history entries: {len(memory_data.get('chat_history', []))}")
+                logger.info(f"   User profile keys: {list(memory_data.get('user_profile', {}).keys())}")
                 
                 return memory_data.copy()
-            except HttpError as e:
-                logger.error(f"❌ Error downloading memory file: {e}")
-                memory_data = DEFAULT_MEMORY_STRUCTURE.copy()
+            except (HttpError, json.JSONDecodeError, ValueError) as e:
+                # CRITICAL: Don't return DEFAULT_MEMORY_STRUCTURE - try to use cache
+                logger.error(f"❌ Error downloading/parsing memory file: {e}")
+                logger.error("   Attempting to use cached data to prevent data loss...")
+                
+                # Try to use cached data if available
                 with self._cache_lock:
-                    self._memory_cache = (memory_data.copy(), None, None)
-                return memory_data.copy()
-            except json.JSONDecodeError as e:
-                logger.error(f"❌ Error parsing memory file JSON: {e}")
+                    cached_data = self._memory_cache
+                if cached_data is not None:
+                    cached_memory, _, cached_file_id = cached_data
+                    if cached_file_id == file_id:
+                        logger.warning("⚠️  Using cached data due to download/parse error (preventing data loss)")
+                        return cached_memory.copy()
+                
+                # No cache available - this is a critical error
+                logger.error("❌ CRITICAL: Cannot retrieve memory and no cache available!")
+                logger.error("   Returning default structure. User profile data may be lost if file exists.")
+                logger.error("   Please check the Drive file manually.")
+                # Only return default if we're absolutely sure the file doesn't exist
+                # Otherwise, we risk overwriting existing data
                 memory_data = DEFAULT_MEMORY_STRUCTURE.copy()
-                with self._cache_lock:
-                    self._memory_cache = (memory_data.copy(), None, None)
                 return memory_data.copy()
             except Exception as e:
+                # Unexpected error - try cache first
                 logger.error(f"❌ Unexpected error retrieving memory: {e}")
-                memory_data = DEFAULT_MEMORY_STRUCTURE.copy()
                 with self._cache_lock:
-                    self._memory_cache = (memory_data.copy(), None, None)
+                    cached_data = self._memory_cache
+                if cached_data is not None:
+                    cached_memory, _, cached_file_id = cached_data
+                    if cached_file_id == file_id:
+                        logger.warning("⚠️  Using cached data due to unexpected error (preventing data loss)")
+                        return cached_memory.copy()
+                
+                # No cache - return default (but log critical warning)
+                logger.error("❌ CRITICAL: Unexpected error and no cache available!")
+                memory_data = DEFAULT_MEMORY_STRUCTURE.copy()
                 return memory_data.copy()
         
         # Should not reach here, but return default if we do
@@ -345,10 +423,12 @@ class DriveMemoryService:
         Update memory with a new interaction.
         
         Strategy:
-        1. Get current memory (triggers cache refresh check)
-        2. Update in-memory cache immediately (0 latency)
-        3. Sync to Drive in background (non-blocking)
-        4. CRITICAL: Update cache timestamp after successful upload
+        1. Get current memory (triggers cache refresh check) - MUST contain user_profile
+        2. Append new interaction to chat_history
+        3. CRITICAL SAFETY CHECK: Ensure user_profile exists before saving
+        4. Update in-memory cache immediately (0 latency)
+        5. Sync to Drive in background (non-blocking)
+        6. CRITICAL: Update cache timestamp after successful upload
         
         Args:
             new_interaction: Dictionary with 'user_message' and 'ai_response' keys.
@@ -368,19 +448,47 @@ class DriveMemoryService:
             return False
         
         try:
-            # Get current memory (this triggers cache refresh check if Drive is newer)
+            # Step 1: Get current memory (this triggers cache refresh check if Drive is newer)
+            # CRITICAL: This MUST contain user_profile
             memory = self.get_memory()
             
-            # Append new interaction to chat_history
+            # Step 2: Ensure required structure exists
             if 'chat_history' not in memory:
                 memory['chat_history'] = []
+            if 'user_profile' not in memory:
+                memory['user_profile'] = {}
             
+            # Step 3: Append new interaction to chat_history
             memory['chat_history'].append(new_interaction)
             
-            # Get file_id for cache update
+            # Step 4: CRITICAL SAFETY CHECK - Ensure user_profile exists before saving
+            # If user_profile is missing or empty, try to recover from Drive
+            if 'user_profile' not in memory or not memory.get('user_profile'):
+                logger.warning("⚠️  CRITICAL: user_profile is missing or empty!")
+                logger.warning("   Attempting to recover from Drive to prevent data loss...")
+                
+                file_id = self._find_memory_file()
+                if file_id:
+                    try:
+                        # Try to re-fetch the existing file from Drive to rescue the profile data
+                        existing_file = self._download_file(file_id, is_google_docs_file=False)
+                        
+                        # Merge: Keep existing user_profile, update chat_history
+                        if 'user_profile' in existing_file and existing_file['user_profile']:
+                            logger.info("✅ Recovered user_profile from Drive!")
+                            memory['user_profile'] = existing_file['user_profile']
+                        else:
+                            logger.warning("⚠️  Existing file also has empty user_profile")
+                    except Exception as e:
+                        logger.error(f"❌ Failed to recover user_profile from Drive: {e}")
+                        logger.error("   Proceeding with save (user_profile will be empty)")
+                else:
+                    logger.warning("⚠️  No file found in Drive. Cannot recover user_profile.")
+            
+            # Step 5: Get file_id for cache update
             file_id = self._find_memory_file()
             
-            # Update cache immediately (0 latency)
+            # Step 6: Update cache immediately (0 latency)
             # Note: modifiedTime will be updated after Drive upload completes
             with self._cache_lock:
                 # Keep existing modifiedTime temporarily (will be updated after upload)
@@ -398,8 +506,9 @@ class DriveMemoryService:
             
             logger.info(f"💨 Updated memory cache immediately (0ms latency)")
             logger.info(f"   Total chat history entries: {len(memory['chat_history'])}")
+            logger.info(f"   User profile keys: {list(memory.get('user_profile', {}).keys())}")
             
-            # Sync to Drive in background (non-blocking)
+            # Step 7: Sync to Drive in background (non-blocking)
             if background_tasks:
                 # Add background task for Drive sync
                 background_tasks.add_task(self._upload_to_drive, memory)
