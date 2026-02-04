@@ -500,6 +500,19 @@ class DriveMemoryService:
             # Step 5: Get file_id for cache update
             file_id = self._find_memory_file()
             
+            # STRICT SAFETY LOCK: Final check before ANY upload logic
+            # This is the last line of defense - if we reach here without user_profile, abort
+            if "user_profile" not in memory or not memory.get("user_profile"):
+                error_msg = (
+                    "CRITICAL ERROR: Attempted to save memory without 'user_profile'. "
+                    "Safety Lock engaged - aborting to prevent data loss."
+                )
+                logger.error(f"❌ {error_msg}")
+                logger.error(f"   Memory keys: {list(memory.keys())}")
+                logger.error(f"   user_profile value: {memory.get('user_profile', 'MISSING')}")
+                print(f"❌ {error_msg}")  # Also print to stdout for visibility
+                raise ValueError("Safety Lock Engaged: Cannot overwrite Drive file because user_profile is missing.")
+            
             # Step 6: Update cache immediately (0 latency)
             # Note: modifiedTime will be updated after Drive upload completes
             with self._cache_lock:
