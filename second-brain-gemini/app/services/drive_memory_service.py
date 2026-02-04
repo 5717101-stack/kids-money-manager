@@ -30,7 +30,8 @@ class DriveMemoryService:
     """Service for managing persistent memory in Google Drive with in-memory caching."""
     
     # Class-level in-memory cache
-    _memory_cache: Optional[Dict[str, Any]] = None
+    # Structure: (memory_data: Dict, modified_time: str, file_id: str)
+    _memory_cache: Optional[tuple] = None
     _cache_lock = Lock()  # Thread-safe cache access
     
     def __init__(self, folder_id: Optional[str] = None):
@@ -117,26 +118,20 @@ class DriveMemoryService:
     
     def get_memory(self) -> Dict[str, Any]:
         """
-        Retrieve memory from in-memory cache (fast) or Google Drive (first time).
+        Retrieve memory with Smart Cache (Stale-While-Revalidate).
+        
+        Strategy:
+        1. If cache exists, do lightweight check of Drive modifiedTime
+        2. If Drive is newer, download and update cache
+        3. If timestamps match, return cached data (fast path)
         
         Returns:
             Memory dictionary with chat_history and user_profile.
             Returns default structure if file doesn't exist.
         """
-        # Check cache first (0 latency)
-        with self._cache_lock:
-            if self._memory_cache is not None:
-                logger.debug(f"💨 Retrieved memory from cache (0ms latency)")
-                logger.debug(f"   Chat history entries: {len(self._memory_cache.get('chat_history', []))}")
-                return self._memory_cache.copy()
-        
-        # Cache miss - fetch from Drive
         if not self.is_configured or not self.service:
             logger.warning("⚠️  Drive Memory Service not configured. Returning empty memory.")
             memory_data = DEFAULT_MEMORY_STRUCTURE.copy()
-            # Cache the default structure
-            with self._cache_lock:
-                self._memory_cache = memory_data
             return memory_data.copy()
         
         file_id = self._find_memory_file()
@@ -144,12 +139,54 @@ class DriveMemoryService:
         if not file_id:
             logger.info(f"📝 Memory file '{MEMORY_FILE_NAME}' not found. Returning empty memory.")
             memory_data = DEFAULT_MEMORY_STRUCTURE.copy()
-            # Cache the default structure
+            # Cache the default structure (no file_id, no modifiedTime)
             with self._cache_lock:
-                self._memory_cache = memory_data
+                self._memory_cache = (memory_data.copy(), None, None)
             return memory_data.copy()
         
+        # Check cache and compare with Drive modifiedTime
+        with self._cache_lock:
+            cached_data = self._memory_cache
+        
+        if cached_data is not None:
+            cached_memory, cached_modified_time, cached_file_id = cached_data
+            
+            # If file_id matches, check if Drive file is newer
+            if cached_file_id == file_id:
+                try:
+                    # Lightweight check: get only modifiedTime from Drive
+                    drive_file = self.service.files().get(
+                        fileId=file_id,
+                        fields='modifiedTime'
+                    ).execute()
+                    
+                    drive_modified_time = drive_file.get('modifiedTime')
+                    
+                    # If timestamps match, return cached data (fast path)
+                    if drive_modified_time == cached_modified_time:
+                        logger.debug(f"💨 Retrieved memory from cache (0ms latency, timestamps match)")
+                        logger.debug(f"   Chat history entries: {len(cached_memory.get('chat_history', []))}")
+                        return cached_memory.copy()
+                    
+                    # Drive is newer - need to reload
+                    logger.info(f"🔄 Drive file is newer (cache: {cached_modified_time}, drive: {drive_modified_time})")
+                    logger.info(f"   Reloading from Drive to sync with manual edits...")
+                except HttpError as e:
+                    logger.warning(f"⚠️  Error checking Drive modifiedTime: {e}. Using cached data.")
+                    return cached_memory.copy()
+                except Exception as e:
+                    logger.warning(f"⚠️  Unexpected error checking Drive modifiedTime: {e}. Using cached data.")
+                    return cached_memory.copy()
+        
+        # Cache miss or Drive is newer - fetch from Drive
         try:
+            # Get file metadata (including modifiedTime)
+            drive_file = self.service.files().get(
+                fileId=file_id,
+                fields='modifiedTime'
+            ).execute()
+            drive_modified_time = drive_file.get('modifiedTime')
+            
             # Download the file
             request = self.service.files().get_media(fileId=file_id)
             file_content = BytesIO()
@@ -163,11 +200,12 @@ class DriveMemoryService:
             content_str = file_content.read().decode('utf-8')
             memory_data = json.loads(content_str)
             
-            # Populate cache
+            # Populate cache with data, modifiedTime, and file_id
             with self._cache_lock:
-                self._memory_cache = memory_data
+                self._memory_cache = (memory_data.copy(), drive_modified_time, file_id)
             
             logger.info(f"✅ Retrieved memory from Drive and cached (file ID: {file_id})")
+            logger.info(f"   Modified time: {drive_modified_time}")
             logger.info(f"   Chat history entries: {len(memory_data.get('chat_history', []))}")
             
             return memory_data.copy()
@@ -175,19 +213,19 @@ class DriveMemoryService:
             logger.error(f"❌ Error downloading memory file: {e}")
             memory_data = DEFAULT_MEMORY_STRUCTURE.copy()
             with self._cache_lock:
-                self._memory_cache = memory_data
+                self._memory_cache = (memory_data.copy(), None, None)
             return memory_data.copy()
         except json.JSONDecodeError as e:
             logger.error(f"❌ Error parsing memory file JSON: {e}")
             memory_data = DEFAULT_MEMORY_STRUCTURE.copy()
             with self._cache_lock:
-                self._memory_cache = memory_data
+                self._memory_cache = (memory_data.copy(), None, None)
             return memory_data.copy()
         except Exception as e:
             logger.error(f"❌ Unexpected error retrieving memory: {e}")
             memory_data = DEFAULT_MEMORY_STRUCTURE.copy()
             with self._cache_lock:
-                self._memory_cache = memory_data
+                self._memory_cache = (memory_data.copy(), None, None)
             return memory_data.copy()
     
     def update_memory(self, new_interaction: Dict[str, Any], background_tasks=None) -> bool:
@@ -226,8 +264,21 @@ class DriveMemoryService:
             memory['chat_history'].append(new_interaction)
             
             # Update cache immediately (0 latency)
+            # Note: modifiedTime will be updated after Drive upload completes
+            file_id = self._find_memory_file()
             with self._cache_lock:
-                self._memory_cache = memory.copy()
+                # Keep existing modifiedTime if available, will be updated after upload
+                if self._memory_cache is not None:
+                    _, cached_modified_time, cached_file_id = self._memory_cache
+                    if cached_file_id == file_id:
+                        # Keep the existing modifiedTime temporarily (will be updated after upload)
+                        self._memory_cache = (memory.copy(), cached_modified_time, file_id)
+                    else:
+                        # New file or file_id changed
+                        self._memory_cache = (memory.copy(), None, file_id)
+                else:
+                    # No cache yet
+                    self._memory_cache = (memory.copy(), None, file_id)
             
             logger.info(f"💨 Updated memory cache immediately (0ms latency)")
             logger.info(f"   Total chat history entries: {len(memory['chat_history'])}")
@@ -253,6 +304,7 @@ class DriveMemoryService:
         """
         Internal method to upload memory to Google Drive.
         Called in background task for async sync.
+        Updates cache with new modifiedTime after successful upload.
         
         Args:
             memory: Memory dictionary to upload
@@ -279,12 +331,21 @@ class DriveMemoryService:
                     resumable=False
                 )
                 
-                self.service.files().update(
+                # Update file and get new modifiedTime
+                updated_file = self.service.files().update(
                     fileId=file_id,
-                    media_body=media
+                    media_body=media,
+                    fields='modifiedTime'
                 ).execute()
                 
+                new_modified_time = updated_file.get('modifiedTime')
+                
+                # Update cache with new modifiedTime
+                with self._cache_lock:
+                    self._memory_cache = (memory.copy(), new_modified_time, file_id)
+                
                 logger.info(f"✅ Synced memory to Drive (file ID: {file_id})")
+                logger.debug(f"   Updated cache with new modifiedTime: {new_modified_time}")
             else:
                 # Create new file
                 file_metadata = {
@@ -301,10 +362,18 @@ class DriveMemoryService:
                 file = self.service.files().create(
                     body=file_metadata,
                     media_body=media,
-                    fields='id'
+                    fields='id,modifiedTime'
                 ).execute()
                 
-                logger.info(f"✅ Created new memory file in Drive (file ID: {file['id']})")
+                new_file_id = file['id']
+                new_modified_time = file.get('modifiedTime')
+                
+                # Update cache with new file_id and modifiedTime
+                with self._cache_lock:
+                    self._memory_cache = (memory.copy(), new_modified_time, new_file_id)
+                
+                logger.info(f"✅ Created new memory file in Drive (file ID: {new_file_id})")
+                logger.debug(f"   Updated cache with modifiedTime: {new_modified_time}")
             
             return True
             
@@ -334,7 +403,7 @@ class DriveMemoryService:
         try:
             # Clear cache
             with self._cache_lock:
-                self._memory_cache = DEFAULT_MEMORY_STRUCTURE.copy()
+                self._memory_cache = (DEFAULT_MEMORY_STRUCTURE.copy(), None, None)
             
             file_id = self._find_memory_file()
             if file_id:
