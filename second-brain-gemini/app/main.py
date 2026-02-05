@@ -418,126 +418,106 @@ async def webhook(request: Request, background_tasks: BackgroundTasks):
                             phone_number_id = metadata.get("phone_number_id")
                             
                             for message in messages:
-                                try:
-                                    from_number = message.get("from")
-                                    message_id = message.get("id")
-                                    message_type = message.get("type")
-                                    timestamp = message.get("timestamp")
+                                from_number = message.get("from")
+                                message_body_text = message.get("text", {}).get("body", "")
+                                message_id = message.get("id")
+                                message_type = message.get("type")
+                                timestamp = message.get("timestamp")
+                                
+                                # STRICT REPLY INTERCEPTOR: Check for voice imprinting reply BEFORE any other processing
+                                context = message.get("context", {})
+                                replied_message_id = context.get("id") if context else None
+                                
+                                print(f"📨 Processing Incoming Message:")
+                                print(f"   From: {from_number}")
+                                print(f"   Message: {message_body_text}")
+                                print(f"   Message ID: {message_id}")
+                                print(f"   Type: {message_type}")
+                                print(f"   Timestamp: {timestamp}")
+                                print(f"   Context: {context}")
+                                print(f"   Replied to Message ID: {replied_message_id}")
+                                print(f"   Pending identifications: {list(pending_identifications.keys())}")
+                                
+                                # VOICE IMPRINTING: Strict Reply Interceptor - Check BEFORE idempotency check
+                                if replied_message_id and replied_message_id in pending_identifications:
+                                    print(f"🎤 STRICT REPLY INTERCEPTOR: Detected reply to voice identification message!")
+                                    print(f"   Replying to message ID: {replied_message_id}")
                                     
-                                    # SAFE EXTRACTION: Extract message body text with error handling
-                                    message_body_text = ""
-                                    try:
-                                        if message_type == "text" and "text" in message:
-                                            message_body_text = message.get("text", {}).get("body", "")
-                                    except Exception as text_error:
-                                        print(f"⚠️  Error extracting message text: {text_error}")
+                                    # This is a reply to a speaker identification request
+                                    file_path = pending_identifications[replied_message_id]
+                                    person_name = message_body_text.strip()
                                     
-                                    # SAFE EXTRACTION: Extract context with error handling
-                                    context = None
-                                    replied_message_id = None
-                                    try:
-                                        if "context" in message:
-                                            context = message.get("context", {})
-                                            replied_message_id = context.get("id") if context else None
-                                    except Exception as context_error:
-                                        print(f"⚠️  Error extracting context: {context_error}")
+                                    print(f"🎤 Voice Imprinting: User identified speaker as '{person_name}'")
+                                    print(f"   Audio file path: {file_path}")
                                     
-                                    print(f"📨 Processing Incoming Message:")
-                                    print(f"   From: {from_number}")
-                                    print(f"   Message: {message_body_text}")
-                                    print(f"   Message ID: {message_id}")
-                                    print(f"   Type: {message_type}")
-                                    print(f"   Timestamp: {timestamp}")
-                                    print(f"   Context: {context}")
-                                    print(f"   Replied to Message ID: {replied_message_id}")
-                                    print(f"   Pending identifications: {list(pending_identifications.keys())}")
-                                    
-                                    # VOICE IMPRINTING: Strict Reply Interceptor - Check BEFORE idempotency check
-                                    if message_type == "text" and replied_message_id and replied_message_id in pending_identifications:
-                                        try:
-                                            print(f"🎤 STRICT REPLY INTERCEPTOR: Detected reply to voice identification message!")
-                                            print(f"   Replying to message ID: {replied_message_id}")
-                                            
-                                            # This is a reply to a speaker identification request
-                                            file_path = pending_identifications[replied_message_id]
-                                            person_name = message_body_text.strip()
-                                            
-                                            print(f"🎤 Voice Imprinting: User identified speaker as '{person_name}'")
-                                            print(f"   Audio file path: {file_path}")
-                                            
-                                            # Mark message as processed to prevent duplicate processing
-                                            mark_message_processed(message_id)
-                                            
-                                            # Check if file still exists (might have been cleaned up)
-                                            if os.path.exists(file_path):
-                                                # Upload voice signature to Drive
-                                                file_id = drive_memory_service.upload_voice_signature(
-                                                    file_path=file_path,
-                                                    person_name=person_name
-                                                )
-                                                
-                                                if file_id:
-                                                    # Send confirmation message
-                                                    confirmation = f"✅ הבנתי! שמרתי את חתימת הקול של *{person_name}*. בפעם הבאה אזהה אותם אוטומטית."
-                                                    whatsapp_provider.send_whatsapp(
-                                                        message=confirmation,
-                                                        to=f"+{from_number}"
-                                                    )
-                                                    print(f"✅ Voice signature saved for '{person_name}' (File ID: {file_id})")
-                                                else:
-                                                    print(f"⚠️  Failed to upload voice signature for '{person_name}'")
-                                                    whatsapp_provider.send_whatsapp(
-                                                        message="⚠️  שגיאה בשמירת הקול. נסה שוב.",
-                                                        to=f"+{from_number}"
-                                                    )
-                                                
-                                                # Cleanup file after successful upload
-                                                try:
-                                                    os.unlink(file_path)
-                                                    print(f"🗑️  Cleaned up slice file after voice imprinting: {file_path}")
-                                                except Exception as cleanup_error:
-                                                    print(f"⚠️  Failed to cleanup slice file: {cleanup_error}")
-                                                
-                                                # Remove from pending identifications
-                                                del pending_identifications[replied_message_id]
-                                                print(f"✅ Removed {replied_message_id} from pending_identifications")
-                                            else:
-                                                print(f"⚠️  Audio file no longer exists: {file_path}")
-                                                print(f"   File may have been cleaned up before user replied")
-                                                # Remove from pending anyway
-                                                del pending_identifications[replied_message_id]
-                                            
-                                            # CRITICAL: STOP PROCESSING here. Do not call Gemini.
-                                            print(f"🛑 Voice imprinting complete - skipping Gemini processing")
-                                            continue
-                                        except Exception as voice_imprint_error:
-                                            print(f"❌ Error in voice imprinting interceptor: {voice_imprint_error}")
-                                            import traceback
-                                            traceback.print_exc()
-                                            # Continue to normal processing if voice imprinting fails
-                                    
-                                    # IDEMPOTENCY CHECK: Prevent duplicate processing due to webhook retries
-                                    if is_message_processed(message_id):
-                                        print(f"⚠️  Duplicate message received (ID: {message_id}). Ignoring.")
-                                        continue  # Skip processing, but return 200 OK to WhatsApp
-                                    
-                                    # Mark message as processed BEFORE processing (prevents race conditions)
+                                    # Mark message as processed to prevent duplicate processing
                                     mark_message_processed(message_id)
                                     
-                                    # Handle audio messages
-                                    if message_type == "audio":
-                                            try:
-                                                print("🎤 Audio message detected - starting processing...")
-                                                
-                                                # Get audio media info from message
-                                                audio_data = message.get("audio", {})
-                                                media_id = audio_data.get("id")
-                                                
-                                                if not media_id:
-                                                    print("❌ CRITICAL AUDIO ERROR: No media ID found in audio message")
-                                                    continue
-                                                
-                                                print(f"📥 Media ID: {media_id}")
+                                    # Check if file still exists (might have been cleaned up)
+                                    if os.path.exists(file_path):
+                                        # Upload voice signature to Drive
+                                        file_id = drive_memory_service.upload_voice_signature(
+                                            file_path=file_path,
+                                            person_name=person_name
+                                        )
+                                        
+                                        if file_id:
+                                            # Send confirmation message
+                                            confirmation = f"✅ הבנתי! שמרתי את חתימת הקול של *{person_name}*. בפעם הבאה אזהה אותם אוטומטית."
+                                            whatsapp_provider.send_whatsapp(
+                                                message=confirmation,
+                                                to=f"+{from_number}"
+                                            )
+                                            print(f"✅ Voice signature saved for '{person_name}' (File ID: {file_id})")
+                                        else:
+                                            print(f"⚠️  Failed to upload voice signature for '{person_name}'")
+                                            whatsapp_provider.send_whatsapp(
+                                                message="⚠️  שגיאה בשמירת הקול. נסה שוב.",
+                                                to=f"+{from_number}"
+                                            )
+                                        
+                                        # Cleanup file after successful upload
+                                        try:
+                                            os.unlink(file_path)
+                                            print(f"🗑️  Cleaned up slice file after voice imprinting: {file_path}")
+                                        except Exception as cleanup_error:
+                                            print(f"⚠️  Failed to cleanup slice file: {cleanup_error}")
+                                        
+                                        # Remove from pending identifications
+                                        del pending_identifications[replied_message_id]
+                                        print(f"✅ Removed {replied_message_id} from pending_identifications")
+                                    else:
+                                        print(f"⚠️  Audio file no longer exists: {file_path}")
+                                        print(f"   File may have been cleaned up before user replied")
+                                        # Remove from pending anyway
+                                        del pending_identifications[replied_message_id]
+                                    
+                                    # CRITICAL: STOP PROCESSING here. Do not call Gemini.
+                                    print(f"🛑 Voice imprinting complete - skipping Gemini processing")
+                                    continue
+                                
+                                # IDEMPOTENCY CHECK: Prevent duplicate processing due to webhook retries
+                                if is_message_processed(message_id):
+                                    print(f"⚠️  Duplicate message received (ID: {message_id}). Ignoring.")
+                                    continue  # Skip processing, but return 200 OK to WhatsApp
+                                
+                                # Mark message as processed BEFORE processing (prevents race conditions)
+                                mark_message_processed(message_id)
+                                
+                                # Handle audio messages
+                                if message_type == "audio":
+                                    try:
+                                        print("🎤 Audio message detected - starting processing...")
+                                        
+                                        # Get audio media info from message
+                                        audio_data = message.get("audio", {})
+                                        media_id = audio_data.get("id")
+                                        
+                                        if not media_id:
+                                            print("❌ CRITICAL AUDIO ERROR: No media ID found in audio message")
+                                            continue
+                                        
+                                        print(f"📥 Media ID: {media_id}")
                                         
                                             # Get WhatsApp API token (Meta)
                                                 from app.services.meta_whatsapp_service import meta_whatsapp_service
@@ -641,6 +621,7 @@ async def webhook(request: Request, background_tasks: BackgroundTasks):
                                                         if end > start and start >= 0:
                                                             valid_segments.append(seg)
                                                         else:
+<<<<<<< HEAD
                                                             print(f"⚠️  Skipping invalid segment: start={start}, end={end} (end must be > start, start >= 0)")
                                                     else:
                                                         print(f"⚠️  Skipping segment with missing/invalid timestamps: start={start}, end={end}")
@@ -807,35 +788,25 @@ async def webhook(request: Request, background_tasks: BackgroundTasks):
                                                                 )
                                                                 
                                                                 if audio_result.get('success'):
-                                                                    # SAFE ID EXTRACTION: Wrap in try/except to prevent crashes
-                                                                    try:
-                                                                        # IMPORTANT: User replies to the CAPTION message, not the audio message
-                                                                        caption_msg_id = audio_result.get('caption_message_id')
-                                                                        audio_msg_id = audio_result.get('wam_id') or audio_result.get('message_id')
-                                                                        
-                                                                        # Use caption message ID if available (user replies to caption), otherwise use audio message ID
-                                                                        sent_msg_id = caption_msg_id or audio_msg_id
-                                                                        
-                                                                        print(f"✅ Sent audio slice to user for speaker identification")
-                                                                        print(f"   Audio Message ID: {audio_msg_id}")
-                                                                        print(f"   Caption Message ID: {caption_msg_id}")
-                                                                        print(f"   Tracking Message ID (wam_id): {sent_msg_id}")
-                                                                        
-                                                                        # Safety check before accessing keys
-                                                                        if isinstance(audio_result, dict) and sent_msg_id:
-                                                                            # Store message_id -> file_path mapping for voice imprinting
-                                                                            pending_identifications[sent_msg_id] = slice_path
-                                                                            print(f"📝 Stored pending identification: {sent_msg_id} -> {slice_path}")
-                                                                            print(f"✅ State Saved: Waiting for name for ID {sent_msg_id}")
-                                                                        else:
-                                                                            print(f"⚠️  Warning: Could not extract valid ID from WhatsApp response")
-                                                                            print(f"   Response type: {type(audio_result)}")
-                                                                            print(f"   Response keys: {audio_result.keys() if isinstance(audio_result, dict) else 'N/A'}")
-                                                                    except Exception as state_error:
-                                                                        print(f"❌ Error saving state: {state_error}")
-                                                                        import traceback
-                                                                        traceback.print_exc()
-                                                                        # Do NOT raise/crash. Continue processing.
+                                                                    # IMPORTANT: User replies to the CAPTION message, not the audio message
+                                                                    # So we need to track the caption_message_id if it exists
+                                                                    caption_msg_id = audio_result.get('caption_message_id')
+                                                                    audio_msg_id = audio_result.get('wam_id') or audio_result.get('message_id')
+                                                                    
+                                                                    # Use caption message ID if available (user replies to caption), otherwise use audio message ID
+                                                                    sent_msg_id = caption_msg_id or audio_msg_id
+                                                                    
+                                                                    print(f"✅ Sent audio slice to user for speaker identification")
+                                                                    print(f"   Audio Message ID: {audio_msg_id}")
+                                                                    print(f"   Caption Message ID: {caption_msg_id}")
+                                                                    print(f"   Tracking Message ID (wam_id): {sent_msg_id}")
+                                                                    
+                                                                    # Store message_id -> file_path mapping for voice imprinting
+                                                                    # User will reply to the caption message, so we track that ID
+                                                                    if sent_msg_id:
+                                                                        pending_identifications[sent_msg_id] = slice_path
+                                                                        print(f"📝 Stored pending identification: {sent_msg_id} -> {slice_path}")
+                                                                        print(f"   User will reply to this message ID to identify the speaker")
                                                                     
                                                                     # Mark this speaker as processed - we've sent their sample
                                                                     processed_speakers.add(speaker)
@@ -1035,16 +1006,6 @@ async def webhook(request: Request, background_tasks: BackgroundTasks):
                                             )
                                         except:
                                             pass
-                                except Exception as message_error:
-                                    # CATCH-ALL ERROR HANDLER: Ensure server returns 200 OK even if processing fails
-                                    print(f"❌ CRITICAL ERROR processing message: {message_error}")
-                                    import traceback
-                                    print("=" * 60)
-                                    print("FULL TRACEBACK:")
-                                    print("=" * 60)
-                                    traceback.print_exc()
-                                    print("=" * 60)
-                                    # Continue to next message - don't crash the entire webhook
                         
                         # Handle message status updates
                         elif field == "messages" and "statuses" in value:
