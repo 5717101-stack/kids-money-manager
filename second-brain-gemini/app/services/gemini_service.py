@@ -611,9 +611,9 @@ You are provided with a main audio file and {len(reference_voice_files)} referen
             try:
                 print(f"🤖 Attempt {attempt + 1}/{max_retries}: Calling model.generate_content...")
                 # Increase timeout for large files (default is 60s, we need more for audio processing)
-                # Use generation_config to set timeout
+                # Use generation_config with maximum output tokens for long audio files
                 generation_config = {
-                    'max_output_tokens': 8192,
+                    'max_output_tokens': 65536,  # Maximum for Gemini 1.5 Pro (allows long transcripts)
                 }
                 response = self.model.generate_content(
                     contents,
@@ -663,17 +663,30 @@ You are provided with a main audio file and {len(reference_voice_files)} referen
                 if hasattr(feedback, 'block_reason') and feedback.block_reason:
                     raise RuntimeError(f"Gemini blocked the request: {feedback.block_reason}")
             
-            # Check candidates for finish reason
+            # Check candidates for finish reason and try to extract partial content
             if hasattr(response, 'candidates') and response.candidates:
                 candidate = response.candidates[0]
-                if hasattr(candidate, 'finish_reason'):
-                    finish_reason = candidate.finish_reason
-                    print(f"   Finish reason: {finish_reason}")
-                    if str(finish_reason) != "STOP":
-                        raise RuntimeError(f"Gemini response incomplete: {finish_reason}")
-            
-            # If we can't get text, raise the original error
-            raise RuntimeError(f"Failed to extract text from Gemini response: {e}")
+                finish_reason = getattr(candidate, 'finish_reason', None)
+                print(f"   Finish reason: {finish_reason}")
+                
+                # Try to extract text from parts even if response is incomplete
+                if hasattr(candidate, 'content') and hasattr(candidate.content, 'parts'):
+                    parts = candidate.content.parts
+                    if parts:
+                        partial_text = ''.join(part.text for part in parts if hasattr(part, 'text'))
+                        if partial_text.strip():
+                            print(f"⚠️  Using partial response ({len(partial_text)} chars) - finish_reason: {finish_reason}")
+                            response_text = partial_text.strip()
+                            # Don't raise error - use the partial content
+                        else:
+                            raise RuntimeError(f"Gemini response incomplete with no usable content: {finish_reason}")
+                    else:
+                        raise RuntimeError(f"Gemini response has no parts: {finish_reason}")
+                else:
+                    raise RuntimeError(f"Gemini response incomplete: {finish_reason}")
+            else:
+                # If we can't get text, raise the original error
+                raise RuntimeError(f"Failed to extract text from Gemini response: {e}")
         
         original_length = len(response_text)
         print(f"📄 Response length: {original_length} characters")
