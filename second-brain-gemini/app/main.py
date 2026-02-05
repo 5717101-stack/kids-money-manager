@@ -631,11 +631,20 @@ async def webhook(request: Request, background_tasks: BackgroundTasks):
                                                             'text': segment.get('text', '')
                                                         })
                                                         
-                                                        # Slice audio (max 5 seconds, minimum 1 second)
+                                                        # Calculate actual segment duration
                                                         segment_duration = end_time - start_time
-                                                        slice_duration = min(5.0, max(1.0, segment_duration))  # At least 1 second
+                                                        
+                                                        # CRITICAL: Only send segments that are at least 0.5 seconds
+                                                        # We need actual audio content from the speaker, not empty slices
+                                                        if segment_duration < 0.5:
+                                                            print(f"⚠️  Segment too short ({segment_duration:.2f}s) - need at least 0.5s for speaker identification. Skipping.")
+                                                            continue
+                                                        
+                                                        # Slice audio: take the actual segment (up to 5 seconds max)
+                                                        # IMPORTANT: Use the ACTUAL segment times, don't add fake duration
+                                                        actual_slice_duration = min(5.0, segment_duration)  # Max 5 seconds, but use actual duration
                                                         slice_start_ms = int(start_time * 1000)
-                                                        slice_end_ms = int((start_time + slice_duration) * 1000)
+                                                        slice_end_ms = int((start_time + actual_slice_duration) * 1000)
                                                         
                                                         # Ensure slice doesn't exceed audio bounds
                                                         audio_length_ms = len(audio_segment)
@@ -645,18 +654,38 @@ async def webhook(request: Request, background_tasks: BackgroundTasks):
                                                             print(f"⚠️  Invalid slice bounds: {slice_start_ms}ms - {slice_end_ms}ms - skipping")
                                                             continue
                                                         
-                                                        print(f"   🎵 Slicing audio: {slice_start_ms}ms to {slice_end_ms}ms (duration: {slice_duration:.1f}s)")
+                                                        # Verify we're using the actual segment times
+                                                        actual_duration_seconds = (slice_end_ms - slice_start_ms) / 1000.0
+                                                        print(f"   🎵 Slicing audio from segment: {start_time:.2f}s - {end_time:.2f}s")
+                                                        print(f"   📏 Segment duration: {segment_duration:.2f}s, Slice duration: {actual_duration_seconds:.2f}s")
+                                                        print(f"   ⏱️  Slice bounds: {slice_start_ms}ms to {slice_end_ms}ms")
                                                         
-                                                        # Extract audio slice
+                                                        # Extract audio slice - this should contain the actual speaker audio
                                                         audio_slice = audio_segment[slice_start_ms:slice_end_ms]
                                                         
-                                                        # Verify slice has content
+                                                        # Verify slice has actual content (must match expected duration)
                                                         slice_length_ms = len(audio_slice)
                                                         slice_length_seconds = slice_length_ms / 1000.0
-                                                        print(f"   ✅ Audio slice created: {slice_length_ms}ms ({slice_length_seconds:.2f}s)")
+                                                        expected_duration_ms = slice_end_ms - slice_start_ms
+                                                        expected_duration_seconds = expected_duration_ms / 1000.0
                                                         
+                                                        print(f"   ✅ Audio slice created: {slice_length_ms}ms ({slice_length_seconds:.2f}s)")
+                                                        print(f"   📊 Expected: {expected_duration_ms}ms ({expected_duration_seconds:.2f}s)")
+                                                        
+                                                        # Verify slice length matches expected (allow small tolerance for rounding)
                                                         if slice_length_ms == 0:
-                                                            print(f"❌ ERROR: Audio slice is empty (0ms) - skipping send")
+                                                            print(f"❌ ERROR: Audio slice is empty (0ms) - this should not happen with valid segment!")
+                                                            print(f"   Segment: {start_time:.2f}s - {end_time:.2f}s, Duration: {segment_duration:.2f}s")
+                                                            continue
+                                                        
+                                                        # Check if slice is significantly shorter than expected (indicates problem)
+                                                        if slice_length_ms < expected_duration_ms * 0.9:  # Allow 10% tolerance
+                                                            print(f"⚠️  WARNING: Slice length ({slice_length_ms}ms) is shorter than expected ({expected_duration_ms}ms)")
+                                                            print(f"   This might indicate the segment timestamps don't match the actual audio")
+                                                        
+                                                        # Final check: slice must be at least 0.5 seconds for speaker identification
+                                                        if slice_length_seconds < 0.5:
+                                                            print(f"❌ ERROR: Slice too short ({slice_length_seconds:.2f}s) for speaker identification - skipping")
                                                             continue
                                                         
                                                         # Export to temporary file as MP3 (Meta API requires MP3)
