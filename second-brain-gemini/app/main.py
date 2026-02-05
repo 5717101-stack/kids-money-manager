@@ -15,6 +15,8 @@ import io
 import requests
 from pathlib import Path
 from datetime import datetime
+from collections import deque
+from threading import Lock
 
 from app.core.config import settings
 from app.services.gemini_service import gemini_service
@@ -42,6 +44,42 @@ if drive_memory_service.is_configured:
     print(f"   Memory folder ID: {drive_memory_service.folder_id}")
 else:
     print(f"⚠️  Drive Memory Service not configured (DRIVE_MEMORY_FOLDER_ID not set)")
+
+# Idempotency: Track processed WhatsApp message IDs to prevent duplicate processing
+# Use deque with maxlen to automatically limit memory usage (keeps last 1000 message IDs)
+processed_message_ids = deque(maxlen=1000)
+_processed_ids_lock = Lock()  # Thread-safe access to processed_message_ids
+
+def is_message_processed(message_id: str) -> bool:
+    """
+    Check if a message ID has already been processed.
+    
+    Args:
+        message_id: WhatsApp message ID (wam_id)
+    
+    Returns:
+        True if message was already processed, False otherwise
+    """
+    if not message_id:
+        return False
+    
+    with _processed_ids_lock:
+        return message_id in processed_message_ids
+
+def mark_message_processed(message_id: str) -> None:
+    """
+    Mark a message ID as processed.
+    
+    Args:
+        message_id: WhatsApp message ID (wam_id)
+    """
+    if not message_id:
+        return
+    
+    with _processed_ids_lock:
+        if message_id not in processed_message_ids:
+            processed_message_ids.append(message_id)
+            print(f"✅ Marked message {message_id} as processed (total tracked: {len(processed_message_ids)})")
 
 
 # Create FastAPI app
@@ -388,6 +426,14 @@ async def webhook(request: Request, background_tasks: BackgroundTasks):
                                 print(f"   Message ID: {message_id}")
                                 print(f"   Type: {message_type}")
                                 print(f"   Timestamp: {timestamp}")
+                                
+                                # IDEMPOTENCY CHECK: Prevent duplicate processing due to webhook retries
+                                if is_message_processed(message_id):
+                                    print(f"⚠️  Duplicate message received (ID: {message_id}). Ignoring.")
+                                    continue  # Skip processing, but return 200 OK to WhatsApp
+                                
+                                # Mark message as processed BEFORE processing (prevents race conditions)
+                                mark_message_processed(message_id)
                                 
                                 # Handle audio messages
                                 if message_type == "audio":
@@ -738,6 +784,14 @@ async def whatsapp_webhook(request: Request, background_tasks: BackgroundTasks):
                                 print(f"   From: {from_number}")
                                 print(f"   Message: {message_body}")
                                 print(f"   Message ID: {message_id}")
+                                
+                                # IDEMPOTENCY CHECK: Prevent duplicate processing due to webhook retries
+                                if is_message_processed(message_id):
+                                    print(f"⚠️  Duplicate message received (ID: {message_id}). Ignoring.")
+                                    continue  # Skip processing, but return 200 OK to WhatsApp
+                                
+                                # Mark message as processed BEFORE processing (prevents race conditions)
+                                mark_message_processed(message_id)
                                 
                                 # TODO: Add auto-reply here if needed
                                 # You can send a response using whatsapp_provider.send_whatsapp()
