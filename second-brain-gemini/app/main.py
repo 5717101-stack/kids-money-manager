@@ -439,12 +439,13 @@ async def webhook(request: Request, background_tasks: BackgroundTasks):
                                 print(f"   Pending identifications: {list(pending_identifications.keys())}")
                                 
                                 # VOICE IMPRINTING: Strict Reply Interceptor - Check BEFORE idempotency check
-                                if replied_message_id and replied_message_id in pending_identifications:
+                                # Only process text messages that are replies to voice identification requests
+                                if message_type == "text" and replied_message_id and replied_message_id in pending_identifications:
                                     print(f"🎤 STRICT REPLY INTERCEPTOR: Detected reply to voice identification message!")
                                     print(f"   Replying to message ID: {replied_message_id}")
                                     
                                     # This is a reply to a speaker identification request
-                                    file_path = pending_identifications[replied_message_id]
+                                    file_path = pending_identifications.pop(replied_message_id)
                                     person_name = message_body_text.strip()
                                     
                                     print(f"🎤 Voice Imprinting: User identified speaker as '{person_name}'")
@@ -463,7 +464,7 @@ async def webhook(request: Request, background_tasks: BackgroundTasks):
                                         
                                         if file_id:
                                             # Send confirmation message
-                                            confirmation = f"✅ הבנתי! שמרתי את חתימת הקול של *{person_name}*. בפעם הבאה אזהה אותם אוטומטית."
+                                            confirmation = f"✅ למדתי! הקול של *{person_name}* נשמר במערכת."
                                             whatsapp_provider.send_whatsapp(
                                                 message=confirmation,
                                                 to=f"+{from_number}"
@@ -482,15 +483,9 @@ async def webhook(request: Request, background_tasks: BackgroundTasks):
                                             print(f"🗑️  Cleaned up slice file after voice imprinting: {file_path}")
                                         except Exception as cleanup_error:
                                             print(f"⚠️  Failed to cleanup slice file: {cleanup_error}")
-                                        
-                                        # Remove from pending identifications
-                                        del pending_identifications[replied_message_id]
-                                        print(f"✅ Removed {replied_message_id} from pending_identifications")
                                     else:
                                         print(f"⚠️  Audio file no longer exists: {file_path}")
                                         print(f"   File may have been cleaned up before user replied")
-                                        # Remove from pending anyway
-                                        del pending_identifications[replied_message_id]
                                     
                                     # CRITICAL: STOP PROCESSING here. Do not call Gemini.
                                     print(f"🛑 Voice imprinting complete - skipping Gemini processing")
@@ -598,10 +593,29 @@ async def webhook(request: Request, background_tasks: BackgroundTasks):
                                                 tmp_path = tmp_file.name
                                         
                                                 print("🤖 Processing audio with Gemini...")
+                                                
+                                                # Retrieve voice signatures for speaker identification
+                                                reference_voices = []
+                                                if drive_memory_service.is_configured:
+                                                    try:
+                                                        print("🎤 Retrieving voice signatures for speaker identification...")
+                                                        reference_voices = drive_memory_service.get_voice_signatures()
+                                                        if reference_voices:
+                                                            print(f"✅ Retrieved {len(reference_voices)} voice signature(s): {[rv['name'] for rv in reference_voices]}")
+                                                        else:
+                                                            print("ℹ️  No voice signatures found - will use generic speaker IDs")
+                                                    except Exception as voice_sig_error:
+                                                        print(f"⚠️  Error retrieving voice signatures: {voice_sig_error}")
+                                                        import traceback
+                                                        traceback.print_exc()
+                                                        # Continue without voice signatures
+                                                        reference_voices = []
+                                                
                                                 try:
                                                 result = gemini_service.analyze_day(
                                                     audio_paths=[tmp_path],
-                                                    audio_file_metadata=[audio_metadata]
+                                                    audio_file_metadata=[audio_metadata],
+                                                    reference_voices=reference_voices
                                                 )
                                                 
                                                 print("✅ Gemini analysis complete")
@@ -621,7 +635,6 @@ async def webhook(request: Request, background_tasks: BackgroundTasks):
                                                         if end > start and start >= 0:
                                                             valid_segments.append(seg)
                                                         else:
-<<<<<<< HEAD
                                                             print(f"⚠️  Skipping invalid segment: start={start}, end={end} (end must be > start, start >= 0)")
                                                     else:
                                                         print(f"⚠️  Skipping segment with missing/invalid timestamps: start={start}, end={end}")
@@ -629,7 +642,17 @@ async def webhook(request: Request, background_tasks: BackgroundTasks):
                                                 segments = valid_segments
                                                 print(f"   Valid segments with timestamps: {len(segments)}")
                                                 
-                                                # Save full JSON transcript to memory
+                                                # Extract unique speaker names from segments for searchability
+                                                speaker_names = set()
+                                                for segment in segments:
+                                                    speaker = segment.get('speaker', '')
+                                                    if speaker and not speaker.lower().startswith('speaker '):
+                                                        # Only add actual names, not generic "Speaker 1", "Speaker 2", etc.
+                                                        speaker_names.add(speaker)
+                                                speaker_names = list(speaker_names)
+                                                print(f"   Identified speakers: {speaker_names if speaker_names else 'Generic speaker IDs only'}")
+                                                
+                                                # Save full JSON transcript to memory (with identified speaker names)
                                                 audio_interaction = {
                                                     "timestamp": datetime.utcnow().isoformat() + "Z",
                                                     "type": "audio",
@@ -637,7 +660,8 @@ async def webhook(request: Request, background_tasks: BackgroundTasks):
                                                     "web_content_link": audio_metadata.get('web_content_link', ''),
                                                     "web_view_link": audio_metadata.get('web_view_link', ''),
                                                     "filename": audio_metadata.get('filename', ''),
-                                                    "transcript": transcript_json,  # Full JSON with segments
+                                                    "transcript": transcript_json,  # Full JSON with segments (includes speaker names)
+                                                    "speakers": speaker_names,  # List of identified speaker names for searchability
                                                     "message_id": message_id,
                                                     "from_number": from_number
                                                 }
@@ -899,11 +923,20 @@ async def webhook(request: Request, background_tasks: BackgroundTasks):
                                                 if not success:
                                                     print("⚠️  Failed to save audio interaction to memory")
                                                 
-                                                # Cleanup temp file
+                                                # Cleanup temp files (main audio and reference voices)
                                                 try:
                                                     os.unlink(tmp_path)
                                                 except:
                                                     pass
+                                                
+                                                # Cleanup temporary reference voice files
+                                                for rv in reference_voices:
+                                                    try:
+                                                        if os.path.exists(rv.get('file_path', '')):
+                                                            os.unlink(rv['file_path'])
+                                                            print(f"🗑️  Cleaned up reference voice file: {rv['file_path']}")
+                                                    except Exception as cleanup_error:
+                                                        print(f"⚠️  Failed to cleanup reference voice file: {cleanup_error}")
                                                     
                                                 except Exception as gemini_error:
                                                 print(f"❌ CRITICAL AUDIO ERROR: Gemini processing failed: {gemini_error}")
@@ -932,6 +965,15 @@ async def webhook(request: Request, background_tasks: BackgroundTasks):
                                                     os.unlink(tmp_path)
                                                 except:
                                                     pass
+                                                
+                                                # Cleanup temporary reference voice files
+                                                for rv in reference_voices:
+                                                    try:
+                                                        if os.path.exists(rv.get('file_path', '')):
+                                                            os.unlink(rv['file_path'])
+                                                            print(f"🗑️  Cleaned up reference voice file: {rv['file_path']}")
+                                                    except Exception as cleanup_error:
+                                                        print(f"⚠️  Failed to cleanup reference voice file: {cleanup_error}")
                                         
                                     except Exception as audio_error:
                                             import traceback
@@ -1375,12 +1417,30 @@ async def analyze_day(
         print(f"   Image files: {len(image_paths)}")
         print(f"   Text inputs: {len(text_inputs)}")
         
+        # Retrieve voice signatures for speaker identification (if we have audio files)
+        reference_voices = []
+        if audio_paths and drive_memory_service.is_configured:
+            try:
+                print("🎤 Retrieving voice signatures for speaker identification...")
+                reference_voices = drive_memory_service.get_voice_signatures()
+                if reference_voices:
+                    print(f"✅ Retrieved {len(reference_voices)} voice signature(s): {[rv['name'] for rv in reference_voices]}")
+                else:
+                    print("ℹ️  No voice signatures found - will use generic speaker IDs")
+            except Exception as voice_sig_error:
+                print(f"⚠️  Error retrieving voice signatures: {voice_sig_error}")
+                import traceback
+                traceback.print_exc()
+                # Continue without voice signatures
+                reference_voices = []
+        
         try:
             result = gemini_service.analyze_day(
                 audio_paths=audio_paths,
                 image_paths=image_paths,
                 text_inputs=text_inputs,
-                audio_file_metadata=audio_file_metadata
+                audio_file_metadata=audio_file_metadata,
+                reference_voices=reference_voices
             )
             print(f"✅ Gemini analysis complete")
             
@@ -1388,8 +1448,18 @@ async def analyze_day(
             if audio_paths and drive_memory_service.is_configured and result.get('type') == 'audio_analysis':
                 try:
                     # Extract transcript and summary from result
-                    transcript = result.get('transcript', '')
+                    transcript = result.get('transcript', {})
                     summary = result.get('summary', '')
+                    
+                    # Extract unique speaker names from segments for searchability
+                    segments = transcript.get('segments', []) if isinstance(transcript, dict) else []
+                    speaker_names = set()
+                    for segment in segments:
+                        speaker = segment.get('speaker', '') if isinstance(segment, dict) else ''
+                        if speaker and not speaker.lower().startswith('speaker '):
+                            # Only add actual names, not generic "Speaker 1", "Speaker 2", etc.
+                            speaker_names.add(speaker)
+                    speaker_names = list(speaker_names) if speaker_names else ["User", "Unknown"]
                     
                     # Create structured audio interaction entry
                     for i, audio_meta in enumerate(audio_file_metadata):
@@ -1400,9 +1470,9 @@ async def analyze_day(
                             "web_content_link": audio_meta.get('web_content_link', ''),
                             "web_view_link": audio_meta.get('web_view_link', ''),
                             "filename": audio_meta.get('filename', ''),
-                            "transcript": transcript if i == 0 else "",  # Use same transcript for all files in batch
+                            "transcript": transcript if i == 0 else {},  # Use same transcript for all files in batch
                             "summary": summary if i == 0 else "",  # Use same summary for all files in batch
-                            "speakers": ["User", "Unknown"]  # Placeholder for now
+                            "speakers": speaker_names  # List of identified speaker names for searchability
                         }
                         
                         # Save to memory
@@ -1524,7 +1594,7 @@ async def analyze_day(
         raise HTTPException(status_code=500, detail=f"Error processing request: {str(e)}")
     
     finally:
-        # Cleanup temp files
+        # Cleanup temp files (including reference voice files)
         for tmp_path in temp_files:
             try:
                 if os.path.exists(tmp_path):
@@ -1532,6 +1602,16 @@ async def analyze_day(
                     print(f"🗑️  Deleted temp file: {tmp_path}")
             except Exception as e:
                 print(f"⚠️  Failed to delete temp file {tmp_path}: {e}")
+        
+        # Cleanup temporary reference voice files
+        if 'reference_voices' in locals():
+            for rv in reference_voices:
+                try:
+                    if os.path.exists(rv.get('file_path', '')):
+                        os.unlink(rv['file_path'])
+                        print(f"🗑️  Cleaned up reference voice file: {rv['file_path']}")
+                except Exception as cleanup_error:
+                    print(f"⚠️  Failed to cleanup reference voice file: {cleanup_error}")
 
 
 if __name__ == "__main__":

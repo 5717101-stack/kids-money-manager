@@ -508,6 +508,85 @@ class DriveMemoryService:
             logger.error(f"❌ Error ensuring Voice_Signatures folder: {e}")
             return None
     
+    def get_voice_signatures(self) -> List[Dict[str, str]]:
+        """
+        Retrieve all voice signature files from the Voice_Signatures folder.
+        Downloads each file to a temporary location.
+        
+        Returns:
+            List of dictionaries with 'name' (person name) and 'file_path' (temp file path)
+            Example: [{'name': 'John', 'file_path': '/tmp/voice_john_abc123.mp3'}, ...]
+        """
+        if not self.is_configured or not self.service:
+            logger.warning("⚠️  Drive Memory Service not configured. Cannot retrieve voice signatures.")
+            return []
+        
+        # Refresh credentials if needed before API call
+        self._refresh_credentials_if_needed()
+        
+        # Get Voice_Signatures folder ID
+        voice_signatures_folder_id = self._ensure_voice_signatures_folder()
+        if not voice_signatures_folder_id:
+            logger.warning("⚠️  Voice_Signatures folder not found. No voice signatures available.")
+            return []
+        
+        try:
+            # List all MP3 files in Voice_Signatures folder
+            query = f"'{voice_signatures_folder_id}' in parents and mimeType = 'audio/mpeg' and trashed = false"
+            results = self.service.files().list(
+                q=query,
+                fields="files(id, name)"
+            ).execute()
+            
+            files = results.get('files', [])
+            if not files:
+                logger.info("ℹ️  No voice signatures found in Voice_Signatures folder")
+                return []
+            
+            logger.info(f"📥 Found {len(files)} voice signature(s)")
+            
+            # Download each file to a temporary location
+            voice_signatures = []
+            for file_info in files:
+                file_id = file_info.get('id')
+                filename = file_info.get('name', 'unknown.mp3')
+                
+                # Extract person name from filename (remove .mp3 extension)
+                person_name = filename.replace('.mp3', '').replace('_', ' ').strip()
+                
+                try:
+                    # Download file to temporary location
+                    request = self.service.files().get_media(fileId=file_id)
+                    file_content = io.BytesIO()
+                    downloader = MediaIoBaseDownload(file_content, request)
+                    
+                    done = False
+                    while not done:
+                        status, done = downloader.next_chunk()
+                    
+                    # Save to temporary file
+                    file_content.seek(0)
+                    with tempfile.NamedTemporaryFile(delete=False, suffix='.mp3', prefix=f'voice_{person_name}_') as tmp_file:
+                        tmp_file.write(file_content.read())
+                        tmp_path = tmp_file.name
+                    
+                    voice_signatures.append({
+                        'name': person_name,
+                        'file_path': tmp_path
+                    })
+                    logger.info(f"✅ Downloaded voice signature: {person_name} -> {tmp_path}")
+                    
+                except Exception as e:
+                    logger.error(f"❌ Error downloading voice signature {filename}: {e}")
+                    continue
+            
+            logger.info(f"✅ Retrieved {len(voice_signatures)} voice signature(s)")
+            return voice_signatures
+            
+        except Exception as e:
+            logger.error(f"❌ Error retrieving voice signatures: {e}")
+            return []
+    
     def _find_memory_file(self) -> Optional[str]:
         """
         Find the memory file in the configured Drive folder.

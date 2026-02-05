@@ -28,7 +28,8 @@ SYSTEM_PROMPT = """אתה עוזר AI אישי חכם, שנון וחד (Second B
 """
 
 # System prompt for audio analysis (requires structured JSON output with timestamps)
-AUDIO_ANALYSIS_PROMPT = """You are a professional transcriber. You MUST output a valid JSON object.
+# This prompt will be dynamically enhanced with reference voice information if provided
+AUDIO_ANALYSIS_PROMPT_BASE = """You are a professional transcriber. You MUST output a valid JSON object.
 
 **CRITICAL INSTRUCTIONS:**
 
@@ -70,3 +71,6 @@ AUDIO_ANALYSIS_PROMPT = """You are a professional transcriber. You MUST output a
 
 **IMPORTANT**: Output ONLY valid JSON. Do not add any text before or after the JSON object. Do not use markdown code blocks.
 """
+
+# Legacy constant for backward compatibility
+AUDIO_ANALYSIS_PROMPT = AUDIO_ANALYSIS_PROMPT_BASE

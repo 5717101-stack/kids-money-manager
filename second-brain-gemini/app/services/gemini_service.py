@@ -3,13 +3,14 @@ Service for handling Google Gemini AI operations.
 """
 
 import json
+import os
 import time
 from typing import List, Optional, Dict, Any
 from pathlib import Path
 import google.generativeai as genai
 
 from app.core.config import settings
-from app.prompts import SYSTEM_PROMPT, AUDIO_ANALYSIS_PROMPT
+from app.prompts import SYSTEM_PROMPT, AUDIO_ANALYSIS_PROMPT, AUDIO_ANALYSIS_PROMPT_BASE
 
 
 class GeminiService:
@@ -429,7 +430,8 @@ Here is structured data about the user. You MUST use this to answer personal que
         image_paths: List[str] = None,
         text_inputs: List[str] = None,
         chat_history: List[Dict[str, Any]] = None,
-        audio_file_metadata: List[Dict[str, str]] = None
+        audio_file_metadata: List[Dict[str, str]] = None,
+        reference_voices: List[Dict[str, str]] = None
     ) -> Dict[str, Any]:
         """
         Analyze a day's worth of inputs using Gemini 1.5 Pro.
@@ -448,6 +450,7 @@ Here is structured data about the user. You MUST use this to answer personal que
         audio_paths = audio_paths or []
         image_paths = image_paths or []
         text_inputs = text_inputs or []
+        reference_voices = reference_voices or []
         
         # Check if service is configured
         if not self.is_configured or self.model is None:
@@ -459,12 +462,26 @@ Here is structured data about the user. You MUST use this to answer personal que
         
         # Upload all files and wait for processing
         uploaded_files = []  # Store refreshed File objects with state='ACTIVE'
+        reference_voice_files = []  # Store reference voice File objects separately
         
-        # Upload and wait for audio files
+        # Upload and wait for audio files (main audio to transcribe)
         for audio_path in audio_paths:
             path = Path(audio_path)
             file_ref = self.upload_and_wait(audio_path, display_name=path.name)
             uploaded_files.append(file_ref)
+        
+        # Upload and wait for reference voice files (for speaker identification)
+        for ref_voice in reference_voices:
+            person_name = ref_voice.get('name', 'Unknown')
+            file_path = ref_voice.get('file_path')
+            if file_path and os.path.exists(file_path):
+                path = Path(file_path)
+                file_ref = self.upload_and_wait(file_path, display_name=f"Reference_Voice_{person_name}.mp3")
+                reference_voice_files.append({
+                    'file_ref': file_ref,
+                    'name': person_name
+                })
+                print(f"✅ Uploaded reference voice for '{person_name}'")
         
         # Upload and wait for image files
         for image_path in image_paths:
@@ -479,7 +496,32 @@ Here is structured data about the user. You MUST use this to answer personal que
         # Use AUDIO_ANALYSIS_PROMPT if we have audio files, otherwise use regular SYSTEM_PROMPT
         if audio_paths:
             # For audio analysis, we need structured output (transcript + summary)
-            contents.append(AUDIO_ANALYSIS_PROMPT)
+            # Build enhanced prompt with reference voice instructions if available
+            prompt = AUDIO_ANALYSIS_PROMPT_BASE
+            
+            if reference_voice_files:
+                # Add instructions for matching reference voices
+                voice_names = [rv['name'] for rv in reference_voice_files]
+                prompt += f"""
+
+**VOICE IDENTIFICATION INSTRUCTIONS:**
+
+You are provided with a main audio file and {len(reference_voice_files)} reference voice sample(s) labeled with names: {', '.join(voice_names)}.
+
+**CRITICAL TASK**: Compare the speakers in the main audio file with the provided reference voice samples. When you identify a speaker that matches one of the reference voices, use their ACTUAL NAME (e.g., "{voice_names[0]}") instead of generic speaker IDs (e.g., "Speaker 1") in the JSON output.
+
+**How to match voices**:
+1. Listen carefully to each reference voice sample to learn the voice characteristics
+2. When transcribing the main audio, compare each speaker's voice to the reference samples
+3. If a speaker's voice matches a reference sample, use that person's name in the "speaker" field
+4. Only use generic "Speaker 1", "Speaker 2", etc. for speakers that do NOT match any reference voice
+
+**Example**: If the reference voice is labeled "John" and you hear John speaking in the main audio, use "John" (not "Speaker 1") in the speaker field.
+
+**Output Format**: Use the actual person names in the "speaker" field whenever a match is found. This allows the transcript to be searchable by person name later.
+"""
+            
+            contents.append(prompt)
         else:
             # Regular text/image analysis
             contents.append(SYSTEM_PROMPT)
@@ -503,16 +545,34 @@ Here is structured data about the user. You MUST use this to answer personal que
             for i, text in enumerate(text_inputs, 1):
                 contents.append(f"### Note {i}:\n{text}\n")
         
-        # Add file references in the prompt (without accessing .uri to avoid triggering get_file())
-        if uploaded_files:
+        # Add file references in the prompt
+        if uploaded_files or reference_voice_files:
             contents.append("\n## Media Files:\n")
-            contents.append(f"Please analyze the following {len(uploaded_files)} uploaded file(s).\n")
+            if uploaded_files:
+                contents.append(f"**Main audio file(s) to transcribe**: {len(uploaded_files)} file(s)\n")
+            if reference_voice_files:
+                voice_list = ', '.join([rv['name'] for rv in reference_voice_files])
+                contents.append(f"**Reference voice samples for speaker identification**: {len(reference_voice_files)} sample(s) - {voice_list}\n")
         
         contents.append("\n\nPlease provide your analysis in the JSON format specified above.")
         
         # Add the refreshed file objects (with state='ACTIVE') to contents
         print("🔍 Adding files to contents...")
-        print(f"   Number of files: {len(uploaded_files)}")
+        print(f"   Main audio files: {len(uploaded_files)}")
+        print(f"   Reference voice files: {len(reference_voice_files)}")
+        
+        # Add reference voice files first (so Gemini can learn them before transcribing)
+        for rv in reference_voice_files:
+            file_ref = rv['file_ref']
+            state = file_ref.state
+            if hasattr(state, 'name'):
+                state_name = state.name
+            else:
+                state_name = str(state)
+            print(f"   Reference voice {rv['name']}: state={state_name}")
+            contents.append(file_ref)
+        
+        # Then add main audio files
         for file_ref in uploaded_files:
             # Verify file is ready
             state = file_ref.state
@@ -520,10 +580,8 @@ Here is structured data about the user. You MUST use this to answer personal que
                 state_name = state.name
             else:
                 state_name = str(state)
-            print(f"   File {file_ref.name}: state={state_name}")
-        
-        # Pass the refreshed file objects to generate_content
-        contents.extend(uploaded_files)
+            print(f"   Main audio file {file_ref.name}: state={state_name}")
+            contents.append(file_ref)
         
         print("🤖 Sending request to Gemini 1.5 Pro...")
         print(f"   Contents: {len(contents)} items")
