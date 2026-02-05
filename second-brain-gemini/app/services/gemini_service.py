@@ -601,6 +601,9 @@ Here is structured data about the user. You MUST use this to answer personal que
         
         # Regular JSON response (for non-audio analysis)
         try:
+            # Clean JSON: Remove markdown code blocks before parsing
+            clean_text = response_text.replace('```json', '').replace('```', '').strip()
+            
             # Try to extract JSON if wrapped in markdown code blocks
             if "```json" in response_text:
                 response_text = response_text.split("```json")[1].split("```")[0].strip()
@@ -608,6 +611,9 @@ Here is structured data about the user. You MUST use this to answer personal que
             elif "```" in response_text:
                 response_text = response_text.split("```")[1].split("```")[0].strip()
                 print("📄 Extracted JSON from ``` block")
+            else:
+                # Use cleaned text if no code blocks found
+                response_text = clean_text
             
             # Try to find JSON object boundaries
             # Look for first { and try to find matching }
@@ -704,8 +710,13 @@ Here is structured data about the user. You MUST use this to answer personal que
             text = response_text.strip()
             
             # Remove markdown code blocks if present
+            # Clean JSON: Remove markdown code blocks before parsing
+            clean_text = text.replace('```json', '').replace('```', '').strip()
+            
             if text.startswith("```json"):
                 text = text[7:]  # Remove ```json
+            else:
+                text = clean_text
             elif text.startswith("```"):
                 text = text[3:]  # Remove ```
             

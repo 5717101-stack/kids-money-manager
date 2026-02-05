@@ -389,10 +389,14 @@ class MetaWhatsAppService:
                 "Authorization": f"Bearer {self.access_token}"
             }
             
-            # Read audio file
+            # Read audio file and set correct MIME type for MP3
             with open(audio_path, 'rb') as audio_file:
+                filename = audio_path.split('/')[-1]
+                # Ensure filename ends with .mp3 for proper MIME type detection
+                if not filename.endswith('.mp3'):
+                    filename = 'audio_slice.mp3'
                 files = {
-                    'file': (audio_path.split('/')[-1], audio_file, 'audio/ogg')  # Adjust MIME type as needed
+                    'file': (filename, audio_file, 'audio/mpeg')  # MP3 MIME type for Meta API
                 }
                 data = {
                     'messaging_product': 'whatsapp',

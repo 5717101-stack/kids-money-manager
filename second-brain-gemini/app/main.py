@@ -577,10 +577,15 @@ async def webhook(request: Request, background_tasks: BackgroundTasks):
                                                     start_time = segment.get('start', 0.0)
                                                     end_time = segment.get('end', 0.0)
                                                     
+                                                    # Hard Rule: Skip verification for Speaker 1 (assume it's the User)
+                                                    if speaker and speaker.lower() in ['speaker 1', 'דובר 1']:
+                                                        print(f"⏭️  Skipping Speaker 1 (assumed to be User): {speaker}")
+                                                        continue
+                                                    
                                                     # Detect unknown speakers (Speaker 2, Speaker B, etc. - not Speaker 1)
                                                     is_unknown = (
                                                         speaker and 
-                                                        speaker.lower() not in ['speaker 1', 'user', 'me', 'itzik', 'itzhak'] and
+                                                        speaker.lower() not in ['speaker 1', 'user', 'me', 'itzik', 'itzhak', 'דובר 1'] and
                                                         ('speaker' in speaker.lower() or 'unknown' in speaker.lower())
                                                     )
                                                     
@@ -602,15 +607,15 @@ async def webhook(request: Request, background_tasks: BackgroundTasks):
                                                         # Extract audio slice
                                                         audio_slice = audio_segment[slice_start_ms:slice_end_ms]
                                                         
-                                                        # Export to temporary file
-                                                        with tempfile.NamedTemporaryFile(delete=False, suffix='.ogg') as slice_file:
-                                                            audio_slice.export(slice_file.name, format='ogg')
+                                                        # Export to temporary file as MP3 (Meta API requires MP3)
+                                                        with tempfile.NamedTemporaryFile(delete=False, suffix='.mp3') as slice_file:
+                                                            audio_slice.export(slice_file.name, format='mp3')
                                                             slice_path = slice_file.name
                                                         
                                                         print(f"   📎 Created audio slice: {slice_duration:.1f}s from {start_time:.1f}s")
                                                         
-                                                        # Send audio clip to user with caption
-                                                        caption = f"🔊 Unknown Voice detected. Who is this? (Reply with name)\n\nSpeaker: {speaker}\nTime: {start_time:.1f}s - {end_time:.1f}s\nText: {segment.get('text', '')[:100]}"
+                                                        # Send audio clip to user with simple caption
+                                                        caption = "🔊 קול לא מזוהה זוהה בשיחה. מי זה?"
                                                         
                                                         audio_result = whatsapp_provider.send_audio(
                                                             audio_path=slice_path,
