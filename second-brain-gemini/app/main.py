@@ -919,17 +919,24 @@ async def webhook(request: Request, background_tasks: BackgroundTasks):
                                                     continue
                                                 
                                                 # AUTO-FILTER 2: Skip speakers that Gemini identified with a real name
-                                                # If speaker name doesn't start with "Speaker" or "דובר", it means Gemini
-                                                # matched the voice to a known reference voice - no need to ask "Who is this?"
-                                                is_generic_speaker = (
-                                                    speaker_lower.startswith('speaker ') or 
-                                                    speaker.startswith('דובר ') or
-                                                    speaker_lower.startswith('unknown') or
-                                                    speaker_lower == ''
+                                                # Check if speaker is "Unknown Speaker X" or generic "Speaker X" pattern
+                                                # These should trigger the "Who is this?" flow
+                                                is_unknown_speaker = (
+                                                    speaker_lower.startswith('speaker ') or  # "Speaker 2", "Speaker 3"
+                                                    speaker.startswith('דובר ') or  # Hebrew: "דובר 2", "דובר 3"
+                                                    'unknown' in speaker_lower or  # "Unknown Speaker 2", "unknown speaker"
+                                                    speaker_lower == '' or
+                                                    speaker_lower == 'speaker' or
+                                                    speaker_lower == 'unknown'
                                                 )
-                                                if speaker and not is_generic_speaker:
-                                                    print(f"✅ Skipping segment {i}: Speaker '{speaker}' identified by Gemini - no need to ask!")
+                                                
+                                                # If speaker has a real name (not unknown/generic), skip - Gemini identified them
+                                                if speaker and not is_unknown_speaker:
+                                                    print(f"✅ Skipping segment {i}: Speaker '{speaker}' identified by Gemini with 95%+ confidence - no need to ask!")
                                                     continue
+                                                
+                                                # This speaker is unknown - will trigger "Who is this?" flow
+                                                print(f"❓ Segment {i}: Speaker '{speaker}' is unknown - will ask 'Who is this?'")
                                                 
                                                 # Skip if we've already processed this speaker
                                                 if speaker in processed_speakers:
@@ -1190,16 +1197,17 @@ async def webhook(request: Request, background_tasks: BackgroundTasks):
                                             
                                             for speaker in all_speakers:
                                                 speaker_lower = speaker.lower()
-                                                # Check if it's a generic speaker ID
-                                                is_generic = (
-                                                    speaker_lower.startswith('speaker ') or
-                                                    speaker.startswith('דובר ') or
-                                                    speaker_lower.startswith('unknown') or
+                                                # Check if it's an unknown/generic speaker ID
+                                                is_unknown = (
+                                                    speaker_lower.startswith('speaker ') or  # "Speaker 2", "Speaker 3"
+                                                    speaker.startswith('דובר ') or  # Hebrew: "דובר 2", "דובר 3"
+                                                    'unknown' in speaker_lower or  # "Unknown Speaker 2"
                                                     speaker_lower == 'speaker' or
+                                                    speaker_lower == 'unknown' or
                                                     speaker == ''
                                                 )
                                                 
-                                                if is_generic:
+                                                if is_unknown:
                                                     unidentified_count += 1
                                                 else:
                                                     identified_speakers.append(speaker)

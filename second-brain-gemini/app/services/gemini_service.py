@@ -570,37 +570,45 @@ Here is structured data about the user. You MUST use this to answer personal que
             prompt = AUDIO_ANALYSIS_PROMPT_BASE
             
             if reference_voice_files:
-                # Add AGGRESSIVE instructions for matching reference voices
+                # Add CAUTIOUS instructions for matching reference voices - prevent hallucination
                 voice_names = [rv['name'] for rv in reference_voice_files]
                 prompt += f"""
 
-**🎯 MANDATORY VOICE IDENTIFICATION - YOU MUST USE THESE NAMES:**
+**🎯 CAUTIOUS VOICE IDENTIFICATION - FORENSIC ACCURACY REQUIRED:**
 
-You are an EXPERT voice analyzer. You are provided with reference voice samples for these KNOWN speakers: **{', '.join(voice_names)}**
+You are a CAUTIOUS forensic audio analyst. You are provided with reference voice samples for these known speakers: **{', '.join(voice_names)}**
 
-**CRITICAL RULES - FOLLOW EXACTLY:**
+**⚠️ CRITICAL WARNING - DO NOT GUESS NAMES:**
+You MUST NOT label a speaker with a name from the known list unless you are 95% CERTAIN the voice EXACTLY matches the reference sample. Guessing causes serious problems.
 
-1. **ALWAYS identify the phone owner as the FIRST speaker** - they are recording these conversations, so "Speaker 1" is ALWAYS the phone owner.
+**IDENTIFICATION RULES - STRICT THRESHOLD:**
 
-2. **USE THE PROVIDED NAMES**: You have {len(reference_voice_files)} reference voice samples. When you hear a voice that matches ANY of these references, you MUST use their name: {', '.join(voice_names)}
+1. **HIGH CONFIDENCE ONLY (95%+)**: Only use a known name ({', '.join(voice_names)}) if the voice is an EXACT match to the reference sample. Same pitch, same tone, same accent, same speaking patterns.
 
-3. **SPEAKER 1 IS THE USER**: The person recording is always Speaker 1. If you have a reference for them (like "Itzik"), use that name instead of "Speaker 1".
+2. **WHEN IN DOUBT, USE "Unknown Speaker X"**: If you are not 95% certain, you MUST label the speaker as "Unknown Speaker 2", "Unknown Speaker 3", etc. It is BETTER to be wrong about an unknown speaker than to incorrectly assign a known name.
 
-4. **MATCH AGGRESSIVELY**: If a voice sounds similar to a reference sample (similar pitch, tone, speaking style), USE THAT NAME. Don't be overly conservative.
+3. **SPEAKER 1 IS THE PHONE OWNER**: The person recording is always Speaker 1. Only use a specific name for Speaker 1 if you have a reference voice that EXACTLY matches.
 
-5. **ONLY USE "Speaker X" FOR TRULY UNKNOWN VOICES**: Only use generic "Speaker 2", "Speaker 3" etc. for voices that don't match ANY of the reference samples.
+4. **COUNT THE UNIQUE VOICES**: Before outputting, count how many distinct voices you actually hear in the recording. If you hear 2 people talking, you should have exactly 2 unique speaker IDs in your output - not 3 or 4.
 
 **NEVER DO THIS:**
-- ❌ Never output "Speaker 1" if you have a reference for the main user
-- ❌ Never ask "Who is this?" for known names
-- ❌ Never use generic IDs when you have matching reference voices
+- ❌ NEVER guess a name just because it's in the known list
+- ❌ NEVER assign "Miri" or "Shai" unless you HEAR their exact voice matching the reference
+- ❌ NEVER output more speaker IDs than actual unique voices you heard
+- ❌ NEVER assume someone is present without clear voice evidence
 
 **ALWAYS DO THIS:**
-- ✅ Use "{voice_names[0] if voice_names else 'Name'}" when the voice matches that reference
-- ✅ Assume Speaker 1 is the phone owner (user)
-- ✅ Match voices to references, even with 70%+ confidence
+- ✅ Use "Unknown Speaker 2", "Unknown Speaker 3" for voices you cannot match with 95% confidence
+- ✅ Verify: "Does this voice SOUND IDENTICAL to the reference sample?"
+- ✅ Count: "How many distinct people do I ACTUALLY hear speaking?"
+- ✅ Default to unknown when uncertain - this triggers the "Who is this?" flow
 
-**Output Format**: In the "speaker" field, use the ACTUAL PERSON NAME from the reference list whenever possible. Only use "Speaker 2", "Speaker 3" for genuinely unknown voices.
+**Speaker Count Sanity Check**: Before finalizing, ask yourself:
+"I heard X distinct voices. Do I have exactly X unique speaker names/IDs in my output?"
+
+**Output Format**: In the "speaker" field:
+- Use the actual person name ONLY if 95%+ match to reference
+- Use "Unknown Speaker 2", "Unknown Speaker 3" etc. for all others
 """
             
             contents.append(prompt)
