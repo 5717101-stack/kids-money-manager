@@ -597,28 +597,22 @@ async def webhook(request: Request, background_tasks: BackgroundTasks):
                                                     
                                                     speaker = segment.get('speaker', '')
                                                     
-                                                    # STEP 2: Validation (in Milliseconds)
-                                                    # Skip segments shorter than 1 second
-                                                    if duration_ms < 1000:
-                                                        print(f"⏭️  Skipping segment {i}: too short ({duration_ms}ms < 1000ms)")
-                                                        continue
+                                                    # DEBUG MODE: Explicit Unit Conversion Logging
+                                                    print(f"🕵️  DEBUG: Raw Start={segment.get('start', 0.0)}s | Raw End={segment.get('end', 0.0)}s")
+                                                    print(f"🧮 CALC: StartMS={start_ms} | EndMS={end_ms} | Duration={duration_ms}ms")
+                                                    
+                                                    # DEBUG MODE: DISABLE ALL FILTERS - Process EVERY segment
+                                                    # if duration_ms < 1000:
+                                                    #     print(f"⏭️  Skipping segment {i}: too short ({duration_ms}ms < 1000ms)")
+                                                    #     continue
                                                     
                                                     # Skip Speaker 1 (assumed to be the user)
-                                                    if speaker and speaker.lower() in ['speaker 1', 'דובר 1']:
-                                                        print(f"⏭️  Skipping Speaker 1 (assumed to be User): {speaker}")
-                                                        continue
+                                                    # if speaker and speaker.lower() in ['speaker 1', 'דובר 1']:
+                                                    #     print(f"⏭️  Skipping Speaker 1 (assumed to be User): {speaker}")
+                                                    #     continue
                                                     
-                                                    # Detect unknown speakers (Speaker 2, Speaker B, etc. - not Speaker 1)
-                                                    is_unknown = (
-                                                        speaker and 
-                                                        speaker.lower() not in ['speaker 1', 'user', 'me', 'itzik', 'itzhak', 'דובר 1'] and
-                                                        ('speaker' in speaker.lower() or 'unknown' in speaker.lower())
-                                                    )
-                                                    
-                                                    if not is_unknown:
-                                                        continue
-                                                    
-                                                    print(f"🔍 Unknown speaker detected: {speaker} at {segment.get('start', 0.0):.2f}s - {segment.get('end', 0.0):.2f}s")
+                                                    # DEBUG MODE: Process ALL segments regardless of speaker
+                                                    print(f"🔍 DEBUG MODE: Processing segment {i} - Speaker: {speaker} at {segment.get('start', 0.0):.2f}s - {segment.get('end', 0.0):.2f}s")
                                                     
                                                     # Ensure slice doesn't exceed audio bounds
                                                     audio_length_ms = len(audio_segment)
@@ -641,14 +635,16 @@ async def webhook(request: Request, background_tasks: BackgroundTasks):
                                                     slice_length_ms = len(audio_slice)
                                                     print(f"✂️  SLICING: Gemini said {segment.get('start', 0.0):.2f}s -> Converting to {start_ms}ms. Clip duration: {slice_length_ms}ms")
                                                     
-                                                    # Verify slice has content
+                                                    # DEBUG MODE: Verify slice has content (but don't skip if empty - log it)
                                                     if slice_length_ms == 0:
-                                                        print(f"❌ ERROR: Audio slice is empty (0ms) - skipping")
-                                                        continue
+                                                        print(f"❌ ERROR: Audio slice is empty (0ms) - but continuing in DEBUG MODE")
+                                                    else:
+                                                        print(f"✅ Slice created successfully: {slice_length_ms}ms")
                                                     
-                                                    if slice_length_ms < 1000:
-                                                        print(f"⚠️  Slice too short ({slice_length_ms}ms < 1000ms) - skipping")
-                                                        continue
+                                                    # DEBUG MODE: Don't skip short slices
+                                                    # if slice_length_ms < 1000:
+                                                    #     print(f"⚠️  Slice too short ({slice_length_ms}ms < 1000ms) - skipping")
+                                                    #     continue
                                                     
                                                     unknown_speakers_found.append({
                                                         'segment_index': i,
@@ -681,9 +677,11 @@ async def webhook(request: Request, background_tasks: BackgroundTasks):
                                                     elif not hasattr(whatsapp_provider, 'send_audio'):
                                                         print(f"❌ WhatsApp provider does not support send_audio method")
                                                     else:
-                                                        caption = "🔊 קול לא מזוהה זוהה בשיחה. מי זה?"
+                                                        # DEBUG MODE: Update WhatsApp message with debug info
+                                                        caption = f"🔍 DEBUG: Speaker {speaker} | Duration: {duration_ms}ms | Segment {i}"
                                                         
-                                                        print(f"📤 Attempting to send audio slice via {whatsapp_provider.get_provider_name()}...")
+                                                        print(f"📤 DEBUG MODE: Attempting to send audio slice via {whatsapp_provider.get_provider_name()}...")
+                                                        print(f"   Caption: {caption}")
                                                         audio_result = whatsapp_provider.send_audio(
                                                             audio_path=slice_path,
                                                             caption=caption,
