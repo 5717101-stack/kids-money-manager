@@ -86,6 +86,151 @@ def mark_message_processed(message_id: str) -> None:
             print(f"✅ Marked message {message_id} as processed (total tracked: {len(processed_message_ids)})")
 
 
+def is_history_query(message: str) -> bool:
+    """
+    Check if a message is asking about past conversations/history.
+    
+    Examples:
+    - "מה דיברתי עם מירי?"
+    - "What did I talk about with John?"
+    - "על מה דיברנו אתמול?"
+    - "סכם את השיחות עם דני"
+    """
+    message_lower = message.lower()
+    
+    # Hebrew patterns
+    hebrew_patterns = [
+        'מה דיברתי',
+        'מה דיברנו',
+        'על מה דיברתי',
+        'על מה דיברנו',
+        'סכם את השיחות',
+        'סכם שיחות',
+        'מה אמר',
+        'מה אמרה',
+        'מה אמרו',
+        'מתי דיברתי',
+        'האם דיברתי',
+        'האם דיברנו',
+        'תזכיר לי מה',
+        'מה היה בשיחה',
+        'מה היה בהקלטה',
+    ]
+    
+    # English patterns
+    english_patterns = [
+        'what did i talk',
+        'what did we talk',
+        'what did i discuss',
+        'summarize my conversation',
+        'summarize conversations',
+        'what did .* say',
+        'when did i talk',
+        'did i talk',
+        'remind me what',
+        'what was in the call',
+        'what was in the recording',
+    ]
+    
+    # Check Hebrew patterns
+    for pattern in hebrew_patterns:
+        if pattern in message_lower:
+            return True
+    
+    # Check English patterns
+    import re
+    for pattern in english_patterns:
+        if re.search(pattern, message_lower):
+            return True
+    
+    return False
+
+
+def search_history_for_context(chat_history: list, query: str) -> str:
+    """
+    Search through chat history for relevant transcripts based on query.
+    Returns formatted context string for Gemini.
+    
+    Searches for:
+    - Speaker names mentioned in query
+    - Keywords/topics mentioned in query
+    - Audio transcripts with matching content
+    """
+    if not chat_history:
+        return ""
+    
+    query_lower = query.lower()
+    relevant_transcripts = []
+    
+    # Extract potential names from query (words that might be names)
+    # Common Hebrew words to exclude
+    hebrew_stopwords = ['מה', 'עם', 'את', 'על', 'של', 'לי', 'אני', 'הוא', 'היא', 'הם', 'דיברתי', 'דיברנו', 'אמר', 'אמרה']
+    english_stopwords = ['what', 'did', 'i', 'we', 'talk', 'about', 'with', 'the', 'a', 'an', 'say', 'said']
+    
+    # Get all words from query as potential search terms
+    import re
+    words = re.findall(r'\b\w+\b', query_lower)
+    search_terms = [w for w in words if w not in hebrew_stopwords and w not in english_stopwords and len(w) > 1]
+    
+    print(f"🔍 Searching history with terms: {search_terms}")
+    
+    for interaction in chat_history:
+        # Only look at audio interactions with transcripts
+        if interaction.get('type') != 'audio':
+            continue
+        
+        transcript = interaction.get('transcript', {})
+        if not transcript:
+            continue
+        
+        speakers = interaction.get('speakers', [])
+        segments = transcript.get('segments', []) if isinstance(transcript, dict) else []
+        timestamp = interaction.get('timestamp', '')
+        
+        # Check if any speaker name matches search terms
+        speaker_match = False
+        for speaker in speakers:
+            speaker_lower = speaker.lower()
+            for term in search_terms:
+                if term in speaker_lower or speaker_lower in term:
+                    speaker_match = True
+                    break
+        
+        # Check if any segment text contains search terms
+        content_match = False
+        matching_segments = []
+        for segment in segments:
+            text = segment.get('text', '').lower()
+            speaker = segment.get('speaker', '')
+            for term in search_terms:
+                if term in text:
+                    content_match = True
+                    matching_segments.append(segment)
+                    break
+        
+        # If we found a match, add to results
+        if speaker_match or content_match:
+            # Format the transcript for context
+            transcript_text = f"\n📅 Recording from {timestamp}:\n"
+            transcript_text += f"👥 Speakers: {', '.join(speakers) if speakers else 'Unknown'}\n"
+            
+            # Include all segments if speaker match, or just matching segments if content match
+            segments_to_include = segments if speaker_match else matching_segments
+            for seg in segments_to_include[:20]:  # Limit to first 20 segments to avoid too much text
+                speaker = seg.get('speaker', 'Unknown')
+                text = seg.get('text', '')
+                transcript_text += f"  {speaker}: {text}\n"
+            
+            relevant_transcripts.append(transcript_text)
+    
+    if relevant_transcripts:
+        context = f"Found {len(relevant_transcripts)} relevant recording(s):\n"
+        context += "\n---\n".join(relevant_transcripts[:5])  # Limit to 5 most relevant
+        return context
+    
+    return ""
+
+
 # Create FastAPI app
 app = FastAPI(
     title=settings.api_title,
@@ -1054,12 +1199,31 @@ async def webhook(request: Request, background_tasks: BackgroundTasks):
                                         if user_profile:
                                             print(f"👤 User profile loaded: {list(user_profile.keys())}")
                                         
-                                        # Generate AI response with context and user profile
-                                        ai_response = gemini_service.chat_with_memory(
-                                            user_message=message_body_text,
-                                            chat_history=chat_history,
-                                            user_profile=user_profile
-                                        )
+                                        # Check if this is a HISTORY QUERY (asking about past conversations)
+                                        if is_history_query(message_body_text):
+                                            print(f"🔍 Detected HISTORY QUERY: {message_body_text[:50]}...")
+                                            
+                                            # Search through chat history for relevant transcripts
+                                            history_context = search_history_for_context(chat_history, message_body_text)
+                                            
+                                            if history_context:
+                                                print(f"📚 Found relevant history context ({len(history_context)} chars)")
+                                            else:
+                                                print(f"📚 No relevant history found for query")
+                                            
+                                            # Generate answer using Gemini
+                                            ai_response = gemini_service.answer_history_query(
+                                                user_query=message_body_text,
+                                                history_context=history_context,
+                                                user_profile=user_profile
+                                            )
+                                        else:
+                                            # Regular chat: Generate AI response with context and user profile
+                                            ai_response = gemini_service.chat_with_memory(
+                                                user_message=message_body_text,
+                                                chat_history=chat_history,
+                                                user_profile=user_profile
+                                            )
                                         
                                         print(f"🤖 Generated AI response: {ai_response[:100]}...")
                                         

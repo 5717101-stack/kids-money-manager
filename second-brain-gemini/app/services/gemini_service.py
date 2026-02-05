@@ -433,6 +433,67 @@ Here is structured data about the user. You MUST use this to answer personal que
                     raise RuntimeError(f"Gemini blocked the request: {feedback.block_reason}")
             raise RuntimeError(f"Failed to extract text from Gemini response: {e}")
     
+    def answer_history_query(
+        self,
+        user_query: str,
+        history_context: str,
+        user_profile: Dict[str, Any] = None
+    ) -> str:
+        """
+        Answer a user's question about their conversation history.
+        
+        Args:
+            user_query: The user's question (e.g., "What did I talk about with Miri?")
+            history_context: Formatted transcript context from search_history_for_context()
+            user_profile: Optional user profile for personalization
+            
+        Returns:
+            Natural language answer to the user's question
+        """
+        if not self.is_configured or self.model is None:
+            return "שגיאה: שירות Gemini לא מוגדר. אנא בדוק את הגדרות ה-API."
+        
+        # Build the prompt
+        prompt = """אתה עוזר אישי שעונה על שאלות על שיחות קודמות.
+
+המשתמש שואל על היסטוריית השיחות שלו. להלן תמלולים רלוונטיים מהקלטות קודמות:
+
+"""
+        
+        if history_context:
+            prompt += history_context
+        else:
+            prompt += "(לא נמצאו הקלטות רלוונטיות בזיכרון)"
+        
+        prompt += f"""
+
+---
+
+שאלת המשתמש: {user_query}
+
+הוראות:
+1. ענה על השאלה בהתבסס על התמלולים שלמעלה
+2. אם יש מידע רלוונטי - סכם אותו בצורה ברורה ותמציתית
+3. אם אין מידע רלוונטי - אמור זאת בנימוס והצע לשאול שאלה אחרת
+4. ענה בעברית אלא אם המשתמש שאל באנגלית
+5. היה ידידותי ועזור ככל האפשר
+
+תשובה:"""
+        
+        print(f"🔍 Answering history query: {user_query[:50]}...")
+        
+        # Generate response
+        try:
+            response = self.model.generate_content(
+                prompt,
+                generation_config={'max_output_tokens': 2048},
+                request_options={'timeout': 60}
+            )
+            return response.text.strip()
+        except Exception as e:
+            print(f"❌ Error generating history answer: {e}")
+            return f"מצטער, לא הצלחתי לעבד את השאלה. נסה שוב מאוחר יותר."
+    
     def analyze_day(
         self,
         audio_paths: List[str] = None,
