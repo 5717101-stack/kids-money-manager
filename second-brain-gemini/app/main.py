@@ -613,6 +613,7 @@ async def webhook(request: Request, background_tasks: BackgroundTasks):
                                             
                                             # Iterate through segments to find unknown speakers
                                             unknown_speakers_found = []
+                                            processed_speakers = set()  # Track speakers we've already sent samples for
                                             
                                             for i, segment in enumerate(segments):
                                                 # STEP 1: Immediate Conversion - Convert Gemini timestamps (SECONDS) to Pydub timestamps (MILLISECONDS)
@@ -623,22 +624,22 @@ async def webhook(request: Request, background_tasks: BackgroundTasks):
                                                 
                                                 speaker = segment.get('speaker', '')
                                                 
-                                                # DEBUG MODE: Explicit Unit Conversion Logging
-                                                print(f"🕵️  DEBUG: Raw Start={segment.get('start', 0.0)}s | Raw End={segment.get('end', 0.0)}s")
-                                                print(f"🧮 CALC: StartMS={start_ms} | EndMS={end_ms} | Duration={duration_ms}ms")
+                                                # PRODUCTION: Restore Duration Filter - Skip segments shorter than 1 second
+                                                if duration_ms < 1000:
+                                                    print(f"⏭️  Skipping segment {i}: too short ({duration_ms}ms < 1000ms)")
+                                                    continue
                                                 
-                                                # DEBUG MODE: DISABLE ALL FILTERS - Process EVERY segment
-                                                # if duration_ms < 1000:
-                                                #     print(f"⏭️  Skipping segment {i}: too short ({duration_ms}ms < 1000ms)")
-                                                #     continue
+                                                # PRODUCTION: Restore Speaker Filter - Skip Speaker 1 (assumed to be the user)
+                                                if speaker and speaker.lower() in ['speaker 1', 'דובר 1', 'speaker a']:
+                                                    print(f"⏭️  Skipping Speaker 1 (assumed to be User): {speaker}")
+                                                    continue
                                                 
-                                                # Skip Speaker 1 (assumed to be the user)
-                                                # if speaker and speaker.lower() in ['speaker 1', 'דובר 1']:
-                                                #     print(f"⏭️  Skipping Speaker 1 (assumed to be User): {speaker}")
-                                                #     continue
+                                                # PRODUCTION: One Sample Per Speaker Rule - Skip if we've already processed this speaker
+                                                if speaker in processed_speakers:
+                                                    print(f"⏭️  Skipping segment {i}: already sent sample for speaker '{speaker}'")
+                                                    continue
                                                 
-                                                # DEBUG MODE: Process ALL segments regardless of speaker
-                                                print(f"🔍 DEBUG MODE: Processing segment {i} - Speaker: {speaker} at {segment.get('start', 0.0):.2f}s - {segment.get('end', 0.0):.2f}s")
+                                                print(f"🔍 Processing segment {i} - Speaker: {speaker} at {segment.get('start', 0.0):.2f}s - {segment.get('end', 0.0):.2f}s")
                                                 
                                                 # Ensure slice doesn't exceed audio bounds
                                                 audio_length_ms = len(audio_segment)
@@ -699,17 +700,17 @@ async def webhook(request: Request, background_tasks: BackgroundTasks):
                                                                 os.unlink(slice_path)
                                                                 continue
                                                         
-                                                        # Send audio clip to user with simple caption
+                                                        # Send audio clip to user with clean, user-friendly message
                                                         if not whatsapp_provider:
                                                             print(f"❌ WhatsApp provider not initialized - cannot send audio")
                                                         elif not hasattr(whatsapp_provider, 'send_audio'):
                                                             print(f"❌ WhatsApp provider does not support send_audio method")
                                                         else:
-                                                            # DEBUG MODE: Update WhatsApp message with debug info
-                                                            caption = f"🔍 DEBUG: Speaker {speaker} | Duration: {duration_ms}ms | Segment {i}"
+                                                            # PRODUCTION: Clean WhatsApp message - user-friendly prompt
+                                                            caption = f"🔊 זוהה דובר חדש: *{speaker}*. מי זה/זו? (הגב עם השם)"
                                                             
-                                                            print(f"📤 DEBUG MODE: Attempting to send audio slice via {whatsapp_provider.get_provider_name()}...")
-                                                            print(f"   Caption: {caption}")
+                                                            print(f"📤 Attempting to send audio slice via {whatsapp_provider.get_provider_name()}...")
+                                                            print(f"   Speaker: {speaker}, Duration: {duration_ms}ms")
                                                             audio_result = whatsapp_provider.send_audio(
                                                                 audio_path=slice_path,
                                                                 caption=caption,
@@ -719,10 +720,13 @@ async def webhook(request: Request, background_tasks: BackgroundTasks):
                                                             if audio_result.get('success'):
                                                                 print(f"✅ Sent audio slice to user for speaker identification")
                                                                 print(f"   Message ID: {audio_result.get('message_id', 'N/A')}")
+                                                                # Mark this speaker as processed - we've sent their sample
+                                                                processed_speakers.add(speaker)
+                                                                print(f"✅ Added '{speaker}' to processed_speakers set")
                                                             else:
                                                                 print(f"⚠️  Failed to send audio slice: {audio_result.get('error')}")
                                                                 print(f"   Full error response: {audio_result}")
-                                                                # DO NOT send fallback text message - we want audio, not text
+                                                                # Don't mark as processed if send failed - allow retry
                                                         
                                                         # Cleanup slice file (only after successful send or confirmed failure)
                                                         try:
