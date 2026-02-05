@@ -524,6 +524,254 @@ async def whatsapp_webhook_verify(request: Request):
     raise HTTPException(status_code=403, detail="Webhook verification failed")
 
 
+# ============================================================================
+# BACKGROUND AUDIO PROCESSING FUNCTION
+# This runs in the background to avoid 502 timeouts on WhatsApp webhooks
+# ============================================================================
+
+def process_audio_in_background(
+    message_id: str,
+    from_number: str,
+    media_id: str,
+    access_token: str,
+    phone_number_id: str
+):
+    """
+    Process audio message in background to avoid webhook timeout.
+    This function handles all audio downloading, archiving, and Gemini processing.
+    """
+    import requests
+    import tempfile
+    import traceback
+    
+    print(f"\n{'='*60}")
+    print(f"🎤 BACKGROUND AUDIO PROCESSING STARTED")
+    print(f"   Message ID: {message_id}")
+    print(f"   From: {from_number}")
+    print(f"{'='*60}\n")
+    
+    # Initialize cleanup list
+    temp_files_to_cleanup = []
+    reference_voices = []
+    
+    try:
+        # Step 1: Get media URL from WhatsApp API
+        print("🔐 Downloading media from WhatsApp...")
+        media_url = f"https://graph.facebook.com/v18.0/{media_id}"
+        headers = {"Authorization": f"Bearer {access_token}"}
+        
+        media_response = requests.get(media_url, headers=headers, timeout=30)
+        if media_response.status_code != 200:
+            print(f"❌ Failed to get media URL. Status: {media_response.status_code}")
+            _send_error_to_user(from_number, "שגיאה בהורדת האודיו מווטסאפ")
+            return
+        
+        media_info = media_response.json()
+        download_url = media_info.get("url")
+        if not download_url:
+            print("❌ No download URL in media response")
+            _send_error_to_user(from_number, "שגיאה בהורדת האודיו מווטסאפ")
+            return
+        
+        # Step 2: Download actual audio file
+        print(f"📥 Downloading audio file...")
+        audio_response = requests.get(download_url, headers=headers, timeout=60)
+        if audio_response.status_code != 200:
+            print(f"❌ Failed to download audio. Status: {audio_response.status_code}")
+            _send_error_to_user(from_number, "שגיאה בהורדת האודיו")
+            return
+        
+        audio_bytes = audio_response.content
+        print(f"✅ Media downloaded: {len(audio_bytes)} bytes")
+        
+        # Step 3: Upload to Drive archive
+        print("📤 Uploading to Google Drive...")
+        file_stream = io.BytesIO(audio_bytes)
+        audio_metadata = drive_memory_service.upload_audio_to_archive(
+            audio_file_obj=file_stream,
+            filename=f"whatsapp_audio_{message_id}.ogg",
+            mime_type="audio/ogg"
+        )
+        
+        if not audio_metadata:
+            print("❌ Failed to upload to Drive")
+            _send_error_to_user(from_number, "שגיאה בשמירת האודיו לדרייב")
+            return
+        
+        print(f"✅ Audio archived. File ID: {audio_metadata.get('file_id')}")
+        
+        # Step 4: Save to temp file for Gemini processing
+        with tempfile.NamedTemporaryFile(delete=False, suffix='.ogg') as tmp_file:
+            tmp_file.write(audio_bytes)
+            tmp_path = tmp_file.name
+            temp_files_to_cleanup.append(tmp_path)
+        
+        # Step 5: Retrieve voice signatures (memory optimized)
+        known_speaker_names = []
+        if drive_memory_service.is_configured and settings.enable_multimodal_voice:
+            try:
+                max_sigs = settings.max_voice_signatures
+                print(f"🎤 Retrieving voice signatures (max: {max_sigs})...")
+                reference_voices = drive_memory_service.get_voice_signatures(max_signatures=max_sigs)
+                known_speaker_names = [rv['name'].lower() for rv in reference_voices]
+                if reference_voices:
+                    print(f"✅ Retrieved {len(reference_voices)} voice signature(s)")
+            except Exception as e:
+                print(f"⚠️  Error retrieving voice signatures: {e}")
+                reference_voices = []
+        
+        # Step 6: Process with Gemini
+        print("🤖 Processing audio with Gemini...")
+        result = gemini_service.analyze_day(
+            audio_paths=[tmp_path],
+            audio_file_metadata=[audio_metadata],
+            reference_voices=reference_voices
+        )
+        
+        print("✅ Gemini analysis complete")
+        
+        # Extract transcript and segments
+        transcript_json = result.get('transcript', {})
+        segments = transcript_json.get('segments', [])
+        summary_text = result.get('summary', '')
+        
+        # Validate segments
+        valid_segments = []
+        for seg in segments:
+            start = seg.get('start')
+            end = seg.get('end')
+            if start is not None and end is not None:
+                if isinstance(start, (int, float)) and isinstance(end, (int, float)):
+                    if end > start and start >= 0:
+                        valid_segments.append(seg)
+        segments = valid_segments
+        
+        # Extract speaker names
+        speaker_names = set()
+        for seg in segments:
+            speaker = seg.get('speaker', '')
+            if speaker and not speaker.lower().startswith('speaker '):
+                speaker_names.add(speaker)
+        speaker_names = list(speaker_names)
+        
+        # Step 7: Save to memory
+        audio_interaction = {
+            "timestamp": datetime.utcnow().isoformat() + "Z",
+            "type": "audio",
+            "file_id": audio_metadata.get('file_id', ''),
+            "web_content_link": audio_metadata.get('web_content_link', ''),
+            "web_view_link": audio_metadata.get('web_view_link', ''),
+            "filename": audio_metadata.get('filename', ''),
+            "transcript": transcript_json,
+            "speakers": speaker_names,
+            "message_id": message_id,
+            "from_number": from_number
+        }
+        
+        drive_memory_service.update_memory(audio_interaction)
+        print("✅ Saved audio interaction to memory")
+        
+        # Step 8: Build and send confirmation message
+        all_speakers = set()
+        for seg in segments:
+            speaker = seg.get('speaker', '')
+            if speaker:
+                all_speakers.add(speaker)
+        
+        identified_speakers = []
+        unidentified_count = 0
+        
+        for speaker in all_speakers:
+            speaker_lower = speaker.lower()
+            is_unknown = (
+                speaker_lower.startswith('speaker ') or
+                speaker.startswith('דובר ') or
+                'unknown' in speaker_lower or
+                speaker_lower == 'speaker' or
+                speaker_lower == 'unknown' or
+                speaker == ''
+            )
+            if is_unknown:
+                unidentified_count += 1
+            else:
+                identified_speakers.append(speaker)
+        
+        # Truncate summary if too long
+        if len(summary_text) > 1000:
+            summary_text = summary_text[:800] + "... (הסיכום המלא בקובץ בדרייב)"
+        
+        # Build confirmation message
+        reply_message = "✅ *ההקלטה נשמרה וסוכמה בהצלחה!*\n\n"
+        reply_message += "👥 *משתתפים:*\n"
+        
+        if identified_speakers:
+            for name in sorted(identified_speakers):
+                reply_message += f"   ✓ {name}\n"
+        
+        if unidentified_count > 0:
+            reply_message += f"   + {unidentified_count} דוברים לא מזוהים\n"
+        
+        if not identified_speakers and unidentified_count == 0:
+            reply_message += "   (לא זוהו דוברים)\n"
+        
+        if summary_text:
+            reply_message += f"\n📝 *סיכום השיחה:*\n{summary_text}\n"
+        
+        reply_message += "\n📄 התמלול המלא זמין בדרייב."
+        
+        # Send confirmation
+        if whatsapp_provider:
+            reply_result = whatsapp_provider.send_whatsapp(
+                message=reply_message,
+                to=f"+{from_number}"
+            )
+            if reply_result.get('success'):
+                print("✅ Confirmation sent to user")
+            else:
+                print(f"⚠️  Failed to send confirmation: {reply_result.get('error')}")
+        
+        print(f"\n{'='*60}")
+        print(f"✅ BACKGROUND AUDIO PROCESSING COMPLETED")
+        print(f"{'='*60}\n")
+        
+    except Exception as e:
+        print(f"❌ BACKGROUND AUDIO ERROR: {e}")
+        traceback.print_exc()
+        _send_error_to_user(from_number, "שגיאה בעיבוד האודיו. נסה שוב מאוחר יותר.")
+        
+    finally:
+        # Cleanup temp files
+        for tmp_path in temp_files_to_cleanup:
+            try:
+                if os.path.exists(tmp_path):
+                    os.unlink(tmp_path)
+                    print(f"🗑️  Cleaned up temp file: {tmp_path}")
+            except:
+                pass
+        
+        # Cleanup reference voice files
+        for rv in reference_voices:
+            try:
+                file_path = rv.get('file_path', '')
+                if file_path and os.path.exists(file_path):
+                    os.unlink(file_path)
+                    print(f"🗑️  Cleaned up reference voice file: {file_path}")
+            except:
+                pass
+
+
+def _send_error_to_user(from_number: str, error_msg: str):
+    """Send error message to user via WhatsApp."""
+    if whatsapp_provider:
+        try:
+            whatsapp_provider.send_whatsapp(
+                message=f"⚠️ {error_msg}",
+                to=f"+{from_number}"
+            )
+        except:
+            pass
+
+
 @app.get("/webhook")
 @app.post("/webhook")
 async def webhook(request: Request, background_tasks: BackgroundTasks):
@@ -656,642 +904,60 @@ async def webhook(request: Request, background_tasks: BackgroundTasks):
                                 # Mark message as processed BEFORE processing (prevents race conditions)
                                 mark_message_processed(message_id)
                                 
-                                # Handle audio messages
+                                # Handle audio messages - BACKGROUND PROCESSING to avoid 502 timeout
                                 if message_type == "audio":
-                                    try:
-                                        print("🎤 Audio message detected - starting processing...")
-                                        
-                                        # Get audio media info from message
-                                        audio_data = message.get("audio", {})
-                                        media_id = audio_data.get("id")
-                                        
-                                        if not media_id:
-                                            print("❌ CRITICAL AUDIO ERROR: No media ID found in audio message")
-                                            continue
-                                        
-                                        print(f"📥 Media ID: {media_id}")
-                                        
-                                        # Get WhatsApp API token (Meta)
-                                        from app.services.meta_whatsapp_service import meta_whatsapp_service
-                                        if not meta_whatsapp_service.is_configured:
-                                            print("❌ CRITICAL AUDIO ERROR: Meta WhatsApp service not configured")
-                                            continue
-                                        
-                                        access_token = meta_whatsapp_service.access_token
-                                        phone_number_id = meta_whatsapp_service.phone_number_id
-                                        
-                                        if not access_token:
-                                            print("❌ CRITICAL AUDIO ERROR: WhatsApp API token not available")
-                                            continue
-                                        
-                                        print("🔐 Attempting to download media from WhatsApp...")
-                                        
-                                        # Step 1: Get media URL from WhatsApp API
-                                        import requests
-                                        media_url = f"https://graph.facebook.com/v18.0/{media_id}"
-                                        headers = {
-                                            "Authorization": f"Bearer {access_token}"
-                                        }
-                                        
-                                        print(f"   Requesting media URL from: {media_url}")
-                                        media_response = requests.get(media_url, headers=headers, timeout=30)
-                                        
-                                        if media_response.status_code != 200:
-                                            print(f"❌ CRITICAL AUDIO ERROR: Failed to get media URL. Status: {media_response.status_code}")
-                                            print(f"   Response: {media_response.text[:500]}")
-                                            continue
-                                        
-                                        media_info = media_response.json()
-                                        download_url = media_info.get("url")
-                                        
-                                        if not download_url:
-                                            print("❌ CRITICAL AUDIO ERROR: No download URL in media response")
-                                            print(f"   Media info: {media_info}")
-                                            continue
-                                        
-                                        print(f"✅ Media URL retrieved: {download_url[:100]}...")
-                                        
-                                        # Step 2: Download the actual audio file
-                                        print("📥 Downloading audio file from WhatsApp...")
-                                        download_headers = {
-                                            "Authorization": f"Bearer {access_token}"
-                                        }
-                                        
-                                        audio_response = requests.get(download_url, headers=download_headers, timeout=60)
-                                        
-                                        if audio_response.status_code != 200:
-                                            print(f"❌ CRITICAL AUDIO ERROR: Failed to download audio. Status: {audio_response.status_code}")
-                                            print(f"   Response: {audio_response.text[:500]}")
-                                            continue
-                                        
-                                        audio_bytes = audio_response.content
-                                        print(f"✅ Media downloaded successfully. Size: {len(audio_bytes)} bytes")
-                                        
-                                        # Step 3: Upload to Drive archive
-                                        print("📤 Attempting to upload to Google Drive...")
-                                        # Convert downloaded content to a stream
-                                        file_stream = io.BytesIO(audio_bytes)
-                                        audio_metadata = drive_memory_service.upload_audio_to_archive(
-                                            audio_file_obj=file_stream,
-                                            filename=f"whatsapp_audio_{message_id}.ogg",
-                                            mime_type="audio/ogg"
+                                    print("🎤 Audio message detected - queuing for background processing...")
+                                    
+                                    # Get audio media info from message
+                                    audio_data = message.get("audio", {})
+                                    media_id = audio_data.get("id")
+                                    
+                                    if not media_id:
+                                        print("❌ No media ID found in audio message")
+                                        continue
+                                    
+                                    # Get WhatsApp API credentials
+                                    from app.services.meta_whatsapp_service import meta_whatsapp_service
+                                    if not meta_whatsapp_service.is_configured:
+                                        print("❌ Meta WhatsApp service not configured")
+                                        continue
+                                    
+                                    access_token = meta_whatsapp_service.access_token
+                                    phone_number_id = meta_whatsapp_service.phone_number_id
+                                    
+                                    if not access_token:
+                                        print("❌ WhatsApp API token not available")
+                                        continue
+                                    
+                                    # Send immediate acknowledgment to user
+                                    if whatsapp_provider:
+                                        whatsapp_provider.send_whatsapp(
+                                            message="📥 קיבלתי את ההקלטה, מעבד... (זה יכול לקחת כמה דקות)",
+                                            to=f"+{from_number}"
                                         )
-                                        
-                                        if not audio_metadata:
-                                            print("❌ CRITICAL AUDIO ERROR: upload_audio_to_archive returned None")
-                                            continue
-                                        
-                                        print(f"✅ Audio archived successfully. File ID: {audio_metadata.get('file_id')}")
-                                        
-                                        # Step 4: Process with Gemini (save to temp file first)
-                                        import tempfile
-                                        with tempfile.NamedTemporaryFile(delete=False, suffix='.ogg') as tmp_file:
-                                            tmp_file.write(audio_bytes)
-                                            tmp_path = tmp_file.name
-                                        
-                                        print("🤖 Processing audio with Gemini...")
-                                        
-                                        # Initialize variables that will be used later (even if processing fails)
-                                        segments = []
-                                        unknown_speakers_found = []
-                                        success = False
-                                        processing_error_occurred = False  # Track if error was caught
-                                        
-                                        # Retrieve voice signatures for speaker identification
-                                        # MEMORY OPTIMIZATION: Use settings to limit signatures
-                                        reference_voices = []
-                                        known_speaker_names = []  # List of names we already know (for filtering)
-                                        if drive_memory_service.is_configured and settings.enable_multimodal_voice:
-                                            try:
-                                                max_sigs = settings.max_voice_signatures
-                                                print(f"🎤 Retrieving voice signatures (max: {max_sigs})...")
-                                                reference_voices = drive_memory_service.get_voice_signatures(max_signatures=max_sigs)
-                                                # Also get just the names for filtering (lowercase for comparison)
-                                                known_speaker_names = [rv['name'].lower() for rv in reference_voices]
-                                                if reference_voices:
-                                                    print(f"✅ Retrieved {len(reference_voices)} voice signature(s): {[rv['name'] for rv in reference_voices]}")
-                                                    print(f"📋 Known speaker names for filtering: {known_speaker_names}")
-                                                else:
-                                                    print("ℹ️  No voice signatures found - will use generic speaker IDs")
-                                            except Exception as voice_sig_error:
-                                                print(f"⚠️  Error retrieving voice signatures: {voice_sig_error}")
-                                                import traceback
-                                                traceback.print_exc()
-                                                # Continue without voice signatures
-                                                reference_voices = []
-                                                known_speaker_names = []
-                                        elif not settings.enable_multimodal_voice:
-                                            print("ℹ️  Multimodal voice comparison disabled (ENABLE_MULTIMODAL_VOICE=false)")
-                                        
-                                        try:
-                                            result = gemini_service.analyze_day(
-                                                audio_paths=[tmp_path],
-                                                audio_file_metadata=[audio_metadata],
-                                                reference_voices=reference_voices
-                                            )
-                                            
-                                            print("✅ Gemini analysis complete")
-                                            
-                                            # Extract JSON transcript (now contains segments with timestamps)
-                                            transcript_json = result.get('transcript', {})
-                                            segments = transcript_json.get('segments', [])
-                                            
-                                            print(f"   Transcript segments: {len(segments)} segments")
-                                            
-                                            # Validate segments have valid timestamps before processing
-                                            valid_segments = []
-                                            for seg in segments:
-                                                start = seg.get('start', None)
-                                                end = seg.get('end', None)
-                                                if start is not None and end is not None and isinstance(start, (int, float)) and isinstance(end, (int, float)):
-                                                    if end > start and start >= 0:
-                                                        valid_segments.append(seg)
-                                                    else:
-                                                        print(f"⚠️  Skipping invalid segment: start={start}, end={end} (end must be > start, start >= 0)")
-                                                else:
-                                                    print(f"⚠️  Skipping segment with missing/invalid timestamps: start={start}, end={end}")
-                                            
-                                            segments = valid_segments
-                                            print(f"   Valid segments with timestamps: {len(segments)}")
-                                            
-                                            # Extract unique speaker names from segments for searchability
-                                            speaker_names = set()
-                                            for segment in segments:
-                                                speaker = segment.get('speaker', '')
-                                                if speaker and not speaker.lower().startswith('speaker '):
-                                                    # Only add actual names, not generic "Speaker 1", "Speaker 2", etc.
-                                                    speaker_names.add(speaker)
-                                            speaker_names = list(speaker_names)
-                                            print(f"   Identified speakers: {speaker_names if speaker_names else 'Generic speaker IDs only'}")
-                                            
-                                            # Save full JSON transcript to memory (with identified speaker names)
-                                            audio_interaction = {
-                                                "timestamp": datetime.utcnow().isoformat() + "Z",
-                                                "type": "audio",
-                                                "file_id": audio_metadata.get('file_id', ''),
-                                                "web_content_link": audio_metadata.get('web_content_link', ''),
-                                                "web_view_link": audio_metadata.get('web_view_link', ''),
-                                                "filename": audio_metadata.get('filename', ''),
-                                                "transcript": transcript_json,  # Full JSON with segments (includes speaker names)
-                                                "speakers": speaker_names,  # List of identified speaker names for searchability
-                                                "message_id": message_id,
-                                                "from_number": from_number
-                                            }
-                                            
-                                            success = drive_memory_service.update_memory(audio_interaction, background_tasks=background_tasks)
-                                            if success:
-                                                print(f"✅ Saved audio interaction to memory")
-                                            
-                                            # Also save transcript as separate file in Transcripts folder (for search)
-                                            try:
-                                                transcript_file_id = drive_memory_service.save_transcript(
-                                                    transcript_data=transcript_json,
-                                                    speakers=speaker_names
-                                                )
-                                                if transcript_file_id:
-                                                    print(f"✅ Saved transcript to Transcripts folder (ID: {transcript_file_id})")
-                                            except Exception as transcript_save_error:
-                                                print(f"⚠️  Failed to save transcript separately: {transcript_save_error}")
-                                            
-                                            # SPEAKER IDENTIFICATION: Detect unknown speakers and slice audio
-                                            from pydub import AudioSegment
-                                            import tempfile
-                                            
-                                            # Load original audio for slicing with FFmpeg safety check
-                                            audio_segment = None
-                                            slicing_error_occurred = False
-                                            
-                                            try:
-                                                audio_segment = AudioSegment.from_file(tmp_path)
-                                                print(f"✅ Loaded audio: {len(audio_segment)}ms ({len(audio_segment)/1000:.1f}s)")
-                                            except FileNotFoundError as e:
-                                                print(f"❌ ERROR: FFmpeg is likely missing on the server.")
-                                                print(f"   Error: {e}")
-                                                print(f"   Install FFmpeg: apt-get install ffmpeg (Linux) or brew install ffmpeg (Mac)")
-                                                slicing_error_occurred = True
-                                                error_message = "Error: Audio processing failed - FFmpeg missing (check logs)."
-                                            except Exception as e:
-                                                print(f"❌ SLICING ERROR: Failed to load audio file")
-                                                print(f"   Error: {e}")
-                                                import traceback
-                                                traceback.print_exc()
-                                                slicing_error_occurred = True
-                                                error_message = "Error: Audio processing failed (check logs)."
-                                            
-                                            # If audio loading failed, send error message and skip slicing
-                                            if slicing_error_occurred:
-                                                if whatsapp_provider:
-                                                    whatsapp_provider.send_whatsapp(
-                                                        message=error_message,
-                                                        to=f"+{from_number}"
-                                                    )
-                                                    print(f"📤 Sent error alert to user via WhatsApp")
-                                                continue
-                                            
-                                            # Iterate through segments to find unknown speakers
-                                            unknown_speakers_found = []
-                                            processed_speakers = set()  # Track speakers we've already sent samples for
-                                            
-                                            # MINIMUM SLICE LENGTH: 5 seconds for good voice identification
-                                            MIN_SLICE_MS = 5000
-                                            MAX_SLICE_MS = 10000
-                                            
-                                            for i, segment in enumerate(segments):
-                                                # STEP 1: Immediate Conversion - Convert Gemini timestamps (SECONDS) to Pydub timestamps (MILLISECONDS)
-                                                # Gemini returns floats in SECONDS (e.g., 5.5), Pydub operates in MILLISECONDS (int)
-                                                start_ms = int(segment.get('start', 0.0) * 1000)
-                                                end_ms = int(segment.get('end', 0.0) * 1000)
-                                                segment_duration_ms = end_ms - start_ms
-                                                
-                                                speaker = segment.get('speaker', '')
-                                                
-                                                # Skip segments shorter than 1 second (too short to be meaningful)
-                                                if segment_duration_ms < 1000:
-                                                    print(f"⏭️  Skipping segment {i}: too short ({segment_duration_ms}ms < 1000ms)")
-                                                    continue
-                                                
-                                                # Skip Speaker 1 (assumed to be the user/phone owner)
-                                                if speaker and speaker.lower() in ['speaker 1', 'דובר 1', 'speaker a']:
-                                                    print(f"⏭️  Skipping Speaker 1 (assumed to be User): {speaker}")
-                                                    continue
-                                                
-                                                # AUTO-FILTER 1: Skip speakers that match our known voice signatures
-                                                # If speaker name is in our Voice_Signatures folder, don't ask "Who is this?"
-                                                speaker_lower = speaker.lower()
-                                                if speaker_lower in known_speaker_names:
-                                                    print(f"✅ Skipping segment {i}: Speaker '{speaker}' is in Voice_Signatures - already known!")
-                                                    continue
-                                                
-                                                # AUTO-FILTER 2: Skip speakers that Gemini identified with a real name
-                                                # Check if speaker is "Unknown Speaker X" or generic "Speaker X" pattern
-                                                # These should trigger the "Who is this?" flow
-                                                is_unknown_speaker = (
-                                                    speaker_lower.startswith('speaker ') or  # "Speaker 2", "Speaker 3"
-                                                    speaker.startswith('דובר ') or  # Hebrew: "דובר 2", "דובר 3"
-                                                    'unknown' in speaker_lower or  # "Unknown Speaker 2", "unknown speaker"
-                                                    speaker_lower == '' or
-                                                    speaker_lower == 'speaker' or
-                                                    speaker_lower == 'unknown'
-                                                )
-                                                
-                                                # If speaker has a real name (not unknown/generic), skip - Gemini identified them
-                                                if speaker and not is_unknown_speaker:
-                                                    print(f"✅ Skipping segment {i}: Speaker '{speaker}' identified by Gemini with 95%+ confidence - no need to ask!")
-                                                    continue
-                                                
-                                                # This speaker is unknown - will trigger "Who is this?" flow
-                                                print(f"❓ Segment {i}: Speaker '{speaker}' is unknown - will ask 'Who is this?'")
-                                                
-                                                # Skip if we've already processed this speaker
-                                                if speaker in processed_speakers:
-                                                    print(f"⏭️  Skipping segment {i}: already sent sample for speaker '{speaker}'")
-                                                    continue
-                                                
-                                                print(f"🔍 Processing segment {i} - Speaker: {speaker} at {segment.get('start', 0.0):.2f}s - {segment.get('end', 0.0):.2f}s (duration: {segment_duration_ms}ms)")
-                                                
-                                                # Ensure slice doesn't exceed audio bounds
-                                                audio_length_ms = len(audio_segment)
-                                                if start_ms < 0:
-                                                    start_ms = 0
-                                                if end_ms > audio_length_ms:
-                                                    end_ms = audio_length_ms
-                                                if start_ms >= end_ms:
-                                                    print(f"⚠️  Invalid slice bounds after adjustment: {start_ms}ms - {end_ms}ms - skipping")
-                                                    continue
-                                                
-                                                # STEP 3: Slicing - ensure at least 5 seconds, max 10 seconds
-                                                try:
-                                                    # Calculate slice bounds: ensure minimum 5 seconds
-                                                    slice_start = start_ms
-                                                    slice_end = end_ms
-                                                    
-                                                    # If segment is shorter than MIN_SLICE_MS, extend it
-                                                    current_duration = slice_end - slice_start
-                                                    if current_duration < MIN_SLICE_MS:
-                                                        # Try to extend forward first
-                                                        extension_needed = MIN_SLICE_MS - current_duration
-                                                        new_end = min(slice_end + extension_needed, audio_length_ms)
-                                                        
-                                                        # If we couldn't extend enough forward, try extending backward
-                                                        if (new_end - slice_start) < MIN_SLICE_MS:
-                                                            backward_extension = MIN_SLICE_MS - (new_end - slice_start)
-                                                            slice_start = max(0, slice_start - backward_extension)
-                                                        
-                                                        slice_end = new_end
-                                                        print(f"   📏 Extended slice from {current_duration}ms to {slice_end - slice_start}ms (min {MIN_SLICE_MS}ms required)")
-                                                    
-                                                    # Cap at maximum duration
-                                                    if (slice_end - slice_start) > MAX_SLICE_MS:
-                                                        slice_end = slice_start + MAX_SLICE_MS
-                                                    
-                                                    # Perform the slice
-                                                    audio_slice = audio_segment[slice_start : slice_end]
-                                                    
-                                                    # Verify slice length
-                                                    slice_length_ms = len(audio_slice)
-                                                    print(f"✂️  SLICING: {slice_start}ms - {slice_end}ms. Final duration: {slice_length_ms}ms")
-                                                    
-                                                    # Skip if still too short (couldn't extend enough)
-                                                    if slice_length_ms < MIN_SLICE_MS:
-                                                        print(f"⚠️  Slice still too short ({slice_length_ms}ms < {MIN_SLICE_MS}ms) - skipping")
-                                                        continue
-                                                    
-                                                    print(f"✅ Slice created successfully: {slice_length_ms}ms ({slice_length_ms/1000:.1f}s)")
-                                                    
-                                                    unknown_speakers_found.append({
-                                                        'segment_index': i,
-                                                        'speaker': speaker,
-                                                        'start': segment.get('start', 0.0),
-                                                        'end': segment.get('end', 0.0),
-                                                        'text': segment.get('text', '')
-                                                    })
-                                                    
-                                                    # STEP 5: Export as MP3 (to satisfy WhatsApp) - with error handling
-                                                    try:
-                                                        with tempfile.NamedTemporaryFile(delete=False, suffix='.mp3') as slice_file:
-                                                            audio_slice.export(slice_file.name, format='mp3')
-                                                            slice_path = slice_file.name
-                                                            
-                                                            # Verify file was created and has content
-                                                            if not os.path.exists(slice_path):
-                                                                print(f"❌ ERROR: Exported MP3 file does not exist - skipping send")
-                                                                continue
-                                                            
-                                                            file_size = os.path.getsize(slice_path)
-                                                            print(f"   📁 Exported MP3 file: {file_size} bytes")
-                                                            if file_size == 0:
-                                                                print(f"❌ ERROR: Exported MP3 file is empty (0 bytes) - skipping send")
-                                                                os.unlink(slice_path)
-                                                                continue
-                                                        
-                                                        # Send audio clip to user with clean, user-friendly message
-                                                        if not whatsapp_provider:
-                                                            print(f"❌ WhatsApp provider not initialized - cannot send audio")
-                                                        elif not hasattr(whatsapp_provider, 'send_audio'):
-                                                            print(f"❌ WhatsApp provider does not support send_audio method")
-                                                        else:
-                                                            # PRODUCTION: Clean WhatsApp message - user-friendly prompt
-                                                            caption = f"🔊 זוהה דובר חדש: *{speaker}*. מי זה/זו? (הגב עם השם)"
-                                                            
-                                                            print(f"📤 Attempting to send audio slice via {whatsapp_provider.get_provider_name()}...")
-                                                            print(f"   Speaker: {speaker}, Duration: {slice_length_ms}ms")
-                                                            audio_result = whatsapp_provider.send_audio(
-                                                                audio_path=slice_path,
-                                                                caption=caption,
-                                                                to=f"+{from_number}"
-                                                            )
-                                                            
-                                                            if audio_result.get('success'):
-                                                                # IMPORTANT: User replies to the CAPTION message, not the audio message
-                                                                # So we need to track the caption_message_id if it exists
-                                                                caption_msg_id = audio_result.get('caption_message_id')
-                                                                audio_msg_id = audio_result.get('wam_id') or audio_result.get('message_id')
-                                                                
-                                                                # Use caption message ID if available (user replies to caption), otherwise use audio message ID
-                                                                sent_msg_id = caption_msg_id or audio_msg_id
-                                                                
-                                                                print(f"✅ Sent audio slice to user for speaker identification")
-                                                                print(f"   Audio Message ID: {audio_msg_id}")
-                                                                print(f"   Caption Message ID: {caption_msg_id}")
-                                                                print(f"   Tracking Message ID (wam_id): {sent_msg_id}")
-                                                                
-                                                                # Store message_id -> file_path mapping for voice imprinting
-                                                                # User will reply to the caption message, so we track that ID
-                                                                if sent_msg_id:
-                                                                    pending_identifications[sent_msg_id] = slice_path
-                                                                    print(f"📝 Stored pending identification: {sent_msg_id} -> {slice_path}")
-                                                                    print(f"   User will reply to this message ID to identify the speaker")
-                                                                
-                                                                # Mark this speaker as processed - we've sent their sample
-                                                                processed_speakers.add(speaker)
-                                                                print(f"✅ Added '{speaker}' to processed_speakers set")
-                                                                
-                                                                # IMPORTANT: Don't delete slice file immediately - keep it for voice imprinting
-                                                                # File will be cleaned up after user replies with person name, or after timeout
-                                                                print(f"📝 Keeping slice file for voice imprinting: {slice_path}")
-                                                                # TODO: Add cleanup task for files older than X hours if user doesn't reply
-                                                            else:
-                                                                print(f"⚠️  Failed to send audio slice: {audio_result.get('error')}")
-                                                                print(f"   Full error response: {audio_result}")
-                                                                # Don't mark as processed if send failed - allow retry
-                                                                
-                                                                # If send failed, cleanup immediately
-                                                                try:
-                                                                    if os.path.exists(slice_path):
-                                                                        os.unlink(slice_path)
-                                                                        print(f"🗑️  Cleaned up slice file after failed send: {slice_path}")
-                                                                except Exception as cleanup_error:
-                                                                    print(f"⚠️  Failed to cleanup slice file: {cleanup_error}")
-                                                            
-                                                    except FileNotFoundError:
-                                                        print(f"❌ ERROR: FFmpeg is likely missing on the server (during export).")
-                                                        print(f"   Install FFmpeg: apt-get install ffmpeg (Linux) or brew install ffmpeg (Mac)")
-                                                        if whatsapp_provider:
-                                                            whatsapp_provider.send_whatsapp(
-                                                                message="Error: Audio processing failed - FFmpeg missing (check logs).",
-                                                                to=f"+{from_number}"
-                                                            )
-                                                        continue
-                                                    except Exception as export_error:
-                                                        print(f"❌ SLICING ERROR: Failed to export audio slice")
-                                                        print(f"   Error: {export_error}")
-                                                        import traceback
-                                                        traceback.print_exc()
-                                                        if whatsapp_provider:
-                                                            whatsapp_provider.send_whatsapp(
-                                                                message="Error: Audio processing failed (check logs).",
-                                                                to=f"+{from_number}"
-                                                            )
-                                                        continue
-                                                
-                                                except FileNotFoundError:
-                                                    print(f"❌ ERROR: FFmpeg is likely missing on the server (during slicing).")
-                                                    print(f"   Install FFmpeg: apt-get install ffmpeg (Linux) or brew install ffmpeg (Mac)")
-                                                    if whatsapp_provider:
-                                                        whatsapp_provider.send_whatsapp(
-                                                            message="Error: Audio processing failed - FFmpeg missing (check logs).",
-                                                            to=f"+{from_number}"
-                                                        )
-                                                    continue
-                                                except Exception as slicing_error:
-                                                    print(f"❌ SLICING ERROR: {slicing_error}")
-                                                    import traceback
-                                                    traceback.print_exc()
-                                                    if whatsapp_provider:
-                                                        whatsapp_provider.send_whatsapp(
-                                                            message="Error: Audio processing failed (check logs).",
-                                                            to=f"+{from_number}"
-                                                        )
-                                                    continue
-                                                
-                                            if not unknown_speakers_found:
-                                                print("✅ No unknown speakers detected - all speakers identified")
-                                                
-                                        except ImportError:
-                                            print("⚠️  pydub not installed - cannot slice audio for speaker identification")
-                                            print("   Install with: pip install pydub")
-                                        except Exception as gemini_error:
-                                            # Handle ALL errors from Gemini processing and pydub
-                                            processing_error_occurred = True  # Mark that an error occurred
-                                            print(f"❌ CRITICAL AUDIO ERROR: Gemini/audio processing failed: {gemini_error}")
-                                            import traceback
-                                            traceback.print_exc()
-                                            
-                                            # Still save the audio interaction without transcript/summary
-                                            audio_interaction = {
-                                                "timestamp": datetime.utcnow().isoformat() + "Z",
-                                                "type": "audio",
-                                                "file_id": audio_metadata.get('file_id', ''),
-                                                "web_content_link": audio_metadata.get('web_content_link', ''),
-                                                "web_view_link": audio_metadata.get('web_view_link', ''),
-                                                "filename": audio_metadata.get('filename', ''),
-                                                "transcript": "",
-                                                "summary": "Processing failed",
-                                                "speakers": ["User", "Unknown"],
-                                                "message_id": message_id,
-                                                "from_number": from_number
-                                            }
-                                            
-                                            drive_memory_service.update_memory(audio_interaction, background_tasks=background_tasks)
-                                            
-                                            # Send error message to user with more details
-                                            error_type = type(gemini_error).__name__
-                                            error_msg_short = str(gemini_error)[:80] if str(gemini_error) else "Unknown error"
-                                            
-                                            # Create user-friendly error message
-                                            if "timeout" in error_msg_short.lower() or "timeout" in error_type.lower():
-                                                user_error_msg = "⚠️  האודיו ארוך מדי או שהשרת עמוס. נסה שוב מאוחר יותר."
-                                            elif "api" in error_msg_short.lower() or "key" in error_msg_short.lower():
-                                                user_error_msg = "⚠️  בעיה בהגדרת Gemini API. אנא בדוק את הלוגים."
-                                            else:
-                                                user_error_msg = f"⚠️  שגיאה בעיבוד האודיו: {error_msg_short}"
-                                            
-                                            if whatsapp_provider:
-                                                whatsapp_provider.send_whatsapp(
-                                                    message=user_error_msg,
-                                                    to=f"+{from_number}"
-                                                )
-                                            
-                                            # Cleanup temp file
-                                            try:
-                                                os.unlink(tmp_path)
-                                            except:
-                                                pass
-                                            
-                                            # Cleanup temporary reference voice files
-                                            for rv in reference_voices:
-                                                try:
-                                                    if os.path.exists(rv.get('file_path', '')):
-                                                        os.unlink(rv['file_path'])
-                                                except:
-                                                    pass
-                                        
-                                        # Send confirmation message (only if processing succeeded, we have segments, and no error occurred)
-                                        if segments and success and not processing_error_occurred:
-                                            # Extract and analyze participants from segments
-                                            all_speakers = set()
-                                            for seg in segments:
-                                                speaker = seg.get('speaker', '')
-                                                if speaker:
-                                                    all_speakers.add(speaker)
-                                            
-                                            # Separate identified vs unidentified speakers
-                                            identified_speakers = []
-                                            unidentified_count = 0
-                                            
-                                            for speaker in all_speakers:
-                                                speaker_lower = speaker.lower()
-                                                # Check if it's an unknown/generic speaker ID
-                                                is_unknown = (
-                                                    speaker_lower.startswith('speaker ') or  # "Speaker 2", "Speaker 3"
-                                                    speaker.startswith('דובר ') or  # Hebrew: "דובר 2", "דובר 3"
-                                                    'unknown' in speaker_lower or  # "Unknown Speaker 2"
-                                                    speaker_lower == 'speaker' or
-                                                    speaker_lower == 'unknown' or
-                                                    speaker == ''
-                                                )
-                                                
-                                                if is_unknown:
-                                                    unidentified_count += 1
-                                                else:
-                                                    identified_speakers.append(speaker)
-                                            
-                                            # Get summary from Gemini result
-                                            summary_text = result.get('summary', '')
-                                            
-                                            # Truncate summary if too long
-                                            if len(summary_text) > 1000:
-                                                summary_text = summary_text[:800] + "... (הסיכום המלא בקובץ בדרייב)"
-                                            
-                                            # Build the new confirmation message
-                                            reply_message = "✅ *ההקלטה נשמרה וסוכמה בהצלחה!*\n\n"
-                                            reply_message += "👥 *משתתפים:*\n"
-                                            
-                                            if identified_speakers:
-                                                # List identified speakers with checkmarks
-                                                for name in sorted(identified_speakers):
-                                                    reply_message += f"   ✓ {name}\n"
-                                            
-                                            if unidentified_count > 0:
-                                                reply_message += f"   + {unidentified_count} דוברים לא מזוהים"
-                                                if unknown_speakers_found:
-                                                    reply_message += " (נשלחו קטעי אודיו לזיהוי)"
-                                                reply_message += "\n"
-                                            
-                                            if not identified_speakers and unidentified_count == 0:
-                                                reply_message += "   (לא זוהו דוברים)\n"
-                                            
-                                            # Add summary section
-                                            if summary_text:
-                                                reply_message += f"\n📝 *סיכום השיחה:*\n{summary_text}\n"
-                                            
-                                            reply_message += "\n📄 התמלול המלא זמין בדרייב."
-                                            
-                                            print(f"📊 Participants summary: {len(identified_speakers)} identified, {unidentified_count} unidentified")
-                                            print(f"   Identified: {identified_speakers}")
-                                            print(f"   Summary length: {len(summary_text)} chars")
-                                            
-                                            reply_result = whatsapp_provider.send_whatsapp(
-                                                message=reply_message,
-                                                to=f"+{from_number}"
-                                            )
-                                            
-                                            if reply_result.get('success'):
-                                                print("✅ Confirmation sent to user")
-                                            else:
-                                                print(f"⚠️  Failed to send confirmation: {reply_result.get('error')}")
-                                        elif not segments:
-                                            print("⚠️  No segments to send confirmation - processing may have failed")
-                                        
-                                        if not success:
-                                            print("⚠️  Failed to save audio interaction to memory")
-                                        
-                                        # Cleanup temp files (main audio and reference voices)
-                                        try:
-                                            os.unlink(tmp_path)
-                                        except:
-                                            pass
-                                        
-                                        # Cleanup temporary reference voice files
-                                        for rv in reference_voices:
-                                            try:
-                                                if os.path.exists(rv.get('file_path', '')):
-                                                    os.unlink(rv['file_path'])
-                                                    print(f"🗑️  Cleaned up reference voice file: {rv['file_path']}")
-                                            except Exception as cleanup_error:
-                                                print(f"⚠️  Failed to cleanup reference voice file: {cleanup_error}")
-                                        
-                                    except Exception as audio_error:
-                                        import traceback
-                                        print("=" * 60)
-                                        print("❌ RAW ERROR TYPE:", type(audio_error).__name__)
-                                        print("❌ RAW ERROR MESSAGE:", str(audio_error))
-                                        print("=" * 60)
-                                        print("FULL TRACEBACK:")
-                                        print("=" * 60)
-                                        traceback.print_exc()
-                                        print("=" * 60)
+                                    
+                                    # Queue background processing - PREVENTS 502 TIMEOUT
+                                    background_tasks.add_task(
+                                        process_audio_in_background,
+                                        message_id=message_id,
+                                        from_number=from_number,
+                                        media_id=media_id,
+                                        access_token=access_token,
+                                        phone_number_id=phone_number_id
+                                    )
+                                    
+                                    print(f"✅ Audio processing queued in background for message {message_id}")
+                                    # Return immediately - processing continues in background
+                                    continue
                                 
+                                # NOTE: All audio processing moved to process_audio_in_background()
+                                # The orphaned code below was the old inline audio processing - REMOVED
+                                
+                                # LEGACY AUDIO CODE REMOVED - See process_audio_in_background()
+                                # All audio downloading, Gemini processing, and response sending
+                                # now happens in the background to avoid 502 timeouts
+                                
+                                # Text message handling follows (elif block)
                                 # Process message with memory
                                 elif whatsapp_provider and message_type == "text" and message_body_text:
                                     try:
