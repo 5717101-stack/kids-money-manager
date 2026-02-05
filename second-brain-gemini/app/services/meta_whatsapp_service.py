@@ -466,17 +466,20 @@ class MetaWhatsAppService:
             # Send audio message FIRST (before caption) to ensure audio is the primary message
             print(f"📤 Sending audio message to {recipient}...")
             print(f"   Media ID: {media_id}")
+            print(f"   Payload: {payload}")
             response = requests.post(message_url, json=payload, headers=message_headers)
             
             if response.status_code != 200:
                 error_detail = response.text
                 print(f"❌ Audio message send failed with status {response.status_code}: {error_detail}")
+                print(f"   Response headers: {dict(response.headers)}")
                 # If audio send fails, DO NOT send caption as fallback - return error immediately
                 return {
                     "success": False,
                     "error": f"Send failed: HTTP {response.status_code}",
                     "message": f"Failed to send audio message: {error_detail}",
-                    "status_code": response.status_code
+                    "status_code": response.status_code,
+                    "response_text": error_detail
                 }
             
             response.raise_for_status()
@@ -485,7 +488,23 @@ class MetaWhatsAppService:
             print(f"✅ Audio message sent successfully")
             print(f"   Response: {result_data}")
             
-            # Only send caption AFTER audio is successfully sent
+            # Verify we got a message ID (confirms audio was actually sent)
+            message_id = result_data.get('messages', [{}])[0].get('id')
+            if not message_id:
+                print(f"❌ No message ID in response - audio may not have been sent")
+                print(f"   Full response: {result_data}")
+                return {
+                    "success": False,
+                    "error": "No message ID in response",
+                    "message": "Audio upload succeeded but message send failed",
+                    "response": result_data
+                }
+            
+            print(f"✅ Audio file sent via Meta WhatsApp API!")
+            print(f"   Message ID: {message_id}")
+            print(f"   Media ID: {media_id}")
+            
+            # Only send caption AFTER audio is successfully sent and verified
             if caption:
                 print(f"📝 Sending caption after audio: {caption[:50]}...")
                 caption_payload = {
@@ -503,8 +522,6 @@ class MetaWhatsAppService:
                 else:
                     print(f"✅ Caption sent successfully")
                     caption_response.raise_for_status()
-            
-            message_id = result_data.get('messages', [{}])[0].get('id')
             
             print(f"✅ Audio file sent via Meta WhatsApp API!")
             print(f"   Message ID: {message_id}")
