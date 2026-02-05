@@ -148,84 +148,96 @@ def is_history_query(message: str) -> bool:
 
 def search_history_for_context(chat_history: list, query: str) -> str:
     """
-    Search through chat history for relevant transcripts based on query.
+    Search through chat history AND Transcripts folder in Drive for relevant transcripts.
     Returns formatted context string for Gemini.
     
-    Searches for:
-    - Speaker names mentioned in query
-    - Keywords/topics mentioned in query
-    - Audio transcripts with matching content
+    Searches:
+    1. Chat history (in-memory)
+    2. Transcripts folder in Google Drive (persistent storage)
     """
-    if not chat_history:
-        return ""
-    
     query_lower = query.lower()
     relevant_transcripts = []
     
-    # Extract potential names from query (words that might be names)
-    # Common Hebrew words to exclude
-    hebrew_stopwords = ['מה', 'עם', 'את', 'על', 'של', 'לי', 'אני', 'הוא', 'היא', 'הם', 'דיברתי', 'דיברנו', 'אמר', 'אמרה']
-    english_stopwords = ['what', 'did', 'i', 'we', 'talk', 'about', 'with', 'the', 'a', 'an', 'say', 'said']
+    # Extract search terms from query
+    hebrew_stopwords = ['מה', 'עם', 'את', 'על', 'של', 'לי', 'אני', 'הוא', 'היא', 'הם', 'דיברתי', 'דיברנו', 'אמר', 'אמרה', 'סכם', 'תסכם']
+    english_stopwords = ['what', 'did', 'i', 'we', 'talk', 'about', 'with', 'the', 'a', 'an', 'say', 'said', 'summarize']
     
-    # Get all words from query as potential search terms
     import re
     words = re.findall(r'\b\w+\b', query_lower)
     search_terms = [w for w in words if w not in hebrew_stopwords and w not in english_stopwords and len(w) > 1]
     
-    print(f"🔍 Searching history with terms: {search_terms}")
+    print(f"🔍 Searching with terms: {search_terms}")
     
-    for interaction in chat_history:
-        # Only look at audio interactions with transcripts
-        if interaction.get('type') != 'audio':
-            continue
-        
-        transcript = interaction.get('transcript', {})
-        if not transcript:
-            continue
-        
-        speakers = interaction.get('speakers', [])
-        segments = transcript.get('segments', []) if isinstance(transcript, dict) else []
-        timestamp = interaction.get('timestamp', '')
-        
-        # Check if any speaker name matches search terms
-        speaker_match = False
-        for speaker in speakers:
-            speaker_lower = speaker.lower()
-            for term in search_terms:
-                if term in speaker_lower or speaker_lower in term:
-                    speaker_match = True
-                    break
-        
-        # Check if any segment text contains search terms
-        content_match = False
-        matching_segments = []
-        for segment in segments:
-            text = segment.get('text', '').lower()
-            speaker = segment.get('speaker', '')
-            for term in search_terms:
-                if term in text:
-                    content_match = True
-                    matching_segments.append(segment)
-                    break
-        
-        # If we found a match, add to results
-        if speaker_match or content_match:
-            # Format the transcript for context
-            transcript_text = f"\n📅 Recording from {timestamp}:\n"
-            transcript_text += f"👥 Speakers: {', '.join(speakers) if speakers else 'Unknown'}\n"
+    # STEP 1: Search in Transcripts folder in Google Drive (PRIMARY SOURCE)
+    if drive_memory_service.is_configured and search_terms:
+        print("📂 Searching Transcripts folder in Google Drive...")
+        try:
+            drive_results = drive_memory_service.search_transcripts(search_terms, limit=5)
             
-            # Include all segments if speaker match, or just matching segments if content match
-            segments_to_include = segments if speaker_match else matching_segments
-            for seg in segments_to_include[:20]:  # Limit to first 20 segments to avoid too much text
-                speaker = seg.get('speaker', 'Unknown')
-                text = seg.get('text', '')
-                transcript_text += f"  {speaker}: {text}\n"
+            for result in drive_results:
+                filename = result.get('filename', '')
+                created_time = result.get('created_time', '')
+                speakers = result.get('speakers', [])
+                segments = result.get('matching_segments', [])
+                
+                transcript_text = f"\n📅 Recording: {filename} ({created_time}):\n"
+                transcript_text += f"👥 Speakers: {', '.join(speakers) if speakers else 'Unknown'}\n"
+                
+                for seg in segments[:15]:  # Limit segments
+                    speaker = seg.get('speaker', 'Unknown')
+                    text = seg.get('text', '')
+                    transcript_text += f"  {speaker}: {text}\n"
+                
+                relevant_transcripts.append(transcript_text)
             
-            relevant_transcripts.append(transcript_text)
+            print(f"   Found {len(drive_results)} matching transcript(s) in Drive")
+            
+        except Exception as e:
+            print(f"⚠️  Error searching Drive transcripts: {e}")
+    
+    # STEP 2: Also search chat_history (backup/recent items)
+    if chat_history:
+        print("📚 Also searching chat history...")
+        for interaction in chat_history:
+            if interaction.get('type') != 'audio':
+                continue
+            
+            transcript = interaction.get('transcript', {})
+            if not transcript:
+                continue
+            
+            speakers = interaction.get('speakers', [])
+            segments = transcript.get('segments', []) if isinstance(transcript, dict) else []
+            timestamp = interaction.get('timestamp', '')
+            
+            # Check for matches
+            speaker_match = any(
+                any(term in speaker.lower() for term in search_terms)
+                for speaker in speakers
+            )
+            
+            matching_segments = [
+                seg for seg in segments
+                if any(term in seg.get('text', '').lower() for term in search_terms)
+            ]
+            
+            if speaker_match or matching_segments:
+                transcript_text = f"\n📅 Recording from {timestamp}:\n"
+                transcript_text += f"👥 Speakers: {', '.join(speakers) if speakers else 'Unknown'}\n"
+                
+                segments_to_show = segments[:15] if speaker_match else matching_segments[:10]
+                for seg in segments_to_show:
+                    speaker = seg.get('speaker', 'Unknown')
+                    text = seg.get('text', '')
+                    transcript_text += f"  {speaker}: {text}\n"
+                
+                # Avoid duplicates
+                if transcript_text not in relevant_transcripts:
+                    relevant_transcripts.append(transcript_text)
     
     if relevant_transcripts:
-        context = f"Found {len(relevant_transcripts)} relevant recording(s):\n"
-        context += "\n---\n".join(relevant_transcripts[:5])  # Limit to 5 most relevant
+        context = f"נמצאו {len(relevant_transcripts)} הקלטות רלוונטיות:\n"
+        context += "\n---\n".join(relevant_transcripts[:5])
         return context
     
     return ""
@@ -825,6 +837,17 @@ async def webhook(request: Request, background_tasks: BackgroundTasks):
                                             success = drive_memory_service.update_memory(audio_interaction, background_tasks=background_tasks)
                                             if success:
                                                 print(f"✅ Saved audio interaction to memory")
+                                            
+                                            # Also save transcript as separate file in Transcripts folder (for search)
+                                            try:
+                                                transcript_file_id = drive_memory_service.save_transcript(
+                                                    transcript_data=transcript_json,
+                                                    speakers=speaker_names
+                                                )
+                                                if transcript_file_id:
+                                                    print(f"✅ Saved transcript to Transcripts folder (ID: {transcript_file_id})")
+                                            except Exception as transcript_save_error:
+                                                print(f"⚠️  Failed to save transcript separately: {transcript_save_error}")
                                             
                                             # SPEAKER IDENTIFICATION: Detect unknown speakers and slice audio
                                             from pydub import AudioSegment

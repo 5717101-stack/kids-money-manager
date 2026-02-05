@@ -207,6 +207,240 @@ class DriveMemoryService:
             logger.error(f"❌ Error ensuring audio_archive folder: {e}")
             return None
     
+    def _ensure_transcripts_folder(self) -> Optional[str]:
+        """
+        Ensure the Transcripts subfolder exists in the main memory folder.
+        Creates it if it doesn't exist.
+        
+        Returns:
+            Folder ID of Transcripts folder, or None if creation failed
+        """
+        if not self.is_configured or not self.service:
+            return None
+        
+        self._refresh_credentials_if_needed()
+        
+        try:
+            # Check if Transcripts folder already exists
+            query = f"name = 'Transcripts' and '{self.folder_id}' in parents and mimeType = 'application/vnd.google-apps.folder' and trashed = false"
+            results = self.service.files().list(
+                q=query,
+                fields="files(id, name)"
+            ).execute()
+            
+            files = results.get('files', [])
+            if files:
+                folder_id = files[0]['id']
+                logger.info(f"✅ Transcripts folder already exists (ID: {folder_id})")
+                return folder_id
+
+            # Create Transcripts folder
+            folder_metadata = {
+                'name': 'Transcripts',
+                'mimeType': 'application/vnd.google-apps.folder',
+                'parents': [self.folder_id]
+            }
+            
+            folder = self.service.files().create(
+                body=folder_metadata,
+                fields='id'
+            ).execute()
+            
+            folder_id = folder.get('id')
+            logger.info(f"✅ Created Transcripts folder (ID: {folder_id})")
+            return folder_id
+            
+        except Exception as e:
+            logger.error(f"❌ Error ensuring Transcripts folder: {e}")
+            return None
+    
+    def save_transcript(self, transcript_data: dict, speakers: list = None) -> Optional[str]:
+        """
+        Save a transcript as a separate JSON file in the Transcripts folder.
+        
+        Args:
+            transcript_data: The transcript JSON (with segments)
+            speakers: List of speaker names for the filename
+            
+        Returns:
+            File ID of saved transcript, or None if failed
+        """
+        if not self.is_configured or not self.service:
+            return None
+        
+        self._refresh_credentials_if_needed()
+        
+        transcripts_folder_id = self._ensure_transcripts_folder()
+        if not transcripts_folder_id:
+            logger.error("❌ Cannot save transcript: Transcripts folder not available")
+            return None
+        
+        try:
+            # Create filename with timestamp and speakers
+            timestamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
+            speakers_str = "_".join(speakers[:3]) if speakers else "unknown"
+            # Sanitize filename
+            speakers_str = "".join(c if c.isalnum() or c in ['_', '-'] else '_' for c in speakers_str)
+            filename = f"transcript_{timestamp}_{speakers_str}.json"
+            
+            # Prepare content
+            content = json.dumps(transcript_data, ensure_ascii=False, indent=2)
+            file_stream = io.BytesIO(content.encode('utf-8'))
+            
+            # Upload to Drive
+            file_metadata = {
+                'name': filename,
+                'parents': [transcripts_folder_id],
+                'mimeType': 'application/json'
+            }
+            
+            media = MediaIoBaseUpload(file_stream, mimetype='application/json')
+            file = self.service.files().create(
+                body=file_metadata,
+                media_body=media,
+                fields='id'
+            ).execute()
+            
+            file_id = file.get('id')
+            logger.info(f"✅ Saved transcript to Drive: {filename} (ID: {file_id})")
+            return file_id
+            
+        except Exception as e:
+            logger.error(f"❌ Error saving transcript: {e}")
+            return None
+    
+    def get_recent_transcripts(self, limit: int = 5) -> List[Dict[str, Any]]:
+        """
+        Get the most recent transcripts from the Transcripts folder.
+        
+        Args:
+            limit: Maximum number of transcripts to retrieve
+            
+        Returns:
+            List of transcript dictionaries with metadata and content
+        """
+        if not self.is_configured or not self.service:
+            return []
+        
+        self._refresh_credentials_if_needed()
+        
+        transcripts_folder_id = self._ensure_transcripts_folder()
+        if not transcripts_folder_id:
+            return []
+        
+        try:
+            # List transcript files, ordered by creation time (newest first)
+            query = f"'{transcripts_folder_id}' in parents and mimeType = 'application/json' and trashed = false"
+            results = self.service.files().list(
+                q=query,
+                orderBy='createdTime desc',
+                pageSize=limit,
+                fields="files(id, name, createdTime)"
+            ).execute()
+            
+            files = results.get('files', [])
+            if not files:
+                logger.info("ℹ️  No transcripts found in Transcripts folder")
+                return []
+            
+            logger.info(f"📥 Found {len(files)} transcript(s)")
+            
+            # Download and parse each transcript
+            transcripts = []
+            for file_info in files:
+                file_id = file_info.get('id')
+                filename = file_info.get('name', '')
+                created_time = file_info.get('createdTime', '')
+                
+                try:
+                    # Download file content
+                    request = self.service.files().get_media(fileId=file_id)
+                    file_content = io.BytesIO()
+                    downloader = MediaIoBaseDownload(file_content, request)
+                    
+                    done = False
+                    while not done:
+                        status, done = downloader.next_chunk()
+                    
+                    file_content.seek(0)
+                    content = file_content.read().decode('utf-8')
+                    transcript_data = json.loads(content)
+                    
+                    transcripts.append({
+                        'file_id': file_id,
+                        'filename': filename,
+                        'created_time': created_time,
+                        'content': transcript_data
+                    })
+                    logger.info(f"✅ Loaded transcript: {filename}")
+                    
+                except Exception as e:
+                    logger.error(f"❌ Error loading transcript {filename}: {e}")
+                    continue
+            
+            return transcripts
+            
+        except Exception as e:
+            logger.error(f"❌ Error getting recent transcripts: {e}")
+            return []
+    
+    def search_transcripts(self, search_terms: List[str], limit: int = 10) -> List[Dict[str, Any]]:
+        """
+        Search through transcripts for specific terms (names, topics).
+        
+        Args:
+            search_terms: List of terms to search for (names, keywords)
+            limit: Maximum number of matching transcripts to return
+            
+        Returns:
+            List of matching transcript segments with context
+        """
+        # Get recent transcripts
+        transcripts = self.get_recent_transcripts(limit=20)  # Get more to search through
+        
+        if not transcripts:
+            return []
+        
+        matching_results = []
+        search_terms_lower = [term.lower() for term in search_terms]
+        
+        for transcript in transcripts:
+            content = transcript.get('content', {})
+            segments = content.get('segments', [])
+            filename = transcript.get('filename', '')
+            created_time = transcript.get('created_time', '')
+            
+            matching_segments = []
+            all_speakers = set()
+            
+            for segment in segments:
+                speaker = segment.get('speaker', '')
+                text = segment.get('text', '')
+                
+                if speaker:
+                    all_speakers.add(speaker)
+                
+                # Check if any search term matches speaker or text
+                speaker_lower = speaker.lower()
+                text_lower = text.lower()
+                
+                for term in search_terms_lower:
+                    if term in speaker_lower or term in text_lower:
+                        matching_segments.append(segment)
+                        break
+            
+            if matching_segments:
+                matching_results.append({
+                    'filename': filename,
+                    'created_time': created_time,
+                    'speakers': list(all_speakers),
+                    'matching_segments': matching_segments,
+                    'total_segments': len(segments)
+                })
+        
+        logger.info(f"🔍 Found {len(matching_results)} matching transcript(s) for terms: {search_terms}")
+        return matching_results[:limit]
+    
     def upload_audio_to_archive(
         self,
         audio_path: str = None,
