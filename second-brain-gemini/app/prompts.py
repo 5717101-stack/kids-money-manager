@@ -77,23 +77,37 @@ AUDIO_ANALYSIS_PROMPT_BASE = """You are a professional transcriber. You MUST out
 """
 
 # Forensic Analyst prompt for multimodal voice comparison
-FORENSIC_ANALYST_PROMPT = """You are a FORENSIC AUDIO ANALYST performing speaker identification through acoustic waveform comparison.
+FORENSIC_ANALYST_PROMPT = """You are a FORENSIC AUDIO ANALYST performing speaker diarization and identification.
 
-**YOUR TASK:**
-Compare the speakers in the PRIMARY CONVERSATION to the provided REFERENCE VOICE SAMPLES.
+**YOUR MISSION:**
+1. Identify EVERY unique voice in the audio
+2. Compare speakers to reference samples for identification
+
+**STRICT DIARIZATION RULES:**
+
+⚠️ You MUST identify EVERY unique voice in the audio, no matter how short.
+⚠️ Output a UNIQUE ID for every speaker found (Speaker A, Speaker B, etc. or their name if identified).
+⚠️ For each speaker, provide the timestamp of their LONGEST and CLEAREST speech segment.
+⚠️ Do NOT merge different voices into one speaker ID.
+⚠️ Count the voices: If you hear 3 distinct voices, output 3 unique speaker IDs.
 
 **ANALYSIS METHODOLOGY:**
 
-1. **LISTEN** to each Reference Audio sample and note the acoustic fingerprint:
+1. **DIARIZATION FIRST** - Identify all unique voices:
+   - Count how many distinct voices you hear
+   - Assign each a temporary ID (Voice A, Voice B, etc.)
+   - Note which voice speaks at which timestamps
+
+2. **LISTEN** to each Reference Audio sample and note the acoustic fingerprint:
    - Pitch range (high/low)
    - Tone quality (nasal, breathy, resonant)
    - Speaking cadence (fast/slow)
    - Accent patterns
    - Unique vocal characteristics
 
-2. **TRANSCRIBE** the primary conversation word-for-word.
+3. **TRANSCRIBE** the primary conversation word-for-word.
 
-3. **FOR EACH SPEAKER in the conversation:**
+4. **FOR EACH SPEAKER in the conversation:**
    - Compare their acoustic characteristics to ALL reference samples
    - Calculate confidence level (0-100%) for each potential match
    - If confidence >= 90% for a reference sample → Use that person's name
@@ -133,12 +147,19 @@ Compare the speakers in the PRIMARY CONVERSATION to the provided REFERENCE VOICE
 ```json
 {
   "summary": "סיכום קצר של השיחה (2-3 משפטים בעברית)",
+  "speaker_count": 2,
   "segments": [
     {"speaker": "Name or Unknown Speaker X", "start": 0.0, "end": 5.2, "text": "Exact words"},
     {"speaker": "Name or Unknown Speaker X", "start": 5.2, "end": 12.0, "text": "Exact words"}
   ]
 }
 ```
+
+**OUTPUT REQUIREMENTS:**
+- speaker_count: Total number of UNIQUE voices you identified
+- segments: Include ALL speech segments, with the speaker's LONGEST segment first
+- Each unique speaker ID (e.g., "Unknown Speaker 2") must appear at least once in segments
+- If you identified 3 voices, you must have 3 different speaker IDs in the output
 
 **CRITICAL:** Output ONLY valid JSON. No markdown code blocks, no text before/after.
 """

@@ -746,6 +746,17 @@ def process_audio_in_background(
         # Step 8: Detect unknown speakers and send "Who is this?" messages
         # This triggers the voice imprinting flow
         unknown_speakers_processed = []
+        
+        # SELF-IDENTIFICATION SKIP: Names to never ask about (user/owner)
+        # These are considered "self" - the person using the bot
+        self_names = {'itzik', 'itzhak', 'איציק', 'יצחק', 'speaker 1', 'speaker a', 'דובר 1'}
+        
+        # Add known speaker names from reference voices (these are already identified)
+        for rv in reference_voices:
+            self_names.add(rv['name'].lower())
+        
+        print(f"🔇 Self-identification skip list: {self_names}")
+        
         try:
             from pydub import AudioSegment
             
@@ -753,37 +764,69 @@ def process_audio_in_background(
             audio_segment = AudioSegment.from_file(tmp_path)
             print(f"✅ Loaded audio for slicing: {len(audio_segment)}ms")
             
-            processed_speakers = set()  # Track speakers we've already asked about
+            # ============================================================
+            # SPEAKER DEDUPLICATION: Find BEST segment for each unique speaker
+            # ============================================================
+            # Group segments by speaker and find the longest/clearest one
+            speaker_best_segments = {}  # {speaker_id: best_segment}
             
-            for i, segment in enumerate(segments):
+            for segment in segments:
                 speaker = segment.get('speaker', '')
+                if not speaker:
+                    continue
+                
                 speaker_lower = speaker.lower()
                 
-                # Check if this is an unknown speaker
+                # Check if this is an unknown speaker (needs identification)
                 is_unknown = (
                     speaker_lower.startswith('speaker ') or
                     speaker.startswith('דובר ') or
                     'unknown' in speaker_lower or
-                    speaker_lower == '' or
                     speaker_lower == 'speaker'
                 )
                 
-                # Skip if not unknown or already processed
-                if not is_unknown or speaker in processed_speakers:
+                # Skip if not unknown (already identified by Gemini)
+                if not is_unknown:
+                    print(f"✅ Skipping identified speaker: {speaker}")
                     continue
                 
-                # Skip Speaker 1 (assumed to be user)
-                if speaker_lower in ['speaker 1', 'דובר 1', 'speaker a']:
+                # SELF-IDENTIFICATION SKIP: Don't ask "who is this?" for self
+                if speaker_lower in self_names:
+                    print(f"🔇 Skipping self-speaker: {speaker}")
                     continue
                 
-                print(f"❓ Unknown speaker detected: {speaker}")
-                processed_speakers.add(speaker)
+                # Calculate segment duration
+                start = segment.get('start', 0)
+                end = segment.get('end', 0)
+                duration = end - start
+                
+                # Keep the longest segment for this speaker
+                if speaker not in speaker_best_segments:
+                    speaker_best_segments[speaker] = segment
+                else:
+                    existing_duration = speaker_best_segments[speaker].get('end', 0) - speaker_best_segments[speaker].get('start', 0)
+                    if duration > existing_duration:
+                        speaker_best_segments[speaker] = segment
+            
+            print(f"📊 Unique unknown speakers to identify: {list(speaker_best_segments.keys())}")
+            
+            # ============================================================
+            # FALLBACK LOGIC: If no segments but summary exists, flag it
+            # ============================================================
+            if not speaker_best_segments and summary_text:
+                print("⚠️  FALLBACK: No unknown speakers detected, but summary exists.")
+                print("   This might indicate Gemini identified all speakers or missed diarization.")
+                # We could trigger a re-analysis here if needed
+            
+            # Process each unique unknown speaker
+            for speaker, best_segment in speaker_best_segments.items():
+                print(f"❓ Processing unknown speaker: {speaker}")
                 
                 # Get segment timestamps (Gemini returns seconds, pydub uses ms)
-                start_ms = int(segment.get('start', 0) * 1000)
-                end_ms = int(segment.get('end', 0) * 1000)
+                start_ms = int(best_segment.get('start', 0) * 1000)
+                end_ms = int(best_segment.get('end', 0) * 1000)
                 
-                # Ensure minimum 5 seconds
+                # Ensure minimum 5 seconds, max 10 seconds
                 MIN_SLICE_MS = 5000
                 MAX_SLICE_MS = 10000
                 
@@ -798,10 +841,12 @@ def process_audio_in_background(
                 if end_ms > len(audio_segment):
                     end_ms = len(audio_segment)
                 if start_ms >= end_ms:
+                    print(f"⚠️  Invalid segment bounds for {speaker}: {start_ms}ms - {end_ms}ms")
                     continue
                 
-                # Slice audio
+                # Slice audio (best segment for this speaker)
                 audio_slice = audio_segment[start_ms:end_ms]
+                print(f"✂️  Sliced audio for {speaker}: {start_ms}ms - {end_ms}ms ({len(audio_slice)}ms)")
                 
                 # Export to temp file
                 import tempfile as tf
