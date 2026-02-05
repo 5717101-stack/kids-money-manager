@@ -747,12 +747,16 @@ async def webhook(request: Request, background_tasks: BackgroundTasks):
                                         
                                         # Retrieve voice signatures for speaker identification
                                         reference_voices = []
+                                        known_speaker_names = []  # List of names we already know (for filtering)
                                         if drive_memory_service.is_configured:
                                             try:
                                                 print("🎤 Retrieving voice signatures for speaker identification...")
                                                 reference_voices = drive_memory_service.get_voice_signatures()
+                                                # Also get just the names for filtering (lowercase for comparison)
+                                                known_speaker_names = [rv['name'].lower() for rv in reference_voices]
                                                 if reference_voices:
                                                     print(f"✅ Retrieved {len(reference_voices)} voice signature(s): {[rv['name'] for rv in reference_voices]}")
+                                                    print(f"📋 Known speaker names for filtering: {known_speaker_names}")
                                                 else:
                                                     print("ℹ️  No voice signatures found - will use generic speaker IDs")
                                             except Exception as voice_sig_error:
@@ -761,6 +765,7 @@ async def webhook(request: Request, background_tasks: BackgroundTasks):
                                                 traceback.print_exc()
                                                 # Continue without voice signatures
                                                 reference_voices = []
+                                                known_speaker_names = []
                                         
                                         try:
                                             result = gemini_service.analyze_day(
@@ -883,16 +888,24 @@ async def webhook(request: Request, background_tasks: BackgroundTasks):
                                                     print(f"⏭️  Skipping Speaker 1 (assumed to be User): {speaker}")
                                                     continue
                                                 
-                                                # AUTO-FILTER: Skip speakers that Gemini already identified by name
+                                                # AUTO-FILTER 1: Skip speakers that match our known voice signatures
+                                                # If speaker name is in our Voice_Signatures folder, don't ask "Who is this?"
+                                                speaker_lower = speaker.lower()
+                                                if speaker_lower in known_speaker_names:
+                                                    print(f"✅ Skipping segment {i}: Speaker '{speaker}' is in Voice_Signatures - already known!")
+                                                    continue
+                                                
+                                                # AUTO-FILTER 2: Skip speakers that Gemini identified with a real name
                                                 # If speaker name doesn't start with "Speaker" or "דובר", it means Gemini
                                                 # matched the voice to a known reference voice - no need to ask "Who is this?"
                                                 is_generic_speaker = (
-                                                    speaker.lower().startswith('speaker ') or 
+                                                    speaker_lower.startswith('speaker ') or 
                                                     speaker.startswith('דובר ') or
-                                                    speaker.lower().startswith('unknown')
+                                                    speaker_lower.startswith('unknown') or
+                                                    speaker_lower == ''
                                                 )
                                                 if speaker and not is_generic_speaker:
-                                                    print(f"✅ Skipping segment {i}: Speaker '{speaker}' already identified by voice match!")
+                                                    print(f"✅ Skipping segment {i}: Speaker '{speaker}' identified by Gemini - no need to ask!")
                                                     continue
                                                 
                                                 # Skip if we've already processed this speaker

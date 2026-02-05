@@ -508,6 +508,46 @@ class DriveMemoryService:
             logger.error(f"❌ Error ensuring Voice_Signatures folder: {e}")
             return None
     
+    def get_known_speaker_names(self) -> List[str]:
+        """
+        Get list of known speaker names from Voice_Signatures folder.
+        This is a lightweight call that doesn't download files.
+        
+        Returns:
+            List of speaker names (e.g., ['Miri', 'Itzik', 'Dan'])
+        """
+        if not self.is_configured or not self.service:
+            return []
+        
+        self._refresh_credentials_if_needed()
+        
+        voice_signatures_folder_id = self._ensure_voice_signatures_folder()
+        if not voice_signatures_folder_id:
+            return []
+        
+        try:
+            query = f"'{voice_signatures_folder_id}' in parents and mimeType = 'audio/mpeg' and trashed = false"
+            results = self.service.files().list(
+                q=query,
+                fields="files(name)"
+            ).execute()
+            
+            files = results.get('files', [])
+            names = []
+            for file_info in files:
+                filename = file_info.get('name', '')
+                # Extract person name from filename (remove .mp3 extension)
+                name = filename.replace('.mp3', '').replace('_', ' ').strip()
+                if name:
+                    names.append(name)
+            
+            logger.info(f"📋 Known speaker names: {names}")
+            return names
+            
+        except Exception as e:
+            logger.error(f"❌ Error getting known speaker names: {e}")
+            return []
+    
     def get_voice_signatures(self) -> List[Dict[str, str]]:
         """
         Retrieve all voice signature files from the Voice_Signatures folder.

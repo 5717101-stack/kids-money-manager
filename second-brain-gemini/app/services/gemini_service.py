@@ -570,30 +570,37 @@ Here is structured data about the user. You MUST use this to answer personal que
             prompt = AUDIO_ANALYSIS_PROMPT_BASE
             
             if reference_voice_files:
-                # Add instructions for matching reference voices
+                # Add AGGRESSIVE instructions for matching reference voices
                 voice_names = [rv['name'] for rv in reference_voice_files]
                 prompt += f"""
 
-**VOICE IDENTIFICATION INSTRUCTIONS:**
+**🎯 MANDATORY VOICE IDENTIFICATION - YOU MUST USE THESE NAMES:**
 
-You are provided with a main audio file and {len(reference_voice_files)} reference voice sample(s) labeled with names: {', '.join(voice_names)}.
+You are an EXPERT voice analyzer. You are provided with reference voice samples for these KNOWN speakers: **{', '.join(voice_names)}**
 
-**CRITICAL TASK**: Compare the speakers in the main audio file with the provided reference voice samples.
+**CRITICAL RULES - FOLLOW EXACTLY:**
 
-**STRICT MATCHING RULES - READ CAREFULLY:**
-1. Listen to each reference voice sample to learn the UNIQUE voice characteristics (pitch, tone, accent, speaking style)
-2. ONLY use a person's name when you are HIGHLY CONFIDENT (90%+) that the voice matches
-3. If you are NOT confident about a match, use generic "Speaker 1", "Speaker 2", etc.
-4. Do NOT guess or assume - if you're unsure, use generic speaker IDs
-5. Different speakers should have DIFFERENT IDs - don't assign the same name/ID to different voices
+1. **ALWAYS identify the phone owner as the FIRST speaker** - they are recording these conversations, so "Speaker 1" is ALWAYS the phone owner.
 
-**IMPORTANT**: It's better to use "Speaker 2" when unsure than to incorrectly assign a name. Wrong identification is worse than no identification.
+2. **USE THE PROVIDED NAMES**: You have {len(reference_voice_files)} reference voice samples. When you hear a voice that matches ANY of these references, you MUST use their name: {', '.join(voice_names)}
 
-**Example**: 
-- If you hear a voice that clearly matches the reference voice for "John" (same pitch, accent, tone), use "John"
-- If you hear a different voice that you're not sure about, use "Speaker 2" (NOT "John")
+3. **SPEAKER 1 IS THE USER**: The person recording is always Speaker 1. If you have a reference for them (like "Itzik"), use that name instead of "Speaker 1".
 
-**Output Format**: Use the actual person names ONLY when confident about the match. Otherwise use "Speaker 1", "Speaker 2", etc.
+4. **MATCH AGGRESSIVELY**: If a voice sounds similar to a reference sample (similar pitch, tone, speaking style), USE THAT NAME. Don't be overly conservative.
+
+5. **ONLY USE "Speaker X" FOR TRULY UNKNOWN VOICES**: Only use generic "Speaker 2", "Speaker 3" etc. for voices that don't match ANY of the reference samples.
+
+**NEVER DO THIS:**
+- ❌ Never output "Speaker 1" if you have a reference for the main user
+- ❌ Never ask "Who is this?" for known names
+- ❌ Never use generic IDs when you have matching reference voices
+
+**ALWAYS DO THIS:**
+- ✅ Use "{voice_names[0] if voice_names else 'Name'}" when the voice matches that reference
+- ✅ Assume Speaker 1 is the phone owner (user)
+- ✅ Match voices to references, even with 70%+ confidence
+
+**Output Format**: In the "speaker" field, use the ACTUAL PERSON NAME from the reference list whenever possible. Only use "Speaker 2", "Speaker 3" for genuinely unknown voices.
 """
             
             contents.append(prompt)
