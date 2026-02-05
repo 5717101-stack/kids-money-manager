@@ -620,11 +620,14 @@ def process_audio_in_background(
     print(f"🎤 BACKGROUND AUDIO PROCESSING STARTED")
     print(f"   Message ID: {message_id}")
     print(f"   From: {from_number}")
+    print(f"   Max voice signatures: {settings.max_voice_signatures}")
+    print(f"   Multimodal enabled: {settings.enable_multimodal_voice}")
     print(f"{'='*60}\n")
     
-    # Initialize cleanup list
+    # Initialize cleanup list - CRITICAL for memory management on Render
     temp_files_to_cleanup = []
     reference_voices = []
+    slice_files_to_cleanup = []  # Track audio slices separately
     
     try:
         # Step 1: Get media URL from WhatsApp API
@@ -853,6 +856,8 @@ def process_audio_in_background(
                 with tf.NamedTemporaryFile(delete=False, suffix='.mp3') as slice_file:
                     audio_slice.export(slice_file.name, format='mp3')
                     slice_path = slice_file.name
+                    # Track for cleanup (if not saved to pending_identifications)
+                    slice_files_to_cleanup.append(slice_path)
                 
                 # Send "Who is this?" with exact Speaker ID
                 if whatsapp_provider and hasattr(whatsapp_provider, 'send_audio'):
@@ -875,18 +880,15 @@ def process_audio_in_background(
                             }
                             print(f"📝 Pending identification stored: {sent_msg_id} -> {speaker}")
                             unknown_speakers_processed.append(speaker)
+                            # REMOVE from cleanup list - file needed for voice imprinting
+                            if slice_path in slice_files_to_cleanup:
+                                slice_files_to_cleanup.remove(slice_path)
                         else:
-                            # No message ID, cleanup immediately
-                            try:
-                                os.unlink(slice_path)
-                            except:
-                                pass
+                            # No message ID, file will be cleaned up by finally block
+                            pass
                     else:
                         print(f"⚠️  Failed to send audio slice: {audio_result.get('error')}")
-                        try:
-                            os.unlink(slice_path)
-                        except:
-                            pass
+                        # File will be cleaned up by finally block
                 
         except ImportError:
             print("⚠️  pydub not installed - cannot slice audio for speaker identification")
@@ -966,24 +968,40 @@ def process_audio_in_background(
         _send_error_to_user(from_number, "שגיאה בעיבוד האודיו. נסה שוב מאוחר יותר.")
         
     finally:
-        # Cleanup temp files
+        # ============================================================
+        # CRITICAL CLEANUP - Prevents memory leaks on Render
+        # ============================================================
+        cleanup_count = 0
+        
+        # 1. Cleanup main temp files (audio downloads)
         for tmp_path in temp_files_to_cleanup:
             try:
                 if os.path.exists(tmp_path):
                     os.unlink(tmp_path)
-                    print(f"🗑️  Cleaned up temp file: {tmp_path}")
+                    cleanup_count += 1
             except:
                 pass
         
-        # Cleanup reference voice files
+        # 2. Cleanup reference voice files
         for rv in reference_voices:
             try:
                 file_path = rv.get('file_path', '')
                 if file_path and os.path.exists(file_path):
                     os.unlink(file_path)
-                    print(f"🗑️  Cleaned up reference voice file: {file_path}")
+                    cleanup_count += 1
             except:
                 pass
+        
+        # 3. Cleanup audio slice files (from speaker identification)
+        for slice_path in slice_files_to_cleanup:
+            try:
+                if os.path.exists(slice_path):
+                    os.unlink(slice_path)
+                    cleanup_count += 1
+            except:
+                pass
+        
+        print(f"🗑️  Cleanup complete: {cleanup_count} temp files deleted")
 
 
 def _send_error_to_user(from_number: str, error_msg: str):
@@ -1175,11 +1193,13 @@ async def webhook(request: Request, background_tasks: BackgroundTasks):
                                         continue
                                     
                                     # Send immediate acknowledgment to user
+                                    # This ensures 200 OK returns BEFORE processing starts
                                     if whatsapp_provider:
                                         whatsapp_provider.send_whatsapp(
-                                            message="📥 קיבלתי את ההקלטה, מעבד... (זה יכול לקחת כמה דקות)",
+                                            message="🎙️ מקבל ומנתח את ההקלטה... זה ייקח רגע.",
                                             to=f"+{from_number}"
                                         )
+                                        print(f"✅ Sent acknowledgment to user")
                                     
                                     # Queue background processing - PREVENTS 502 TIMEOUT
                                     background_tasks.add_task(
