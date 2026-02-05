@@ -613,26 +613,41 @@ async def webhook(request: Request, background_tasks: BackgroundTasks):
                                                             slice_path = slice_file.name
                                                         
                                                         print(f"   📎 Created audio slice: {slice_duration:.1f}s from {start_time:.1f}s")
+                                                        print(f"   📁 Slice file path: {slice_path}")
+                                                        print(f"   📏 File exists: {os.path.exists(slice_path)}")
+                                                        if os.path.exists(slice_path):
+                                                            file_size = os.path.getsize(slice_path)
+                                                            print(f"   📊 File size: {file_size} bytes")
                                                         
                                                         # Send audio clip to user with simple caption
-                                                        caption = "🔊 קול לא מזוהה זוהה בשיחה. מי זה?"
-                                                        
-                                                        audio_result = whatsapp_provider.send_audio(
-                                                            audio_path=slice_path,
-                                                            caption=caption,
-                                                            to=f"+{from_number}"
-                                                        )
-                                                        
-                                                        if audio_result.get('success'):
-                                                            print(f"✅ Sent audio slice to user for speaker identification")
+                                                        if not whatsapp_provider:
+                                                            print(f"❌ WhatsApp provider not initialized - cannot send audio")
+                                                        elif not hasattr(whatsapp_provider, 'send_audio'):
+                                                            print(f"❌ WhatsApp provider does not support send_audio method")
                                                         else:
-                                                            print(f"⚠️  Failed to send audio slice: {audio_result.get('error')}")
+                                                            caption = "🔊 קול לא מזוהה זוהה בשיחה. מי זה?"
+                                                            
+                                                            print(f"📤 Attempting to send audio slice via {whatsapp_provider.get_provider_name()}...")
+                                                            audio_result = whatsapp_provider.send_audio(
+                                                                audio_path=slice_path,
+                                                                caption=caption,
+                                                                to=f"+{from_number}"
+                                                            )
+                                                            
+                                                            if audio_result.get('success'):
+                                                                print(f"✅ Sent audio slice to user for speaker identification")
+                                                                print(f"   Message ID: {audio_result.get('message_id', 'N/A')}")
+                                                            else:
+                                                                print(f"⚠️  Failed to send audio slice: {audio_result.get('error')}")
+                                                                print(f"   Full error response: {audio_result}")
                                                         
-                                                        # Cleanup slice file
+                                                        # Cleanup slice file (only after successful send or confirmed failure)
                                                         try:
-                                                            os.unlink(slice_path)
-                                                        except:
-                                                            pass
+                                                            if os.path.exists(slice_path):
+                                                                os.unlink(slice_path)
+                                                                print(f"🗑️  Cleaned up slice file: {slice_path}")
+                                                        except Exception as cleanup_error:
+                                                            print(f"⚠️  Failed to cleanup slice file: {cleanup_error}")
                                                 
                                                 if not unknown_speakers_found:
                                                     print("✅ No unknown speakers detected - all speakers identified")
