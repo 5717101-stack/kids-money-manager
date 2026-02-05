@@ -680,7 +680,7 @@ async def webhook(request: Request, background_tasks: BackgroundTasks):
                                                         # Verify slice length matches expected (allow small tolerance for rounding)
                                                         if slice_length_ms == 0:
                                                             print(f"❌ ERROR: Audio slice is empty (0ms) - this should not happen with valid segment!")
-                                                            print(f"   Segment: {start_time:.2f}s - {end_time:.2f}s, Duration: {segment_duration:.2f}s")
+                                                            print(f"   Segment: {start_time:.2f}s ({start_ms}ms) - {end_time:.2f}s ({end_ms}ms)")
                                                             continue
                                                         
                                                         # Check if slice is significantly shorter than expected (indicates problem)
@@ -688,9 +688,9 @@ async def webhook(request: Request, background_tasks: BackgroundTasks):
                                                             print(f"⚠️  WARNING: Slice length ({slice_length_ms}ms) is shorter than expected ({expected_duration_ms}ms)")
                                                             print(f"   This might indicate the segment timestamps don't match the actual audio")
                                                         
-                                                        # Final check: slice must be at least 0.5 seconds for speaker identification
-                                                        if slice_length_seconds < 0.5:
-                                                            print(f"❌ ERROR: Slice too short ({slice_length_seconds:.2f}s) for speaker identification - skipping")
+                                                        # Final check: slice must be at least 0.5 seconds (500ms) for speaker identification
+                                                        if slice_length_ms < 500:
+                                                            print(f"❌ ERROR: Slice too short ({slice_length_seconds:.2f}s / {slice_length_ms}ms) for speaker identification - skipping")
                                                             continue
                                                         
                                                         # Export to temporary file as MP3 (Meta API requires MP3)
