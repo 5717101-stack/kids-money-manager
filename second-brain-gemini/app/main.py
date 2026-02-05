@@ -1177,9 +1177,55 @@ async def webhook(request: Request, background_tasks: BackgroundTasks):
                                         
                                         # Send confirmation message (only if processing succeeded, we have segments, and no error occurred)
                                         if segments and success and not processing_error_occurred:
-                                            reply_message = f"🎤 הקלטה נשמרה!\n\n📝 {len(segments)} קטעים זוהו"
-                                            if unknown_speakers_found:
-                                                reply_message += f"\n🔍 {len(unknown_speakers_found)} דוברים לא מזוהים - נשלחו קטעי אודיו לזיהוי"
+                                            # Extract and analyze participants from segments
+                                            all_speakers = set()
+                                            for seg in segments:
+                                                speaker = seg.get('speaker', '')
+                                                if speaker:
+                                                    all_speakers.add(speaker)
+                                            
+                                            # Separate identified vs unidentified speakers
+                                            identified_speakers = []
+                                            unidentified_count = 0
+                                            
+                                            for speaker in all_speakers:
+                                                speaker_lower = speaker.lower()
+                                                # Check if it's a generic speaker ID
+                                                is_generic = (
+                                                    speaker_lower.startswith('speaker ') or
+                                                    speaker.startswith('דובר ') or
+                                                    speaker_lower.startswith('unknown') or
+                                                    speaker_lower == 'speaker' or
+                                                    speaker == ''
+                                                )
+                                                
+                                                if is_generic:
+                                                    unidentified_count += 1
+                                                else:
+                                                    identified_speakers.append(speaker)
+                                            
+                                            # Build the new confirmation message
+                                            reply_message = "✅ ההקלטה נשמרה וסוכמה בהצלחה!\n\n"
+                                            reply_message += "👥 *משתתפים בשיחה:*\n"
+                                            
+                                            if identified_speakers:
+                                                # List identified speakers with checkmarks
+                                                for name in sorted(identified_speakers):
+                                                    reply_message += f"   ✓ {name}\n"
+                                            
+                                            if unidentified_count > 0:
+                                                reply_message += f"   + {unidentified_count} דוברים לא מזוהים"
+                                                if unknown_speakers_found:
+                                                    reply_message += " (נשלחו קטעי אודיו לזיהוי)"
+                                                reply_message += "\n"
+                                            
+                                            if not identified_speakers and unidentified_count == 0:
+                                                reply_message += "   (לא זוהו דוברים)\n"
+                                            
+                                            reply_message += "\n📄 התמלול המלא זמין בדרייב."
+                                            
+                                            print(f"📊 Participants summary: {len(identified_speakers)} identified, {unidentified_count} unidentified")
+                                            print(f"   Identified: {identified_speakers}")
                                             
                                             reply_result = whatsapp_provider.send_whatsapp(
                                                 message=reply_message,
