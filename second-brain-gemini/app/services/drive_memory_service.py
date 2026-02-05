@@ -441,6 +441,101 @@ class DriveMemoryService:
         logger.info(f"🔍 Found {len(matching_results)} matching transcript(s) for terms: {search_terms}")
         return matching_results[:limit]
     
+    def update_transcript_speaker(self, speaker_id: str, real_name: str, limit: int = 5) -> int:
+        """
+        RETROACTIVE TRANSCRIPT UPDATE: Replace generic speaker IDs with real names.
+        
+        Finds recent transcripts containing the speaker_id and replaces all occurrences
+        with the real name provided by the user.
+        
+        Args:
+            speaker_id: The generic ID (e.g., "Unknown Speaker 2", "Speaker B")
+            real_name: The real name to replace with (e.g., "שי", "Miri")
+            limit: Maximum number of recent transcripts to update
+            
+        Returns:
+            Number of transcripts updated
+        """
+        if not self.is_configured or not self.service:
+            logger.warning("⚠️  Drive service not configured - cannot update transcripts")
+            return 0
+        
+        self._refresh_credentials_if_needed()
+        
+        # Get the Transcripts folder
+        transcripts_folder_id = self._ensure_transcripts_folder()
+        if not transcripts_folder_id:
+            logger.error("❌ Transcripts folder not available")
+            return 0
+        
+        updated_count = 0
+        
+        try:
+            # List recent transcripts
+            query = f"'{transcripts_folder_id}' in parents and mimeType = 'application/json' and trashed = false"
+            results = self.service.files().list(
+                q=query,
+                fields="files(id, name, createdTime)",
+                orderBy="createdTime desc",
+                pageSize=limit
+            ).execute()
+            
+            files = results.get('files', [])
+            if not files:
+                logger.info("ℹ️  No transcripts found to update")
+                return 0
+            
+            logger.info(f"🔄 Checking {len(files)} recent transcript(s) for '{speaker_id}'...")
+            
+            for file_info in files:
+                file_id = file_info.get('id')
+                filename = file_info.get('name', '')
+                
+                try:
+                    # Download transcript content
+                    file_content = self.service.files().get_media(fileId=file_id).execute()
+                    transcript_data = json.loads(file_content.decode('utf-8'))
+                    
+                    # Check if this transcript contains the speaker_id
+                    segments = transcript_data.get('segments', [])
+                    has_changes = False
+                    
+                    for segment in segments:
+                        current_speaker = segment.get('speaker', '')
+                        if current_speaker.lower() == speaker_id.lower():
+                            segment['speaker'] = real_name
+                            has_changes = True
+                    
+                    if has_changes:
+                        # Upload updated transcript back to Drive
+                        updated_content = json.dumps(transcript_data, ensure_ascii=False, indent=2)
+                        
+                        from googleapiclient.http import MediaIoBaseUpload
+                        media = MediaIoBaseUpload(
+                            io.BytesIO(updated_content.encode('utf-8')),
+                            mimetype='application/json',
+                            resumable=True
+                        )
+                        
+                        self.service.files().update(
+                            fileId=file_id,
+                            media_body=media
+                        ).execute()
+                        
+                        updated_count += 1
+                        logger.info(f"✅ Updated transcript '{filename}': {speaker_id} -> {real_name}")
+                    
+                except Exception as e:
+                    logger.error(f"❌ Error updating transcript {filename}: {e}")
+                    continue
+            
+            logger.info(f"📝 Retroactive update complete: {updated_count} transcript(s) updated")
+            return updated_count
+            
+        except Exception as e:
+            logger.error(f"❌ Error in retroactive transcript update: {e}")
+            return 0
+    
     def upload_audio_to_archive(
         self,
         audio_path: str = None,

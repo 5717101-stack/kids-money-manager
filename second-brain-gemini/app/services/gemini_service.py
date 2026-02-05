@@ -358,6 +358,25 @@ Here is structured data about the user. You MUST use this to answer personal que
 
 **Important:** When the user asks personal questions (e.g., "Who is my son?", "What is my name?", "Tell me about my family"), you MUST reference this profile data to provide accurate answers.
 """
+            
+            # VOICE MAP: Explain speaker ID mappings if available
+            voice_map = user_profile.get('voice_map', {})
+            if voice_map:
+                voice_map_str = json.dumps(voice_map, ensure_ascii=False, indent=2)
+                system_instruction += f"""
+
+=== VOICE MAP (Speaker Identification) ===
+When analyzing transcripts, use this mapping to understand who generic speaker IDs refer to:
+
+{voice_map_str}
+
+**Example:** If a transcript contains "Unknown Speaker 2", and voice_map has {{"unknown speaker 2": "שי"}}, 
+then "Unknown Speaker 2" is actually "שי".
+
+Use this mapping to provide accurate answers about conversations and who said what.
+"""
+                print(f"🎤 Voice map injected ({len(voice_map)} mappings)")
+            
             print(f"👤 User profile injected into system prompt ({len(user_profile)} keys)")
         
         # Add enhanced system prompt

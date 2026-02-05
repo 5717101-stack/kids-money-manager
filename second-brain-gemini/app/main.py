@@ -1187,7 +1187,20 @@ async def webhook(request: Request, background_tasks: BackgroundTasks):
                                     else:
                                         print(f"⚠️  Audio file no longer exists (may have timed out)")
                                     
-                                    # Step 3: Send confirmation (surgical, no chat)
+                                    # Step 3: RETROACTIVE TRANSCRIPT UPDATE
+                                    # Replace generic speaker ID with real name in recent transcripts
+                                    try:
+                                        updated_count = drive_memory_service.update_transcript_speaker(
+                                            speaker_id=speaker_id,
+                                            real_name=person_name,
+                                            limit=5  # Update last 5 transcripts
+                                        )
+                                        if updated_count > 0:
+                                            print(f"📝 Retroactive update: {updated_count} transcript(s) updated with '{person_name}'")
+                                    except Exception as transcript_error:
+                                        print(f"⚠️  Failed to update transcripts: {transcript_error}")
+                                    
+                                    # Step 4: Send confirmation (surgical, no chat)
                                     if whatsapp_provider:
                                         confirmation = f"✅ למדתי, זה *{person_name}*. מעכשיו אזהה אותו/ה אוטומטית."
                                         whatsapp_provider.send_whatsapp(
