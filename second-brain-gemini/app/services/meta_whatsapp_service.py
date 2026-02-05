@@ -523,10 +523,6 @@ class MetaWhatsAppService:
                     print(f"✅ Caption sent successfully")
                     caption_response.raise_for_status()
             
-            print(f"✅ Audio file sent via Meta WhatsApp API!")
-            print(f"   Message ID: {message_id}")
-            print(f"   Media ID: {media_id}")
-            
             return {
                 "success": True,
                 "message_id": message_id,
