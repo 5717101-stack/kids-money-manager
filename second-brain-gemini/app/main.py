@@ -775,14 +775,14 @@ async def webhook(request: Request, background_tasks: BackgroundTasks):
                                             
                                             if not unknown_speakers_found:
                                                 print("✅ No unknown speakers detected - all speakers identified")
-                                            
-                                            except ImportError:
-                                                print("⚠️  pydub not installed - cannot slice audio for speaker identification")
-                                                print("   Install with: pip install pydub")
-                                            except Exception as e:
-                                                print(f"⚠️  Error processing audio for speaker identification: {e}")
-                                                import traceback
-                                                traceback.print_exc()
+                                                
+                                        except ImportError:
+                                            print("⚠️  pydub not installed - cannot slice audio for speaker identification")
+                                            print("   Install with: pip install pydub")
+                                        except Exception as e:
+                                            print(f"⚠️  Error processing audio for speaker identification: {e}")
+                                            import traceback
+                                            traceback.print_exc()
                                             
                                             # Send confirmation message
                                             reply_message = f"🎤 הקלטה נשמרה!\n\n📝 {len(segments)} קטעים זוהו"
