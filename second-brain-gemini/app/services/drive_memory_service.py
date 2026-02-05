@@ -45,61 +45,102 @@ class DriveMemoryService:
         Args:
             folder_id: Google Drive folder ID where memory file is stored.
                       If None, uses DRIVE_MEMORY_FOLDER_ID from environment.
+        
+        Raises:
+            ValueError: If required environment variables are missing
         """
+        print("\n" + "=" * 60)
+        print("--- DRIVE SERVICE INIT DEBUG ---")
+        print("=" * 60)
+        
+        # Check folder ID
         self.folder_id = folder_id or os.environ.get("DRIVE_MEMORY_FOLDER_ID")
+        print(f"DRIVE_MEMORY_FOLDER_ID: {'FOUND' if self.folder_id else 'MISSING'}")
+        if self.folder_id:
+            print(f"  Value: {self.folder_id[:20]}..." if len(self.folder_id) > 20 else f"  Value: {self.folder_id}")
         
         if not self.folder_id:
-            logger.warning("⚠️  DRIVE_MEMORY_FOLDER_ID not set. Memory service will not work.")
-            self.service = None
-            self.creds = None
-            self.is_configured = False
-            return
+            error_msg = "DRIVE_MEMORY_FOLDER_ID not set. Memory service cannot work."
+            logger.error(f"❌ {error_msg}")
+            print(f"❌ {error_msg}")
+            print("=" * 60 + "\n")
+            raise ValueError(error_msg)
         
-        # Initialize OAuth 2.0 User Credentials
+        # Check OAuth 2.0 credentials
         client_id = os.environ.get("GOOGLE_CLIENT_ID")
         client_secret = os.environ.get("GOOGLE_CLIENT_SECRET")
         refresh_token = os.environ.get("GOOGLE_REFRESH_TOKEN")
         
-        if not all([client_id, client_secret, refresh_token]):
-            logger.warning(
-                "⚠️  Missing Google Drive OAuth credentials. Required: "
-                "GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, GOOGLE_REFRESH_TOKEN"
+        print(f"GOOGLE_CLIENT_ID: {'FOUND' if client_id else 'MISSING'}")
+        print(f"GOOGLE_CLIENT_SECRET: {'FOUND' if client_secret else 'MISSING'}")
+        print(f"GOOGLE_REFRESH_TOKEN: {'FOUND' if refresh_token else 'MISSING'}")
+        
+        # FAIL FAST: Raise ValueError immediately if any credential is missing
+        missing_vars = []
+        if not client_id:
+            missing_vars.append("GOOGLE_CLIENT_ID")
+        if not client_secret:
+            missing_vars.append("GOOGLE_CLIENT_SECRET")
+        if not refresh_token:
+            missing_vars.append("GOOGLE_REFRESH_TOKEN")
+        
+        if missing_vars:
+            error_msg = (
+                f"Missing required Google Drive OAuth credentials: {', '.join(missing_vars)}. "
+                f"Please set these environment variables."
             )
-            self.service = None
-            self.creds = None
-            self.is_configured = False
-            return
+            logger.error(f"❌ {error_msg}")
+            print(f"❌ {error_msg}")
+            print("=" * 60 + "\n")
+            raise ValueError(error_msg)
+        
+        print("=" * 60)
+        print("✅ All required environment variables found")
+        print("=" * 60 + "\n")
         
         try:
-            # Initialize OAuth 2.0 credentials
+            # Initialize OAuth 2.0 credentials using os.environ values
+            print("🔐 Initializing OAuth 2.0 credentials...")
             self.creds = Credentials(
                 None,  # No access token initially
-                refresh_token=refresh_token,
+                refresh_token=refresh_token,  # From os.environ
                 token_uri="https://oauth2.googleapis.com/token",
-                client_id=client_id,
-                client_secret=client_secret
+                client_id=client_id,  # From os.environ
+                client_secret=client_secret  # From os.environ
             )
+            print("✅ Credentials object created")
             
             # Refresh token to get initial access token
             if self.creds.expired and self.creds.refresh_token:
                 logger.info("🔄 Refreshing OAuth token on initialization...")
+                print("🔄 Refreshing OAuth token on initialization...")
                 self.creds.refresh(Request())
                 logger.info("✅ OAuth token refreshed successfully")
+                print("✅ OAuth token refreshed successfully")
             
             # Build Drive service with OAuth credentials
+            print("🔨 Building Drive API service...")
             self.service = build('drive', 'v3', credentials=self.creds)
             self.is_configured = True
             logger.info("✅ Drive Memory Service initialized successfully (OAuth 2.0)")
+            print("✅ Drive Memory Service initialized successfully (OAuth 2.0)")
             
             # Ensure audio_archive folder exists
+            print("📁 Ensuring audio_archive folder exists...")
             self._ensure_audio_archive_folder()
+            print("✅ Drive Memory Service fully initialized\n")
         except Exception as e:
-            logger.error(f"❌ Failed to initialize Drive Memory Service: {e}")
+            error_msg = f"Failed to initialize Drive Memory Service: {e}"
+            logger.error(f"❌ {error_msg}")
+            print(f"❌ {error_msg}")
             import traceback
+            print("=" * 60)
+            print("FULL TRACEBACK:")
+            print("=" * 60)
             traceback.print_exc()
-            self.service = None
-            self.creds = None
-            self.is_configured = False
+            print("=" * 60 + "\n")
+            # Re-raise to fail fast
+            raise ValueError(error_msg) from e
     
     def _refresh_credentials_if_needed(self):
         """
