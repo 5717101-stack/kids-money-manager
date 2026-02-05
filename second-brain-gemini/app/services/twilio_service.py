@@ -38,7 +38,7 @@ class TwilioService:
             if not settings.twilio_auth_token:
                 print("   Missing: TWILIO_AUTH_TOKEN")
     
-def format_summary_message(self, analysis_data: Dict[str, Any]) -> str:
+    def format_summary_message(self, analysis_data: Dict[str, Any]) -> str:
         """
         Format analysis data into a concise WhatsApp/SMS message.
         
