@@ -613,8 +613,8 @@ async def webhook(request: Request, background_tasks: BackgroundTasks):
                                             
                                             # Iterate through segments to find unknown speakers
                                             unknown_speakers_found = []
-                                                
-                                                for i, segment in enumerate(segments):
+                                            
+                                            for i, segment in enumerate(segments):
                                                     # STEP 1: Immediate Conversion - Convert Gemini timestamps (SECONDS) to Pydub timestamps (MILLISECONDS)
                                                     # Gemini returns floats in SECONDS (e.g., 5.5), Pydub operates in MILLISECONDS (int)
                                                     start_ms = int(segment.get('start', 0.0) * 1000)
@@ -772,10 +772,10 @@ async def webhook(request: Request, background_tasks: BackgroundTasks):
                                                                 to=f"+{from_number}"
                                                             )
                                                         continue
-                                                
-                                                if not unknown_speakers_found:
-                                                    print("✅ No unknown speakers detected - all speakers identified")
-                                                
+                                            
+                                            if not unknown_speakers_found:
+                                                print("✅ No unknown speakers detected - all speakers identified")
+                                            
                                             except ImportError:
                                                 print("⚠️  pydub not installed - cannot slice audio for speaker identification")
                                                 print("   Install with: pip install pydub")
