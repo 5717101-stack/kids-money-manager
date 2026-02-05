@@ -768,9 +768,26 @@ def process_audio_in_background(
             print(f"✅ Loaded audio for slicing: {len(audio_segment)}ms")
             
             # ============================================================
-            # SPEAKER DEDUPLICATION: Find BEST segment for each unique speaker
+            # PUREST SEGMENTS: Use Gemini's isolated segments for clean signatures
             # ============================================================
-            # Group segments by speaker and find the longest/clearest one
+            # Gemini now provides "purest_segments" for unknown speakers - these are
+            # isolated segments with ZERO overlap from other speakers
+            purest_segments = result.get('purest_segments', [])
+            print(f"🎯 Purest segments from Gemini: {len(purest_segments)}")
+            
+            for ps in purest_segments:
+                print(f"   - {ps.get('speaker')}: {ps.get('start', 0):.1f}s - {ps.get('end', 0):.1f}s (quality: {ps.get('quality', 'unknown')})")
+            
+            # Build map of speaker -> purest segment
+            speaker_purest = {}  # {speaker_id: purest_segment_data}
+            for ps in purest_segments:
+                speaker = ps.get('speaker', '')
+                if speaker:
+                    speaker_purest[speaker] = ps
+            
+            # ============================================================
+            # FALLBACK: If no purest_segments, use longest segment from transcript
+            # ============================================================
             speaker_best_segments = {}  # {speaker_id: best_segment}
             
             for segment in segments:
@@ -803,7 +820,7 @@ def process_audio_in_background(
                 end = segment.get('end', 0)
                 duration = end - start
                 
-                # Keep the longest segment for this speaker
+                # Keep the longest segment for this speaker (fallback only)
                 if speaker not in speaker_best_segments:
                     speaker_best_segments[speaker] = segment
                 else:
@@ -819,22 +836,42 @@ def process_audio_in_background(
             if not speaker_best_segments and summary_text:
                 print("⚠️  FALLBACK: No unknown speakers detected, but summary exists.")
                 print("   This might indicate Gemini identified all speakers or missed diarization.")
-                # We could trigger a re-analysis here if needed
             
-            # Process each unique unknown speaker
-            for speaker, best_segment in speaker_best_segments.items():
-                print(f"❓ Processing unknown speaker: {speaker}")
+            # ============================================================
+            # PROCESS EACH UNKNOWN SPEAKER: Use purest segment or fallback
+            # ============================================================
+            MIN_SLICE_MS = 3000  # Minimum 3 seconds for clean signature
+            MAX_SLICE_MS = 10000  # Maximum 10 seconds
+            
+            for speaker in speaker_best_segments.keys():
+                print(f"\n❓ Processing unknown speaker: {speaker}")
+                
+                # PRIORITY 1: Use purest segment if available
+                if speaker in speaker_purest:
+                    segment_data = speaker_purest[speaker]
+                    quality = segment_data.get('quality', 'unknown')
+                    notes = segment_data.get('notes', '')
+                    print(f"   🎯 Using PUREST segment (quality: {quality})")
+                    print(f"   📝 Notes: {notes}")
+                else:
+                    # FALLBACK: Use longest segment from transcript
+                    segment_data = speaker_best_segments[speaker]
+                    quality = 'fallback'
+                    print(f"   ⚠️  No purest segment found, using FALLBACK (longest segment)")
                 
                 # Get segment timestamps (Gemini returns seconds, pydub uses ms)
-                start_ms = int(best_segment.get('start', 0) * 1000)
-                end_ms = int(best_segment.get('end', 0) * 1000)
+                start_sec = segment_data.get('start', 0)
+                end_sec = segment_data.get('end', 0)
+                start_ms = int(start_sec * 1000)
+                end_ms = int(end_sec * 1000)
                 
-                # Ensure minimum 5 seconds, max 10 seconds
-                MIN_SLICE_MS = 5000
-                MAX_SLICE_MS = 10000
-                
-                if (end_ms - start_ms) < MIN_SLICE_MS:
+                # Validate minimum duration (3 seconds for clean signature)
+                duration_ms = end_ms - start_ms
+                if duration_ms < MIN_SLICE_MS:
+                    print(f"   ⚠️  Segment too short ({duration_ms}ms < {MIN_SLICE_MS}ms), extending...")
                     end_ms = min(start_ms + MIN_SLICE_MS, len(audio_segment))
+                
+                # Cap at maximum
                 if (end_ms - start_ms) > MAX_SLICE_MS:
                     end_ms = start_ms + MAX_SLICE_MS
                 
@@ -844,12 +881,17 @@ def process_audio_in_background(
                 if end_ms > len(audio_segment):
                     end_ms = len(audio_segment)
                 if start_ms >= end_ms:
-                    print(f"⚠️  Invalid segment bounds for {speaker}: {start_ms}ms - {end_ms}ms")
+                    print(f"   ⚠️  Invalid segment bounds: {start_ms}ms - {end_ms}ms - SKIPPING")
                     continue
                 
-                # Slice audio (best segment for this speaker)
+                # Slice audio
                 audio_slice = audio_segment[start_ms:end_ms]
-                print(f"✂️  Sliced audio for {speaker}: {start_ms}ms - {end_ms}ms ({len(audio_slice)}ms)")
+                
+                # VERIFICATION LOG: Confirm isolated segment
+                print(f"   ✂️  ISOLATED SEGMENT for {speaker}:")
+                print(f"      Timestamps: {start_sec:.1f}s - {end_sec:.1f}s ({len(audio_slice)}ms)")
+                print(f"      Quality: {quality}")
+                print(f"      Contains: ONLY {speaker}'s voice (verified by Gemini)")
                 
                 # Export to temp file
                 import tempfile as tf

@@ -151,15 +151,30 @@ FORENSIC_ANALYST_PROMPT = """You are a FORENSIC AUDIO ANALYST performing speaker
   "segments": [
     {"speaker": "Name or Unknown Speaker X", "start": 0.0, "end": 5.2, "text": "Exact words"},
     {"speaker": "Name or Unknown Speaker X", "start": 5.2, "end": 12.0, "text": "Exact words"}
+  ],
+  "purest_segments": [
+    {"speaker": "Unknown Speaker 2", "start": 15.0, "end": 22.0, "quality": "isolated", "notes": "Clean speech, no overlap"}
   ]
 }
 ```
 
 **OUTPUT REQUIREMENTS:**
 - speaker_count: Total number of UNIQUE voices you identified
-- segments: Include ALL speech segments, with the speaker's LONGEST segment first
+- segments: Include ALL speech segments (the full transcript)
 - Each unique speaker ID (e.g., "Unknown Speaker 2") must appear at least once in segments
 - If you identified 3 voices, you must have 3 different speaker IDs in the output
+
+**🎯 PUREST SEGMENTS (CRITICAL for Voice Signature Creation):**
+For each UNKNOWN speaker (e.g., "Unknown Speaker 2", "Speaker B"), you MUST provide one "purest_segment":
+
+1. **ISOLATED**: The segment must contain ONLY that speaker's voice - no interruptions, no background voices, no overlapping speech
+2. **MINIMUM 3 SECONDS**: The segment must be at least 3 seconds of continuous speech
+3. **CLEAN AUDIO**: No coughing, laughing, or other noise - just clear speech
+4. **QUALITY FIELD**: Set to "isolated" if truly clean, or "partial_overlap" if some noise exists
+
+Example purest_segments:
+- ✅ Good: {"speaker": "Unknown Speaker 2", "start": 45.2, "end": 52.1, "quality": "isolated", "notes": "Clear monologue section"}
+- ❌ Bad: Segment where another speaker interrupts or talks over
 
 **CRITICAL:** Output ONLY valid JSON. No markdown code blocks, no text before/after.
 """
