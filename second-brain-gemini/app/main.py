@@ -803,13 +803,28 @@ async def whatsapp_webhook(request: Request, background_tasks: BackgroundTasks):
         form_data = await request.form()
         sender_number = form_data.get('From', '')
         message_body = form_data.get('Body', '')
+        # Twilio uses MessageSid as the unique message ID
+        message_id = form_data.get('MessageSid', '') or form_data.get('MessageId', '')
         
         print(f"\n{'='*50}")
         print(f"📱 Incoming WhatsApp Message (Twilio)")
         print(f"{'='*50}")
         print(f"From: {sender_number}")
         print(f"Message: {message_body}")
+        print(f"Message ID: {message_id}")
         print(f"{'='*50}\n")
+        
+        # IDEMPOTENCY CHECK: Prevent duplicate processing due to webhook retries
+        if message_id and is_message_processed(message_id):
+            print(f"⚠️  Duplicate message received (ID: {message_id}). Ignoring.")
+            # Return 200 OK to Twilio to acknowledge receipt
+            from twilio.twiml.messaging_response import MessagingResponse
+            response = MessagingResponse()
+            return Response(content=str(response), media_type='text/xml')
+        
+        # Mark message as processed BEFORE processing (prevents race conditions)
+        if message_id:
+            mark_message_processed(message_id)
         
         # Process message with memory (if message body exists)
         if message_body and drive_memory_service.is_configured:
