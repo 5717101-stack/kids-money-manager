@@ -580,13 +580,39 @@ async def webhook(request: Request, background_tasks: BackgroundTasks):
                                             from pydub import AudioSegment
                                             import tempfile
                                             
-                                            # Load original audio for slicing
+                                            # Load original audio for slicing with FFmpeg safety check
+                                            audio_segment = None
+                                            slicing_error_occurred = False
+                                            
                                             try:
                                                 audio_segment = AudioSegment.from_file(tmp_path)
                                                 print(f"✅ Loaded audio: {len(audio_segment)}ms ({len(audio_segment)/1000:.1f}s)")
-                                                
-                                                # Iterate through segments to find unknown speakers
-                                                unknown_speakers_found = []
+                                            except FileNotFoundError as e:
+                                                print(f"❌ ERROR: FFmpeg is likely missing on the server.")
+                                                print(f"   Error: {e}")
+                                                print(f"   Install FFmpeg: apt-get install ffmpeg (Linux) or brew install ffmpeg (Mac)")
+                                                slicing_error_occurred = True
+                                                error_message = "Error: Audio processing failed - FFmpeg missing (check logs)."
+                                            except Exception as e:
+                                                print(f"❌ SLICING ERROR: Failed to load audio file")
+                                                print(f"   Error: {e}")
+                                                import traceback
+                                                traceback.print_exc()
+                                                slicing_error_occurred = True
+                                                error_message = "Error: Audio processing failed (check logs)."
+                                            
+                                            # If audio loading failed, send error message and skip slicing
+                                            if slicing_error_occurred:
+                                                if whatsapp_provider:
+                                                    whatsapp_provider.send_whatsapp(
+                                                        message=error_message,
+                                                        to=f"+{from_number}"
+                                                    )
+                                                    print(f"📤 Sent error alert to user via WhatsApp")
+                                                continue
+                                            
+                                            # Iterate through segments to find unknown speakers
+                                            unknown_speakers_found = []
                                                 
                                                 for i, segment in enumerate(segments):
                                                     # STEP 1: Immediate Conversion - Convert Gemini timestamps (SECONDS) to Pydub timestamps (MILLISECONDS)
