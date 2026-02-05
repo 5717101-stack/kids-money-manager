@@ -710,21 +710,17 @@ Here is structured data about the user. You MUST use this to answer personal que
             # Try to extract JSON from response (might be wrapped in markdown code blocks)
             text = response_text.strip()
             
-            # Remove markdown code blocks if present
             # Clean JSON: Remove markdown code blocks before parsing
-            clean_text = text.replace('```json', '').replace('```', '').strip()
-            
             if text.startswith("```json"):
                 text = text[7:]  # Remove ```json
-            else:
-                text = clean_text
             elif text.startswith("```"):
                 text = text[3:]  # Remove ```
             
             if text.endswith("```"):
                 text = text[:-3]  # Remove closing ```
             
-            text = text.strip()
+            # Final cleanup: remove any remaining markdown artifacts
+            text = text.replace('```json', '').replace('```', '').strip()
             
             # Try to parse as JSON
             try:
