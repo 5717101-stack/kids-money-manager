@@ -38,87 +38,45 @@ class TwilioService:
             if not settings.twilio_auth_token:
                 print("   Missing: TWILIO_AUTH_TOKEN")
     
-    def format_summary_message(self, analysis_data: Dict[str, Any]) -> str:
+def format_summary_message(self, analysis_data: Dict[str, Any]) -> str:
         """
-        Format analysis data into a readable WhatsApp message.
+        Format analysis data into a concise WhatsApp/SMS message.
         
         Args:
             analysis_data: The analysis result from Gemini
-            
+        
         Returns:
-            Formatted message string
+            Formatted message string (limited to MAX_MESSAGE_LENGTH)
         """
-        lines = []
-        
-        # Header
-        date = analysis_data.get('date', 'לא צוין')
-        lines.append(f"🧠 *סיכום יומי - Second Brain*")
-        lines.append(f"📅 תאריך: {date}")
-        lines.append("")
-        
-        # Summary
-        if analysis_data.get('summary'):
-            lines.append("*סיכום כללי:*")
-            summary = analysis_data['summary']
-            # Truncate if too long (WhatsApp has limits)
-            if len(summary) > 500:
-                summary = summary[:500] + "..."
-            lines.append(summary)
-            lines.append("")
-        
-        # Action Items
-        if analysis_data.get('action_items') and isinstance(analysis_data['action_items'], list):
-            lines.append("*✅ משימות פעולה:*")
-            for i, item in enumerate(analysis_data['action_items'][:5], 1):  # Limit to 5 items
-                if isinstance(item, dict):
-                    title = item.get('title', '')
-                    priority = item.get('priority', '')
-                    if title:
-                        item_text = f"{i}. {title}"
-                        if priority:
-                            item_text += f" [{priority}]"
-                        lines.append(item_text)
-                else:
-                    lines.append(f"{i}. {str(item)}")
-            if len(analysis_data['action_items']) > 5:
-                lines.append(f"... ועוד {len(analysis_data['action_items']) - 5} משימות")
-            lines.append("")
-        
-        # Key Insights
-        if analysis_data.get('insights') and isinstance(analysis_data['insights'], list):
-            lines.append("*💡 תובנות מפתח:*")
-            for insight in analysis_data['insights'][:3]:  # Limit to 3 insights
-                lines.append(f"• {str(insight)}")
-            lines.append("")
-        
-        # Leadership feedback (brief)
-        if analysis_data.get('leadership_feedback'):
-            lf = analysis_data['leadership_feedback']
-            if lf.get('the_why'):
-                lines.append("*💡 מנהיגות:*")
-                why = lf['the_why']
-                if len(why) > 200:
-                    why = why[:200] + "..."
-                lines.append(why)
-                lines.append("")
-        
-        # Footer
-        lines.append("📄 לפרטים מלאים, הורד את ה-PDF מהמערכת")
-        
-        # Join all lines
-        message = "\n".join(lines)
-        
-        # Limit total message length to 1500 characters (SMS/WhatsApp limits)
         MAX_MESSAGE_LENGTH = 1500
+        
+        summary = analysis_data.get('summary', '')
+        action_items = analysis_data.get('action_items', [])
+        insights = analysis_data.get('insights', [])
+        leadership_feedback = analysis_data.get('leadership_feedback', '')
+        
+        message_parts = []
+        
+        if summary:
+            message_parts.append(f"📊 סיכום:\n{summary}")
+        
+        if action_items:
+            message_parts.append(f"\n✅ משימות:\n" + "\n".join([f"• {item}" for item in action_items[:3]]))
+            if len(action_items) > 3:
+                message_parts.append(f"... ועוד {len(action_items) - 3} משימות")
+        
+        if insights:
+            message_parts.append(f"\n💡 תובנות:\n" + "\n".join([f"• {insight}" for insight in insights[:2]]))
+        
+        if leadership_feedback:
+            message_parts.append(f"\n👔 משוב מנהיגות:\n{leadership_feedback[:200]}")
+        
+        message = "\n".join(message_parts)
+        
+        # Truncate if too long
         if len(message) > MAX_MESSAGE_LENGTH:
-            # Truncate and add indicator
-            truncated = message[:MAX_MESSAGE_LENGTH - 20]  # Reserve space for "..."
-            # Try to cut at a newline to avoid cutting mid-word
-            last_newline = truncated.rfind('\n')
-            if last_newline > MAX_MESSAGE_LENGTH - 100:  # If we can find a reasonable break point
-                message = truncated[:last_newline] + "\n\n... (הודעה קוצרה)"
-            else:
-                message = truncated + "... (הודעה קוצרה)"
+            message = message[:MAX_MESSAGE_LENGTH - 50] + "\n... (הודעה קוצרה)"
+            message += f"\n\n📥 להורדת PDF מלא: [קישור]"
         
         return message
     
@@ -128,8 +86,8 @@ class TwilioService:
         
         Args:
             message: The message to send
-            to: Recipient number (optional, uses config default if not provided)
-            
+            to: Recipient phone number (optional, uses default if not provided)
+        
         Returns:
             Dictionary with success status and details
         """
@@ -140,19 +98,13 @@ class TwilioService:
                 "message": "Twilio credentials not set"
             }
         
-        if not settings.twilio_whatsapp_from:
-            return {
-                "success": False,
-                "error": "WhatsApp from number not configured",
-                "message": "TWILIO_WHATSAPP_FROM not set"
-            }
-        
+        # Use provided 'to' or fallback to config default
         recipient = to or settings.twilio_whatsapp_to
         if not recipient:
             return {
                 "success": False,
-                "error": "WhatsApp recipient not configured",
-                "message": "TWILIO_WHATSAPP_TO not set and no 'to' parameter provided"
+                "error": "Recipient number required",
+                "message": "Recipient phone number must be provided. Set TWILIO_WHATSAPP_TO environment variable or provide 'to' parameter."
             }
         
         try:
@@ -205,8 +157,8 @@ class TwilioService:
         
         Args:
             message: The message to send
-            to: Recipient number (optional, uses config default if not provided)
-            
+            to: Recipient phone number (optional, uses default if not provided)
+        
         Returns:
             Dictionary with success status and details
         """
@@ -217,23 +169,19 @@ class TwilioService:
                 "message": "Twilio credentials not set"
             }
         
-        if not settings.twilio_sms_from:
-            return {
-                "success": False,
-                "error": "SMS from number not configured",
-                "message": "TWILIO_SMS_FROM not set"
-            }
-        
+        # Use provided 'to' or fallback to config default
         recipient = to or settings.twilio_sms_to
         if not recipient:
             return {
                 "success": False,
-                "error": "SMS recipient not configured",
-                "message": "TWILIO_SMS_TO not set and no 'to' parameter provided"
+                "error": "Recipient number required",
+                "message": "Recipient phone number must be provided. Set TWILIO_SMS_TO environment variable or provide 'to' parameter."
             }
         
         try:
-            print(f"📱 Sending SMS to {recipient}...")
+            print(f"\n{'='*60}")
+            print(f"📱 [TwilioService] Sending SMS to {recipient}...")
+            print(f"{'='*60}\n")
             
             message_obj = self.client.messages.create(
                 body=message,
@@ -270,18 +218,23 @@ class TwilioService:
                 "message": "Unexpected error sending SMS"
             }
     
-    def send_summary(self, analysis_data: Dict[str, Any], to: Optional[str] = None) -> Dict[str, Any]:
+    def send_summary(self, analysis_data: Dict[str, Any], to: Optional[str] = None, channel: str = "whatsapp") -> Dict[str, Any]:
         """
-        Send analysis summary as WhatsApp message.
+        Send analysis summary as a WhatsApp or SMS message.
         
         Args:
             analysis_data: The analysis result from Gemini
-            to: Recipient number (optional)
-            
+            to: Recipient phone number (optional)
+            channel: "whatsapp" or "sms"
+        
         Returns:
-            Dictionary with success status and details
+            Dictionary with success status
         """
         message = self.format_summary_message(analysis_data)
+        
+        if channel == "sms":
+            return self.send_sms(message, to)
+        
         return self.send_whatsapp(message, to)
     
     def send_summary_both(self, analysis_data: Dict[str, Any], to_whatsapp: Optional[str] = None, to_sms: Optional[str] = None) -> Dict[str, Any]:
@@ -318,8 +271,65 @@ class TwilioService:
         return self.is_configured_flag
     
     def get_provider_name(self) -> str:
-        """Get the provider name."""
+        """Get the name of the provider."""
         return "twilio"
+    
+    def send_audio(self, audio_path: str, caption: str = "", to: Optional[str] = None) -> Dict[str, Any]:
+        """
+        Send an audio file via WhatsApp using Twilio.
+        
+        Args:
+            audio_path: Path to the audio file to send
+            caption: Optional caption/text message to send with the audio
+            to: Recipient phone number (optional, uses default if not provided)
+            
+        Returns:
+            Dictionary with success status and details
+        """
+        if not self.is_configured_flag:
+            return {
+                "success": False,
+                "error": "Twilio not configured",
+                "message": "Twilio credentials not set"
+            }
+        
+        # Use provided 'to' or fallback to config default
+        recipient = to or settings.twilio_whatsapp_to
+        if not recipient:
+            return {
+                "success": False,
+                "error": "Recipient number required",
+                "message": "Recipient phone number must be provided"
+            }
+        
+        try:
+            # Send caption first if provided
+            if caption:
+                caption_result = self.send_whatsapp(caption, to=recipient)
+                if not caption_result.get("success"):
+                    print(f"⚠️  Failed to send audio caption: {caption_result.get('error')}")
+            
+            # For Twilio, we need to upload the file to a publicly accessible URL first
+            # For now, we'll send a message indicating the limitation
+            # In production, you would upload to S3/Cloud Storage and use that URL
+            print(f"⚠️  Twilio audio sending requires public URL - sending caption only")
+            print(f"   Audio file path: {audio_path}")
+            
+            return {
+                "success": False,
+                "error": "Twilio requires public URL for media",
+                "message": "Audio file sending via Twilio requires uploading to a public URL first. Please use Meta WhatsApp provider for direct file uploads."
+            }
+            
+        except Exception as e:
+            print(f"❌ Unexpected error sending audio: {e}")
+            import traceback
+            traceback.print_exc()
+            return {
+                "success": False,
+                "error": str(e),
+                "message": "Unexpected error sending audio"
+            }
 
 
 # Singleton instance
