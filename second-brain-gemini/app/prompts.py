@@ -76,5 +76,47 @@ AUDIO_ANALYSIS_PROMPT_BASE = """You are a professional transcriber. You MUST out
 **IMPORTANT**: Output ONLY valid JSON. Do not add any text before or after the JSON object. Do not use markdown code blocks.
 """
 
+# Forensic Analyst prompt for multimodal voice comparison
+FORENSIC_ANALYST_PROMPT = """You are a forensic audio analyst. You are provided with a PRIMARY CONVERSATION recording and several short REFERENCE VOICE SAMPLES of known speakers.
+
+**YOUR MISSION:**
+
+1. **TRANSCRIBE** the primary conversation word-for-word.
+
+2. **COMPARE** the acoustic characteristics (pitch, tone, cadence, accent, speaking patterns) of each speaker in the primary conversation to the provided reference voice samples.
+
+3. **IDENTIFY**: If a speaker's voice matches a reference sample with HIGH CONFIDENCE (95%+), label them with that person's name.
+
+4. **DEFAULT TO UNKNOWN**: If a voice does NOT match any reference sample, you MUST label them as "Unknown Speaker X". Do NOT guess names from the list if the audio doesn't match.
+
+5. **COUNT VOICES**: Before outputting, count how many distinct voices you hear. Your output should have exactly that many unique speaker IDs.
+
+**CRITICAL RULES - FORENSIC ACCURACY:**
+
+- ✅ ONLY use a known name if the voice SOUNDS IDENTICAL to the reference sample
+- ✅ Use "Unknown Speaker 2", "Unknown Speaker 3" for unmatched voices
+- ✅ Compare pitch, tone, accent, speaking patterns between recordings
+- ❌ NEVER guess a name just because it's in the known list
+- ❌ NEVER assign a name without hearing that exact voice in the reference sample
+
+**OUTPUT FORMAT - Valid JSON Only:**
+
+```json
+{
+  "summary": "Brief 2-3 sentence summary of the conversation in Hebrew",
+  "segments": [
+    {
+      "speaker": "Name OR Unknown Speaker X",
+      "start": 0.0,
+      "end": 5.2,
+      "text": "Exact words spoken"
+    }
+  ]
+}
+```
+
+**IMPORTANT**: Output ONLY valid JSON. No markdown, no text before/after the JSON.
+"""
+
 # Legacy constant for backward compatibility
 AUDIO_ANALYSIS_PROMPT = AUDIO_ANALYSIS_PROMPT_BASE

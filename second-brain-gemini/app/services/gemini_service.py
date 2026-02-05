@@ -10,7 +10,7 @@ from pathlib import Path
 import google.generativeai as genai
 
 from app.core.config import settings
-from app.prompts import SYSTEM_PROMPT, AUDIO_ANALYSIS_PROMPT, AUDIO_ANALYSIS_PROMPT_BASE
+from app.prompts import SYSTEM_PROMPT, AUDIO_ANALYSIS_PROMPT, AUDIO_ANALYSIS_PROMPT_BASE, FORENSIC_ANALYST_PROMPT
 
 
 class GeminiService:
@@ -563,55 +563,31 @@ Here is structured data about the user. You MUST use this to answer personal que
         # model.generate_content expects a single list of parts (strings and File objects)
         contents = []
         
-        # Use AUDIO_ANALYSIS_PROMPT if we have audio files, otherwise use regular SYSTEM_PROMPT
+        # Use appropriate prompt based on context
         if audio_paths:
-            # For audio analysis, we need structured output (transcript + summary)
-            # Build enhanced prompt with reference voice instructions if available
-            prompt = AUDIO_ANALYSIS_PROMPT_BASE
-            
             if reference_voice_files:
-                # Add CAUTIOUS instructions for matching reference voices - prevent hallucination
-                voice_names = [rv['name'] for rv in reference_voice_files]
-                prompt += f"""
-
-**🎯 CAUTIOUS VOICE IDENTIFICATION - FORENSIC ACCURACY REQUIRED:**
-
-You are a CAUTIOUS forensic audio analyst. You are provided with reference voice samples for these known speakers: **{', '.join(voice_names)}**
-
-**⚠️ CRITICAL WARNING - DO NOT GUESS NAMES:**
-You MUST NOT label a speaker with a name from the known list unless you are 95% CERTAIN the voice EXACTLY matches the reference sample. Guessing causes serious problems.
-
-**IDENTIFICATION RULES - STRICT THRESHOLD:**
-
-1. **HIGH CONFIDENCE ONLY (95%+)**: Only use a known name ({', '.join(voice_names)}) if the voice is an EXACT match to the reference sample. Same pitch, same tone, same accent, same speaking patterns.
-
-2. **WHEN IN DOUBT, USE "Unknown Speaker X"**: If you are not 95% certain, you MUST label the speaker as "Unknown Speaker 2", "Unknown Speaker 3", etc. It is BETTER to be wrong about an unknown speaker than to incorrectly assign a known name.
-
-3. **SPEAKER 1 IS THE PHONE OWNER**: The person recording is always Speaker 1. Only use a specific name for Speaker 1 if you have a reference voice that EXACTLY matches.
-
-4. **COUNT THE UNIQUE VOICES**: Before outputting, count how many distinct voices you actually hear in the recording. If you hear 2 people talking, you should have exactly 2 unique speaker IDs in your output - not 3 or 4.
-
-**NEVER DO THIS:**
-- ❌ NEVER guess a name just because it's in the known list
-- ❌ NEVER assign "Miri" or "Shai" unless you HEAR their exact voice matching the reference
-- ❌ NEVER output more speaker IDs than actual unique voices you heard
-- ❌ NEVER assume someone is present without clear voice evidence
-
-**ALWAYS DO THIS:**
-- ✅ Use "Unknown Speaker 2", "Unknown Speaker 3" for voices you cannot match with 95% confidence
-- ✅ Verify: "Does this voice SOUND IDENTICAL to the reference sample?"
-- ✅ Count: "How many distinct people do I ACTUALLY hear speaking?"
-- ✅ Default to unknown when uncertain - this triggers the "Who is this?" flow
-
-**Speaker Count Sanity Check**: Before finalizing, ask yourself:
-"I heard X distinct voices. Do I have exactly X unique speaker names/IDs in my output?"
-
-**Output Format**: In the "speaker" field:
-- Use the actual person name ONLY if 95%+ match to reference
-- Use "Unknown Speaker 2", "Unknown Speaker 3" etc. for all others
-"""
-            
-            contents.append(prompt)
+                # MULTIMODAL VOICE COMPARISON: Use Forensic Analyst prompt with physical mapping
+                print("🔬 Using Forensic Analyst mode with multimodal voice comparison")
+                
+                # Start with the forensic analyst system prompt
+                prompt = FORENSIC_ANALYST_PROMPT
+                
+                # Add explicit physical mapping for each reference voice
+                prompt += "\n\n**REFERENCE VOICE SAMPLES (Physical Mapping):**\n"
+                prompt += "The following audio files are reference samples of known voices.\n"
+                prompt += "Compare the acoustic characteristics of speakers in the PRIMARY CONVERSATION to these references:\n\n"
+                
+                for i, rv in enumerate(reference_voice_files, 1):
+                    prompt += f"- **Reference Audio {i}** is the voice of **{rv['name']}**\n"
+                
+                prompt += "\n**PRIMARY CONVERSATION:**\n"
+                prompt += "The main audio file to transcribe follows after all the reference samples.\n"
+                prompt += "Compare each speaker in this conversation to the reference samples above.\n"
+                
+                contents.append(prompt)
+            else:
+                # No reference voices - use standard transcription prompt
+                contents.append(AUDIO_ANALYSIS_PROMPT_BASE)
         else:
             # Regular text/image analysis
             contents.append(SYSTEM_PROMPT)
@@ -635,24 +611,17 @@ You MUST NOT label a speaker with a name from the known list unless you are 95% 
             for i, text in enumerate(text_inputs, 1):
                 contents.append(f"### Note {i}:\n{text}\n")
         
-        # Add file references in the prompt
-        if uploaded_files or reference_voice_files:
-            contents.append("\n## Media Files:\n")
-            if uploaded_files:
-                contents.append(f"**Main audio file(s) to transcribe**: {len(uploaded_files)} file(s)\n")
-            if reference_voice_files:
-                voice_list = ', '.join([rv['name'] for rv in reference_voice_files])
-                contents.append(f"**Reference voice samples for speaker identification**: {len(reference_voice_files)} sample(s) - {voice_list}\n")
-        
         contents.append("\n\nPlease provide your analysis in the JSON format specified above.")
         
         # Add the refreshed file objects (with state='ACTIVE') to contents
-        print("🔍 Adding files to contents...")
+        # IMPORTANT: Add explicit labels BEFORE each file for clear physical mapping
+        print("🔍 Adding files to contents with explicit labels...")
         print(f"   Main audio files: {len(uploaded_files)}")
         print(f"   Reference voice files: {len(reference_voice_files)}")
         
         # Add reference voice files first (so Gemini can learn them before transcribing)
-        for rv in reference_voice_files:
+        # Each reference file is preceded by a text label for clear identification
+        for i, rv in enumerate(reference_voice_files, 1):
             file_ref = rv['file_ref']
             state = file_ref.state
             if hasattr(state, 'name'):
@@ -660,9 +629,15 @@ You MUST NOT label a speaker with a name from the known list unless you are 95% 
             else:
                 state_name = str(state)
             print(f"   Reference voice {rv['name']}: state={state_name}")
+            
+            # Add explicit label BEFORE the audio file
+            contents.append(f"\n[Reference Audio {i} - Voice of {rv['name']}]:\n")
             contents.append(file_ref)
         
-        # Then add main audio files
+        # Then add main audio files with explicit label
+        if uploaded_files:
+            contents.append("\n\n[PRIMARY CONVERSATION TO TRANSCRIBE]:\n")
+        
         for file_ref in uploaded_files:
             # Verify file is ready
             state = file_ref.state
