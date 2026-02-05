@@ -758,12 +758,14 @@ async def webhook(request: Request, background_tasks: BackgroundTasks):
                                         processing_error_occurred = False  # Track if error was caught
                                         
                                         # Retrieve voice signatures for speaker identification
+                                        # MEMORY OPTIMIZATION: Use settings to limit signatures
                                         reference_voices = []
                                         known_speaker_names = []  # List of names we already know (for filtering)
-                                        if drive_memory_service.is_configured:
+                                        if drive_memory_service.is_configured and settings.enable_multimodal_voice:
                                             try:
-                                                print("🎤 Retrieving voice signatures for speaker identification...")
-                                                reference_voices = drive_memory_service.get_voice_signatures()
+                                                max_sigs = settings.max_voice_signatures
+                                                print(f"🎤 Retrieving voice signatures (max: {max_sigs})...")
+                                                reference_voices = drive_memory_service.get_voice_signatures(max_signatures=max_sigs)
                                                 # Also get just the names for filtering (lowercase for comparison)
                                                 known_speaker_names = [rv['name'].lower() for rv in reference_voices]
                                                 if reference_voices:
@@ -778,6 +780,8 @@ async def webhook(request: Request, background_tasks: BackgroundTasks):
                                                 # Continue without voice signatures
                                                 reference_voices = []
                                                 known_speaker_names = []
+                                        elif not settings.enable_multimodal_voice:
+                                            print("ℹ️  Multimodal voice comparison disabled (ENABLE_MULTIMODAL_VOICE=false)")
                                         
                                         try:
                                             result = gemini_service.analyze_day(
@@ -1739,11 +1743,13 @@ async def analyze_day(
         print(f"   Text inputs: {len(text_inputs)}")
         
         # Retrieve voice signatures for speaker identification (if we have audio files)
+        # MEMORY OPTIMIZATION: Use settings to limit signatures
         reference_voices = []
-        if audio_paths and drive_memory_service.is_configured:
+        if audio_paths and drive_memory_service.is_configured and settings.enable_multimodal_voice:
             try:
-                print("🎤 Retrieving voice signatures for speaker identification...")
-                reference_voices = drive_memory_service.get_voice_signatures()
+                max_sigs = settings.max_voice_signatures
+                print(f"🎤 Retrieving voice signatures (max: {max_sigs})...")
+                reference_voices = drive_memory_service.get_voice_signatures(max_signatures=max_sigs)
                 if reference_voices:
                     print(f"✅ Retrieved {len(reference_voices)} voice signature(s): {[rv['name'] for rv in reference_voices]}")
                 else:
@@ -1754,6 +1760,8 @@ async def analyze_day(
                 traceback.print_exc()
                 # Continue without voice signatures
                 reference_voices = []
+        elif audio_paths and not settings.enable_multimodal_voice:
+            print("ℹ️  Multimodal voice comparison disabled (ENABLE_MULTIMODAL_VOICE=false)")
         
         try:
             result = gemini_service.analyze_day(

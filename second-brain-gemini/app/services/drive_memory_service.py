@@ -782,15 +782,26 @@ class DriveMemoryService:
             logger.error(f"❌ Error getting known speaker names: {e}")
             return []
     
-    def get_voice_signatures(self) -> List[Dict[str, str]]:
+    def get_voice_signatures(self, max_signatures: int = 2) -> List[Dict[str, str]]:
         """
-        Retrieve all voice signature files from the Voice_Signatures folder.
+        Retrieve voice signature files from the Voice_Signatures folder.
         Downloads each file to a temporary location.
+        
+        MEMORY OPTIMIZATION: Limited to max_signatures to prevent OOM on low-memory hosts.
+        
+        Args:
+            max_signatures: Maximum number of voice signatures to download (default: 2)
+                           Set to 0 to disable multimodal comparison entirely.
         
         Returns:
             List of dictionaries with 'name' (person name) and 'file_path' (temp file path)
             Example: [{'name': 'John', 'file_path': '/tmp/voice_john_abc123.mp3'}, ...]
         """
+        # MEMORY OPTIMIZATION: Allow disabling multimodal comparison
+        if max_signatures <= 0:
+            logger.info("ℹ️  Voice signature download disabled (max_signatures=0)")
+            return []
+        
         if not self.is_configured or not self.service:
             logger.warning("⚠️  Drive Memory Service not configured. Cannot retrieve voice signatures.")
             return []
@@ -809,7 +820,7 @@ class DriveMemoryService:
             query = f"'{voice_signatures_folder_id}' in parents and mimeType = 'audio/mpeg' and trashed = false"
             results = self.service.files().list(
                 q=query,
-                fields="files(id, name)"
+                fields="files(id, name, size)"
             ).execute()
             
             files = results.get('files', [])
@@ -819,16 +830,24 @@ class DriveMemoryService:
             
             logger.info(f"📥 Found {len(files)} voice signature(s)")
             
+            # MEMORY OPTIMIZATION: Limit number of signatures
+            if len(files) > max_signatures:
+                logger.warning(f"⚠️  Limiting to {max_signatures} voice signatures (found {len(files)}) to save memory")
+                files = files[:max_signatures]
+            
             # Download each file to a temporary location
             voice_signatures = []
             for file_info in files:
                 file_id = file_info.get('id')
                 filename = file_info.get('name', 'unknown.mp3')
+                file_size = file_info.get('size', 'unknown')
                 
                 # Extract person name from filename (remove .mp3 extension)
                 person_name = filename.replace('.mp3', '').replace('_', ' ').strip()
                 
                 try:
+                    logger.info(f"📥 Downloading voice signature: {person_name} (size: {file_size} bytes)")
+                    
                     # Download file to temporary location
                     request = self.service.files().get_media(fileId=file_id)
                     file_content = io.BytesIO()
@@ -844,6 +863,10 @@ class DriveMemoryService:
                         tmp_file.write(file_content.read())
                         tmp_path = tmp_file.name
                     
+                    # MEMORY OPTIMIZATION: Clear BytesIO buffer immediately
+                    file_content.close()
+                    del file_content
+                    
                     voice_signatures.append({
                         'name': person_name,
                         'file_path': tmp_path
@@ -854,7 +877,7 @@ class DriveMemoryService:
                     logger.error(f"❌ Error downloading voice signature {filename}: {e}")
                     continue
             
-            logger.info(f"✅ Retrieved {len(voice_signatures)} voice signature(s)")
+            logger.info(f"✅ Retrieved {len(voice_signatures)} voice signature(s) (limited to {max_signatures})")
             return voice_signatures
             
         except Exception as e:
