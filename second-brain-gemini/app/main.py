@@ -715,31 +715,35 @@ async def webhook(request: Request, background_tasks: BackgroundTasks):
                                             unknown_speakers_found = []
                                             processed_speakers = set()  # Track speakers we've already sent samples for
                                             
+                                            # MINIMUM SLICE LENGTH: 5 seconds for good voice identification
+                                            MIN_SLICE_MS = 5000
+                                            MAX_SLICE_MS = 10000
+                                            
                                             for i, segment in enumerate(segments):
                                                 # STEP 1: Immediate Conversion - Convert Gemini timestamps (SECONDS) to Pydub timestamps (MILLISECONDS)
                                                 # Gemini returns floats in SECONDS (e.g., 5.5), Pydub operates in MILLISECONDS (int)
                                                 start_ms = int(segment.get('start', 0.0) * 1000)
                                                 end_ms = int(segment.get('end', 0.0) * 1000)
-                                                duration_ms = end_ms - start_ms
+                                                segment_duration_ms = end_ms - start_ms
                                                 
                                                 speaker = segment.get('speaker', '')
                                                 
-                                                # PRODUCTION: Restore Duration Filter - Skip segments shorter than 1 second
-                                                if duration_ms < 1000:
-                                                    print(f"⏭️  Skipping segment {i}: too short ({duration_ms}ms < 1000ms)")
+                                                # Skip segments shorter than 1 second (too short to be meaningful)
+                                                if segment_duration_ms < 1000:
+                                                    print(f"⏭️  Skipping segment {i}: too short ({segment_duration_ms}ms < 1000ms)")
                                                     continue
                                                 
-                                                # PRODUCTION: Restore Speaker Filter - Skip Speaker 1 (assumed to be the user)
+                                                # Skip Speaker 1 (assumed to be the user/phone owner)
                                                 if speaker and speaker.lower() in ['speaker 1', 'דובר 1', 'speaker a']:
                                                     print(f"⏭️  Skipping Speaker 1 (assumed to be User): {speaker}")
                                                     continue
                                                 
-                                                # PRODUCTION: One Sample Per Speaker Rule - Skip if we've already processed this speaker
+                                                # Skip if we've already processed this speaker
                                                 if speaker in processed_speakers:
                                                     print(f"⏭️  Skipping segment {i}: already sent sample for speaker '{speaker}'")
                                                     continue
                                                 
-                                                print(f"🔍 Processing segment {i} - Speaker: {speaker} at {segment.get('start', 0.0):.2f}s - {segment.get('end', 0.0):.2f}s")
+                                                print(f"🔍 Processing segment {i} - Speaker: {speaker} at {segment.get('start', 0.0):.2f}s - {segment.get('end', 0.0):.2f}s (duration: {segment_duration_ms}ms)")
                                                 
                                                 # Ensure slice doesn't exceed audio bounds
                                                 audio_length_ms = len(audio_segment)
@@ -751,28 +755,44 @@ async def webhook(request: Request, background_tasks: BackgroundTasks):
                                                     print(f"⚠️  Invalid slice bounds after adjustment: {start_ms}ms - {end_ms}ms - skipping")
                                                     continue
                                                 
-                                                # STEP 3: Slicing (The Fix) - with FFmpeg safety check
+                                                # STEP 3: Slicing - ensure at least 5 seconds, max 10 seconds
                                                 try:
-                                                    # Define the cut endpoint: max 10 seconds sample
-                                                    cut_end = min(end_ms, start_ms + 10000)
+                                                    # Calculate slice bounds: ensure minimum 5 seconds
+                                                    slice_start = start_ms
+                                                    slice_end = end_ms
                                                     
-                                                    # Perform the slice using integer milliseconds
-                                                    audio_slice = audio_segment[start_ms : cut_end]
+                                                    # If segment is shorter than MIN_SLICE_MS, extend it
+                                                    current_duration = slice_end - slice_start
+                                                    if current_duration < MIN_SLICE_MS:
+                                                        # Try to extend forward first
+                                                        extension_needed = MIN_SLICE_MS - current_duration
+                                                        new_end = min(slice_end + extension_needed, audio_length_ms)
+                                                        
+                                                        # If we couldn't extend enough forward, try extending backward
+                                                        if (new_end - slice_start) < MIN_SLICE_MS:
+                                                            backward_extension = MIN_SLICE_MS - (new_end - slice_start)
+                                                            slice_start = max(0, slice_start - backward_extension)
+                                                        
+                                                        slice_end = new_end
+                                                        print(f"   📏 Extended slice from {current_duration}ms to {slice_end - slice_start}ms (min {MIN_SLICE_MS}ms required)")
                                                     
-                                                    # STEP 4: Debug Prints (Mandatory)
+                                                    # Cap at maximum duration
+                                                    if (slice_end - slice_start) > MAX_SLICE_MS:
+                                                        slice_end = slice_start + MAX_SLICE_MS
+                                                    
+                                                    # Perform the slice
+                                                    audio_slice = audio_segment[slice_start : slice_end]
+                                                    
+                                                    # Verify slice length
                                                     slice_length_ms = len(audio_slice)
-                                                    print(f"✂️  SLICING: Gemini said {segment.get('start', 0.0):.2f}s -> Converting to {start_ms}ms. Clip duration: {slice_length_ms}ms")
+                                                    print(f"✂️  SLICING: {slice_start}ms - {slice_end}ms. Final duration: {slice_length_ms}ms")
                                                     
-                                                    # DEBUG MODE: Verify slice has content (but don't skip if empty - log it)
-                                                    if slice_length_ms == 0:
-                                                        print(f"❌ ERROR: Audio slice is empty (0ms) - but continuing in DEBUG MODE")
-                                                    else:
-                                                        print(f"✅ Slice created successfully: {slice_length_ms}ms")
+                                                    # Skip if still too short (couldn't extend enough)
+                                                    if slice_length_ms < MIN_SLICE_MS:
+                                                        print(f"⚠️  Slice still too short ({slice_length_ms}ms < {MIN_SLICE_MS}ms) - skipping")
+                                                        continue
                                                     
-                                                    # DEBUG MODE: Don't skip short slices
-                                                    # if slice_length_ms < 1000:
-                                                    #     print(f"⚠️  Slice too short ({slice_length_ms}ms < 1000ms) - skipping")
-                                                    #     continue
+                                                    print(f"✅ Slice created successfully: {slice_length_ms}ms ({slice_length_ms/1000:.1f}s)")
                                                     
                                                     unknown_speakers_found.append({
                                                         'segment_index': i,

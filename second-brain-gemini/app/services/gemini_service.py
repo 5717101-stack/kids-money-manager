@@ -517,17 +517,22 @@ Here is structured data about the user. You MUST use this to answer personal que
 
 You are provided with a main audio file and {len(reference_voice_files)} reference voice sample(s) labeled with names: {', '.join(voice_names)}.
 
-**CRITICAL TASK**: Compare the speakers in the main audio file with the provided reference voice samples. When you identify a speaker that matches one of the reference voices, use their ACTUAL NAME (e.g., "{voice_names[0]}") instead of generic speaker IDs (e.g., "Speaker 1") in the JSON output.
+**CRITICAL TASK**: Compare the speakers in the main audio file with the provided reference voice samples.
 
-**How to match voices**:
-1. Listen carefully to each reference voice sample to learn the voice characteristics
-2. When transcribing the main audio, compare each speaker's voice to the reference samples
-3. If a speaker's voice matches a reference sample, use that person's name in the "speaker" field
-4. Only use generic "Speaker 1", "Speaker 2", etc. for speakers that do NOT match any reference voice
+**STRICT MATCHING RULES - READ CAREFULLY:**
+1. Listen to each reference voice sample to learn the UNIQUE voice characteristics (pitch, tone, accent, speaking style)
+2. ONLY use a person's name when you are HIGHLY CONFIDENT (90%+) that the voice matches
+3. If you are NOT confident about a match, use generic "Speaker 1", "Speaker 2", etc.
+4. Do NOT guess or assume - if you're unsure, use generic speaker IDs
+5. Different speakers should have DIFFERENT IDs - don't assign the same name/ID to different voices
 
-**Example**: If the reference voice is labeled "John" and you hear John speaking in the main audio, use "John" (not "Speaker 1") in the speaker field.
+**IMPORTANT**: It's better to use "Speaker 2" when unsure than to incorrectly assign a name. Wrong identification is worse than no identification.
 
-**Output Format**: Use the actual person names in the "speaker" field whenever a match is found. This allows the transcript to be searchable by person name later.
+**Example**: 
+- If you hear a voice that clearly matches the reference voice for "John" (same pitch, accent, tone), use "John"
+- If you hear a different voice that you're not sure about, use "Speaker 2" (NOT "John")
+
+**Output Format**: Use the actual person names ONLY when confident about the match. Otherwise use "Speaker 1", "Speaker 2", etc.
 """
             
             contents.append(prompt)
