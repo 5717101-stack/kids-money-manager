@@ -591,6 +591,22 @@ async def webhook(request: Request, background_tasks: BackgroundTasks):
                                                     
                                                     if is_unknown:
                                                         print(f"🔍 Unknown speaker detected: {speaker} at {start_time:.1f}s - {end_time:.1f}s")
+                                                        
+                                                        # Validate segment timing
+                                                        if end_time <= start_time:
+                                                            print(f"⚠️  Invalid segment timing: start={start_time:.1f}s, end={end_time:.1f}s - skipping")
+                                                            continue
+                                                        
+                                                        if start_time < 0:
+                                                            print(f"⚠️  Invalid start time: {start_time:.1f}s - setting to 0")
+                                                            start_time = 0.0
+                                                        
+                                                        # Ensure end_time doesn't exceed audio length
+                                                        audio_length_seconds = len(audio_segment) / 1000.0
+                                                        if end_time > audio_length_seconds:
+                                                            print(f"⚠️  End time {end_time:.1f}s exceeds audio length {audio_length_seconds:.1f}s - adjusting")
+                                                            end_time = audio_length_seconds
+                                                        
                                                         unknown_speakers_found.append({
                                                             'segment_index': i,
                                                             'speaker': speaker,
@@ -599,25 +615,50 @@ async def webhook(request: Request, background_tasks: BackgroundTasks):
                                                             'text': segment.get('text', '')
                                                         })
                                                         
-                                                        # Slice audio (max 5 seconds)
-                                                        slice_duration = min(5.0, end_time - start_time)
+                                                        # Slice audio (max 5 seconds, minimum 1 second)
+                                                        segment_duration = end_time - start_time
+                                                        slice_duration = min(5.0, max(1.0, segment_duration))  # At least 1 second
                                                         slice_start_ms = int(start_time * 1000)
                                                         slice_end_ms = int((start_time + slice_duration) * 1000)
                                                         
+                                                        # Ensure slice doesn't exceed audio bounds
+                                                        audio_length_ms = len(audio_segment)
+                                                        if slice_end_ms > audio_length_ms:
+                                                            slice_end_ms = audio_length_ms
+                                                        if slice_start_ms >= slice_end_ms:
+                                                            print(f"⚠️  Invalid slice bounds: {slice_start_ms}ms - {slice_end_ms}ms - skipping")
+                                                            continue
+                                                        
+                                                        print(f"   🎵 Slicing audio: {slice_start_ms}ms to {slice_end_ms}ms (duration: {slice_duration:.1f}s)")
+                                                        
                                                         # Extract audio slice
                                                         audio_slice = audio_segment[slice_start_ms:slice_end_ms]
+                                                        
+                                                        # Verify slice has content
+                                                        slice_length_ms = len(audio_slice)
+                                                        slice_length_seconds = slice_length_ms / 1000.0
+                                                        print(f"   ✅ Audio slice created: {slice_length_ms}ms ({slice_length_seconds:.2f}s)")
+                                                        
+                                                        if slice_length_ms == 0:
+                                                            print(f"❌ ERROR: Audio slice is empty (0ms) - skipping send")
+                                                            continue
                                                         
                                                         # Export to temporary file as MP3 (Meta API requires MP3)
                                                         with tempfile.NamedTemporaryFile(delete=False, suffix='.mp3') as slice_file:
                                                             audio_slice.export(slice_file.name, format='mp3')
                                                             slice_path = slice_file.name
-                                                        
-                                                        print(f"   📎 Created audio slice: {slice_duration:.1f}s from {start_time:.1f}s")
-                                                        print(f"   📁 Slice file path: {slice_path}")
-                                                        print(f"   📏 File exists: {os.path.exists(slice_path)}")
-                                                        if os.path.exists(slice_path):
-                                                            file_size = os.path.getsize(slice_path)
-                                                            print(f"   📊 File size: {file_size} bytes")
+                                                            
+                                                            # Verify file was created and has content
+                                                            if os.path.exists(slice_path):
+                                                                file_size = os.path.getsize(slice_path)
+                                                                print(f"   📁 Exported MP3 file: {file_size} bytes")
+                                                                if file_size == 0:
+                                                                    print(f"❌ ERROR: Exported MP3 file is empty (0 bytes) - skipping send")
+                                                                    os.unlink(slice_path)
+                                                                    continue
+                                                            else:
+                                                                print(f"❌ ERROR: MP3 file was not created - skipping send")
+                                                                continue
                                                         
                                                         # Send audio clip to user with simple caption
                                                         if not whatsapp_provider:
