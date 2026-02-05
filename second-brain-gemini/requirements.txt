@@ -28,3 +28,6 @@ requests>=2.31.0
 google-api-python-client==2.144.0
 google-auth==2.35.0
 google-auth-httplib2==0.2.0
+
+# Audio processing for speaker identification
+pydub==0.25.1

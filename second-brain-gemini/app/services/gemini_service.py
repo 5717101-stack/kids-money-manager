@@ -581,23 +581,21 @@ Here is structured data about the user. You MUST use this to answer personal que
         original_length = len(response_text)
         print(f"📄 Response length: {original_length} characters")
         
-        # Check if this is an audio analysis response (has transcript and summary sections)
-        if audio_paths and ("=== TRANSCRIPT ===" in response_text or "TRANSCRIPT" in response_text.upper()):
-            # Parse audio analysis response (transcript + summary format)
-            print("🎤 Detected audio analysis response - parsing transcript and summary...")
-            transcript, summary = self._parse_audio_response(response_text)
+        # Check if this is an audio analysis response (should be JSON with segments)
+        if audio_paths:
+            # Parse audio analysis response (JSON format with segments)
+            print("🎤 Detected audio analysis response - parsing JSON transcript...")
+            transcript_json = self._parse_audio_response(response_text)
             
             # Return structured audio analysis result
             result = {
                 "type": "audio_analysis",
-                "transcript": transcript,
-                "summary": summary,
+                "transcript": transcript_json,  # Full JSON object with segments
                 "audio_file_metadata": audio_file_metadata or []
             }
             
             print("✅ Audio analysis complete!")
-            print(f"   Transcript length: {len(transcript)} characters")
-            print(f"   Summary length: {len(summary)} characters")
+            print(f"   Segments: {len(transcript_json.get('segments', []))} segments")
             
             return result
         
@@ -679,67 +677,99 @@ Here is structured data about the user. You MUST use this to answer personal que
             traceback.print_exc()
             raise
     
-    def _parse_audio_response(self, response_text: str) -> tuple[str, str]:
+    def _parse_audio_response(self, response_text: str) -> Dict[str, Any]:
         """
-        Parse audio analysis response to extract transcript and summary.
+        Parse audio analysis response to extract JSON transcript with segments.
         
         Expected format:
-        === TRANSCRIPT ===
-        [transcript text]
-        
-        === SUMMARY ===
-        [summary text]
+        {
+          "segments": [
+            {
+              "speaker": "Speaker 1",
+              "start": 0.0,
+              "end": 5.2,
+              "text": "..."
+            }
+          ]
+        }
         
         Args:
             response_text: Full response text from Gemini
         
         Returns:
-            Tuple of (transcript, summary)
+            Dictionary with 'segments' key containing list of segment dicts
         """
-        transcript = ""
-        summary = ""
-        
         try:
-            # Try to find transcript section
-            if "=== TRANSCRIPT ===" in response_text:
-                parts = response_text.split("=== TRANSCRIPT ===", 1)
-                if len(parts) > 1:
-                    transcript_part = parts[1].split("===", 1)[0].strip()
-                    transcript = transcript_part
-                    
-                    # Try to find summary section
-                    if "=== SUMMARY ===" in parts[1]:
-                        summary_part = parts[1].split("=== SUMMARY ===", 1)
-                        if len(summary_part) > 1:
-                            summary = summary_part[1].strip()
-            elif "TRANSCRIPT" in response_text.upper():
-                # Try alternative format (without === markers)
-                transcript_idx = response_text.upper().find("TRANSCRIPT")
-                summary_idx = response_text.upper().find("SUMMARY")
-                
-                if transcript_idx >= 0:
-                    if summary_idx > transcript_idx:
-                        transcript = response_text[transcript_idx:summary_idx].split(":", 1)[-1].strip()
-                        summary = response_text[summary_idx:].split(":", 1)[-1].strip()
-                    else:
-                        transcript = response_text[transcript_idx:].split(":", 1)[-1].strip()
+            # Try to extract JSON from response (might be wrapped in markdown code blocks)
+            text = response_text.strip()
             
-            # Fallback: if we couldn't parse, use the whole response as summary
-            if not transcript and not summary:
-                print("⚠️  Could not parse transcript/summary format, using full response as summary")
-                summary = response_text
-            elif not summary:
-                # If we have transcript but no summary, use a portion as summary
-                summary = transcript[:500] + "..." if len(transcript) > 500 else transcript
-                print("⚠️  No summary found, using transcript excerpt as summary")
+            # Remove markdown code blocks if present
+            if text.startswith("```json"):
+                text = text[7:]  # Remove ```json
+            elif text.startswith("```"):
+                text = text[3:]  # Remove ```
+            
+            if text.endswith("```"):
+                text = text[:-3]  # Remove closing ```
+            
+            text = text.strip()
+            
+            # Try to parse as JSON
+            try:
+                transcript_json = json.loads(text)
+                
+                # Validate structure
+                if not isinstance(transcript_json, dict):
+                    raise ValueError("Response is not a JSON object")
+                
+                if "segments" not in transcript_json:
+                    raise ValueError("Response missing 'segments' key")
+                
+                if not isinstance(transcript_json["segments"], list):
+                    raise ValueError("'segments' must be a list")
+                
+                print(f"✅ Successfully parsed JSON transcript with {len(transcript_json['segments'])} segments")
+                return transcript_json
+                
+            except json.JSONDecodeError as e:
+                print(f"⚠️  JSON decode error: {e}")
+                print(f"   Response preview: {text[:500]}")
+                
+                # Try to fix incomplete JSON using existing helper
+                fixed_text = self._fix_incomplete_json(text)
+                try:
+                    transcript_json = json.loads(fixed_text)
+                    if "segments" in transcript_json:
+                        print(f"✅ Fixed incomplete JSON and parsed {len(transcript_json['segments'])} segments")
+                        return transcript_json
+                except:
+                    pass
+                
+                # Fallback: create a single segment with the full text
+                print("⚠️  Could not parse JSON, creating fallback segment")
+                return {
+                    "segments": [{
+                        "speaker": "Unknown",
+                        "start": 0.0,
+                        "end": 0.0,
+                        "text": response_text
+                    }]
+                }
             
         except Exception as e:
             print(f"⚠️  Error parsing audio response: {e}")
-            # Fallback: return full response as summary
-            summary = response_text
-            transcript = ""
-        
-        return transcript, summary
+            import traceback
+            traceback.print_exc()
+            
+            # Fallback: create a single segment with the full response
+            return {
+                "segments": [{
+                    "speaker": "Unknown",
+                    "start": 0.0,
+                    "end": 0.0,
+                    "text": response_text
+                }]
+            }
     
     def cleanup_files(self):
         """Delete all uploaded files from Google's storage."""

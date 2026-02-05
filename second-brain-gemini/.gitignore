@@ -12,6 +12,10 @@ ENV/
 .env
 .env.local
 
+# OAuth Credentials
+google_oauth_credentials.txt
+credentials.json
+
 # IDE
 .vscode/
 .idea/
@@ -29,4 +33,4 @@ server.log
 
 # Deployment
 .env.production
-.env.local
+.env.localgoogle_oauth_credentials.txt

@@ -34,6 +34,21 @@ class WhatsAppProvider(ABC):
     def get_provider_name(self) -> str:
         """Get the name of the provider."""
         pass
+    
+    @abstractmethod
+    def send_audio(self, audio_path: str, caption: str = "", to: Optional[str] = None) -> Dict[str, Any]:
+        """
+        Send an audio file via WhatsApp.
+        
+        Args:
+            audio_path: Path to the audio file to send
+            caption: Optional caption/text message to send with the audio
+            to: Recipient phone number (optional, uses default if not provided)
+            
+        Returns:
+            Dictionary with success status and details
+        """
+        pass
 
 
 class WhatsAppProviderFactory:

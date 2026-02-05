@@ -339,7 +339,7 @@ class MetaWhatsAppService:
             mode: Verification mode from query params
             token: Verification token from query params
             challenge: Challenge string from query params
-            
+        
         Returns:
             Challenge string if verification succeeds, None otherwise
         """
@@ -349,6 +349,139 @@ class MetaWhatsAppService:
         else:
             print("⚠️  Meta WhatsApp webhook verification failed")
             return None
+    
+    def send_audio(self, audio_path: str, caption: str = "", to: Optional[str] = None) -> Dict[str, Any]:
+        """
+        Send an audio file via WhatsApp using Meta WhatsApp Cloud API.
+        
+        Args:
+            audio_path: Path to the audio file to send
+            caption: Optional caption/text message to send with the audio
+            to: Recipient phone number (optional, uses default if not provided)
+            
+        Returns:
+            Dictionary with success status and details
+        """
+        if not self.is_configured_flag:
+            return {
+                "success": False,
+                "error": "Meta WhatsApp not configured",
+                "message": "Meta WhatsApp credentials not set"
+            }
+        
+        # Use provided 'to' or fallback to config default
+        recipient = to or settings.whatsapp_to
+        if not recipient:
+            return {
+                "success": False,
+                "error": "Recipient number required",
+                "message": "Recipient phone number must be provided"
+            }
+        
+        # Ensure phone number is in E.164 format
+        if recipient.startswith("whatsapp:"):
+            recipient = recipient.replace("whatsapp:", "")
+        
+        try:
+            # Step 1: Upload media to Meta's servers
+            upload_url = f"{self.BASE_URL}/{self.phone_number_id}/media"
+            headers = {
+                "Authorization": f"Bearer {self.access_token}"
+            }
+            
+            # Read audio file
+            with open(audio_path, 'rb') as audio_file:
+                files = {
+                    'file': (audio_path.split('/')[-1], audio_file, 'audio/ogg')  # Adjust MIME type as needed
+                }
+                data = {
+                    'messaging_product': 'whatsapp',
+                    'type': 'audio'
+                }
+                
+                upload_response = requests.post(upload_url, headers=headers, files=files, data=data)
+                upload_response.raise_for_status()
+                upload_result = upload_response.json()
+                media_id = upload_result.get('id')
+                
+                if not media_id:
+                    return {
+                        "success": False,
+                        "error": "No media ID in upload response",
+                        "message": "Failed to upload audio to Meta servers"
+                    }
+            
+            # Step 2: Send message with media
+            message_url = f"{self.BASE_URL}/{self.phone_number_id}/messages"
+            message_headers = {
+                "Authorization": f"Bearer {self.access_token}",
+                "Content-Type": "application/json"
+            }
+            
+            payload = {
+                "messaging_product": "whatsapp",
+                "to": recipient,
+                "type": "audio",
+                "audio": {
+                    "id": media_id
+                }
+            }
+            
+            # Add caption if provided (as a separate text message before audio)
+            if caption:
+                caption_payload = {
+                    "messaging_product": "whatsapp",
+                    "to": recipient,
+                    "type": "text",
+                    "text": {
+                        "body": caption
+                    }
+                }
+                caption_response = requests.post(message_url, json=caption_payload, headers=message_headers)
+                caption_response.raise_for_status()
+            
+            # Send audio message
+            response = requests.post(message_url, json=payload, headers=message_headers)
+            response.raise_for_status()
+            result_data = response.json()
+            
+            message_id = result_data.get('messages', [{}])[0].get('id')
+            
+            print(f"✅ Audio file sent via Meta WhatsApp API!")
+            print(f"   Message ID: {message_id}")
+            print(f"   Media ID: {media_id}")
+            
+            return {
+                "success": True,
+                "message_id": message_id,
+                "media_id": media_id,
+                "status": "sent",
+                "message": "Audio file sent successfully via Meta API"
+            }
+            
+        except requests.exceptions.HTTPError as e:
+            error_detail = "Unknown error"
+            try:
+                error_response = e.response.json()
+                error_detail = error_response.get('error', {}).get('message', str(e))
+            except:
+                error_detail = str(e)
+            
+            print(f"❌ Meta WhatsApp API error sending audio: {error_detail}")
+            return {
+                "success": False,
+                "error": error_detail,
+                "message": f"Failed to send audio via Meta API: {error_detail}"
+            }
+        except Exception as e:
+            print(f"❌ Unexpected error sending audio via Meta API: {e}")
+            import traceback
+            traceback.print_exc()
+            return {
+                "success": False,
+                "error": str(e),
+                "message": "Unexpected error sending audio via Meta API"
+            }
 
 
 # Singleton instance

@@ -537,14 +537,13 @@ async def webhook(request: Request, background_tasks: BackgroundTasks):
                                             
                                             print("✅ Gemini analysis complete")
                                             
-                                            # Extract transcript and summary
-                                            transcript = result.get('transcript', '')
-                                            summary = result.get('summary', '')
+                                            # Extract JSON transcript (now contains segments with timestamps)
+                                            transcript_json = result.get('transcript', {})
+                                            segments = transcript_json.get('segments', [])
                                             
-                                            print(f"   Transcript length: {len(transcript)} characters")
-                                            print(f"   Summary length: {len(summary)} characters")
+                                            print(f"   Transcript segments: {len(segments)} segments")
                                             
-                                            # Save structured audio interaction to memory
+                                            # Save full JSON transcript to memory
                                             audio_interaction = {
                                                 "timestamp": datetime.utcnow().isoformat() + "Z",
                                                 "type": "audio",
@@ -552,9 +551,7 @@ async def webhook(request: Request, background_tasks: BackgroundTasks):
                                                 "web_content_link": audio_metadata.get('web_content_link', ''),
                                                 "web_view_link": audio_metadata.get('web_view_link', ''),
                                                 "filename": audio_metadata.get('filename', ''),
-                                                "transcript": transcript,
-                                                "summary": summary,
-                                                "speakers": ["User", "Unknown"],
+                                                "transcript": transcript_json,  # Full JSON with segments
                                                 "message_id": message_id,
                                                 "from_number": from_number
                                             }
@@ -562,23 +559,103 @@ async def webhook(request: Request, background_tasks: BackgroundTasks):
                                             success = drive_memory_service.update_memory(audio_interaction, background_tasks=background_tasks)
                                             if success:
                                                 print(f"✅ Saved audio interaction to memory")
+                                            
+                                            # SPEAKER IDENTIFICATION: Detect unknown speakers and slice audio
+                                            from pydub import AudioSegment
+                                            import tempfile
+                                            
+                                            # Load original audio for slicing
+                                            try:
+                                                audio_segment = AudioSegment.from_file(tmp_path)
+                                                print(f"✅ Loaded audio: {len(audio_segment)}ms ({len(audio_segment)/1000:.1f}s)")
                                                 
-                                                # Send summary back to user
-                                                if summary:
-                                                    reply_message = f"🎤 הקלטה נשמרה!\n\n📝 סיכום:\n{summary[:500]}"
-                                                    if len(summary) > 500:
-                                                        reply_message += "..."
+                                                # Iterate through segments to find unknown speakers
+                                                unknown_speakers_found = []
+                                                
+                                                for i, segment in enumerate(segments):
+                                                    speaker = segment.get('speaker', '')
+                                                    start_time = segment.get('start', 0.0)
+                                                    end_time = segment.get('end', 0.0)
                                                     
-                                                    reply_result = whatsapp_provider.send_whatsapp(
-                                                        message=reply_message,
-                                                        to=f"+{from_number}"
+                                                    # Detect unknown speakers (Speaker 2, Speaker B, etc. - not Speaker 1)
+                                                    is_unknown = (
+                                                        speaker and 
+                                                        speaker.lower() not in ['speaker 1', 'user', 'me', 'itzik', 'itzhak'] and
+                                                        ('speaker' in speaker.lower() or 'unknown' in speaker.lower())
                                                     )
                                                     
-                                                    if reply_result.get('success'):
-                                                        print("✅ Summary sent to user")
-                                                    else:
-                                                        print(f"⚠️  Failed to send summary: {reply_result.get('error')}")
+                                                    if is_unknown:
+                                                        print(f"🔍 Unknown speaker detected: {speaker} at {start_time:.1f}s - {end_time:.1f}s")
+                                                        unknown_speakers_found.append({
+                                                            'segment_index': i,
+                                                            'speaker': speaker,
+                                                            'start': start_time,
+                                                            'end': end_time,
+                                                            'text': segment.get('text', '')
+                                                        })
+                                                        
+                                                        # Slice audio (max 5 seconds)
+                                                        slice_duration = min(5.0, end_time - start_time)
+                                                        slice_start_ms = int(start_time * 1000)
+                                                        slice_end_ms = int((start_time + slice_duration) * 1000)
+                                                        
+                                                        # Extract audio slice
+                                                        audio_slice = audio_segment[slice_start_ms:slice_end_ms]
+                                                        
+                                                        # Export to temporary file
+                                                        with tempfile.NamedTemporaryFile(delete=False, suffix='.ogg') as slice_file:
+                                                            audio_slice.export(slice_file.name, format='ogg')
+                                                            slice_path = slice_file.name
+                                                        
+                                                        print(f"   📎 Created audio slice: {slice_duration:.1f}s from {start_time:.1f}s")
+                                                        
+                                                        # Send audio clip to user with caption
+                                                        caption = f"🔊 Unknown Voice detected. Who is this? (Reply with name)\n\nSpeaker: {speaker}\nTime: {start_time:.1f}s - {end_time:.1f}s\nText: {segment.get('text', '')[:100]}"
+                                                        
+                                                        audio_result = whatsapp_provider.send_audio(
+                                                            audio_path=slice_path,
+                                                            caption=caption,
+                                                            to=f"+{from_number}"
+                                                        )
+                                                        
+                                                        if audio_result.get('success'):
+                                                            print(f"✅ Sent audio slice to user for speaker identification")
+                                                        else:
+                                                            print(f"⚠️  Failed to send audio slice: {audio_result.get('error')}")
+                                                        
+                                                        # Cleanup slice file
+                                                        try:
+                                                            os.unlink(slice_path)
+                                                        except:
+                                                            pass
+                                                
+                                                if not unknown_speakers_found:
+                                                    print("✅ No unknown speakers detected - all speakers identified")
+                                                
+                                            except ImportError:
+                                                print("⚠️  pydub not installed - cannot slice audio for speaker identification")
+                                                print("   Install with: pip install pydub")
+                                            except Exception as e:
+                                                print(f"⚠️  Error processing audio for speaker identification: {e}")
+                                                import traceback
+                                                traceback.print_exc()
+                                            
+                                            # Send confirmation message
+                                            reply_message = f"🎤 הקלטה נשמרה!\n\n📝 {len(segments)} קטעים זוהו"
+                                            if unknown_speakers_found:
+                                                reply_message += f"\n🔍 {len(unknown_speakers_found)} דוברים לא מזוהים - נשלחו קטעי אודיו לזיהוי"
+                                            
+                                            reply_result = whatsapp_provider.send_whatsapp(
+                                                message=reply_message,
+                                                to=f"+{from_number}"
+                                            )
+                                            
+                                            if reply_result.get('success'):
+                                                print("✅ Confirmation sent to user")
                                             else:
+                                                print(f"⚠️  Failed to send confirmation: {reply_result.get('error')}")
+                                            
+                                            if not success:
                                                 print("⚠️  Failed to save audio interaction to memory")
                                             
                                             # Cleanup temp file
