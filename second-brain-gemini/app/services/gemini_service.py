@@ -422,7 +422,16 @@ Here is structured data about the user. You MUST use this to answer personal que
         if response is None:
             raise RuntimeError("Failed to generate content after all retries")
         
-        return response.text.strip()
+        # Extract response text with proper error handling
+        try:
+            return response.text.strip()
+        except ValueError as e:
+            print(f"⚠️  Gemini response.text accessor failed: {e}")
+            if hasattr(response, 'prompt_feedback') and response.prompt_feedback:
+                feedback = response.prompt_feedback
+                if hasattr(feedback, 'block_reason') and feedback.block_reason:
+                    raise RuntimeError(f"Gemini blocked the request: {feedback.block_reason}")
+            raise RuntimeError(f"Failed to extract text from Gemini response: {e}")
     
     def analyze_day(
         self,
@@ -634,8 +643,33 @@ You are provided with a main audio file and {len(reference_voice_files)} referen
         if response is None:
             raise RuntimeError("Failed to generate content after all retries")
         
-        # Extract response text
-        response_text = response.text.strip()
+        # Extract response text with proper error handling
+        # Gemini may return empty/blocked responses that don't have .text available
+        try:
+            response_text = response.text.strip()
+        except ValueError as e:
+            # This happens when response.text accessor fails (blocked/empty response)
+            print(f"⚠️  Gemini response.text accessor failed: {e}")
+            
+            # Check if response was blocked by safety filters
+            if hasattr(response, 'prompt_feedback'):
+                feedback = response.prompt_feedback
+                print(f"   Prompt feedback: {feedback}")
+                if hasattr(feedback, 'block_reason') and feedback.block_reason:
+                    raise RuntimeError(f"Gemini blocked the request: {feedback.block_reason}")
+            
+            # Check candidates for finish reason
+            if hasattr(response, 'candidates') and response.candidates:
+                candidate = response.candidates[0]
+                if hasattr(candidate, 'finish_reason'):
+                    finish_reason = candidate.finish_reason
+                    print(f"   Finish reason: {finish_reason}")
+                    if str(finish_reason) != "STOP":
+                        raise RuntimeError(f"Gemini response incomplete: {finish_reason}")
+            
+            # If we can't get text, raise the original error
+            raise RuntimeError(f"Failed to extract text from Gemini response: {e}")
+        
         original_length = len(response_text)
         print(f"📄 Response length: {original_length} characters")
         
