@@ -753,15 +753,12 @@ Here is structured data about the user. You MUST use this to answer personal que
                 except:
                     pass
                 
-                # Fallback: create a single segment with the full text
-                print("⚠️  Could not parse JSON, creating fallback segment")
+                # Fallback: cannot create valid segments without proper JSON
+                # Return empty segments list instead of invalid 0-second segment
+                print("⚠️  Could not parse JSON - cannot create segments without valid timestamps")
+                print("   Returning empty segments list - speaker identification will be skipped")
                 return {
-                    "segments": [{
-                        "speaker": "Unknown",
-                        "start": 0.0,
-                        "end": 0.0,
-                        "text": response_text
-                    }]
+                    "segments": []
                 }
             
         except Exception as e:

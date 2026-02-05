@@ -543,6 +543,22 @@ async def webhook(request: Request, background_tasks: BackgroundTasks):
                                             
                                             print(f"   Transcript segments: {len(segments)} segments")
                                             
+                                            # Validate segments have valid timestamps before processing
+                                            valid_segments = []
+                                            for seg in segments:
+                                                start = seg.get('start', None)
+                                                end = seg.get('end', None)
+                                                if start is not None and end is not None and isinstance(start, (int, float)) and isinstance(end, (int, float)):
+                                                    if end > start and start >= 0:
+                                                        valid_segments.append(seg)
+                                                    else:
+                                                        print(f"⚠️  Skipping invalid segment: start={start}, end={end} (end must be > start, start >= 0)")
+                                                else:
+                                                    print(f"⚠️  Skipping segment with missing/invalid timestamps: start={start}, end={end}")
+                                            
+                                            segments = valid_segments
+                                            print(f"   Valid segments with timestamps: {len(segments)}")
+                                            
                                             # Save full JSON transcript to memory
                                             audio_interaction = {
                                                 "timestamp": datetime.utcnow().isoformat() + "Z",
