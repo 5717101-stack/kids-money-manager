@@ -614,6 +614,7 @@ Here is structured data about the user. You MUST use this to answer personal que
             else:
                 # Use cleaned text if no code blocks found
                 response_text = clean_text
+                print("📄 Using cleaned text (no code blocks detected)")
             
             # Try to find JSON object boundaries
             # Look for first { and try to find matching }
