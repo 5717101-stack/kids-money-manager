@@ -650,85 +650,128 @@ async def webhook(request: Request, background_tasks: BackgroundTasks):
                                                         print(f"⚠️  Invalid slice bounds after adjustment: {start_ms}ms - {end_ms}ms - skipping")
                                                         continue
                                                     
-                                                    # STEP 3: Slicing (The Fix)
-                                                    # Define the cut endpoint: max 10 seconds sample
-                                                    cut_end = min(end_ms, start_ms + 10000)
-                                                    
-                                                    # Perform the slice using integer milliseconds
-                                                    audio_slice = audio_segment[start_ms : cut_end]
-                                                    
-                                                    # STEP 4: Debug Prints (Mandatory)
-                                                    slice_length_ms = len(audio_slice)
-                                                    print(f"✂️  SLICING: Gemini said {segment.get('start', 0.0):.2f}s -> Converting to {start_ms}ms. Clip duration: {slice_length_ms}ms")
-                                                    
-                                                    # DEBUG MODE: Verify slice has content (but don't skip if empty - log it)
-                                                    if slice_length_ms == 0:
-                                                        print(f"❌ ERROR: Audio slice is empty (0ms) - but continuing in DEBUG MODE")
-                                                    else:
-                                                        print(f"✅ Slice created successfully: {slice_length_ms}ms")
-                                                    
-                                                    # DEBUG MODE: Don't skip short slices
-                                                    # if slice_length_ms < 1000:
-                                                    #     print(f"⚠️  Slice too short ({slice_length_ms}ms < 1000ms) - skipping")
-                                                    #     continue
-                                                    
-                                                    unknown_speakers_found.append({
-                                                        'segment_index': i,
-                                                        'speaker': speaker,
-                                                        'start': segment.get('start', 0.0),
-                                                        'end': segment.get('end', 0.0),
-                                                        'text': segment.get('text', '')
-                                                    })
-                                                    
-                                                    # STEP 5: Export as MP3 (to satisfy WhatsApp)
-                                                    with tempfile.NamedTemporaryFile(delete=False, suffix='.mp3') as slice_file:
-                                                        audio_slice.export(slice_file.name, format='mp3')
-                                                        slice_path = slice_file.name
-                                                        
-                                                        # Verify file was created and has content
-                                                        if not os.path.exists(slice_path):
-                                                            print(f"❌ ERROR: Exported MP3 file does not exist - skipping send")
-                                                            continue
-                                                        
-                                                        file_size = os.path.getsize(slice_path)
-                                                        print(f"   📁 Exported MP3 file: {file_size} bytes")
-                                                        if file_size == 0:
-                                                            print(f"❌ ERROR: Exported MP3 file is empty (0 bytes) - skipping send")
-                                                            os.unlink(slice_path)
-                                                            continue
-                                                    
-                                                    # Send audio clip to user with simple caption
-                                                    if not whatsapp_provider:
-                                                        print(f"❌ WhatsApp provider not initialized - cannot send audio")
-                                                    elif not hasattr(whatsapp_provider, 'send_audio'):
-                                                        print(f"❌ WhatsApp provider does not support send_audio method")
-                                                    else:
-                                                        # DEBUG MODE: Update WhatsApp message with debug info
-                                                        caption = f"🔍 DEBUG: Speaker {speaker} | Duration: {duration_ms}ms | Segment {i}"
-                                                        
-                                                        print(f"📤 DEBUG MODE: Attempting to send audio slice via {whatsapp_provider.get_provider_name()}...")
-                                                        print(f"   Caption: {caption}")
-                                                        audio_result = whatsapp_provider.send_audio(
-                                                            audio_path=slice_path,
-                                                            caption=caption,
-                                                            to=f"+{from_number}"
-                                                        )
-                                                        
-                                                        if audio_result.get('success'):
-                                                            print(f"✅ Sent audio slice to user for speaker identification")
-                                                            print(f"   Message ID: {audio_result.get('message_id', 'N/A')}")
-                                                        else:
-                                                            print(f"⚠️  Failed to send audio slice: {audio_result.get('error')}")
-                                                            print(f"   Full error response: {audio_result}")
-                                                            # DO NOT send fallback text message - we want audio, not text
-                                                    
-                                                    # Cleanup slice file (only after successful send or confirmed failure)
+                                                    # STEP 3: Slicing (The Fix) - with FFmpeg safety check
                                                     try:
-                                                        if os.path.exists(slice_path):
-                                                            os.unlink(slice_path)
-                                                            print(f"🗑️  Cleaned up slice file: {slice_path}")
-                                                    except Exception as cleanup_error:
-                                                        print(f"⚠️  Failed to cleanup slice file: {cleanup_error}")
+                                                        # Define the cut endpoint: max 10 seconds sample
+                                                        cut_end = min(end_ms, start_ms + 10000)
+                                                        
+                                                        # Perform the slice using integer milliseconds
+                                                        audio_slice = audio_segment[start_ms : cut_end]
+                                                        
+                                                        # STEP 4: Debug Prints (Mandatory)
+                                                        slice_length_ms = len(audio_slice)
+                                                        print(f"✂️  SLICING: Gemini said {segment.get('start', 0.0):.2f}s -> Converting to {start_ms}ms. Clip duration: {slice_length_ms}ms")
+                                                        
+                                                        # DEBUG MODE: Verify slice has content (but don't skip if empty - log it)
+                                                        if slice_length_ms == 0:
+                                                            print(f"❌ ERROR: Audio slice is empty (0ms) - but continuing in DEBUG MODE")
+                                                        else:
+                                                            print(f"✅ Slice created successfully: {slice_length_ms}ms")
+                                                        
+                                                        # DEBUG MODE: Don't skip short slices
+                                                        # if slice_length_ms < 1000:
+                                                        #     print(f"⚠️  Slice too short ({slice_length_ms}ms < 1000ms) - skipping")
+                                                        #     continue
+                                                        
+                                                        unknown_speakers_found.append({
+                                                            'segment_index': i,
+                                                            'speaker': speaker,
+                                                            'start': segment.get('start', 0.0),
+                                                            'end': segment.get('end', 0.0),
+                                                            'text': segment.get('text', '')
+                                                        })
+                                                        
+                                                        # STEP 5: Export as MP3 (to satisfy WhatsApp) - with error handling
+                                                        try:
+                                                            with tempfile.NamedTemporaryFile(delete=False, suffix='.mp3') as slice_file:
+                                                                audio_slice.export(slice_file.name, format='mp3')
+                                                                slice_path = slice_file.name
+                                                                
+                                                                # Verify file was created and has content
+                                                                if not os.path.exists(slice_path):
+                                                                    print(f"❌ ERROR: Exported MP3 file does not exist - skipping send")
+                                                                    continue
+                                                                
+                                                                file_size = os.path.getsize(slice_path)
+                                                                print(f"   📁 Exported MP3 file: {file_size} bytes")
+                                                                if file_size == 0:
+                                                                    print(f"❌ ERROR: Exported MP3 file is empty (0 bytes) - skipping send")
+                                                                    os.unlink(slice_path)
+                                                                    continue
+                                                            
+                                                            # Send audio clip to user with simple caption
+                                                            if not whatsapp_provider:
+                                                                print(f"❌ WhatsApp provider not initialized - cannot send audio")
+                                                            elif not hasattr(whatsapp_provider, 'send_audio'):
+                                                                print(f"❌ WhatsApp provider does not support send_audio method")
+                                                            else:
+                                                                # DEBUG MODE: Update WhatsApp message with debug info
+                                                                caption = f"🔍 DEBUG: Speaker {speaker} | Duration: {duration_ms}ms | Segment {i}"
+                                                                
+                                                                print(f"📤 DEBUG MODE: Attempting to send audio slice via {whatsapp_provider.get_provider_name()}...")
+                                                                print(f"   Caption: {caption}")
+                                                                audio_result = whatsapp_provider.send_audio(
+                                                                    audio_path=slice_path,
+                                                                    caption=caption,
+                                                                    to=f"+{from_number}"
+                                                                )
+                                                                
+                                                                if audio_result.get('success'):
+                                                                    print(f"✅ Sent audio slice to user for speaker identification")
+                                                                    print(f"   Message ID: {audio_result.get('message_id', 'N/A')}")
+                                                                else:
+                                                                    print(f"⚠️  Failed to send audio slice: {audio_result.get('error')}")
+                                                                    print(f"   Full error response: {audio_result}")
+                                                                    # DO NOT send fallback text message - we want audio, not text
+                                                            
+                                                            # Cleanup slice file (only after successful send or confirmed failure)
+                                                            try:
+                                                                if os.path.exists(slice_path):
+                                                                    os.unlink(slice_path)
+                                                                    print(f"🗑️  Cleaned up slice file: {slice_path}")
+                                                            except Exception as cleanup_error:
+                                                                print(f"⚠️  Failed to cleanup slice file: {cleanup_error}")
+                                                        
+                                                        except FileNotFoundError:
+                                                            print(f"❌ ERROR: FFmpeg is likely missing on the server (during export).")
+                                                            print(f"   Install FFmpeg: apt-get install ffmpeg (Linux) or brew install ffmpeg (Mac)")
+                                                            if whatsapp_provider:
+                                                                whatsapp_provider.send_whatsapp(
+                                                                    message="Error: Audio processing failed - FFmpeg missing (check logs).",
+                                                                    to=f"+{from_number}"
+                                                                )
+                                                            continue
+                                                        except Exception as export_error:
+                                                            print(f"❌ SLICING ERROR: Failed to export audio slice")
+                                                            print(f"   Error: {export_error}")
+                                                            import traceback
+                                                            traceback.print_exc()
+                                                            if whatsapp_provider:
+                                                                whatsapp_provider.send_whatsapp(
+                                                                    message="Error: Audio processing failed (check logs).",
+                                                                    to=f"+{from_number}"
+                                                                )
+                                                            continue
+                                                    
+                                                    except FileNotFoundError:
+                                                        print(f"❌ ERROR: FFmpeg is likely missing on the server (during slicing).")
+                                                        print(f"   Install FFmpeg: apt-get install ffmpeg (Linux) or brew install ffmpeg (Mac)")
+                                                        if whatsapp_provider:
+                                                            whatsapp_provider.send_whatsapp(
+                                                                message="Error: Audio processing failed - FFmpeg missing (check logs).",
+                                                                to=f"+{from_number}"
+                                                            )
+                                                        continue
+                                                    except Exception as slicing_error:
+                                                        print(f"❌ SLICING ERROR: {slicing_error}")
+                                                        import traceback
+                                                        traceback.print_exc()
+                                                        if whatsapp_provider:
+                                                            whatsapp_provider.send_whatsapp(
+                                                                message="Error: Audio processing failed (check logs).",
+                                                                to=f"+{from_number}"
+                                                            )
+                                                        continue
                                                 
                                                 if not unknown_speakers_found:
                                                     print("✅ No unknown speakers detected - all speakers identified")

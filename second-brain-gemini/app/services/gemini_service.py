@@ -707,6 +707,12 @@ Here is structured data about the user. You MUST use this to answer personal que
             Dictionary with 'segments' key containing list of segment dicts
         """
         try:
+            # CRITICAL: Log the RAW AI response before any processing
+            print("=" * 80)
+            print("📥 RAW_AI_RESPONSE from Gemini:")
+            print(response_text)
+            print("=" * 80)
+            
             # Try to extract JSON from response (might be wrapped in markdown code blocks)
             text = response_text.strip()
             
@@ -722,9 +728,19 @@ Here is structured data about the user. You MUST use this to answer personal que
             # Final cleanup: remove any remaining markdown artifacts
             text = text.replace('```json', '').replace('```', '').strip()
             
+            # ROBUST JSON EXTRACTION: Use regex to find JSON object
+            import re
+            json_match = re.search(r'\{.*\}', text, re.DOTALL)
+            if json_match:
+                json_text = json_match.group(0)
+                print(f"🔍 Found JSON object via regex: {len(json_text)} characters")
+            else:
+                json_text = text
+                print(f"⚠️  No JSON object found via regex, using cleaned text: {len(json_text)} characters")
+            
             # Try to parse as JSON
             try:
-                transcript_json = json.loads(text)
+                transcript_json = json.loads(json_text)
                 
                 # Validate structure
                 if not isinstance(transcript_json, dict):
@@ -741,17 +757,17 @@ Here is structured data about the user. You MUST use this to answer personal que
                 
             except json.JSONDecodeError as e:
                 print(f"⚠️  JSON decode error: {e}")
-                print(f"   Response preview: {text[:500]}")
+                print(f"   Attempted to parse: {json_text[:500]}")
                 
                 # Try to fix incomplete JSON using existing helper
-                fixed_text = self._fix_incomplete_json(text)
+                fixed_text = self._fix_incomplete_json(json_text)
                 try:
                     transcript_json = json.loads(fixed_text)
                     if "segments" in transcript_json:
                         print(f"✅ Fixed incomplete JSON and parsed {len(transcript_json['segments'])} segments")
                         return transcript_json
-                except:
-                    pass
+                except Exception as fix_error:
+                    print(f"⚠️  Failed to fix JSON: {fix_error}")
                 
                 # Fallback: cannot create valid segments without proper JSON
                 # Return empty segments list instead of invalid 0-second segment
