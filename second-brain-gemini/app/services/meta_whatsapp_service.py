@@ -4,6 +4,7 @@ Meta WhatsApp Cloud API service for sending WhatsApp messages.
 
 from typing import Optional, Dict, Any, TYPE_CHECKING
 import requests
+import os
 from app.core.config import settings
 
 # Lazy import to avoid circular dependency
@@ -383,6 +384,18 @@ class MetaWhatsAppService:
             recipient = recipient.replace("whatsapp:", "")
         
         try:
+            # Verify file exists before attempting upload
+            if not os.path.exists(audio_path):
+                print(f"❌ Audio file does not exist: {audio_path}")
+                return {
+                    "success": False,
+                    "error": "Audio file not found",
+                    "message": f"Audio file does not exist: {audio_path}"
+                }
+            
+            file_size = os.path.getsize(audio_path)
+            print(f"📤 Uploading audio file: {audio_path} (size: {file_size} bytes)")
+            
             # Step 1: Upload media to Meta's servers
             upload_url = f"{self.BASE_URL}/{self.phone_number_id}/media"
             headers = {
@@ -403,16 +416,35 @@ class MetaWhatsAppService:
                     'type': 'audio'
                 }
                 
+                print(f"📤 Uploading to Meta: {upload_url}")
+                print(f"   Filename: {filename}")
+                print(f"   MIME type: audio/mpeg")
+                
                 upload_response = requests.post(upload_url, headers=headers, files=files, data=data)
+                
+                if upload_response.status_code != 200:
+                    error_detail = upload_response.text
+                    print(f"❌ Upload failed with status {upload_response.status_code}: {error_detail}")
+                    return {
+                        "success": False,
+                        "error": f"Upload failed: HTTP {upload_response.status_code}",
+                        "message": f"Failed to upload audio to Meta servers: {error_detail}",
+                        "status_code": upload_response.status_code
+                    }
+                
                 upload_response.raise_for_status()
                 upload_result = upload_response.json()
                 media_id = upload_result.get('id')
                 
+                print(f"✅ Upload successful - Media ID: {media_id}")
+                
                 if not media_id:
+                    print(f"❌ No media ID in upload response: {upload_result}")
                     return {
                         "success": False,
                         "error": "No media ID in upload response",
-                        "message": "Failed to upload audio to Meta servers"
+                        "message": "Failed to upload audio to Meta servers",
+                        "response": upload_result
                     }
             
             # Step 2: Send message with media
@@ -433,6 +465,7 @@ class MetaWhatsAppService:
             
             # Add caption if provided (as a separate text message before audio)
             if caption:
+                print(f"📝 Sending caption: {caption[:50]}...")
                 caption_payload = {
                     "messaging_product": "whatsapp",
                     "to": recipient,
@@ -442,12 +475,32 @@ class MetaWhatsAppService:
                     }
                 }
                 caption_response = requests.post(message_url, json=caption_payload, headers=message_headers)
-                caption_response.raise_for_status()
+                if caption_response.status_code != 200:
+                    print(f"⚠️  Caption send failed: {caption_response.status_code} - {caption_response.text}")
+                else:
+                    print(f"✅ Caption sent successfully")
+                    caption_response.raise_for_status()
             
             # Send audio message
+            print(f"📤 Sending audio message to {recipient}...")
+            print(f"   Media ID: {media_id}")
             response = requests.post(message_url, json=payload, headers=message_headers)
+            
+            if response.status_code != 200:
+                error_detail = response.text
+                print(f"❌ Audio message send failed with status {response.status_code}: {error_detail}")
+                return {
+                    "success": False,
+                    "error": f"Send failed: HTTP {response.status_code}",
+                    "message": f"Failed to send audio message: {error_detail}",
+                    "status_code": response.status_code
+                }
+            
             response.raise_for_status()
             result_data = response.json()
+            
+            print(f"✅ Audio message sent successfully")
+            print(f"   Response: {result_data}")
             
             message_id = result_data.get('messages', [{}])[0].get('id')
             
