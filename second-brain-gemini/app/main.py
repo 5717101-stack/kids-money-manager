@@ -50,9 +50,81 @@ else:
 processed_message_ids = deque(maxlen=1000)
 
 # Voice Imprinting: Track pending speaker identifications
-# Key: message_id (wam_id), Value: file_path (temporary audio slice file)
+# Key: message_id (wam_id), Value: dict with file_path and speaker_id
+# Example: {"wamid.xxx": {"file_path": "/tmp/audio.mp3", "speaker_id": "Speaker 2"}}
 pending_identifications = {}
+
+# Voice Map: Persistent mapping of Speaker ID -> Real Name
+# This is stored in Drive Memory as part of user_profile
+# Local cache for quick access during processing
+_voice_map_cache = {}  # {"Speaker 2": "Miri", "Speaker 3": "Shai"}
+
 _processed_ids_lock = Lock()  # Thread-safe access to processed_message_ids
+
+
+def update_voice_map(speaker_id: str, real_name: str) -> bool:
+    """
+    Update the voice map with a new Speaker ID -> Real Name mapping.
+    This is stored in Drive Memory for persistence.
+    
+    Args:
+        speaker_id: The generic speaker ID (e.g., "Speaker 2", "Unknown Speaker 3")
+        real_name: The actual person's name
+    
+    Returns:
+        True if successful, False otherwise
+    """
+    global _voice_map_cache
+    
+    # Update local cache
+    _voice_map_cache[speaker_id.lower()] = real_name
+    print(f"📝 Updated voice map cache: {speaker_id} -> {real_name}")
+    
+    # Update in Drive Memory (within user_profile)
+    try:
+        if drive_memory_service.is_configured:
+            memory = drive_memory_service.get_memory()
+            user_profile = memory.get('user_profile', {})
+            
+            # Initialize voice_map in user_profile if not exists
+            if 'voice_map' not in user_profile:
+                user_profile['voice_map'] = {}
+            
+            user_profile['voice_map'][speaker_id.lower()] = real_name
+            memory['user_profile'] = user_profile
+            
+            # Save back to Drive (we pass None for background_tasks since we want immediate save)
+            drive_memory_service.update_memory(memory)
+            print(f"✅ Voice map saved to Drive: {user_profile.get('voice_map', {})}")
+            return True
+    except Exception as e:
+        print(f"⚠️  Failed to save voice map to Drive: {e}")
+        import traceback
+        traceback.print_exc()
+    
+    return False
+
+
+def get_voice_map() -> dict:
+    """
+    Get the voice map from Drive Memory or local cache.
+    
+    Returns:
+        Dict mapping speaker IDs to real names
+    """
+    global _voice_map_cache
+    
+    # If cache is empty, try to load from Drive
+    if not _voice_map_cache and drive_memory_service.is_configured:
+        try:
+            memory = drive_memory_service.get_memory()
+            user_profile = memory.get('user_profile', {})
+            _voice_map_cache = user_profile.get('voice_map', {})
+            print(f"📂 Loaded voice map from Drive: {_voice_map_cache}")
+        except Exception as e:
+            print(f"⚠️  Failed to load voice map from Drive: {e}")
+    
+    return _voice_map_cache
 
 def is_message_processed(message_id: str) -> bool:
     """
@@ -671,7 +743,116 @@ def process_audio_in_background(
         drive_memory_service.update_memory(audio_interaction)
         print("✅ Saved audio interaction to memory")
         
-        # Step 8: Build and send confirmation message
+        # Step 8: Detect unknown speakers and send "Who is this?" messages
+        # This triggers the voice imprinting flow
+        unknown_speakers_processed = []
+        try:
+            from pydub import AudioSegment
+            
+            # Load audio for slicing
+            audio_segment = AudioSegment.from_file(tmp_path)
+            print(f"✅ Loaded audio for slicing: {len(audio_segment)}ms")
+            
+            processed_speakers = set()  # Track speakers we've already asked about
+            
+            for i, segment in enumerate(segments):
+                speaker = segment.get('speaker', '')
+                speaker_lower = speaker.lower()
+                
+                # Check if this is an unknown speaker
+                is_unknown = (
+                    speaker_lower.startswith('speaker ') or
+                    speaker.startswith('דובר ') or
+                    'unknown' in speaker_lower or
+                    speaker_lower == '' or
+                    speaker_lower == 'speaker'
+                )
+                
+                # Skip if not unknown or already processed
+                if not is_unknown or speaker in processed_speakers:
+                    continue
+                
+                # Skip Speaker 1 (assumed to be user)
+                if speaker_lower in ['speaker 1', 'דובר 1', 'speaker a']:
+                    continue
+                
+                print(f"❓ Unknown speaker detected: {speaker}")
+                processed_speakers.add(speaker)
+                
+                # Get segment timestamps (Gemini returns seconds, pydub uses ms)
+                start_ms = int(segment.get('start', 0) * 1000)
+                end_ms = int(segment.get('end', 0) * 1000)
+                
+                # Ensure minimum 5 seconds
+                MIN_SLICE_MS = 5000
+                MAX_SLICE_MS = 10000
+                
+                if (end_ms - start_ms) < MIN_SLICE_MS:
+                    end_ms = min(start_ms + MIN_SLICE_MS, len(audio_segment))
+                if (end_ms - start_ms) > MAX_SLICE_MS:
+                    end_ms = start_ms + MAX_SLICE_MS
+                
+                # Bounds check
+                if start_ms < 0:
+                    start_ms = 0
+                if end_ms > len(audio_segment):
+                    end_ms = len(audio_segment)
+                if start_ms >= end_ms:
+                    continue
+                
+                # Slice audio
+                audio_slice = audio_segment[start_ms:end_ms]
+                
+                # Export to temp file
+                import tempfile as tf
+                with tf.NamedTemporaryFile(delete=False, suffix='.mp3') as slice_file:
+                    audio_slice.export(slice_file.name, format='mp3')
+                    slice_path = slice_file.name
+                
+                # Send "Who is this?" with exact Speaker ID
+                if whatsapp_provider and hasattr(whatsapp_provider, 'send_audio'):
+                    # Include exact Speaker ID for mapping
+                    caption = f"🔊 זוהה דובר חדש: *{speaker}*\nמי זה/זו? (הגב עם השם)"
+                    
+                    audio_result = whatsapp_provider.send_audio(
+                        audio_path=slice_path,
+                        caption=caption,
+                        to=f"+{from_number}"
+                    )
+                    
+                    if audio_result.get('success'):
+                        # Store pending identification with Speaker ID
+                        sent_msg_id = audio_result.get('caption_message_id') or audio_result.get('wam_id') or audio_result.get('message_id')
+                        if sent_msg_id:
+                            pending_identifications[sent_msg_id] = {
+                                'file_path': slice_path,
+                                'speaker_id': speaker  # CRITICAL: Store exact Speaker ID
+                            }
+                            print(f"📝 Pending identification stored: {sent_msg_id} -> {speaker}")
+                            unknown_speakers_processed.append(speaker)
+                        else:
+                            # No message ID, cleanup immediately
+                            try:
+                                os.unlink(slice_path)
+                            except:
+                                pass
+                    else:
+                        print(f"⚠️  Failed to send audio slice: {audio_result.get('error')}")
+                        try:
+                            os.unlink(slice_path)
+                        except:
+                            pass
+                
+        except ImportError:
+            print("⚠️  pydub not installed - cannot slice audio for speaker identification")
+        except Exception as slice_error:
+            print(f"⚠️  Error during speaker identification slicing: {slice_error}")
+            import traceback
+            traceback.print_exc()
+        
+        print(f"✅ Speaker identification: {len(unknown_speakers_processed)} unknown speakers sent for identification")
+        
+        # Step 9: Build and send confirmation message
         all_speakers = set()
         for seg in segments:
             speaker = seg.get('speaker', '')
@@ -843,57 +1024,76 @@ async def webhook(request: Request, background_tasks: BackgroundTasks):
                                 print(f"   Replied to Message ID: {replied_message_id}")
                                 print(f"   Pending identifications: {list(pending_identifications.keys())}")
                                 
-                                # VOICE IMPRINTING: Strict Reply Interceptor - Check BEFORE idempotency check
-                                # Only process text messages that are replies to voice identification requests
+                                # ================================================================
+                                # VOICE IMPRINTING INTERCEPTOR (THE WALL)
+                                # Separates "Management" from "Chat" - 100% surgical
+                                # ================================================================
                                 if message_type == "text" and replied_message_id and replied_message_id in pending_identifications:
-                                    print(f"🎤 STRICT REPLY INTERCEPTOR: Detected reply to voice identification message!")
-                                    print(f"   Replying to message ID: {replied_message_id}")
+                                    print(f"\n{'='*60}")
+                                    print(f"🎤 STRICT REPLY INTERCEPTOR ACTIVATED")
+                                    print(f"{'='*60}")
+                                    print(f"   This is a MANAGEMENT message, NOT a chat message!")
+                                    print(f"   Replying to: {replied_message_id}")
                                     
-                                    # This is a reply to a speaker identification request
-                                    file_path = pending_identifications.pop(replied_message_id)
+                                    # Extract data from pending identification
+                                    pending_data = pending_identifications.pop(replied_message_id)
+                                    
+                                    # Support both old format (string) and new format (dict)
+                                    if isinstance(pending_data, str):
+                                        file_path = pending_data
+                                        speaker_id = "Unknown Speaker"
+                                    else:
+                                        file_path = pending_data.get('file_path', '')
+                                        speaker_id = pending_data.get('speaker_id', 'Unknown Speaker')
+                                    
                                     person_name = message_body_text.strip()
                                     
-                                    print(f"🎤 Voice Imprinting: User identified speaker as '{person_name}'")
-                                    print(f"   Audio file path: {file_path}")
+                                    print(f"   Speaker ID: {speaker_id}")
+                                    print(f"   Real Name: {person_name}")
+                                    print(f"   Audio file: {file_path}")
                                     
                                     # Mark message as processed to prevent duplicate processing
                                     mark_message_processed(message_id)
                                     
-                                    # Check if file still exists (might have been cleaned up)
-                                    if os.path.exists(file_path):
-                                        # Upload voice signature to Drive
+                                    # Step 1: Update Voice Map (Speaker ID -> Real Name)
+                                    update_voice_map(speaker_id, person_name)
+                                    print(f"✅ Voice map updated: {speaker_id} -> {person_name}")
+                                    
+                                    # Step 2: Upload voice signature to Drive (if file exists)
+                                    upload_success = False
+                                    if file_path and os.path.exists(file_path):
                                         file_id = drive_memory_service.upload_voice_signature(
                                             file_path=file_path,
                                             person_name=person_name
                                         )
                                         
                                         if file_id:
-                                            # Send confirmation message
-                                            confirmation = f"✅ למדתי! הקול של *{person_name}* נשמר במערכת."
-                                            whatsapp_provider.send_whatsapp(
-                                                message=confirmation,
-                                                to=f"+{from_number}"
-                                            )
-                                            print(f"✅ Voice signature saved for '{person_name}' (File ID: {file_id})")
+                                            upload_success = True
+                                            print(f"✅ Voice signature saved (File ID: {file_id})")
                                         else:
-                                            print(f"⚠️  Failed to upload voice signature for '{person_name}'")
-                                            whatsapp_provider.send_whatsapp(
-                                                message="⚠️  שגיאה בשמירת הקול. נסה שוב.",
-                                                to=f"+{from_number}"
-                                            )
+                                            print(f"⚠️  Failed to upload voice signature")
                                         
-                                        # Cleanup file after successful upload
+                                        # Cleanup temp file
                                         try:
                                             os.unlink(file_path)
-                                            print(f"🗑️  Cleaned up slice file after voice imprinting: {file_path}")
-                                        except Exception as cleanup_error:
-                                            print(f"⚠️  Failed to cleanup slice file: {cleanup_error}")
+                                            print(f"🗑️  Cleaned up temp audio file")
+                                        except:
+                                            pass
                                     else:
-                                        print(f"⚠️  Audio file no longer exists: {file_path}")
-                                        print(f"   File may have been cleaned up before user replied")
+                                        print(f"⚠️  Audio file no longer exists (may have timed out)")
                                     
-                                    # CRITICAL: STOP PROCESSING here. Do not call Gemini.
-                                    print(f"🛑 Voice imprinting complete - skipping Gemini processing")
+                                    # Step 3: Send confirmation (surgical, no chat)
+                                    if whatsapp_provider:
+                                        confirmation = f"✅ למדתי, זה *{person_name}*. מעכשיו אזהה אותו/ה אוטומטית."
+                                        whatsapp_provider.send_whatsapp(
+                                            message=confirmation,
+                                            to=f"+{from_number}"
+                                        )
+                                    
+                                    print(f"🛑 INTERCEPTOR COMPLETE - Returning immediately (NO Gemini)")
+                                    print(f"{'='*60}\n")
+                                    
+                                    # CRITICAL: STOP HERE. No chatting. No Gemini.
                                     continue
                                 
                                 # IDEMPOTENCY CHECK: Prevent duplicate processing due to webhook retries
