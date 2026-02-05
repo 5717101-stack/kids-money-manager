@@ -589,11 +589,21 @@ async def webhook(request: Request, background_tasks: BackgroundTasks):
                                                 unknown_speakers_found = []
                                                 
                                                 for i, segment in enumerate(segments):
-                                                    speaker = segment.get('speaker', '')
-                                                    start_time = segment.get('start', 0.0)
-                                                    end_time = segment.get('end', 0.0)
+                                                    # STEP 1: Immediate Conversion - Convert Gemini timestamps (SECONDS) to Pydub timestamps (MILLISECONDS)
+                                                    # Gemini returns floats in SECONDS (e.g., 5.5), Pydub operates in MILLISECONDS (int)
+                                                    start_ms = int(segment.get('start', 0.0) * 1000)
+                                                    end_ms = int(segment.get('end', 0.0) * 1000)
+                                                    duration_ms = end_ms - start_ms
                                                     
-                                                    # Hard Rule: Skip verification for Speaker 1 (assume it's the User)
+                                                    speaker = segment.get('speaker', '')
+                                                    
+                                                    # STEP 2: Validation (in Milliseconds)
+                                                    # Skip segments shorter than 1 second
+                                                    if duration_ms < 1000:
+                                                        print(f"⏭️  Skipping segment {i}: too short ({duration_ms}ms < 1000ms)")
+                                                        continue
+                                                    
+                                                    # Skip Speaker 1 (assumed to be the user)
                                                     if speaker and speaker.lower() in ['speaker 1', 'דובר 1']:
                                                         print(f"⏭️  Skipping Speaker 1 (assumed to be User): {speaker}")
                                                         continue
@@ -605,142 +615,96 @@ async def webhook(request: Request, background_tasks: BackgroundTasks):
                                                         ('speaker' in speaker.lower() or 'unknown' in speaker.lower())
                                                     )
                                                     
-                                                    if is_unknown:
-                                                        print(f"🔍 Unknown speaker detected: {speaker} at {start_time:.1f}s - {end_time:.1f}s")
+                                                    if not is_unknown:
+                                                        continue
+                                                    
+                                                    print(f"🔍 Unknown speaker detected: {speaker} at {segment.get('start', 0.0):.2f}s - {segment.get('end', 0.0):.2f}s")
+                                                    
+                                                    # Ensure slice doesn't exceed audio bounds
+                                                    audio_length_ms = len(audio_segment)
+                                                    if start_ms < 0:
+                                                        start_ms = 0
+                                                    if end_ms > audio_length_ms:
+                                                        end_ms = audio_length_ms
+                                                    if start_ms >= end_ms:
+                                                        print(f"⚠️  Invalid slice bounds after adjustment: {start_ms}ms - {end_ms}ms - skipping")
+                                                        continue
+                                                    
+                                                    # STEP 3: Slicing (The Fix)
+                                                    # Define the cut endpoint: max 10 seconds sample
+                                                    cut_end = min(end_ms, start_ms + 10000)
+                                                    
+                                                    # Perform the slice using integer milliseconds
+                                                    audio_slice = audio_segment[start_ms : cut_end]
+                                                    
+                                                    # STEP 4: Debug Prints (Mandatory)
+                                                    slice_length_ms = len(audio_slice)
+                                                    print(f"✂️  SLICING: Gemini said {segment.get('start', 0.0):.2f}s -> Converting to {start_ms}ms. Clip duration: {slice_length_ms}ms")
+                                                    
+                                                    # Verify slice has content
+                                                    if slice_length_ms == 0:
+                                                        print(f"❌ ERROR: Audio slice is empty (0ms) - skipping")
+                                                        continue
+                                                    
+                                                    if slice_length_ms < 1000:
+                                                        print(f"⚠️  Slice too short ({slice_length_ms}ms < 1000ms) - skipping")
+                                                        continue
+                                                    
+                                                    unknown_speakers_found.append({
+                                                        'segment_index': i,
+                                                        'speaker': speaker,
+                                                        'start': segment.get('start', 0.0),
+                                                        'end': segment.get('end', 0.0),
+                                                        'text': segment.get('text', '')
+                                                    })
+                                                    
+                                                    # STEP 5: Export as MP3 (to satisfy WhatsApp)
+                                                    with tempfile.NamedTemporaryFile(delete=False, suffix='.mp3') as slice_file:
+                                                        audio_slice.export(slice_file.name, format='mp3')
+                                                        slice_path = slice_file.name
                                                         
-                                                        # CRITICAL: Convert Gemini timestamps (SECONDS) to Pydub timestamps (MILLISECONDS)
-                                                        # Gemini returns seconds (float), Pydub expects milliseconds (int)
-                                                        start_ms = int(start_time * 1000)
-                                                        end_ms = int(end_time * 1000)
-                                                        
-                                                        # Validate segment timing (in milliseconds)
-                                                        if end_ms <= start_ms:
-                                                            print(f"⚠️  Invalid segment timing: start={start_time:.1f}s ({start_ms}ms), end={end_time:.1f}s ({end_ms}ms) - skipping")
+                                                        # Verify file was created and has content
+                                                        if not os.path.exists(slice_path):
+                                                            print(f"❌ ERROR: Exported MP3 file does not exist - skipping send")
                                                             continue
                                                         
-                                                        if start_ms < 0:
-                                                            print(f"⚠️  Invalid start time: {start_time:.1f}s ({start_ms}ms) - setting to 0")
-                                                            start_ms = 0
-                                                        
-                                                        # Ensure end_time doesn't exceed audio length
-                                                        audio_length_ms = len(audio_segment)
-                                                        if end_ms > audio_length_ms:
-                                                            print(f"⚠️  End time {end_time:.1f}s ({end_ms}ms) exceeds audio length {audio_length_ms/1000.0:.1f}s ({audio_length_ms}ms) - adjusting")
-                                                            end_ms = audio_length_ms
-                                                        
-                                                        # Calculate segment duration in milliseconds
-                                                        segment_duration_ms = end_ms - start_ms
-                                                        segment_duration_seconds = segment_duration_ms / 1000.0
-                                                        
-                                                        # CRITICAL: Only send segments that are at least 0.5 seconds (500ms)
-                                                        # We need actual audio content from the speaker, not empty slices
-                                                        if segment_duration_ms < 500:
-                                                            print(f"⚠️  Segment too short ({segment_duration_seconds:.2f}s / {segment_duration_ms}ms) - need at least 0.5s (500ms) for speaker identification. Skipping.")
+                                                        file_size = os.path.getsize(slice_path)
+                                                        print(f"   📁 Exported MP3 file: {file_size} bytes")
+                                                        if file_size == 0:
+                                                            print(f"❌ ERROR: Exported MP3 file is empty (0 bytes) - skipping send")
+                                                            os.unlink(slice_path)
                                                             continue
+                                                    
+                                                    # Send audio clip to user with simple caption
+                                                    if not whatsapp_provider:
+                                                        print(f"❌ WhatsApp provider not initialized - cannot send audio")
+                                                    elif not hasattr(whatsapp_provider, 'send_audio'):
+                                                        print(f"❌ WhatsApp provider does not support send_audio method")
+                                                    else:
+                                                        caption = "🔊 קול לא מזוהה זוהה בשיחה. מי זה?"
                                                         
-                                                        # Slice audio: take the actual segment (up to 5 seconds max = 5000ms)
-                                                        # IMPORTANT: Use the ACTUAL segment times in milliseconds
-                                                        max_slice_duration_ms = 5000  # 5 seconds max
-                                                        slice_duration_ms = min(max_slice_duration_ms, segment_duration_ms)
-                                                        slice_start_ms = start_ms
-                                                        slice_end_ms = start_ms + slice_duration_ms
+                                                        print(f"📤 Attempting to send audio slice via {whatsapp_provider.get_provider_name()}...")
+                                                        audio_result = whatsapp_provider.send_audio(
+                                                            audio_path=slice_path,
+                                                            caption=caption,
+                                                            to=f"+{from_number}"
+                                                        )
                                                         
-                                                        # Ensure slice doesn't exceed audio bounds
-                                                        if slice_end_ms > audio_length_ms:
-                                                            slice_end_ms = audio_length_ms
-                                                        if slice_start_ms >= slice_end_ms:
-                                                            print(f"⚠️  Invalid slice bounds: {slice_start_ms}ms - {slice_end_ms}ms - skipping")
-                                                            continue
-                                                        
-                                                        # Debug logging: Show the conversion clearly
-                                                        print(f"✂️  Slicing Audio: {start_time:.2f}s ({start_ms}ms) -> {end_time:.2f}s ({end_ms}ms)")
-                                                        print(f"   📏 Segment duration: {segment_duration_seconds:.2f}s ({segment_duration_ms}ms)")
-                                                        print(f"   ⏱️  Slice bounds: {slice_start_ms}ms to {slice_end_ms}ms (duration: {slice_duration_ms}ms)")
-                                                        
-                                                        # Extract audio slice - this should contain the actual speaker audio
-                                                        audio_slice = audio_segment[slice_start_ms:slice_end_ms]
-                                                        
-                                                        unknown_speakers_found.append({
-                                                            'segment_index': i,
-                                                            'speaker': speaker,
-                                                            'start': start_time,
-                                                            'end': end_time,
-                                                            'text': segment.get('text', '')
-                                                        })
-                                                        
-                                                        # Verify slice has actual content (must match expected duration)
-                                                        slice_length_ms = len(audio_slice)
-                                                        slice_length_seconds = slice_length_ms / 1000.0
-                                                        expected_duration_ms = slice_end_ms - slice_start_ms
-                                                        expected_duration_seconds = expected_duration_ms / 1000.0
-                                                        
-                                                        print(f"   ✅ Audio slice created: {slice_length_ms}ms ({slice_length_seconds:.2f}s)")
-                                                        print(f"   📊 Expected: {expected_duration_ms}ms ({expected_duration_seconds:.2f}s)")
-                                                        
-                                                        # Verify slice length matches expected (allow small tolerance for rounding)
-                                                        if slice_length_ms == 0:
-                                                            print(f"❌ ERROR: Audio slice is empty (0ms) - this should not happen with valid segment!")
-                                                            print(f"   Segment: {start_time:.2f}s ({start_ms}ms) - {end_time:.2f}s ({end_ms}ms)")
-                                                            continue
-                                                        
-                                                        # Check if slice is significantly shorter than expected (indicates problem)
-                                                        if slice_length_ms < expected_duration_ms * 0.9:  # Allow 10% tolerance
-                                                            print(f"⚠️  WARNING: Slice length ({slice_length_ms}ms) is shorter than expected ({expected_duration_ms}ms)")
-                                                            print(f"   This might indicate the segment timestamps don't match the actual audio")
-                                                        
-                                                        # Final check: slice must be at least 0.5 seconds (500ms) for speaker identification
-                                                        if slice_length_ms < 500:
-                                                            print(f"❌ ERROR: Slice too short ({slice_length_seconds:.2f}s / {slice_length_ms}ms) for speaker identification - skipping")
-                                                            continue
-                                                        
-                                                        # Export to temporary file as MP3 (Meta API requires MP3)
-                                                        with tempfile.NamedTemporaryFile(delete=False, suffix='.mp3') as slice_file:
-                                                            audio_slice.export(slice_file.name, format='mp3')
-                                                            slice_path = slice_file.name
-                                                            
-                                                            # Verify file was created and has content
-                                                            if os.path.exists(slice_path):
-                                                                file_size = os.path.getsize(slice_path)
-                                                                print(f"   📁 Exported MP3 file: {file_size} bytes")
-                                                                if file_size == 0:
-                                                                    print(f"❌ ERROR: Exported MP3 file is empty (0 bytes) - skipping send")
-                                                                    os.unlink(slice_path)
-                                                                    continue
-                                                            else:
-                                                                print(f"❌ ERROR: MP3 file was not created - skipping send")
-                                                                continue
-                                                        
-                                                        # Send audio clip to user with simple caption
-                                                        if not whatsapp_provider:
-                                                            print(f"❌ WhatsApp provider not initialized - cannot send audio")
-                                                        elif not hasattr(whatsapp_provider, 'send_audio'):
-                                                            print(f"❌ WhatsApp provider does not support send_audio method")
+                                                        if audio_result.get('success'):
+                                                            print(f"✅ Sent audio slice to user for speaker identification")
+                                                            print(f"   Message ID: {audio_result.get('message_id', 'N/A')}")
                                                         else:
-                                                            caption = "🔊 קול לא מזוהה זוהה בשיחה. מי זה?"
-                                                            
-                                                            print(f"📤 Attempting to send audio slice via {whatsapp_provider.get_provider_name()}...")
-                                                            audio_result = whatsapp_provider.send_audio(
-                                                                audio_path=slice_path,
-                                                                caption=caption,
-                                                                to=f"+{from_number}"
-                                                            )
-                                                            
-                                                            if audio_result.get('success'):
-                                                                print(f"✅ Sent audio slice to user for speaker identification")
-                                                                print(f"   Message ID: {audio_result.get('message_id', 'N/A')}")
-                                                            else:
-                                                                print(f"⚠️  Failed to send audio slice: {audio_result.get('error')}")
-                                                                print(f"   Full error response: {audio_result}")
-                                                                # DO NOT send fallback text message - we want audio, not text
-                                                                # The user should only receive audio, not JSON/text fallback
-                                                        
-                                                        # Cleanup slice file (only after successful send or confirmed failure)
-                                                        try:
-                                                            if os.path.exists(slice_path):
-                                                                os.unlink(slice_path)
-                                                                print(f"🗑️  Cleaned up slice file: {slice_path}")
-                                                        except Exception as cleanup_error:
-                                                            print(f"⚠️  Failed to cleanup slice file: {cleanup_error}")
+                                                            print(f"⚠️  Failed to send audio slice: {audio_result.get('error')}")
+                                                            print(f"   Full error response: {audio_result}")
+                                                            # DO NOT send fallback text message - we want audio, not text
+                                                    
+                                                    # Cleanup slice file (only after successful send or confirmed failure)
+                                                    try:
+                                                        if os.path.exists(slice_path):
+                                                            os.unlink(slice_path)
+                                                            print(f"🗑️  Cleaned up slice file: {slice_path}")
+                                                    except Exception as cleanup_error:
+                                                        print(f"⚠️  Failed to cleanup slice file: {cleanup_error}")
                                                 
                                                 if not unknown_speakers_found:
                                                     print("✅ No unknown speakers detected - all speakers identified")
