@@ -1204,9 +1204,16 @@ async def webhook(request: Request, background_tasks: BackgroundTasks):
                                                 else:
                                                     identified_speakers.append(speaker)
                                             
+                                            # Get summary from Gemini result
+                                            summary_text = result.get('summary', '')
+                                            
+                                            # Truncate summary if too long
+                                            if len(summary_text) > 1000:
+                                                summary_text = summary_text[:800] + "... (הסיכום המלא בקובץ בדרייב)"
+                                            
                                             # Build the new confirmation message
-                                            reply_message = "✅ ההקלטה נשמרה וסוכמה בהצלחה!\n\n"
-                                            reply_message += "👥 *משתתפים בשיחה:*\n"
+                                            reply_message = "✅ *ההקלטה נשמרה וסוכמה בהצלחה!*\n\n"
+                                            reply_message += "👥 *משתתפים:*\n"
                                             
                                             if identified_speakers:
                                                 # List identified speakers with checkmarks
@@ -1222,10 +1229,15 @@ async def webhook(request: Request, background_tasks: BackgroundTasks):
                                             if not identified_speakers and unidentified_count == 0:
                                                 reply_message += "   (לא זוהו דוברים)\n"
                                             
+                                            # Add summary section
+                                            if summary_text:
+                                                reply_message += f"\n📝 *סיכום השיחה:*\n{summary_text}\n"
+                                            
                                             reply_message += "\n📄 התמלול המלא זמין בדרייב."
                                             
                                             print(f"📊 Participants summary: {len(identified_speakers)} identified, {unidentified_count} unidentified")
                                             print(f"   Identified: {identified_speakers}")
+                                            print(f"   Summary length: {len(summary_text)} chars")
                                             
                                             reply_result = whatsapp_provider.send_whatsapp(
                                                 message=reply_message,

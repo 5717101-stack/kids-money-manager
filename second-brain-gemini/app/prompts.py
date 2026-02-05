@@ -38,6 +38,7 @@ AUDIO_ANALYSIS_PROMPT_BASE = """You are a professional transcriber. You MUST out
 2. **JSON Structure**:
 ```json
 {
+  "summary": "A brief 2-3 sentence summary of the conversation in Hebrew",
   "segments": [
     {
       "speaker": "Speaker 1",
@@ -56,6 +57,7 @@ AUDIO_ANALYSIS_PROMPT_BASE = """You are a professional transcriber. You MUST out
 ```
 
 3. **Requirements**:
+   - **summary**: A concise 2-3 sentence summary of the entire conversation in Hebrew. Focus on the main topics discussed and key points.
    - **speaker**: Identify each speaker. Use "Speaker 1", "Speaker 2", etc. if you cannot identify names.
    - **start**: Start time in seconds (float, e.g., 0.0, 5.2, 12.5)
    - **end**: End time in seconds (float, e.g., 5.2, 12.5, 20.0)
@@ -63,11 +65,13 @@ AUDIO_ANALYSIS_PROMPT_BASE = """You are a professional transcriber. You MUST out
 
 4. **Accuracy**: 
    - Provide accurate timestamps for each segment
-   - Transcribe word-for-word, do not summarize
+   - Transcribe word-for-word in segments, do not summarize the text field
    - Include all words, even if they seem unimportant
    - If multiple speakers, create separate segments for each speaker
 
-5. **Language**: Transcribe in the language spoken (Hebrew, English, etc.)
+5. **Language**: 
+   - Summary should be in Hebrew
+   - Transcribe segments in the language spoken (Hebrew, English, etc.)
 
 **IMPORTANT**: Output ONLY valid JSON. Do not add any text before or after the JSON object. Do not use markdown code blocks.
 """

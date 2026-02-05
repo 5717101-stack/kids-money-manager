@@ -769,11 +769,13 @@ You are an EXPERT voice analyzer. You are provided with reference voice samples 
             result = {
                 "type": "audio_analysis",
                 "transcript": transcript_json,  # Full JSON object with segments
+                "summary": transcript_json.get('summary', ''),  # Extract summary from JSON
                 "audio_file_metadata": audio_file_metadata or []
             }
             
             print("✅ Audio analysis complete!")
             print(f"   Segments: {len(transcript_json.get('segments', []))} segments")
+            print(f"   Summary: {result['summary'][:100]}..." if result['summary'] else "   Summary: (none)")
             
             return result
         
