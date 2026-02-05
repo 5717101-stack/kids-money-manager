@@ -905,10 +905,60 @@ async def webhook(request: Request, background_tasks: BackgroundTasks):
                                         except ImportError:
                                             print("⚠️  pydub not installed - cannot slice audio for speaker identification")
                                             print("   Install with: pip install pydub")
-                                        except Exception as e:
-                                            print(f"⚠️  Error processing audio for speaker identification: {e}")
+                                        except Exception as gemini_error:
+                                            # Handle ALL errors from Gemini processing and pydub
+                                            print(f"❌ CRITICAL AUDIO ERROR: Gemini/audio processing failed: {gemini_error}")
                                             import traceback
                                             traceback.print_exc()
+                                            
+                                            # Still save the audio interaction without transcript/summary
+                                            audio_interaction = {
+                                                "timestamp": datetime.utcnow().isoformat() + "Z",
+                                                "type": "audio",
+                                                "file_id": audio_metadata.get('file_id', ''),
+                                                "web_content_link": audio_metadata.get('web_content_link', ''),
+                                                "web_view_link": audio_metadata.get('web_view_link', ''),
+                                                "filename": audio_metadata.get('filename', ''),
+                                                "transcript": "",
+                                                "summary": "Processing failed",
+                                                "speakers": ["User", "Unknown"],
+                                                "message_id": message_id,
+                                                "from_number": from_number
+                                            }
+                                            
+                                            drive_memory_service.update_memory(audio_interaction, background_tasks=background_tasks)
+                                            
+                                            # Send error message to user with more details
+                                            error_type = type(gemini_error).__name__
+                                            error_msg_short = str(gemini_error)[:80] if str(gemini_error) else "Unknown error"
+                                            
+                                            # Create user-friendly error message
+                                            if "timeout" in error_msg_short.lower() or "timeout" in error_type.lower():
+                                                user_error_msg = "⚠️  האודיו ארוך מדי או שהשרת עמוס. נסה שוב מאוחר יותר."
+                                            elif "api" in error_msg_short.lower() or "key" in error_msg_short.lower():
+                                                user_error_msg = "⚠️  בעיה בהגדרת Gemini API. אנא בדוק את הלוגים."
+                                            else:
+                                                user_error_msg = f"⚠️  שגיאה בעיבוד האודיו: {error_msg_short}"
+                                            
+                                            if whatsapp_provider:
+                                                whatsapp_provider.send_whatsapp(
+                                                    message=user_error_msg,
+                                                    to=f"+{from_number}"
+                                                )
+                                            
+                                            # Cleanup temp file
+                                            try:
+                                                os.unlink(tmp_path)
+                                            except:
+                                                pass
+                                            
+                                            # Cleanup temporary reference voice files
+                                            for rv in reference_voices:
+                                                try:
+                                                    if os.path.exists(rv.get('file_path', '')):
+                                                        os.unlink(rv['file_path'])
+                                                except:
+                                                    pass
                                         
                                         # Send confirmation message (only if processing succeeded and we have segments)
                                         if segments and success:
@@ -946,70 +996,16 @@ async def webhook(request: Request, background_tasks: BackgroundTasks):
                                             except Exception as cleanup_error:
                                                 print(f"⚠️  Failed to cleanup reference voice file: {cleanup_error}")
                                         
-                                    except Exception as gemini_error:
-                                        print(f"❌ CRITICAL AUDIO ERROR: Gemini processing failed: {gemini_error}")
-                                        import traceback
-                                        traceback.print_exc()
-                                        
-                                        # Still save the audio interaction without transcript/summary
-                                        audio_interaction = {
-                                            "timestamp": datetime.utcnow().isoformat() + "Z",
-                                            "type": "audio",
-                                            "file_id": audio_metadata.get('file_id', ''),
-                                            "web_content_link": audio_metadata.get('web_content_link', ''),
-                                            "web_view_link": audio_metadata.get('web_view_link', ''),
-                                            "filename": audio_metadata.get('filename', ''),
-                                            "transcript": "",
-                                            "summary": "Processing failed",
-                                            "speakers": ["User", "Unknown"],
-                                            "message_id": message_id,
-                                            "from_number": from_number
-                                        }
-                                        
-                                        drive_memory_service.update_memory(audio_interaction, background_tasks=background_tasks)
-                                        
-                                        # Send error message to user with more details
-                                        error_type = type(gemini_error).__name__
-                                        error_msg_short = str(gemini_error)[:80] if str(gemini_error) else "Unknown error"
-                                        
-                                        # Create user-friendly error message
-                                        if "timeout" in error_msg_short.lower() or "timeout" in error_type.lower():
-                                            user_error_msg = "⚠️  האודיו ארוך מדי או שהשרת עמוס. נסה שוב מאוחר יותר."
-                                        elif "api" in error_msg_short.lower() or "key" in error_msg_short.lower():
-                                            user_error_msg = "⚠️  בעיה בהגדרת Gemini API. אנא בדוק את הלוגים."
-                                        else:
-                                            user_error_msg = f"⚠️  שגיאה בעיבוד האודיו: {error_msg_short}"
-                                        
-                                        if whatsapp_provider:
-                                            whatsapp_provider.send_whatsapp(
-                                                message=user_error_msg,
-                                                to=f"+{from_number}"
-                                            )
-                                        
-                                        # Cleanup temp file
-                                        try:
-                                            os.unlink(tmp_path)
-                                        except:
-                                            pass
-                                        
-                                        # Cleanup temporary reference voice files
-                                        for rv in reference_voices:
-                                            try:
-                                                if os.path.exists(rv.get('file_path', '')):
-                                                    os.unlink(rv['file_path'])
-                                            except:
-                                                pass
-                                        
                                     except Exception as audio_error:
-                                            import traceback
-                                            print("=" * 60)
-                                            print("❌ RAW ERROR TYPE:", type(audio_error).__name__)
-                                            print("❌ RAW ERROR MESSAGE:", str(audio_error))
-                                            print("=" * 60)
-                                            print("FULL TRACEBACK:")
-                                            print("=" * 60)
-                                            traceback.print_exc()
-                                            print("=" * 60)
+                                        import traceback
+                                        print("=" * 60)
+                                        print("❌ RAW ERROR TYPE:", type(audio_error).__name__)
+                                        print("❌ RAW ERROR MESSAGE:", str(audio_error))
+                                        print("=" * 60)
+                                        print("FULL TRACEBACK:")
+                                        print("=" * 60)
+                                        traceback.print_exc()
+                                        print("=" * 60)
                                 
                                 # Process message with memory
                                 elif whatsapp_provider and message_type == "text" and message_body_text:
