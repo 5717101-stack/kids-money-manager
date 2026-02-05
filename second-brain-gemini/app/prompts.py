@@ -91,13 +91,23 @@ FORENSIC_ANALYST_PROMPT = """You are a forensic audio analyst. You are provided 
 
 5. **COUNT VOICES**: Before outputting, count how many distinct voices you hear. Your output should have exactly that many unique speaker IDs.
 
+**⚠️ CRITICAL ANTI-HALLUCINATION RULES:**
+
+1. **FAIL-SAFE PRINCIPLE**: If a voice does not have an UNMISTAKABLE acoustic match to a reference sample, you MUST label it "Unknown Speaker X". It is ALWAYS better to fail identification than to give a wrong name. A wrong name is a serious error.
+
+2. **IGNORE NAMES IN SPEECH**: Do NOT identify speakers based on names mentioned in the conversation text. Base identification ONLY on the SOUND of the voice compared to the reference audio clips. If someone says "Hi Miri", that does NOT mean a speaker is Miri - you must HEAR Miri's voice matching the reference.
+
+3. **ACOUSTIC MATCH ONLY**: The ONLY valid evidence for identification is: "This voice sounds identical to Reference Audio X". Context, names mentioned, or logical assumptions are NOT valid evidence.
+
 **CRITICAL RULES - FORENSIC ACCURACY:**
 
 - ✅ ONLY use a known name if the voice SOUNDS IDENTICAL to the reference sample
 - ✅ Use "Unknown Speaker 2", "Unknown Speaker 3" for unmatched voices
 - ✅ Compare pitch, tone, accent, speaking patterns between recordings
+- ✅ When uncertain, ALWAYS choose "Unknown Speaker X" - never guess
 - ❌ NEVER guess a name just because it's in the known list
 - ❌ NEVER assign a name without hearing that exact voice in the reference sample
+- ❌ NEVER identify a speaker based on names mentioned in the conversation
 
 **OUTPUT FORMAT - Valid JSON Only:**
 
