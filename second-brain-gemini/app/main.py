@@ -738,6 +738,18 @@ async def webhook(request: Request, background_tasks: BackgroundTasks):
                                                     print(f"⏭️  Skipping Speaker 1 (assumed to be User): {speaker}")
                                                     continue
                                                 
+                                                # AUTO-FILTER: Skip speakers that Gemini already identified by name
+                                                # If speaker name doesn't start with "Speaker" or "דובר", it means Gemini
+                                                # matched the voice to a known reference voice - no need to ask "Who is this?"
+                                                is_generic_speaker = (
+                                                    speaker.lower().startswith('speaker ') or 
+                                                    speaker.startswith('דובר ') or
+                                                    speaker.lower().startswith('unknown')
+                                                )
+                                                if speaker and not is_generic_speaker:
+                                                    print(f"✅ Skipping segment {i}: Speaker '{speaker}' already identified by voice match!")
+                                                    continue
+                                                
                                                 # Skip if we've already processed this speaker
                                                 if speaker in processed_speakers:
                                                     print(f"⏭️  Skipping segment {i}: already sent sample for speaker '{speaker}'")
