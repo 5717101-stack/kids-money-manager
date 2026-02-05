@@ -7,6 +7,7 @@ Uses in-memory caching with robust timestamp-based stale-while-revalidate logic.
 import os
 import json
 import tempfile
+import io
 from typing import Dict, Any, Optional, List
 from pathlib import Path
 from datetime import datetime, timezone
@@ -176,6 +177,8 @@ class DriveMemoryService:
         """
         Upload an audio file to the audio_archive folder in Drive.
         
+        NO TRY-EXCEPT: Let errors bubble up for transparent debugging.
+        
         Args:
             audio_path: Path to the audio file on disk (optional if audio_file_obj or audio_bytes provided)
             audio_bytes: Binary audio data (optional if audio_file_obj or audio_path provided)
@@ -185,158 +188,162 @@ class DriveMemoryService:
         
         Returns:
             Dictionary with 'file_id' and 'web_content_link', or None if upload failed
+        
+        Raises:
+            HttpError: If Google Drive API call fails
+            ValueError: If no audio source provided or service not configured
+            TypeError: If stream handling fails
         """
         if not self.is_configured or not self.service:
             logger.warning("⚠️  Drive Memory Service not configured. Cannot upload audio.")
-            return None
+            raise ValueError("Drive Memory Service not configured")
         
         # Refresh credentials if needed before API call
         self._refresh_credentials_if_needed()
         
-        try:
-            print("🔍 Checking for audio_archive folder...")
-            # Ensure audio_archive folder exists
-            archive_folder_id = self._ensure_audio_archive_folder()
-            if not archive_folder_id:
-                logger.error("❌ Cannot upload audio: audio_archive folder not available")
-                print("❌ CRITICAL AUDIO ERROR: audio_archive folder not available")
-                return None
-            print(f"✅ Audio archive folder verified (ID: {archive_folder_id})")
-            
-            # Get file content - prioritize file_obj, then bytes, then path
-            file_obj = None
-            if audio_file_obj:
-                print(f"📦 Using provided file-like object (stream)")
-                file_obj = audio_file_obj
+        print("🔍 Checking for audio_archive folder...")
+        # Ensure audio_archive folder exists
+        archive_folder_id = self._ensure_audio_archive_folder()
+        if not archive_folder_id:
+            logger.error("❌ Cannot upload audio: audio_archive folder not available")
+            raise ValueError("audio_archive folder not available")
+        print(f"✅ Audio archive folder verified (ID: {archive_folder_id})")
+        
+        # Get file content - prioritize file_obj, then bytes, then path
+        file_obj = None
+        if audio_file_obj:
+            print(f"📦 Using provided file-like object (stream)")
+            file_obj = audio_file_obj
+            # Ensure stream is at position 0
+            if hasattr(file_obj, 'seek'):
+                file_obj.seek(0)
+            # Get size if possible (without consuming the stream)
+            try:
+                if hasattr(file_obj, 'getvalue'):
+                    # BytesIO.getvalue() doesn't consume the stream
+                    file_size = len(file_obj.getvalue())
+                    print(f"   Stream size: {file_size} bytes")
+                elif hasattr(file_obj, 'read'):
+                    # Save current position
+                    current_pos = file_obj.tell() if hasattr(file_obj, 'tell') else 0
+                    # Read to get size, then reset
+                    content = file_obj.read()
+                    file_size = len(content)
+                    # Reset to beginning
+                    file_obj.seek(0)
+                    print(f"   Stream size: {file_size} bytes")
+                else:
+                    file_size = "unknown"
+                    print(f"   Stream size: {file_size} (cannot determine)")
+            except Exception as size_error:
+                print(f"   ⚠️  Could not determine stream size: {size_error}")
+                file_size = "unknown"
                 # Ensure stream is at position 0
                 if hasattr(file_obj, 'seek'):
                     file_obj.seek(0)
-                # Get size if possible (without consuming the stream)
-                try:
-                    if hasattr(file_obj, 'getvalue'):
-                        # BytesIO.getvalue() doesn't consume the stream
-                        file_size = len(file_obj.getvalue())
-                        print(f"   Stream size: {file_size} bytes")
-                    elif hasattr(file_obj, 'read'):
-                        # Save current position
-                        current_pos = file_obj.tell() if hasattr(file_obj, 'tell') else 0
-                        # Read to get size, then reset
-                        content = file_obj.read()
-                        file_size = len(content)
-                        # Reset to beginning
-                        file_obj.seek(0)
-                        print(f"   Stream size: {file_size} bytes")
-                    else:
-                        file_size = "unknown"
-                        print(f"   Stream size: {file_size} (cannot determine)")
-                except Exception as size_error:
-                    print(f"   ⚠️  Could not determine stream size: {size_error}")
-                    file_size = "unknown"
-                    # Ensure stream is at position 0
-                    if hasattr(file_obj, 'seek'):
-                        file_obj.seek(0)
-                if not filename:
-                    filename = "audio_message.ogg"  # Default for WhatsApp audio
-            elif audio_bytes:
-                print(f"📦 Using provided audio bytes (size: {len(audio_bytes)} bytes)")
-                file_obj = BytesIO(audio_bytes)
-                if not filename:
-                    filename = "audio_message.ogg"  # Default for WhatsApp audio
-            elif audio_path:
-                print(f"📂 Reading audio file from path: {audio_path}")
-                with open(audio_path, 'rb') as f:
-                    file_content = f.read()
-                print(f"✅ Audio file read successfully. Size: {len(file_content)} bytes")
-                file_obj = BytesIO(file_content)
-                if not filename:
-                    filename = Path(audio_path).name
+            if not filename:
+                filename = "audio_message.ogg"  # Default for WhatsApp audio
+        elif audio_bytes:
+            print(f"📦 Using provided audio bytes (size: {len(audio_bytes)} bytes)")
+            file_obj = io.BytesIO(audio_bytes)
+            if not filename:
+                filename = "audio_message.ogg"  # Default for WhatsApp audio
+        elif audio_path:
+            print(f"📂 Reading audio file from path: {audio_path}")
+            with open(audio_path, 'rb') as f:
+                file_content = f.read()
+            print(f"✅ Audio file read successfully. Size: {len(file_content)} bytes")
+            file_obj = io.BytesIO(file_content)
+            if not filename:
+                filename = Path(audio_path).name
+        else:
+            error_msg = "Either audio_path, audio_bytes, or audio_file_obj must be provided"
+            logger.error(f"❌ {error_msg}")
+            raise ValueError(error_msg)
+        
+        # Determine MIME type from extension if not provided
+        if not mime_type:
+            mime_type_map = {
+                '.mp3': 'audio/mpeg',
+                '.wav': 'audio/wav',
+                '.wave': 'audio/wav',
+                '.m4a': 'audio/mp4',
+                '.aac': 'audio/aac',
+                '.ogg': 'audio/ogg',
+                '.oga': 'audio/ogg',
+                '.flac': 'audio/flac',
+                '.mp4': 'audio/mp4',
+            }
+            
+            if audio_path:
+                file_ext = Path(audio_path).suffix.lower()
             else:
-                logger.error("❌ Either audio_path, audio_bytes, or audio_file_obj must be provided")
-                print("❌ CRITICAL AUDIO ERROR: Either audio_path, audio_bytes, or audio_file_obj must be provided")
-                return None
+                # Try to infer from filename
+                file_ext = Path(filename).suffix.lower() if filename else '.ogg'
             
-            # Determine MIME type from extension if not provided
-            if not mime_type:
-                mime_type_map = {
-                    '.mp3': 'audio/mpeg',
-                    '.wav': 'audio/wav',
-                    '.wave': 'audio/wav',
-                    '.m4a': 'audio/mp4',
-                    '.aac': 'audio/aac',
-                    '.ogg': 'audio/ogg',
-                    '.oga': 'audio/ogg',
-                    '.flac': 'audio/flac',
-                    '.mp4': 'audio/mp4',
-                }
-                
-                if audio_path:
-                    file_ext = Path(audio_path).suffix.lower()
-                else:
-                    # Try to infer from filename
-                    file_ext = Path(filename).suffix.lower() if filename else '.ogg'
-                
-                mime_type = mime_type_map.get(file_ext, 'audio/ogg')  # Default to OGG for WhatsApp
-            
-            print(f"📤 Attempting to upload to Google Drive...")
-            print(f"   Filename: {filename}")
-            print(f"   MIME type: {mime_type}")
-            
-            # Upload to Drive using MediaIoBaseUpload for file-like objects
-            file_metadata = {
-                'name': filename,
-                'parents': [archive_folder_id]
-            }
-            
-            # CRITICAL: Ensure stream is at position 0 before upload
-            if hasattr(file_obj, 'seek'):
-                file_obj.seek(0)
-                print(f"   Stream position reset to: {file_obj.tell()}")
-            elif hasattr(file_obj, 'tell'):
-                current_pos = file_obj.tell()
-                if current_pos != 0:
-                    print(f"   ⚠️  Warning: Stream position is {current_pos}, not 0")
-            
-            print(f"   Creating MediaIoBaseUpload with mime_type={mime_type}, resumable=True")
-            media = MediaIoBaseUpload(
-                file_obj,
-                mimetype=mime_type,
-                resumable=True
-            )
-            
-            print(f"   Calling Drive API files().create()...")
-            file = self.service.files().create(
-                body=file_metadata,
-                media_body=media,
-                fields='id,webContentLink,webViewLink'
-            ).execute()
-            print(f"   ✅ Drive API call successful")
-            
-            file_id = file.get('id')
-            web_content_link = file.get('webContentLink', '')
-            web_view_link = file.get('webViewLink', '')
-            
-            logger.info(f"✅ Uploaded audio to archive: {filename} (ID: {file_id})")
-            logger.debug(f"   Web content link: {web_content_link}")
-            print(f"✅ Upload successful. File ID: {file_id}")
-            print(f"   Web content link: {web_content_link}")
-            
-            return {
-                'file_id': file_id,
-                'web_content_link': web_content_link,
-                'web_view_link': web_view_link,
-                'filename': filename
-            }
-            
-        except Exception as e:
-            logger.error(f"❌ Error uploading audio to archive: {e}")
-            print(f"❌ CRITICAL AUDIO ERROR: {str(e)}")
-            import traceback
-            print("=" * 60)
-            print("FULL TRACEBACK:")
-            print("=" * 60)
-            traceback.print_exc()
-            print("=" * 60)
-            return None
+            mime_type = mime_type_map.get(file_ext, 'audio/ogg')  # Default to OGG for WhatsApp
+        
+        # Get file size for sanity check
+        if hasattr(file_obj, 'getvalue'):
+            audio_content_size = len(file_obj.getvalue())
+        elif hasattr(file_obj, 'read'):
+            current_pos = file_obj.tell() if hasattr(file_obj, 'tell') else 0
+            content = file_obj.read()
+            audio_content_size = len(content)
+            file_obj.seek(0)
+        else:
+            audio_content_size = "unknown"
+        
+        print(f"📤 Preparing to upload {audio_content_size} bytes to Folder ID: {self.folder_id}")
+        print(f"   Filename: {filename}")
+        print(f"   MIME type: {mime_type}")
+        
+        # Upload to Drive using MediaIoBaseUpload for file-like objects
+        file_metadata = {
+            'name': filename,
+            'parents': [archive_folder_id]
+        }
+        
+        # CRITICAL: Ensure stream is at position 0 before upload
+        if hasattr(file_obj, 'seek'):
+            file_obj.seek(0)
+            print(f"   Stream position reset to: {file_obj.tell()}")
+        elif hasattr(file_obj, 'tell'):
+            current_pos = file_obj.tell()
+            if current_pos != 0:
+                print(f"   ⚠️  Warning: Stream position is {current_pos}, not 0")
+        
+        print(f"   Creating MediaIoBaseUpload with mime_type={mime_type}, resumable=True")
+        media = MediaIoBaseUpload(
+            file_obj,
+            mimetype=mime_type,
+            resumable=True
+        )
+        
+        print(f"   Calling Drive API files().create()...")
+        # NO TRY-EXCEPT: Let HttpError bubble up for transparent debugging
+        file = self.service.files().create(
+            body=file_metadata,
+            media_body=media,
+            fields='id,webContentLink,webViewLink'
+        ).execute()
+        print(f"   ✅ Drive API call successful")
+        
+        file_id = file.get('id')
+        web_content_link = file.get('webContentLink', '')
+        web_view_link = file.get('webViewLink', '')
+        
+        logger.info(f"✅ Uploaded audio to archive: {filename} (ID: {file_id})")
+        logger.debug(f"   Web content link: {web_content_link}")
+        print(f"✅ Upload successful. File ID: {file_id}")
+        print(f"   Web content link: {web_content_link}")
+        
+        return {
+            'file_id': file_id,
+            'web_content_link': web_content_link,
+            'web_view_link': web_view_link,
+            'filename': filename
+        }
     
     def _find_memory_file(self) -> Optional[str]:
         """

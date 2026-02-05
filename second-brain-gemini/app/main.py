@@ -462,7 +462,7 @@ async def webhook(request: Request, background_tasks: BackgroundTasks):
                                         
                                         # Step 3: Upload to Drive archive
                                         print("📤 Attempting to upload to Google Drive...")
-                                        # Wrap bytes in BytesIO for file-like object
+                                        # Convert downloaded content to a stream
                                         file_stream = io.BytesIO(audio_bytes)
                                         audio_metadata = drive_memory_service.upload_audio_to_archive(
                                             audio_file_obj=file_stream,
@@ -471,7 +471,7 @@ async def webhook(request: Request, background_tasks: BackgroundTasks):
                                         )
                                         
                                         if not audio_metadata:
-                                            print("❌ CRITICAL AUDIO ERROR: Failed to upload audio to Drive")
+                                            print("❌ CRITICAL AUDIO ERROR: upload_audio_to_archive returned None")
                                             continue
                                         
                                         print(f"✅ Audio archived successfully. File ID: {audio_metadata.get('file_id')}")
@@ -570,8 +570,10 @@ async def webhook(request: Request, background_tasks: BackgroundTasks):
                                                 pass
                                         
                                     except Exception as audio_error:
-                                        print(f"❌ CRITICAL AUDIO ERROR: {str(audio_error)}")
                                         import traceback
+                                        print("=" * 60)
+                                        print("❌ RAW ERROR TYPE:", type(audio_error).__name__)
+                                        print("❌ RAW ERROR MESSAGE:", str(audio_error))
                                         print("=" * 60)
                                         print("FULL TRACEBACK:")
                                         print("=" * 60)
