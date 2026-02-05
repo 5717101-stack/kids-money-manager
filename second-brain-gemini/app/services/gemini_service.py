@@ -385,42 +385,62 @@ Use this mapping to provide accurate answers about conversations and who said wh
             
             print(f"👤 User profile injected into system prompt ({len(user_profile)} keys)")
         
-        # CURRENT SESSION CONTEXT: Add the most recent conversation for RAG
+        # ================================================================
+        # WORKING MEMORY: Zero Latency access to the conversation that just ended
+        # This is the PRIMARY source for questions about "the conversation"
+        # ================================================================
         if current_session and current_session.get('summary'):
             session_summary = current_session.get('summary', '')
             session_speakers = current_session.get('speakers', [])
             session_timestamp = current_session.get('timestamp', '')
             session_segments = current_session.get('segments', [])
+            identified_speakers = current_session.get('identified_speakers', {})
+            current_voice_map = current_session.get('current_voice_map', {})
             
             system_instruction += f"""
 
-=== CURRENT SESSION (Just Happened) ===
-This is the summary of the MOST RECENT audio conversation that just ended:
+=== 🧠 WORKING MEMORY (PRIORITY 1 - Check This FIRST!) ===
+This is the conversation that JUST ENDED. It may not be in Drive yet.
 
 **Summary:** {session_summary}
-**Speakers:** {', '.join(session_speakers) if session_speakers else 'Unknown'}
+**Participants:** {', '.join(session_speakers) if session_speakers else 'Participants being identified'}
 **Timestamp:** {session_timestamp}
 
-**CRITICAL:** When the user asks about "the conversation", "what we talked about", "what did we decide", 
-they are likely referring to THIS current session. Check this FIRST before searching older transcripts.
+**REAL-TIME SPEAKER IDENTIFICATIONS:**
+Even if the transcript below shows "Unknown Speaker X", use this mapping to know who they really are:
+{json.dumps(current_voice_map, ensure_ascii=False, indent=2) if current_voice_map else "No identifications yet"}
+
+**⚠️ CRITICAL INSTRUCTION:**
+When the user asks about "the conversation", "what we talked about", "what did we decide", "מה אמרנו":
+1. FIRST: Search this Working Memory (the conversation that just ended)
+2. ONLY IF not found here: Search the Drive transcripts below
+
+**Full Transcript (Zero Latency):**
 """
-            # Add full transcript segments if available
+            # Add full transcript segments with real-time speaker resolution
             if session_segments:
-                segments_text = "\n**Full Transcript:**\n"
-                for seg in session_segments[:20]:  # Limit to first 20 segments
-                    speaker = seg.get('speaker', 'Unknown')
+                for seg in session_segments[:30]:  # Increased limit for full context
+                    raw_speaker = seg.get('speaker', 'Unknown')
+                    # Try to resolve speaker using voice_map
+                    resolved_speaker = current_voice_map.get(raw_speaker.lower(), raw_speaker)
                     text = seg.get('text', '')
-                    segments_text += f"- {speaker}: {text}\n"
-                system_instruction += segments_text
+                    system_instruction += f"- {resolved_speaker}: {text}\n"
             
-            print(f"📍 Current session context injected (summary: {len(session_summary)} chars)")
+            system_instruction += """
+---
+"""
+            print(f"🧠 WORKING MEMORY injected:")
+            print(f"   Summary: {len(session_summary)} chars")
+            print(f"   Segments: {len(session_segments)} entries")
+            print(f"   Voice map: {current_voice_map}")
         
-        # RECENT TRANSCRIPTS: Deep search context
+        # RECENT TRANSCRIPTS: Deep search context (PRIORITY 2 - Only if not in Working Memory)
         if recent_transcripts:
             system_instruction += f"""
 
-=== RECENT TRANSCRIPTS (Last {len(recent_transcripts)} conversations) ===
-Here are the full transcripts from recent conversations for deep search:
+=== 📁 DRIVE TRANSCRIPTS (PRIORITY 2 - Search Only If Not In Working Memory) ===
+These are older conversations from Google Drive. 
+Note: The Working Memory above may have more recent data not yet synced to Drive.
 
 """
             for i, transcript in enumerate(recent_transcripts[:3], 1):  # Limit to 3

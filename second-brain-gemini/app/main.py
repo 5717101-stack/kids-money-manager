@@ -59,35 +59,54 @@ pending_identifications = {}
 # Local cache for quick access during processing
 _voice_map_cache = {}  # {"Speaker 2": "Miri", "Speaker 3": "Shai"}
 
-# CURRENT SESSION CONTEXT: Store the most recent audio processing result
-# This enables RAG to have immediate awareness of the last conversation
-_last_session_context = {
+# WORKING MEMORY: Store the full JSON output of the most recent audio processing
+# This enables "Zero Latency" RAG - bypasses Drive sync delay
+_last_processed_session = {
     'summary': '',
     'speakers': [],
     'timestamp': '',
     'transcript_file_id': '',
-    'segments': []
+    'segments': [],
+    'full_transcript': {},  # Complete Gemini output
+    'identified_speakers': {},  # Real-time voice_map snapshot at time of processing
+    'raw_gemini_output': ''  # Original Gemini response for debugging
 }
 _session_context_lock = Lock()
 
 def update_last_session_context(summary: str, speakers: list, timestamp: str, 
-                                  transcript_file_id: str = '', segments: list = None):
-    """Update the last session context for RAG awareness."""
-    global _last_session_context
+                                  transcript_file_id: str = '', segments: list = None,
+                                  full_transcript: dict = None, identified_speakers: dict = None):
+    """
+    Update Working Memory with the last processed session.
+    This provides Zero Latency access to the conversation that just ended.
+    """
+    global _last_processed_session
     with _session_context_lock:
-        _last_session_context = {
+        _last_processed_session = {
             'summary': summary,
             'speakers': speakers,
             'timestamp': timestamp,
             'transcript_file_id': transcript_file_id,
-            'segments': segments or []
+            'segments': segments or [],
+            'full_transcript': full_transcript or {},
+            'identified_speakers': identified_speakers or _voice_map_cache.copy()
         }
-        print(f"📝 Session context updated: {len(speakers)} speakers, summary: {len(summary)} chars")
+        print(f"📝 WORKING MEMORY updated:")
+        print(f"   Speakers: {speakers}")
+        print(f"   Summary: {len(summary)} chars")
+        print(f"   Segments: {len(segments or [])} entries")
+        print(f"   Identified speakers: {identified_speakers or _voice_map_cache}")
 
 def get_last_session_context() -> dict:
-    """Get the last session context for RAG."""
+    """
+    Get the Working Memory for RAG.
+    Returns the full session data including real-time speaker identifications.
+    """
     with _session_context_lock:
-        return _last_session_context.copy()
+        # Also include the latest voice_map for real-time name resolution
+        result = _last_processed_session.copy()
+        result['current_voice_map'] = _voice_map_cache.copy()
+        return result
 
 _processed_ids_lock = Lock()  # Thread-safe access to processed_message_ids
 
@@ -776,14 +795,17 @@ def process_audio_in_background(
         drive_memory_service.update_memory(audio_interaction)
         print("✅ Saved audio interaction to memory")
         
-        # UPDATE SESSION CONTEXT for RAG awareness
-        # This enables text queries to have immediate context of the last conversation
+        # UPDATE WORKING MEMORY for Zero Latency RAG
+        # This enables text queries to access the conversation that just ended IMMEDIATELY
+        # without waiting for Drive sync
         update_last_session_context(
             summary=summary_text,
             speakers=list(speaker_names),
             timestamp=datetime.utcnow().isoformat() + "Z",
             transcript_file_id=audio_metadata.get('file_id', ''),
-            segments=segments
+            segments=segments,
+            full_transcript=transcript_json,
+            identified_speakers=_voice_map_cache.copy()
         )
         
         # Step 8: Detect unknown speakers and send "Who is this?" messages
