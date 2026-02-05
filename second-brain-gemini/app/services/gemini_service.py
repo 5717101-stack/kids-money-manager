@@ -317,21 +317,27 @@ class GeminiService:
         self,
         user_message: str,
         chat_history: List[Dict[str, Any]] = None,
-        user_profile: Dict[str, Any] = None
+        user_profile: Dict[str, Any] = None,
+        current_session: Dict[str, Any] = None,
+        recent_transcripts: List[Dict[str, Any]] = None
     ) -> str:
         """
-        Chat with Gemini using conversation history and user profile.
+        Chat with Gemini using conversation history, user profile, and RAG context.
         
         Args:
             user_message: Current user message
             chat_history: List of previous interactions, each with 'user_message' and 'ai_response'
             user_profile: Dictionary containing user profile data (name, family members, etc.)
+            current_session: Most recent audio session context (summary, speakers, segments)
+            recent_transcripts: List of recent transcript data for deep search
         
         Returns:
             AI response text
         """
         chat_history = chat_history or []
         user_profile = user_profile or {}
+        current_session = current_session or {}
+        recent_transcripts = recent_transcripts or []
         
         # Check if service is configured
         if not self.is_configured or self.model is None:
@@ -378,6 +384,63 @@ Use this mapping to provide accurate answers about conversations and who said wh
                 print(f"🎤 Voice map injected ({len(voice_map)} mappings)")
             
             print(f"👤 User profile injected into system prompt ({len(user_profile)} keys)")
+        
+        # CURRENT SESSION CONTEXT: Add the most recent conversation for RAG
+        if current_session and current_session.get('summary'):
+            session_summary = current_session.get('summary', '')
+            session_speakers = current_session.get('speakers', [])
+            session_timestamp = current_session.get('timestamp', '')
+            session_segments = current_session.get('segments', [])
+            
+            system_instruction += f"""
+
+=== CURRENT SESSION (Just Happened) ===
+This is the summary of the MOST RECENT audio conversation that just ended:
+
+**Summary:** {session_summary}
+**Speakers:** {', '.join(session_speakers) if session_speakers else 'Unknown'}
+**Timestamp:** {session_timestamp}
+
+**CRITICAL:** When the user asks about "the conversation", "what we talked about", "what did we decide", 
+they are likely referring to THIS current session. Check this FIRST before searching older transcripts.
+"""
+            # Add full transcript segments if available
+            if session_segments:
+                segments_text = "\n**Full Transcript:**\n"
+                for seg in session_segments[:20]:  # Limit to first 20 segments
+                    speaker = seg.get('speaker', 'Unknown')
+                    text = seg.get('text', '')
+                    segments_text += f"- {speaker}: {text}\n"
+                system_instruction += segments_text
+            
+            print(f"📍 Current session context injected (summary: {len(session_summary)} chars)")
+        
+        # RECENT TRANSCRIPTS: Deep search context
+        if recent_transcripts:
+            system_instruction += f"""
+
+=== RECENT TRANSCRIPTS (Last {len(recent_transcripts)} conversations) ===
+Here are the full transcripts from recent conversations for deep search:
+
+"""
+            for i, transcript in enumerate(recent_transcripts[:3], 1):  # Limit to 3
+                filename = transcript.get('filename', 'Unknown')
+                created_time = transcript.get('created_time', '')
+                content = transcript.get('content', {})
+                segments = content.get('segments', [])
+                summary = content.get('summary', '')
+                
+                system_instruction += f"""
+--- Transcript {i}: {filename} ({created_time}) ---
+Summary: {summary}
+
+"""
+                for seg in segments[:15]:  # Limit segments per transcript
+                    speaker = seg.get('speaker', 'Unknown')
+                    text = seg.get('text', '')
+                    system_instruction += f"{speaker}: {text}\n"
+            
+            print(f"📚 Recent transcripts injected ({len(recent_transcripts)} files)")
         
         # Add enhanced system prompt
         contents.append(system_instruction)

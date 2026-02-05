@@ -59,6 +59,36 @@ pending_identifications = {}
 # Local cache for quick access during processing
 _voice_map_cache = {}  # {"Speaker 2": "Miri", "Speaker 3": "Shai"}
 
+# CURRENT SESSION CONTEXT: Store the most recent audio processing result
+# This enables RAG to have immediate awareness of the last conversation
+_last_session_context = {
+    'summary': '',
+    'speakers': [],
+    'timestamp': '',
+    'transcript_file_id': '',
+    'segments': []
+}
+_session_context_lock = Lock()
+
+def update_last_session_context(summary: str, speakers: list, timestamp: str, 
+                                  transcript_file_id: str = '', segments: list = None):
+    """Update the last session context for RAG awareness."""
+    global _last_session_context
+    with _session_context_lock:
+        _last_session_context = {
+            'summary': summary,
+            'speakers': speakers,
+            'timestamp': timestamp,
+            'transcript_file_id': transcript_file_id,
+            'segments': segments or []
+        }
+        print(f"📝 Session context updated: {len(speakers)} speakers, summary: {len(summary)} chars")
+
+def get_last_session_context() -> dict:
+    """Get the last session context for RAG."""
+    with _session_context_lock:
+        return _last_session_context.copy()
+
 _processed_ids_lock = Lock()  # Thread-safe access to processed_message_ids
 
 
@@ -746,6 +776,16 @@ def process_audio_in_background(
         drive_memory_service.update_memory(audio_interaction)
         print("✅ Saved audio interaction to memory")
         
+        # UPDATE SESSION CONTEXT for RAG awareness
+        # This enables text queries to have immediate context of the last conversation
+        update_last_session_context(
+            summary=summary_text,
+            speakers=list(speaker_names),
+            timestamp=datetime.utcnow().isoformat() + "Z",
+            transcript_file_id=audio_metadata.get('file_id', ''),
+            segments=segments
+        )
+        
         # Step 8: Detect unknown speakers and send "Who is this?" messages
         # This triggers the voice imprinting flow
         unknown_speakers_processed = []
@@ -1311,10 +1351,25 @@ async def webhook(request: Request, background_tasks: BackgroundTasks):
                                             )
                                         else:
                                             # Regular chat: Generate AI response with context and user profile
+                                            # INCLUDE CURRENT SESSION CONTEXT for RAG awareness
+                                            session_context = get_last_session_context()
+                                            
+                                            # Get recent transcripts for deep search (if searching)
+                                            recent_transcripts = []
+                                            search_keywords = ['מה', 'איך', 'מתי', 'למה', 'מי', 'החלטנו', 'דיברנו', 'אמר']
+                                            if any(keyword in message_body_text for keyword in search_keywords):
+                                                try:
+                                                    recent_transcripts = drive_memory_service.get_recent_transcripts(limit=2)
+                                                    print(f"📚 Loaded {len(recent_transcripts)} recent transcripts for RAG")
+                                                except Exception as e:
+                                                    print(f"⚠️  Failed to load recent transcripts: {e}")
+                                            
                                             ai_response = gemini_service.chat_with_memory(
                                                 user_message=message_body_text,
                                                 chat_history=chat_history,
-                                                user_profile=user_profile
+                                                user_profile=user_profile,
+                                                current_session=session_context,
+                                                recent_transcripts=recent_transcripts
                                             )
                                         
                                         print(f"🤖 Generated AI response: {ai_response[:100]}...")
@@ -1510,11 +1565,25 @@ async def whatsapp_webhook(request: Request, background_tasks: BackgroundTasks):
                 if user_profile:
                     print(f"👤 User profile loaded: {list(user_profile.keys())}")
                 
-                # Generate AI response with context and user profile
+                # Get session context and recent transcripts for RAG
+                session_context = get_last_session_context()
+                
+                recent_transcripts = []
+                search_keywords = ['מה', 'איך', 'מתי', 'למה', 'מי', 'החלטנו', 'דיברנו', 'אמר']
+                if any(keyword in message_body for keyword in search_keywords):
+                    try:
+                        recent_transcripts = drive_memory_service.get_recent_transcripts(limit=2)
+                        print(f"📚 Loaded {len(recent_transcripts)} recent transcripts for RAG")
+                    except Exception as e:
+                        print(f"⚠️  Failed to load recent transcripts: {e}")
+                
+                # Generate AI response with context, user profile, and RAG context
                 ai_response = gemini_service.chat_with_memory(
                     user_message=message_body,
                     chat_history=chat_history,
-                    user_profile=user_profile
+                    user_profile=user_profile,
+                    current_session=session_context,
+                    recent_transcripts=recent_transcripts
                 )
                 
                 print(f"🤖 Generated AI response: {ai_response[:100]}...")
