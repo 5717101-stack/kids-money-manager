@@ -598,6 +598,7 @@ async def webhook(request: Request, background_tasks: BackgroundTasks):
                                         segments = []
                                         unknown_speakers_found = []
                                         success = False
+                                        processing_error_occurred = False  # Track if error was caught
                                         
                                         # Retrieve voice signatures for speaker identification
                                         reference_voices = []
@@ -907,6 +908,7 @@ async def webhook(request: Request, background_tasks: BackgroundTasks):
                                             print("   Install with: pip install pydub")
                                         except Exception as gemini_error:
                                             # Handle ALL errors from Gemini processing and pydub
+                                            processing_error_occurred = True  # Mark that an error occurred
                                             print(f"❌ CRITICAL AUDIO ERROR: Gemini/audio processing failed: {gemini_error}")
                                             import traceback
                                             traceback.print_exc()
@@ -960,8 +962,8 @@ async def webhook(request: Request, background_tasks: BackgroundTasks):
                                                 except:
                                                     pass
                                         
-                                        # Send confirmation message (only if processing succeeded and we have segments)
-                                        if segments and success:
+                                        # Send confirmation message (only if processing succeeded, we have segments, and no error occurred)
+                                        if segments and success and not processing_error_occurred:
                                             reply_message = f"🎤 הקלטה נשמרה!\n\n📝 {len(segments)} קטעים זוהו"
                                             if unknown_speakers_found:
                                                 reply_message += f"\n🔍 {len(unknown_speakers_found)} דוברים לא מזוהים - נשלחו קטעי אודיו לזיהוי"
