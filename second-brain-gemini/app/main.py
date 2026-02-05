@@ -830,7 +830,7 @@ async def webhook(request: Request, background_tasks: BackgroundTasks):
                                                             caption = f"🔊 זוהה דובר חדש: *{speaker}*. מי זה/זו? (הגב עם השם)"
                                                             
                                                             print(f"📤 Attempting to send audio slice via {whatsapp_provider.get_provider_name()}...")
-                                                            print(f"   Speaker: {speaker}, Duration: {duration_ms}ms")
+                                                            print(f"   Speaker: {speaker}, Duration: {slice_length_ms}ms")
                                                             audio_result = whatsapp_provider.send_audio(
                                                                 audio_path=slice_path,
                                                                 caption=caption,
