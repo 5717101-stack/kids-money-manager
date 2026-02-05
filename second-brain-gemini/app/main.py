@@ -734,24 +734,23 @@ async def webhook(request: Request, background_tasks: BackgroundTasks):
                                                                 # Mark this speaker as processed - we've sent their sample
                                                                 processed_speakers.add(speaker)
                                                                 print(f"✅ Added '{speaker}' to processed_speakers set")
+                                                                
+                                                                # IMPORTANT: Don't delete slice file immediately - keep it for voice imprinting
+                                                                # File will be cleaned up after user replies with person name, or after timeout
+                                                                print(f"📝 Keeping slice file for voice imprinting: {slice_path}")
+                                                                # TODO: Add cleanup task for files older than X hours if user doesn't reply
                                                             else:
                                                                 print(f"⚠️  Failed to send audio slice: {audio_result.get('error')}")
                                                                 print(f"   Full error response: {audio_result}")
                                                                 # Don't mark as processed if send failed - allow retry
-                                                            
-                                                            # IMPORTANT: Don't delete slice file immediately - keep it for voice imprinting
-                                                            # File will be cleaned up after user replies with person name, or after timeout
-                                                            print(f"📝 Keeping slice file for voice imprinting: {slice_path}")
-                                                            
-                                                            # TODO: Add cleanup task for files older than X hours if user doesn't reply
-                                                        else:
-                                                            # If send failed, cleanup immediately
-                                                            try:
-                                                                if os.path.exists(slice_path):
-                                                                    os.unlink(slice_path)
-                                                                    print(f"🗑️  Cleaned up slice file after failed send: {slice_path}")
-                                                            except Exception as cleanup_error:
-                                                                print(f"⚠️  Failed to cleanup slice file: {cleanup_error}")
+                                                                
+                                                                # If send failed, cleanup immediately
+                                                                try:
+                                                                    if os.path.exists(slice_path):
+                                                                        os.unlink(slice_path)
+                                                                        print(f"🗑️  Cleaned up slice file after failed send: {slice_path}")
+                                                                except Exception as cleanup_error:
+                                                                    print(f"⚠️  Failed to cleanup slice file: {cleanup_error}")
                                                     
                                                     except FileNotFoundError:
                                                         print(f"❌ ERROR: FFmpeg is likely missing on the server (during export).")
