@@ -237,7 +237,7 @@ class MetaWhatsAppService:
             contacts = result_data.get('contacts', [])
             
             print(f"✅ WhatsApp message sent successfully via Meta API!")
-            print(f"   Message ID: {message_id}")
+            print(f"   Message ID (wam_id): {message_id}")
             if contacts:
                 contact = contacts[0]
                 print(f"   Recipient: {contact.get('wa_id', 'N/A')}")
@@ -252,6 +252,7 @@ class MetaWhatsAppService:
                     "success": False,
                     "error": error_msg,
                     "message_id": message_id,
+                    "wam_id": message_id,  # Alias for consistency
                     "response": result_data,
                     "message": f"Meta API returned error: {error_msg}"
                 }
@@ -259,6 +260,7 @@ class MetaWhatsAppService:
             return {
                 "success": True,
                 "message_id": message_id,
+                "wam_id": message_id,  # Alias for consistency (WhatsApp Message ID)
                 "status": "sent",
                 "response": result_data,
                 "message": "WhatsApp message sent successfully via Meta API"
@@ -501,10 +503,11 @@ class MetaWhatsAppService:
                 }
             
             print(f"✅ Audio file sent via Meta WhatsApp API!")
-            print(f"   Message ID: {message_id}")
+            print(f"   Message ID (wam_id): {message_id}")
             print(f"   Media ID: {media_id}")
             
             # Only send caption AFTER audio is successfully sent and verified
+            caption_message_id = None
             if caption:
                 print(f"📝 Sending caption after audio: {caption[:50]}...")
                 caption_payload = {
@@ -522,10 +525,17 @@ class MetaWhatsAppService:
                 else:
                     print(f"✅ Caption sent successfully")
                     caption_response.raise_for_status()
+                    caption_result = caption_response.json()
+                    caption_messages = caption_result.get('messages', [])
+                    if caption_messages:
+                        caption_message_id = caption_messages[0].get('id')
+                        print(f"   Caption Message ID (wam_id): {caption_message_id}")
             
             return {
                 "success": True,
                 "message_id": message_id,
+                "wam_id": message_id,  # Return audio message ID (primary message)
+                "caption_message_id": caption_message_id,  # Caption message ID if sent
                 "media_id": media_id,
                 "status": "sent",
                 "message": "Audio file sent successfully via Meta API"

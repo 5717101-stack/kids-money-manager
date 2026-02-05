@@ -386,6 +386,128 @@ class DriveMemoryService:
             'filename': filename
         }
     
+    def upload_voice_signature(self, file_path: str, person_name: str) -> Optional[str]:
+        """
+        Upload a voice signature (audio sample) to the Voice_Signatures folder in Drive.
+        
+        Args:
+            file_path: Path to the audio file on disk
+            person_name: Name of the person (will be sanitized and used as filename)
+        
+        Returns:
+            File ID of the uploaded file, or None if upload failed
+        """
+        if not self.is_configured or not self.service:
+            logger.warning("⚠️  Drive Memory Service not configured. Cannot upload voice signature.")
+            return None
+        
+        # Refresh credentials if needed before API call
+        self._refresh_credentials_if_needed()
+        
+        # Sanitize person name for filename (remove invalid characters)
+        import re
+        sanitized_name = re.sub(r'[^\w\s-]', '', person_name).strip()
+        sanitized_name = re.sub(r'[-\s]+', '_', sanitized_name)  # Replace spaces/hyphens with underscore
+        if not sanitized_name:
+            sanitized_name = "unknown_person"
+        
+        filename = f"{sanitized_name}.mp3"
+        
+        print(f"🎤 Uploading voice signature for '{person_name}' as '{filename}'...")
+        
+        # Ensure Voice_Signatures folder exists
+        voice_signatures_folder_id = self._ensure_voice_signatures_folder()
+        if not voice_signatures_folder_id:
+            logger.error("❌ Cannot upload voice signature: Voice_Signatures folder not available")
+            return None
+        
+        # Read audio file
+        try:
+            with open(file_path, 'rb') as f:
+                file_content = f.read()
+            print(f"✅ Audio file read successfully. Size: {len(file_content)} bytes")
+        except Exception as e:
+            logger.error(f"❌ Error reading audio file: {e}")
+            return None
+        
+        file_obj = io.BytesIO(file_content)
+        
+        # Upload to Drive
+        file_metadata = {
+            'name': filename,
+            'parents': [voice_signatures_folder_id]
+        }
+        
+        media = MediaIoBaseUpload(
+            file_obj,
+            mimetype='audio/mpeg',
+            resumable=False
+        )
+        
+        try:
+            file = self.service.files().create(
+                body=file_metadata,
+                media_body=media,
+                fields='id'
+            ).execute()
+            
+            file_id = file.get('id')
+            logger.info(f"✅ Uploaded voice signature: {filename} (ID: {file_id})")
+            print(f"✅ Voice signature uploaded successfully. File ID: {file_id}")
+            return file_id
+        except Exception as e:
+            logger.error(f"❌ Error uploading voice signature: {e}")
+            print(f"❌ Error uploading voice signature: {e}")
+            return None
+    
+    def _ensure_voice_signatures_folder(self) -> Optional[str]:
+        """
+        Ensure the Voice_Signatures subfolder exists in the main memory folder.
+        Creates it if it doesn't exist.
+        
+        Returns:
+            Folder ID of Voice_Signatures, or None if creation failed
+        """
+        if not self.is_configured or not self.service:
+            return None
+        
+        # Refresh credentials if needed before API call
+        self._refresh_credentials_if_needed()
+        
+        try:
+            # Check if Voice_Signatures folder already exists
+            query = f"name = 'Voice_Signatures' and '{self.folder_id}' in parents and mimeType = 'application/vnd.google-apps.folder' and trashed = false"
+            results = self.service.files().list(
+                q=query,
+                fields="files(id, name)"
+            ).execute()
+            
+            files = results.get('files', [])
+            if files:
+                folder_id = files[0]['id']
+                logger.info(f"✅ Voice_Signatures folder already exists (ID: {folder_id})")
+                return folder_id
+            
+            # Create Voice_Signatures folder
+            folder_metadata = {
+                'name': 'Voice_Signatures',
+                'mimeType': 'application/vnd.google-apps.folder',
+                'parents': [self.folder_id]
+            }
+            
+            folder = self.service.files().create(
+                body=folder_metadata,
+                fields='id'
+            ).execute()
+            
+            folder_id = folder.get('id')
+            logger.info(f"✅ Created Voice_Signatures folder (ID: {folder_id})")
+            return folder_id
+            
+        except Exception as e:
+            logger.error(f"❌ Error ensuring Voice_Signatures folder: {e}")
+            return None
+    
     def _find_memory_file(self) -> Optional[str]:
         """
         Find the memory file in the configured Drive folder.

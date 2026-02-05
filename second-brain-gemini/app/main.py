@@ -48,6 +48,10 @@ else:
 # Idempotency: Track processed WhatsApp message IDs to prevent duplicate processing
 # Use deque with maxlen to automatically limit memory usage (keeps last 1000 message IDs)
 processed_message_ids = deque(maxlen=1000)
+
+# Voice Imprinting: Track pending speaker identifications
+# Key: message_id (wam_id), Value: file_path (temporary audio slice file)
+pending_identifications = {}
 _processed_ids_lock = Lock()  # Thread-safe access to processed_message_ids
 
 def is_message_processed(message_id: str) -> bool:
@@ -718,8 +722,15 @@ async def webhook(request: Request, background_tasks: BackgroundTasks):
                                                             )
                                                             
                                                             if audio_result.get('success'):
+                                                                sent_msg_id = audio_result.get('wam_id') or audio_result.get('message_id')
                                                                 print(f"✅ Sent audio slice to user for speaker identification")
-                                                                print(f"   Message ID: {audio_result.get('message_id', 'N/A')}")
+                                                                print(f"   Message ID (wam_id): {sent_msg_id}")
+                                                                
+                                                                # Store message_id -> file_path mapping for voice imprinting
+                                                                if sent_msg_id:
+                                                                    pending_identifications[sent_msg_id] = slice_path
+                                                                    print(f"📝 Stored pending identification: {sent_msg_id} -> {slice_path}")
+                                                                
                                                                 # Mark this speaker as processed - we've sent their sample
                                                                 processed_speakers.add(speaker)
                                                                 print(f"✅ Added '{speaker}' to processed_speakers set")
