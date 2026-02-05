@@ -568,21 +568,29 @@ Here is structured data about the user. You MUST use this to answer personal que
             if reference_voice_files:
                 # MULTIMODAL VOICE COMPARISON: Use Forensic Analyst prompt with physical mapping
                 print("🔬 Using Forensic Analyst mode with multimodal voice comparison")
+                print(f"   📊 Reference voices available: {[rv['name'] for rv in reference_voice_files]}")
                 
                 # Start with the forensic analyst system prompt
                 prompt = FORENSIC_ANALYST_PROMPT
                 
                 # Add explicit physical mapping for each reference voice
-                prompt += "\n\n**REFERENCE VOICE SAMPLES (Physical Mapping):**\n"
-                prompt += "The following audio files are reference samples of known voices.\n"
-                prompt += "Compare the acoustic characteristics of speakers in the PRIMARY CONVERSATION to these references:\n\n"
+                prompt += "\n\n" + "="*50 + "\n"
+                prompt += "**REFERENCE VOICE SAMPLES - ACOUSTIC FINGERPRINTS:**\n"
+                prompt += "="*50 + "\n\n"
+                prompt += "The following audio files are KNOWN voice samples.\n"
+                prompt += "Listen to each one carefully and memorize their acoustic characteristics.\n\n"
                 
                 for i, rv in enumerate(reference_voice_files, 1):
-                    prompt += f"- **Reference Audio {i}** is the voice of **{rv['name']}**\n"
+                    prompt += f"📌 **Reference Audio {i}** = Voice of **{rv['name']}**\n"
+                    prompt += f"   (This audio clip belongs to {rv['name']} - use this to compare)\n\n"
                 
-                prompt += "\n**PRIMARY CONVERSATION:**\n"
-                prompt += "The main audio file to transcribe follows after all the reference samples.\n"
-                prompt += "Compare each speaker in this conversation to the reference samples above.\n"
+                prompt += "\n" + "="*50 + "\n"
+                prompt += "**PRIMARY CONVERSATION TO ANALYZE:**\n"
+                prompt += "="*50 + "\n"
+                prompt += "The main audio file follows after all reference samples.\n"
+                prompt += "Compare EACH speaker in this conversation to the reference samples.\n"
+                prompt += "If voice matches reference with 90%+ confidence → use that name.\n"
+                prompt += "If NO match with 90%+ confidence → use 'Unknown Speaker X'.\n\n"
                 
                 contents.append(prompt)
             else:
