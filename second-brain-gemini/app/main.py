@@ -738,14 +738,20 @@ async def webhook(request: Request, background_tasks: BackgroundTasks):
                                                                 print(f"⚠️  Failed to send audio slice: {audio_result.get('error')}")
                                                                 print(f"   Full error response: {audio_result}")
                                                                 # Don't mark as processed if send failed - allow retry
-                                                        
-                                                        # Cleanup slice file (only after successful send or confirmed failure)
-                                                        try:
-                                                            if os.path.exists(slice_path):
-                                                                os.unlink(slice_path)
-                                                                print(f"🗑️  Cleaned up slice file: {slice_path}")
-                                                        except Exception as cleanup_error:
-                                                            print(f"⚠️  Failed to cleanup slice file: {cleanup_error}")
+                                                            
+                                                            # IMPORTANT: Don't delete slice file immediately - keep it for voice imprinting
+                                                            # File will be cleaned up after user replies with person name, or after timeout
+                                                            print(f"📝 Keeping slice file for voice imprinting: {slice_path}")
+                                                            
+                                                            # TODO: Add cleanup task for files older than X hours if user doesn't reply
+                                                        else:
+                                                            # If send failed, cleanup immediately
+                                                            try:
+                                                                if os.path.exists(slice_path):
+                                                                    os.unlink(slice_path)
+                                                                    print(f"🗑️  Cleaned up slice file after failed send: {slice_path}")
+                                                            except Exception as cleanup_error:
+                                                                print(f"⚠️  Failed to cleanup slice file: {cleanup_error}")
                                                     
                                                     except FileNotFoundError:
                                                         print(f"❌ ERROR: FFmpeg is likely missing on the server (during export).")
@@ -865,6 +871,61 @@ async def webhook(request: Request, background_tasks: BackgroundTasks):
                                 # Process message with memory
                                 elif whatsapp_provider and message_type == "text" and message_body:
                                     try:
+                                        # VOICE IMPRINTING: Check if this is a reply to a speaker identification message
+                                        context = message.get("context", {})
+                                        replied_message_id = context.get("id") if context else None
+                                        
+                                        if replied_message_id and replied_message_id in pending_identifications:
+                                            # This is a reply to a speaker identification request
+                                            file_path = pending_identifications[replied_message_id]
+                                            person_name = message_body.strip()
+                                            
+                                            print(f"🎤 Voice Imprinting: User identified speaker as '{person_name}'")
+                                            print(f"   Replying to message ID: {replied_message_id}")
+                                            print(f"   Audio file path: {file_path}")
+                                            
+                                            # Check if file still exists (might have been cleaned up)
+                                            if os.path.exists(file_path):
+                                                # Upload voice signature to Drive
+                                                file_id = drive_memory_service.upload_voice_signature(
+                                                    file_path=file_path,
+                                                    person_name=person_name
+                                                )
+                                                
+                                                if file_id:
+                                                    # Send confirmation message
+                                                    confirmation = f"✅ למדתי! הקול של *{person_name}* נשמר במערכת."
+                                                    whatsapp_provider.send_whatsapp(
+                                                        message=confirmation,
+                                                        to=f"+{from_number}"
+                                                    )
+                                                    print(f"✅ Voice signature saved for '{person_name}' (File ID: {file_id})")
+                                                else:
+                                                    print(f"⚠️  Failed to upload voice signature for '{person_name}'")
+                                                    whatsapp_provider.send_whatsapp(
+                                                        message="⚠️  שגיאה בשמירת הקול. נסה שוב.",
+                                                        to=f"+{from_number}"
+                                                    )
+                                                
+                                                # Cleanup file after successful upload
+                                                try:
+                                                    os.unlink(file_path)
+                                                    print(f"🗑️  Cleaned up slice file after voice imprinting: {file_path}")
+                                                except Exception as cleanup_error:
+                                                    print(f"⚠️  Failed to cleanup slice file: {cleanup_error}")
+                                                
+                                                # Remove from pending identifications
+                                                del pending_identifications[replied_message_id]
+                                                print(f"✅ Removed {replied_message_id} from pending_identifications")
+                                            else:
+                                                print(f"⚠️  Audio file no longer exists: {file_path}")
+                                                print(f"   File may have been cleaned up before user replied")
+                                                # Remove from pending anyway
+                                                del pending_identifications[replied_message_id]
+                                            
+                                            # Don't process as regular chat message - this was a voice imprinting reply
+                                            continue
+                                        
                                         # CRITICAL: Get memory at the very start to trigger cache refresh check
                                         # This ensures we detect manual edits before processing the message
                                         memory = drive_memory_service.get_memory()
