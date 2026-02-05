@@ -640,6 +640,8 @@ async def webhook(request: Request, background_tasks: BackgroundTasks):
                                                             else:
                                                                 print(f"⚠️  Failed to send audio slice: {audio_result.get('error')}")
                                                                 print(f"   Full error response: {audio_result}")
+                                                                # DO NOT send fallback text message - we want audio, not text
+                                                                # The user should only receive audio, not JSON/text fallback
                                                         
                                                         # Cleanup slice file (only after successful send or confirmed failure)
                                                         try:

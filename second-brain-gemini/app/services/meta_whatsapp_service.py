@@ -463,25 +463,7 @@ class MetaWhatsAppService:
                 }
             }
             
-            # Add caption if provided (as a separate text message before audio)
-            if caption:
-                print(f"📝 Sending caption: {caption[:50]}...")
-                caption_payload = {
-                    "messaging_product": "whatsapp",
-                    "to": recipient,
-                    "type": "text",
-                    "text": {
-                        "body": caption
-                    }
-                }
-                caption_response = requests.post(message_url, json=caption_payload, headers=message_headers)
-                if caption_response.status_code != 200:
-                    print(f"⚠️  Caption send failed: {caption_response.status_code} - {caption_response.text}")
-                else:
-                    print(f"✅ Caption sent successfully")
-                    caption_response.raise_for_status()
-            
-            # Send audio message
+            # Send audio message FIRST (before caption) to ensure audio is the primary message
             print(f"📤 Sending audio message to {recipient}...")
             print(f"   Media ID: {media_id}")
             response = requests.post(message_url, json=payload, headers=message_headers)
@@ -489,6 +471,7 @@ class MetaWhatsAppService:
             if response.status_code != 200:
                 error_detail = response.text
                 print(f"❌ Audio message send failed with status {response.status_code}: {error_detail}")
+                # If audio send fails, DO NOT send caption as fallback - return error immediately
                 return {
                     "success": False,
                     "error": f"Send failed: HTTP {response.status_code}",
@@ -501,6 +484,25 @@ class MetaWhatsAppService:
             
             print(f"✅ Audio message sent successfully")
             print(f"   Response: {result_data}")
+            
+            # Only send caption AFTER audio is successfully sent
+            if caption:
+                print(f"📝 Sending caption after audio: {caption[:50]}...")
+                caption_payload = {
+                    "messaging_product": "whatsapp",
+                    "to": recipient,
+                    "type": "text",
+                    "text": {
+                        "body": caption
+                    }
+                }
+                caption_response = requests.post(message_url, json=caption_payload, headers=message_headers)
+                if caption_response.status_code != 200:
+                    print(f"⚠️  Caption send failed: {caption_response.status_code} - {caption_response.text}")
+                    # Don't fail the whole operation if caption fails - audio was sent successfully
+                else:
+                    print(f"✅ Caption sent successfully")
+                    caption_response.raise_for_status()
             
             message_id = result_data.get('messages', [{}])[0].get('id')
             
