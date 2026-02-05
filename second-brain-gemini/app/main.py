@@ -594,6 +594,11 @@ async def webhook(request: Request, background_tasks: BackgroundTasks):
                                         
                                         print("🤖 Processing audio with Gemini...")
                                         
+                                        # Initialize variables that will be used later (even if processing fails)
+                                        segments = []
+                                        unknown_speakers_found = []
+                                        success = False
+                                        
                                         # Retrieve voice signatures for speaker identification
                                         reference_voices = []
                                         if drive_memory_service.is_configured:
@@ -905,20 +910,23 @@ async def webhook(request: Request, background_tasks: BackgroundTasks):
                                             import traceback
                                             traceback.print_exc()
                                         
-                                        # Send confirmation message
-                                        reply_message = f"🎤 הקלטה נשמרה!\n\n📝 {len(segments)} קטעים זוהו"
-                                        if unknown_speakers_found:
-                                            reply_message += f"\n🔍 {len(unknown_speakers_found)} דוברים לא מזוהים - נשלחו קטעי אודיו לזיהוי"
-                                        
-                                        reply_result = whatsapp_provider.send_whatsapp(
-                                            message=reply_message,
-                                            to=f"+{from_number}"
-                                        )
-                                        
-                                        if reply_result.get('success'):
-                                            print("✅ Confirmation sent to user")
-                                        else:
-                                            print(f"⚠️  Failed to send confirmation: {reply_result.get('error')}")
+                                        # Send confirmation message (only if processing succeeded and we have segments)
+                                        if segments and success:
+                                            reply_message = f"🎤 הקלטה נשמרה!\n\n📝 {len(segments)} קטעים זוהו"
+                                            if unknown_speakers_found:
+                                                reply_message += f"\n🔍 {len(unknown_speakers_found)} דוברים לא מזוהים - נשלחו קטעי אודיו לזיהוי"
+                                            
+                                            reply_result = whatsapp_provider.send_whatsapp(
+                                                message=reply_message,
+                                                to=f"+{from_number}"
+                                            )
+                                            
+                                            if reply_result.get('success'):
+                                                print("✅ Confirmation sent to user")
+                                            else:
+                                                print(f"⚠️  Failed to send confirmation: {reply_result.get('error')}")
+                                        elif not segments:
+                                            print("⚠️  No segments to send confirmation - processing may have failed")
                                         
                                         if not success:
                                             print("⚠️  Failed to save audio interaction to memory")
