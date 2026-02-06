@@ -177,50 +177,50 @@ class CursorBridge:
             return False
     
     def trigger_composer(self, content: str) -> bool:
-        """Trigger Cursor Composer and type the content."""
+        """Trigger Cursor AI Agent and execute the command."""
         if not PYAUTOGUI_AVAILABLE:
-            print("❌ pyautogui not available. Cannot trigger Composer.")
+            print("❌ pyautogui not available. Cannot trigger Agent.")
             print(f"📋 Task content:\n{content}")
             return False
         
         try:
-            # Trigger Composer with Cmd+I
-            print("⌨️  Triggering Composer (Cmd+I)...")
-            pyautogui.hotkey('command', 'i')
-            time.sleep(0.8)  # Wait for Composer to open
+            # Step 1: Open the AI Chat panel with Cmd+L
+            print("⌨️  Opening AI Chat panel (Cmd+L)...")
+            pyautogui.hotkey('command', 'l')
+            time.sleep(1.0)  # Wait for panel to open
             
-            # Type the content
+            # Step 2: Switch to Agent mode with Cmd+. (period)
+            # This toggles Agent mode in Cursor
+            print("⌨️  Switching to Agent mode (Cmd+.)...")
+            pyautogui.hotkey('command', '.')
+            time.sleep(0.5)
+            
+            # Step 3: Type the content
             print("⌨️  Typing content...")
-            # Use pyautogui.write for ASCII, but for Hebrew we need clipboard
-            if any('\u0590' <= c <= '\u05EA' for c in content):
-                # Hebrew detected - use clipboard
-                print("📝 Hebrew detected - using clipboard method...")
-                import subprocess
-                process = subprocess.Popen(
-                    ['pbcopy'],
-                    stdin=subprocess.PIPE,
-                    env={'LANG': 'en_US.UTF-8'}
-                )
-                process.communicate(content.encode('utf-8'))
-                
-                time.sleep(0.2)
-                pyautogui.hotkey('command', 'v')  # Paste
-            else:
-                # ASCII content - type directly
-                pyautogui.typewrite(content, interval=0.01)
+            # Use clipboard for all content (more reliable)
+            import subprocess
+            process = subprocess.Popen(
+                ['pbcopy'],
+                stdin=subprocess.PIPE,
+                env={'LANG': 'en_US.UTF-8'}
+            )
+            process.communicate(content.encode('utf-8'))
+            
+            time.sleep(0.2)
+            pyautogui.hotkey('command', 'v')  # Paste
             
             time.sleep(0.5)
             
-            # Press Cmd+Enter to EXECUTE the command in Cursor Composer
-            # Regular Enter just adds a new line - Cmd+Enter actually runs it!
-            print("⌨️  Executing (Cmd+Enter)...")
-            pyautogui.hotkey('command', 'enter')
+            # Step 4: Press Enter to send the message to Agent
+            # In the chat panel, Enter sends the message
+            print("⌨️  Sending to Agent (Enter)...")
+            pyautogui.press('enter')
             
-            print("✅ Composer triggered and EXECUTED!")
+            print("✅ Agent triggered and command sent!")
             return True
             
         except Exception as e:
-            print(f"❌ Error triggering Composer: {e}")
+            print(f"❌ Error triggering Agent: {e}")
             import traceback
             traceback.print_exc()
             return False
