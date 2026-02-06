@@ -585,6 +585,14 @@ class ExpertAnalysisService:
         raw = analysis_result.get("raw_analysis", "")
         timestamp = analysis_result.get("timestamp_display", "")
         
+        # Debug logging
+        print(f"📊 [format_for_whatsapp] Formatting expert analysis:")
+        print(f"   Persona: {persona}")
+        print(f"   Context: {context.get('primary_category', 'N/A')}")
+        print(f"   raw_analysis length: {len(raw)} chars")
+        if not raw:
+            print("   ⚠️  WARNING: raw_analysis is EMPTY!")
+        
         # Build message with RTL-friendly header
         message = ""
         

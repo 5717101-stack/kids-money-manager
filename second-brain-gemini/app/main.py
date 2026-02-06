@@ -1097,6 +1097,9 @@ def process_audio_in_background(
             from app.services.expert_analysis_service import expert_analysis_service
             import asyncio
             
+            print(f"   expert_analysis_service.is_configured: {expert_analysis_service.is_configured}")
+            print(f"   segments count: {len(segments) if segments else 0}")
+            
             if expert_analysis_service.is_configured and segments:
                 # Build voice map from known speakers
                 current_voice_map = {}
@@ -1432,11 +1435,21 @@ def process_audio_in_background(
         # ============================================================
         # MESSAGE 1: EXPERT SUMMARY (Primary notification)
         # ============================================================
+        # DEBUG: Log what we have before deciding which message to send
+        print(f"📊 [WhatsApp] Decision point:")
+        print(f"   expert_analysis_result is None: {expert_analysis_result is None}")
+        if expert_analysis_result:
+            print(f"   expert_analysis_result.get('success'): {expert_analysis_result.get('success')}")
+            print(f"   expert_analysis_result.get('persona'): {expert_analysis_result.get('persona')}")
+            raw_len = len(expert_analysis_result.get('raw_analysis', ''))
+            print(f"   raw_analysis length: {raw_len} chars")
+        
         if whatsapp_provider:
             if expert_analysis_result and expert_analysis_result.get('success'):
                 # Use expert analysis as primary message
                 from app.services.expert_analysis_service import expert_analysis_service
                 expert_message = expert_analysis_service.format_for_whatsapp(expert_analysis_result)
+                print(f"   📝 Expert message length: {len(expert_message)} chars")
                 
                 # Add speaker info header
                 header = "✅ *ההקלטה נשמרה ונותחה!*\n\n"
@@ -1450,18 +1463,53 @@ def process_audio_in_background(
                 header += "\n\n"
                 
                 full_message = header + expert_message
+                print(f"   📤 Total message length: {len(full_message)} chars")
                 
-                # Send expert summary
-                reply_result = whatsapp_provider.send_whatsapp(
-                    message=full_message,
-                    to=f"+{from_number}"
-                )
-                if reply_result.get('success'):
-                    print("✅ [WhatsApp] Message 1 (Expert Summary) sent")
+                # WhatsApp has a 4096 character limit per message
+                # If message is too long, split into parts
+                if len(full_message) > 4000:
+                    print(f"   ⚠️  Message too long, splitting into parts...")
+                    
+                    # Send header + first part
+                    first_part = full_message[:3800]
+                    # Find a good breaking point (line break)
+                    last_newline = first_part.rfind('\n\n')
+                    if last_newline > 2000:
+                        first_part = full_message[:last_newline]
+                    
+                    reply_result = whatsapp_provider.send_whatsapp(
+                        message=first_part + "\n\n_(המשך בהודעה הבאה...)_",
+                        to=f"+{from_number}"
+                    )
+                    if reply_result.get('success'):
+                        print("✅ [WhatsApp] Message 1a (Expert Summary Part 1) sent")
+                    
+                    # Send second part
+                    import time
+                    time.sleep(0.5)  # Small delay between messages
+                    second_part = "_(המשך)_\n\n" + full_message[len(first_part):].strip()
+                    
+                    reply_result = whatsapp_provider.send_whatsapp(
+                        message=second_part,
+                        to=f"+{from_number}"
+                    )
+                    if reply_result.get('success'):
+                        print("✅ [WhatsApp] Message 1b (Expert Summary Part 2) sent")
+                    else:
+                        print(f"⚠️  [WhatsApp] Failed to send part 2: {reply_result.get('error')}")
                 else:
-                    print(f"⚠️  [WhatsApp] Failed to send expert summary: {reply_result.get('error')}")
+                    # Single message - send as is
+                    reply_result = whatsapp_provider.send_whatsapp(
+                        message=full_message,
+                        to=f"+{from_number}"
+                    )
+                    if reply_result.get('success'):
+                        print("✅ [WhatsApp] Message 1 (Expert Summary) sent")
+                    else:
+                        print(f"⚠️  [WhatsApp] Failed to send expert summary: {reply_result.get('error')}")
             else:
                 # Fallback: Basic summary if expert analysis failed
+                print(f"   ⚠️  Using FALLBACK (basic summary) - expert analysis not available")
                 reply_message = "✅ *ההקלטה נשמרה וסוכמה בהצלחה!*\n\n"
                 reply_message += "👥 *משתתפים:*\n"
                 
