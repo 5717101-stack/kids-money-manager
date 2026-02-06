@@ -338,34 +338,24 @@ class ExpertAnalysisService:
     
     def _get_personas_for_context(self, context: Dict[str, Any]) -> List[str]:
         """
-        Map context categories to persona keys.
-        Returns 1-2 persona keys.
+        Map context categories to EXACTLY ONE persona key.
+        STRICT ROUTING: Never mix unrelated experts.
         """
         category_to_persona = {
-            "Parenting": "parenting",
-            "Relationship": "relationship",
-            "Business": "strategy",
-            "Leadership": "leadership",
-            "General": "general"
+            "Parenting": "parenting",      # -> Michal Dalyot / Adler
+            "Relationship": "relationship", # -> Esther Perel
+            "Business": "strategy",         # -> McKinsey + Tech
+            "Leadership": "strategy",       # -> McKinsey (leadership is business)
+            "General": "general"            # -> Generic assistant
         }
         
-        personas = []
-        
         primary = context.get("primary_category", "General")
-        if primary in category_to_persona:
-            personas.append(category_to_persona[primary])
+        persona = category_to_persona.get(primary, "general")
         
-        secondary = context.get("secondary_category")
-        if secondary and secondary in category_to_persona:
-            secondary_persona = category_to_persona[secondary]
-            if secondary_persona not in personas:
-                personas.append(secondary_persona)
+        print(f"🎯 [Persona Routing] Category '{primary}' -> Persona '{persona}'")
         
-        # Ensure at least one persona
-        if not personas:
-            personas.append("general")
-        
-        return personas[:2]  # Max 2 personas
+        # STRICT: Return only ONE persona, never mix
+        return [persona]
     
     def build_expert_prompt(
         self, 
@@ -375,123 +365,60 @@ class ExpertAnalysisService:
         context: Dict[str, Any]
     ) -> str:
         """
-        Build the comprehensive analysis prompt with:
-        - Multi-persona insights
-        - Deep attribution (who said what)
-        - Mandatory Kaizen feedback
+        Build CONCISE analysis prompt (McKinsey-style).
+        
+        STRICT CONSTRAINTS:
+        - Total output must be under 1400 characters
+        - Maximum 100 words for summary
+        - Only ONE expert persona
+        - Bullet points, no fluff
         """
-        # Get persona details
-        personas = [EXPERT_PERSONAS.get(pk, EXPERT_PERSONAS["general"]) for pk in persona_keys]
+        # Get the ONE persona
+        persona = EXPERT_PERSONAS.get(persona_keys[0], EXPERT_PERSONAS["general"])
         israel_time = get_israel_time()
+        speakers_str = ", ".join(speakers) if speakers else "לא זוהו"
         
-        # Build persona section
-        if len(personas) == 1:
-            persona_section = f"""**הפרסונה שלך:** {personas[0]['name']}
-
-**הגישה והמתודולוגיה:**
-{personas[0]['focus']}
-
-**הטון:** {personas[0]['tone']}
-
-**שאלות מפתח לניתוח:**
-{chr(10).join('- ' + q for q in personas[0].get('key_questions', []))}
-"""
-        else:
-            persona_section = f"""**הפרסונות שלך (שלב נקודות מבט משתיהן):**
-
-🔹 **{personas[0]['name']}:**
-{personas[0]['focus']}
-טון: {personas[0]['tone']}
-
-🔹 **{personas[1]['name']}:**
-{personas[1]['focus']}
-טון: {personas[1]['tone']}
-"""
+        # Truncate transcript if too long (keep first 2000 chars for context)
+        if len(transcript_text) > 2000:
+            transcript_text = transcript_text[:2000] + "\n...(המשך התמליל קוצר)"
         
-        # Build speakers list
-        speakers_str = ", ".join(speakers) if speakers else "לא זוהו דוברים"
-        
-        prompt = f"""אתה חבר במועצת המומחים של "המוח השני" (Second Brain).
-מטרתך לספק ניתוח עמוק ומפורט של השיחה, עם דגש על **מי אמר מה** (attribution).
+        prompt = f"""אתה {persona['short_name']} - יועץ בכיר.
 
-{persona_section}
+**משימה:** נתח את השיחה הבאה בסגנון מקינזי - תמציתי, חד, ישיר.
 
-**משתתפים בשיחה:** {speakers_str}
-**זמן הניתוח:** {israel_time.strftime('%d/%m/%Y %H:%M')} (שעון ישראל)
-**קטגוריה מזוהה:** {context.get('primary_category', 'כללי')}
+**משתתפים:** {speakers_str}
 
----
-
-**תמליל השיחה:**
+**תמליל:**
 {transcript_text}
 
 ---
 
 **הנחיות קריטיות:**
-1. 🇮🇱 **כתוב בעברית בלבד**
-2. 🏷️ **השתמש בשמות האמיתיים של הדוברים** - לא "דובר 1" או "Speaker 2"
-3. 📌 **ציין מי אמר מה** - כל תובנה חשובה צריכה לכלול attribution
-4. 🎯 **היה ספציפי ופרקטי** - תובנות שאפשר ליישם היום
-5. 📝 **RTL:** כשיש מילים באנגלית, התחל את המשפט בעברית
+1. כתוב בעברית בלבד
+2. השתמש בשמות הדוברים (לא "דובר 1")
+3. כשיש מילים באנגלית, התחל את המשפט בעברית
+4. **מגבלת אורך: סה"כ עד 1200 תווים!**
 
 ---
 
-**בצע ניתוח מקיף בפורמט הבא:**
+**פורמט התשובה (קצר ותמציתי!):**
 
-═══════════════════════════════
-🎭 **סנטימנט ואווירה**
-═══════════════════════════════
-[חיובי/שלילי/מעורב/מתוח - הסבר קצר מבוסס על מה שנאמר]
+🎯 **סנטימנט:** [מילה אחת + משפט קצר]
 
-═══════════════════════════════
-📋 **תקציר מנהלים**
-═══════════════════════════════
-[3-5 משפטים שמסכמים את עיקרי השיחה]
-**נושאים שנדונו:**
-• נושא 1: [מי העלה, מה הוחלט]
-• נושא 2: [מי העלה, מה הוחלט]
+📋 **תמצית:** (מקסימום 50 מילים)
+• [נקודה 1 - מי אמר מה]
+• [נקודה 2 - מי אמר מה]
 
-═══════════════════════════════
-👥 **מי אמר מה (Attribution)**
-═══════════════════════════════
-[לכל משתתף בשיחה:]
-**[שם]:**
-• עמדה/הצעה עיקרית: [ציטוט או סיכום]
-• תגובות מפתח: [ציטוט או סיכום]
-• סגנון תקשורת: [תיאור קצר]
+🔍 **תובנת {persona['short_name']}:** (משפט אחד!)
+[תובנה עמוקה אחת מנקודת המבט של המומחיות שלך]
 
-═══════════════════════════════
-🔍 **פינת המומחה** ({', '.join(p['short_name'] for p in personas)})
-═══════════════════════════════
-[2-3 תובנות עמוקות מנקודת המבט של הפרסונה/ות שלך]
-• **תובנה 1:** [מה קורה מתחת לפני השטח?]
-• **תובנה 2:** [מה הדינמיקה האמיתית?]
-• **תובנה 3 (אם רלוונטי):** [הזדמנות שמפספסים?]
+✅ **משימות:**
+• **[שם]**: [משימה]
+(אם אין: "אין משימות ספציפיות")
 
-═══════════════════════════════
-✅ **אקשן אייטמס**
-═══════════════════════════════
-[משימות ספציפיות עם אחראים:]
-• **[שם]**: [משימה קונקרטית]
-• **[שם]**: [משימה קונקרטית]
-[אם לא זוהו משימות ספציפיות: "לא זוהו משימות ספציפיות בשיחה זו"]
-
-═══════════════════════════════
-📈 **פידבק לצמיחה אישית (Kaizen)**
-═══════════════════════════════
-
-✅ **לשימור (מה היה טוב):**
-[1-2 התנהגויות, החלטות או דפוסי תקשורת חיוביים שראוי לשמר]
-• [התנהגות ספציפית + מי עשה אותה]
-[אם אין משהו בולט במיוחד: "אין נקודות בולטות לשימור בשיחה זו"]
-
-🎯 **לשיפור (הזדמנות לצמיחה):**
-[**חובה!** גם בשיחה מצוינת יש תמיד הזדמנות ל-Level Up]
-• [תחום ספציפי לשיפור + דוגמה מהשיחה]
-• [הצעה פרקטית ליישום]
-
-💭 **שאלה למחשבה:**
-[שאלה פרובוקטיבית אחת שתעזור לצמיחה אישית או לשיפור הדינמיקה]
+📈 **קאיזן:**
+✓ לשימור: [נקודה אחת חיובית]
+→ לשיפור: [הזדמנות אחת לצמיחה]
 """
         return prompt
     
@@ -557,11 +484,12 @@ class ExpertAnalysisService:
         print(f"📝 [Expert Analysis] Prompt length: {len(prompt)} chars")
         
         try:
+            # STRICT: Limit output to ~1200 chars (about 300 tokens)
             response = self.model.generate_content(
                 prompt,
                 generation_config={
-                    'temperature': 0.4,
-                    'max_output_tokens': 3000
+                    'temperature': 0.3,  # Lower = more focused
+                    'max_output_tokens': 500  # ~1200 chars max
                 }
             )
             
@@ -596,14 +524,15 @@ class ExpertAnalysisService:
     def format_for_whatsapp(self, analysis_result: Dict, include_header: bool = True) -> str:
         """
         Format the expert analysis for WhatsApp message.
-        RTL-friendly formatting with clear sections.
+        
+        STRICT: Total message must be under 1600 characters.
         
         Args:
             analysis_result: Result from analyze_transcript
             include_header: Whether to include the decorative header
             
         Returns:
-            Formatted WhatsApp message string
+            Formatted WhatsApp message string (max 1600 chars)
         """
         if not analysis_result.get("success"):
             error = analysis_result.get('error', 'שגיאה לא ידועה')
@@ -611,48 +540,35 @@ class ExpertAnalysisService:
         
         persona = analysis_result.get("persona", "עוזר אישי")
         context = analysis_result.get("context", {})
-        speakers = analysis_result.get("speakers", [])
         raw = analysis_result.get("raw_analysis", "")
-        timestamp = analysis_result.get("timestamp_display", "")
         
         # Debug logging
-        print(f"📊 [format_for_whatsapp] Formatting expert analysis:")
-        print(f"   Persona: {persona}")
-        print(f"   Context: {context.get('primary_category', 'N/A')}")
-        print(f"   raw_analysis length: {len(raw)} chars")
+        print(f"📊 [format_for_whatsapp] Raw analysis: {len(raw)} chars")
         if not raw:
             print("   ⚠️  WARNING: raw_analysis is EMPTY!")
         
-        # Build message with RTL-friendly header
+        # Build concise message - STRICT 1600 char limit
         message = ""
         
         if include_header:
-            message += f"🧠 *ניתוח מועצת המומחים*\n"
-            message += f"📊 פרסונה: *{persona}*\n"
-            message += f"🏷️ קטגוריה: {context.get('primary_category', 'כללי')}"
-            if context.get('secondary_category'):
-                message += f" + {context.get('secondary_category')}"
-            message += "\n"
-            if timestamp:
-                message += f"⏰ זמן: {timestamp} (שעון ישראל)\n"
-            message += "═" * 25 + "\n\n"
+            # Minimal header
+            category = context.get('primary_category', 'כללי')
+            message += f"🧠 *{persona}* | {category}\n"
+            message += "─" * 20 + "\n\n"
         
         # Add the raw analysis (already formatted by Gemini)
         message += raw
         
-        # Trim if too long for WhatsApp (4096 char limit, leave buffer)
-        if len(message) > 3800:
-            # Try to find a good breaking point
-            # Look for the last complete section before the limit
-            sections = message.split("═══════════════════════════════")
-            truncated = ""
-            for section in sections:
-                if len(truncated) + len(section) + 50 < 3700:
-                    truncated += section + "═══════════════════════════════"
-                else:
-                    break
-            message = truncated + "\n\n... (הניתוח המלא נשמר בדרייב)"
+        # STRICT: Hard limit at 1500 chars for WhatsApp reliability
+        if len(message) > 1500:
+            # Find last complete line before limit
+            cutoff = message[:1450].rfind('\n')
+            if cutoff > 1000:
+                message = message[:cutoff] + "\n\n_(קוצר)_"
+            else:
+                message = message[:1450] + "..."
         
+        print(f"📊 [format_for_whatsapp] Final message: {len(message)} chars")
         return message
     
     def save_analysis_to_drive(
