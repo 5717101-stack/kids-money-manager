@@ -365,60 +365,70 @@ class ExpertAnalysisService:
         context: Dict[str, Any]
     ) -> str:
         """
-        Build CONCISE analysis prompt (McKinsey-style).
+        Build DEEP analysis prompt with STRICT format.
         
-        STRICT CONSTRAINTS:
-        - Total output must be under 1400 characters
-        - Maximum 100 words for summary
-        - Only ONE expert persona
-        - Bullet points, no fluff
+        Structure (100 words total):
+        - Executive Summary: 30 words max
+        - Expert Insight: 50 words (ONE deep insight)
+        - Action Items: Mandatory if exist
+        - Kaizen: 1 preserve, 1 improve
         """
         # Get the ONE persona
         persona = EXPERT_PERSONAS.get(persona_keys[0], EXPERT_PERSONAS["general"])
-        israel_time = get_israel_time()
-        speakers_str = ", ".join(speakers) if speakers else "לא זוהו"
+        speakers_str = ", ".join(speakers) if speakers else "דוברים לא מזוהים"
+        category = context.get('primary_category', 'כללי')
         
-        # Truncate transcript if too long (keep first 2000 chars for context)
-        if len(transcript_text) > 2000:
-            transcript_text = transcript_text[:2000] + "\n...(המשך התמליל קוצר)"
+        # Keep more transcript for context (4000 chars)
+        if len(transcript_text) > 4000:
+            transcript_text = transcript_text[:4000] + "\n...(קוצר)"
         
-        prompt = f"""אתה {persona['short_name']} - יועץ בכיר.
+        # Build persona-specific insight question
+        insight_focus = {
+            "parenting": "מה הדינמיקה ההורית האמיתית? האם יש מאבקי כוח נסתרים? האם הגבולות ברורים?",
+            "relationship": "מה לא נאמר? איזה רגש נסתר מתחת לפני השטח? מה הדפוס החוזר?",
+            "strategy": "מה ה-ROI האמיתי? איפה הסיכון הגדול? מה ה-action הכי קריטי?",
+            "leadership": "מה ה-'Why' האמיתי? האם יש 'Circle of Safety'? מה יעורר השראה?",
+            "general": "מה עיקר השיחה ומה צריך לקרות הלאה?"
+        }.get(persona_keys[0], "מה התובנה העיקרית?")
+        
+        prompt = f"""אתה {persona['name']} - מומחה בתחומך.
 
-**משימה:** נתח את השיחה הבאה בסגנון מקינזי - תמציתי, חד, ישיר.
-
+**קטגוריה:** {category}
 **משתתפים:** {speakers_str}
 
-**תמליל:**
+**תמליל השיחה:**
 {transcript_text}
 
 ---
 
-**הנחיות קריטיות:**
-1. כתוב בעברית בלבד
-2. השתמש בשמות הדוברים (לא "דובר 1")
-3. כשיש מילים באנגלית, התחל את המשפט בעברית
-4. **מגבלת אורך: סה"כ עד 1200 תווים!**
+**המשימה שלך:** ספק ניתוח עמוק וממוקד. היה ספציפי - ציין מי אמר מה.
+
+**שאלת המפתח שלך:** {insight_focus}
 
 ---
 
-**פורמט התשובה (קצר ותמציתי!):**
+**פורמט התשובה (עברית, RTL):**
 
-🎯 **סנטימנט:** [מילה אחת + משפט קצר]
+🎯 סנטימנט: [חיובי/מתוח/מעורב] - [משפט אחד]
 
-📋 **תמצית:** (מקסימום 50 מילים)
-• [נקודה 1 - מי אמר מה]
-• [נקודה 2 - מי אמר מה]
+📋 תמצית (30 מילים):
+• [שם] העלה/הציע: [מה]
+• [שם] הגיב/הסכים: [מה]
+• ההחלטה/המסקנה: [מה]
 
-🔍 **תובנת {persona['short_name']}:** (משפט אחד!)
-[תובנה עמוקה אחת מנקודת המבט של המומחיות שלך]
+🔍 תובנת {persona['short_name']}:
+[2-3 משפטים עם תובנה עמוקה מנקודת המבט של {persona['short_name']}. 
+התייחס ל: {insight_focus}
+היה ספציפי - הפנה לדוגמאות מהשיחה.]
 
-✅ **משימות:**
-• **[שם]**: [משימה]
-(אם אין: "אין משימות ספציפיות")
+✅ משימות:
+• *[שם]*: [משימה קונקרטית]
+• *[שם]*: [משימה קונקרטית]
+(אם אין משימות ברורות: "לא זוהו משימות ספציפיות")
 
-📈 **קאיזן:**
-✓ לשימור: [נקודה אחת חיובית]
-→ לשיפור: [הזדמנות אחת לצמיחה]
+📈 קאיזן:
+✓ לשימור: [התנהגות/החלטה חיובית ספציפית שראינו בשיחה]
+→ לשיפור: [הזדמנות קונקרטית אחת לצמיחה + המלצה פרקטית]
 """
         return prompt
     
@@ -484,12 +494,12 @@ class ExpertAnalysisService:
         print(f"📝 [Expert Analysis] Prompt length: {len(prompt)} chars")
         
         try:
-            # STRICT: Limit output to ~1200 chars (about 300 tokens)
+            # Allow ~800 tokens for deeper analysis while staying under WhatsApp limit
             response = self.model.generate_content(
                 prompt,
                 generation_config={
-                    'temperature': 0.3,  # Lower = more focused
-                    'max_output_tokens': 500  # ~1200 chars max
+                    'temperature': 0.4,  # Balance creativity and focus
+                    'max_output_tokens': 800  # ~1600 chars for rich output
                 }
             )
             
@@ -547,26 +557,38 @@ class ExpertAnalysisService:
         if not raw:
             print("   ⚠️  WARNING: raw_analysis is EMPTY!")
         
-        # Build concise message - STRICT 1600 char limit
+        # Build message with minimal header
         message = ""
         
         if include_header:
-            # Minimal header
+            # Minimal but informative header
             category = context.get('primary_category', 'כללי')
-            message += f"🧠 *{persona}* | {category}\n"
-            message += "─" * 20 + "\n\n"
+            message += f"🧠 *{persona}*\n"
+            message += f"📂 {category}\n"
+            message += "─" * 18 + "\n\n"
         
-        # Add the raw analysis (already formatted by Gemini)
+        # Add the raw analysis (formatted by Gemini)
         message += raw
         
-        # STRICT: Hard limit at 1500 chars for WhatsApp reliability
-        if len(message) > 1500:
-            # Find last complete line before limit
-            cutoff = message[:1450].rfind('\n')
-            if cutoff > 1000:
-                message = message[:cutoff] + "\n\n_(קוצר)_"
+        # Ensure message fits WhatsApp (max ~4000, target ~2000)
+        # If over 2000, trim gracefully
+        if len(message) > 2000:
+            # Find a good breaking point at section boundary
+            for section_marker in ["📈 קאיזן", "✅ משימות", "🔍 תובנת"]:
+                cutoff = message.rfind(section_marker)
+                if 1200 < cutoff < 1900:
+                    message = message[:cutoff + 200]  # Include some of the section
+                    # Find the next newline to break cleanly
+                    next_newline = message.rfind('\n')
+                    if next_newline > 1200:
+                        message = message[:next_newline]
+                    message += "\n\n_(סיכום מקוצר - הניתוח המלא בדרייב)_"
+                    break
             else:
-                message = message[:1450] + "..."
+                # Fallback: just truncate at newline
+                cutoff = message[:1900].rfind('\n')
+                if cutoff > 1200:
+                    message = message[:cutoff] + "\n\n_(קוצר)_"
         
         print(f"📊 [format_for_whatsapp] Final message: {len(message)} chars")
         return message
