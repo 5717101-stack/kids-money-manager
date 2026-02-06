@@ -44,22 +44,33 @@ class ArchitectureAuditService:
     
     def __init__(self):
         self.api_key = settings.google_api_key
+        self.model = None
+        self.model_name = None
+        
         if self.api_key:
             genai.configure(api_key=self.api_key)
-            # Use Gemini 1.5 Flash for more reliable API access
-            # Note: 'gemini-1.5-pro' sometimes returns 404, flash is more stable
-            try:
-                self.model = genai.GenerativeModel('gemini-1.5-flash')
-                logger.info("✅ Using Gemini 1.5 Flash model")
-            except Exception as e:
-                logger.warning(f"⚠️  Could not init flash model: {e}, trying pro")
+            
+            # Try models in order of preference (same order as gemini_service.py)
+            models_to_try = [
+                'gemini-2.5-pro',          # Primary - stable and works
+                'gemini-2.0-flash',        # Fallback 1 - newer flash
+                'gemini-1.5-flash-latest', # Fallback 2 - flash with latest suffix
+                'gemini-pro',              # Fallback 3 - basic pro
+            ]
+            
+            for model_name in models_to_try:
                 try:
-                    self.model = genai.GenerativeModel('gemini-pro')
-                except Exception as e2:
-                    logger.error(f"❌ Could not init any model: {e2}")
-                    self.model = None
+                    self.model = genai.GenerativeModel(model_name)
+                    self.model_name = model_name
+                    logger.info(f"✅ Audit service using model: {model_name}")
+                    break
+                except Exception as e:
+                    logger.warning(f"⚠️  Could not init {model_name}: {e}")
+                    continue
+            
+            if not self.model:
+                logger.error("❌ Could not init any model for audit service")
         else:
-            self.model = None
             logger.warning("⚠️  Google API key not set - Audit service limited")
         
         self.is_configured = bool(self.api_key and self.model)

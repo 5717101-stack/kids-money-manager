@@ -180,16 +180,37 @@ class ExpertAnalysisService:
     
     def __init__(self):
         self.api_key = settings.google_api_key
+        self.model = None
+        self.model_name = None
+        
         if self.api_key:
             genai.configure(api_key=self.api_key)
-            try:
-                self.model = genai.GenerativeModel('gemini-1.5-flash')
-                logger.info("✅ שירות ניתוח המומחים אותחל עם Gemini 1.5 Flash")
-            except Exception as e:
-                logger.error(f"❌ שגיאה באתחול המודל: {e}")
-                self.model = None
+            
+            # Try models in order of preference (same as gemini_service.py)
+            # gemini-2.5-pro is the stable model that works
+            models_to_try = [
+                'gemini-2.5-pro',          # Primary - stable and works
+                'gemini-2.0-flash',        # Fallback 1 - newer flash
+                'gemini-1.5-flash-latest', # Fallback 2 - flash with latest suffix
+                'gemini-pro',              # Fallback 3 - basic pro
+            ]
+            
+            for model_name in models_to_try:
+                try:
+                    self.model = genai.GenerativeModel(model_name)
+                    self.model_name = model_name
+                    logger.info(f"✅ שירות ניתוח המומחים אותחל עם {model_name}")
+                    print(f"✅ [Expert Analysis] Model initialized: {model_name}")
+                    break
+                except Exception as e:
+                    logger.warning(f"⚠️  Could not init {model_name}: {e}")
+                    print(f"⚠️  [Expert Analysis] Model {model_name} failed: {e}")
+                    continue
+            
+            if not self.model:
+                logger.error("❌ לא הצלחתי לאתחל אף מודל")
+                print("❌ [Expert Analysis] All models failed to initialize!")
         else:
-            self.model = None
             logger.warning("⚠️  מפתח Google API לא מוגדר - ניתוח מומחים מושבת")
         
         self.is_configured = bool(self.api_key and self.model)
@@ -255,6 +276,7 @@ class ExpertAnalysisService:
 """
         
         try:
+            print(f"🔍 [Context Detection] Calling Gemini model: {self.model_name}")
             response = self.model.generate_content(
                 detection_prompt,
                 generation_config={
@@ -265,6 +287,7 @@ class ExpertAnalysisService:
             
             # Parse JSON response
             response_text = response.text.strip()
+            print(f"🔍 [Context Detection] Response received: {len(response_text)} chars")
             # Extract JSON from possible markdown code block
             if "```json" in response_text:
                 response_text = response_text.split("```json")[1].split("```")[0].strip()
@@ -529,8 +552,9 @@ class ExpertAnalysisService:
         persona_names = [p["name"] for p in personas]
         
         # Step 4: Build and run analysis
-        print("🧠 [Expert Analysis] Step 3/3: Running deep analysis...")
+        print(f"🧠 [Expert Analysis] Step 3/3: Running deep analysis with model: {self.model_name}")
         prompt = self.build_expert_prompt(persona_keys, transcript_text, speakers, context)
+        print(f"📝 [Expert Analysis] Prompt length: {len(prompt)} chars")
         
         try:
             response = self.model.generate_content(
@@ -542,6 +566,7 @@ class ExpertAnalysisService:
             )
             
             analysis_text = response.text if response.text else ""
+            print(f"✅ [Expert Analysis] Response received: {len(analysis_text)} chars")
             israel_time = get_israel_time()
             
             return {
@@ -557,10 +582,15 @@ class ExpertAnalysisService:
             
         except Exception as e:
             logger.error(f"❌ ניתוח מומחה נכשל: {e}")
+            print(f"❌ [Expert Analysis] FAILED: {e}")
+            print(f"   Model used: {self.model_name}")
+            import traceback
+            traceback.print_exc()
             return {
                 "success": False,
                 "error": str(e),
-                "persona": " + ".join(persona_names)
+                "persona": " + ".join(persona_names),
+                "model_used": self.model_name
             }
     
     def format_for_whatsapp(self, analysis_result: Dict, include_header: bool = True) -> str:
