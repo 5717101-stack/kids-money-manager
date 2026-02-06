@@ -126,7 +126,19 @@ class ArchitectureAuditService:
                 }
             )
             
-            findings = response.text if response.text else "לא התקבל מידע"
+            # Safe extraction of response.text (may throw if blocked)
+            try:
+                findings = response.text.strip() if response.text else ""
+            except (ValueError, AttributeError) as text_err:
+                print(f"   ⚠️ response.text access failed: {text_err}")
+                findings = ""
+            
+            if not findings or len(findings) < 20:
+                return {
+                    "success": False,
+                    "findings": "⚠️ סריקת שוק לא זמינה כרגע",
+                    "timestamp": get_israel_time().isoformat()
+                }
             
             return {
                 "success": True,
@@ -192,9 +204,23 @@ class ArchitectureAuditService:
                 }
             )
             
+            # Safe extraction of response.text
+            try:
+                comparison = response.text.strip() if response.text else ""
+            except (ValueError, AttributeError) as text_err:
+                print(f"   ⚠️ response.text access failed: {text_err}")
+                comparison = ""
+            
+            if not comparison or len(comparison) < 20:
+                return {
+                    "success": False,
+                    "comparison": "⚠️ השוואה לא זמינה כרגע",
+                    "timestamp": get_israel_time().isoformat()
+                }
+            
             return {
                 "success": True,
-                "comparison": response.text if response.text else "לא התקבלה השוואה",
+                "comparison": comparison,
                 "timestamp": get_israel_time().isoformat()
             }
             
@@ -203,7 +229,7 @@ class ArchitectureAuditService:
             return {
                 "success": False,
                 "error": str(e),
-                "comparison": f"⚠️ שגיאה בהשוואה: {str(e)[:50]}"
+                "comparison": "⚠️ השוואה לא זמינה כרגע"
             }
     
     # ================================================================

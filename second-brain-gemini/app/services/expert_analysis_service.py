@@ -285,8 +285,13 @@ class ExpertAnalysisService:
                 }
             )
             
-            # Parse JSON response
-            response_text = response.text.strip()
+            # Safe extraction of response.text
+            try:
+                response_text = response.text.strip() if response.text else ""
+            except (ValueError, AttributeError) as text_err:
+                print(f"   ⚠️ response.text access failed: {text_err}")
+                return self._fallback_context_detection(transcript_text)
+            
             print(f"🔍 [Context Detection] Response received: {len(response_text)} chars")
             # Extract JSON from possible markdown code block
             if "```json" in response_text:
@@ -511,7 +516,13 @@ class ExpertAnalysisService:
                     }
                 )
                 
-                analysis_text = response.text if response.text else ""
+                # Safe extraction of response.text
+                try:
+                    analysis_text = response.text.strip() if response.text else ""
+                except (ValueError, AttributeError) as text_err:
+                    print(f"   ⚠️ response.text access failed: {text_err}")
+                    analysis_text = ""
+                
                 print(f"   📝 Response: {len(analysis_text)} chars")
                 
                 # Check for empty response
@@ -611,34 +622,43 @@ class ExpertAnalysisService:
         message = ""
         
         if include_header:
-            # Minimal but informative header
+            # Minimal header - ONE line
             category = context.get('primary_category', 'כללי')
-            message += f"🧠 *{persona}*\n"
-            message += f"📂 {category}\n"
-            message += "─" * 18 + "\n\n"
+            message += f"🧠 *{persona}* | {category}\n\n"
         
         # Add the raw analysis (formatted by Gemini)
         message += raw
         
-        # Ensure message fits WhatsApp (max ~4000, target ~2000)
-        # If over 2000, trim gracefully
-        if len(message) > 2000:
-            # Find a good breaking point at section boundary
-            for section_marker in ["📈 קאיזן", "✅ משימות", "🔍 תובנת"]:
-                cutoff = message.rfind(section_marker)
-                if 1200 < cutoff < 1900:
-                    message = message[:cutoff + 200]  # Include some of the section
-                    # Find the next newline to break cleanly
-                    next_newline = message.rfind('\n')
-                    if next_newline > 1200:
-                        message = message[:next_newline]
-                    message += "\n\n_(סיכום מקוצר - הניתוח המלא בדרייב)_"
-                    break
+        # STRICT: Enforce 1200 char limit to prevent truncation
+        MAX_LENGTH = 1200
+        if len(message) > MAX_LENGTH:
+            print(f"   ⚠️ Message too long ({len(message)} chars), trimming to {MAX_LENGTH}")
+            
+            # Try to include Kaizen at the end
+            kaizen_start = message.find("📈 קאיזן")
+            
+            if kaizen_start > 0 and kaizen_start < MAX_LENGTH - 200:
+                # Kaizen fits within limit - keep from Kaizen onwards
+                before_kaizen = message[:kaizen_start].strip()
+                kaizen_section = message[kaizen_start:]
+                
+                # Trim before_kaizen to fit
+                available = MAX_LENGTH - len(kaizen_section) - 50
+                if len(before_kaizen) > available:
+                    # Find last complete line
+                    before_kaizen = before_kaizen[:available]
+                    last_newline = before_kaizen.rfind('\n')
+                    if last_newline > available * 0.5:
+                        before_kaizen = before_kaizen[:last_newline]
+                
+                message = before_kaizen + "\n\n" + kaizen_section
             else:
-                # Fallback: just truncate at newline
-                cutoff = message[:1900].rfind('\n')
-                if cutoff > 1200:
-                    message = message[:cutoff] + "\n\n_(קוצר)_"
+                # Kaizen too far or not found - just truncate
+                message = message[:MAX_LENGTH - 30]
+                last_newline = message.rfind('\n')
+                if last_newline > MAX_LENGTH * 0.7:
+                    message = message[:last_newline]
+                message += "\n\n_(קוצר)_"
         
         print(f"📊 [format_for_whatsapp] Final message: {len(message)} chars")
         return message
