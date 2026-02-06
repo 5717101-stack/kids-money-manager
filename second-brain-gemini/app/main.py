@@ -1788,14 +1788,8 @@ async def webhook(request: Request, background_tasks: BackgroundTasks):
                                         print("❌ WhatsApp API token not available")
                                         continue
                                     
-                                    # Send immediate acknowledgment to user
-                                    # This ensures 200 OK returns BEFORE processing starts
-                                    if whatsapp_provider:
-                                        whatsapp_provider.send_whatsapp(
-                                            message="🎙️ מקבל ומנתח את ההקלטה... זה ייקח רגע.",
-                                            to=f"+{from_number}"
-                                        )
-                                        print(f"✅ Sent acknowledgment to user")
+                                    # NOTE: Acknowledgment moved to process_audio_in_background 
+                                    # to avoid duplicate messages
                                     
                                     # Queue background processing - PREVENTS 502 TIMEOUT
                                     background_tasks.add_task(

@@ -343,24 +343,49 @@ class ExpertAnalysisService:
     
     def _get_personas_for_context(self, context: Dict[str, Any]) -> List[str]:
         """
-        Map context categories to EXACTLY ONE persona key.
-        STRICT ROUTING: Never mix unrelated experts.
+        Map context categories to 1-2 persona keys.
+        
+        Routing:
+        - Business/Tech → McKinsey + Sinek (if leadership)
+        - Parenting → Adler
+        - Relationship → Esther Perel
         """
         category_to_persona = {
-            "Parenting": "parenting",      # -> Michal Dalyot / Adler
-            "Relationship": "relationship", # -> Esther Perel
-            "Business": "strategy",         # -> McKinsey + Tech
-            "Leadership": "strategy",       # -> McKinsey (leadership is business)
-            "General": "general"            # -> Generic assistant
+            "Parenting": "parenting",
+            "Relationship": "relationship",
+            "Business": "strategy",
+            "Leadership": "leadership",
+            "General": "general"
         }
         
+        personas = []
+        
         primary = context.get("primary_category", "General")
-        persona = category_to_persona.get(primary, "general")
+        if primary in category_to_persona:
+            personas.append(category_to_persona[primary])
         
-        print(f"🎯 [Persona Routing] Category '{primary}' -> Persona '{persona}'")
+        # Add secondary persona if relevant and different
+        secondary = context.get("secondary_category")
+        if secondary and secondary in category_to_persona:
+            secondary_persona = category_to_persona[secondary]
+            if secondary_persona not in personas:
+                # Only allow related combinations
+                allowed_combos = [
+                    ("strategy", "leadership"),
+                    ("leadership", "strategy"),
+                    ("parenting", "relationship"),
+                    ("relationship", "parenting"),
+                ]
+                if (personas[0] if personas else None, secondary_persona) in allowed_combos:
+                    personas.append(secondary_persona)
         
-        # STRICT: Return only ONE persona, never mix
-        return [persona]
+        # Ensure at least one persona
+        if not personas:
+            personas.append("general")
+        
+        print(f"🎯 [Persona Routing] Category '{primary}' -> Personas: {personas}")
+        
+        return personas[:2]  # Max 2 personas
     
     def build_expert_prompt(
         self, 
@@ -370,70 +395,64 @@ class ExpertAnalysisService:
         context: Dict[str, Any]
     ) -> str:
         """
-        Build DEEP analysis prompt with STRICT format.
-        
-        Structure (100 words total):
-        - Executive Summary: 30 words max
-        - Expert Insight: 50 words (ONE deep insight)
-        - Action Items: Mandatory if exist
-        - Kaizen: 1 preserve, 1 improve
+        Build deep analysis prompt with Expert Council structure.
+        Balanced between depth and WhatsApp length limits.
         """
-        # Get the ONE persona
-        persona = EXPERT_PERSONAS.get(persona_keys[0], EXPERT_PERSONAS["general"])
-        speakers_str = ", ".join(speakers) if speakers else "דוברים לא מזוהים"
-        category = context.get('primary_category', 'כללי')
+        # Get persona details
+        personas = [EXPERT_PERSONAS.get(pk, EXPERT_PERSONAS["general"]) for pk in persona_keys]
+        israel_time = get_israel_time()
+        speakers_str = ", ".join(speakers) if speakers else "לא זוהו דוברים"
         
-        # Keep more transcript for context (4000 chars)
-        if len(transcript_text) > 4000:
-            transcript_text = transcript_text[:4000] + "\n...(קוצר)"
+        # Truncate transcript for prompt efficiency
+        if len(transcript_text) > 3500:
+            transcript_text = transcript_text[:3500] + "\n...(קוצר)"
         
-        # Build persona-specific insight question
-        insight_focus = {
-            "parenting": "מה הדינמיקה ההורית האמיתית? האם יש מאבקי כוח נסתרים? האם הגבולות ברורים?",
-            "relationship": "מה לא נאמר? איזה רגש נסתר מתחת לפני השטח? מה הדפוס החוזר?",
-            "strategy": "מה ה-ROI האמיתי? איפה הסיכון הגדול? מה ה-action הכי קריטי?",
-            "leadership": "מה ה-'Why' האמיתי? האם יש 'Circle of Safety'? מה יעורר השראה?",
-            "general": "מה עיקר השיחה ומה צריך לקרות הלאה?"
-        }.get(persona_keys[0], "מה התובנה העיקרית?")
+        # Build persona section
+        if len(personas) == 1:
+            persona_section = f"**הפרסונה שלך:** {personas[0]['name']}\n**גישה:** {personas[0]['tone']}"
+        else:
+            persona_section = f"**הפרסונות שלך:** {personas[0]['name']} + {personas[1]['name']}"
         
-        prompt = f"""אתה {persona['name']} - מומחה בתחומך.
+        prompt = f"""אתה חבר במועצת המומחים של "המוח השני".
 
-**קטגוריה:** {category}
+{persona_section}
+
 **משתתפים:** {speakers_str}
+**זמן:** {israel_time.strftime('%d/%m/%Y %H:%M')} (שעון ישראל)
+**קטגוריה:** {context.get('primary_category', 'כללי')}
 
-**תמליל השיחה:**
+**תמליל:**
 {transcript_text}
 
 ---
 
-**המשימה שלך:** ספק ניתוח עמוק וממוקד. היה ספציפי - ציין מי אמר מה.
-
-**שאלת המפתח שלך:** {insight_focus}
+**הנחיות:**
+1. כתוב בעברית בלבד
+2. השתמש בשמות הדוברים (לא "דובר 1")
+3. כשיש מילים באנגלית, התחל את המשפט בעברית
+4. **מגבלת אורך: סה"כ עד 800 תווים!**
 
 ---
 
-**פורמט התשובה (עברית, RTL):**
+**פורמט (תמציתי!):**
 
-🎯 סנטימנט: [חיובי/מתוח/מעורב] - [משפט אחד]
+🎭 **סנטימנט:** [חיובי/מעורב/מתוח] - [משפט קצר]
 
-📋 תמצית (30 מילים):
-• [שם] העלה/הציע: [מה]
-• [שם] הגיב/הסכים: [מה]
-• ההחלטה/המסקנה: [מה]
+📋 **תמצית:**
+• [מי אמר מה - נקודה 1]
+• [מי אמר מה - נקודה 2]
+• [החלטה/מסקנה]
 
-🔍 תובנת {persona['short_name']}:
-[2-3 משפטים עם תובנה עמוקה מנקודת המבט של {persona['short_name']}. 
-התייחס ל: {insight_focus}
-היה ספציפי - הפנה לדוגמאות מהשיחה.]
+🔍 **תובנת {personas[0]['short_name']}:**
+[2 משפטים עם תובנה עמוקה - מה קורה מתחת לפני השטח?]
 
-✅ משימות:
-• *[שם]*: [משימה קונקרטית]
-• *[שם]*: [משימה קונקרטית]
-(אם אין משימות ברורות: "לא זוהו משימות ספציפיות")
+✅ **משימות:**
+• *[שם]*: [משימה]
+(אם אין: "לא זוהו משימות")
 
-📈 קאיזן:
-✓ לשימור: [התנהגות/החלטה חיובית ספציפית שראינו בשיחה]
-→ לשיפור: [הזדמנות קונקרטית אחת לצמיחה + המלצה פרקטית]
+📈 **קאיזן:**
+✓ לשימור: [התנהגות חיובית ספציפית]
+→ לשיפור: [הזדמנות לצמיחה + המלצה]
 """
         return prompt
     
