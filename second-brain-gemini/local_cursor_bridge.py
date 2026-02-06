@@ -303,7 +303,7 @@ class CursorBridge:
         Send a WhatsApp notification that Cursor has started working on the task.
         Calls the server's /notify-cursor-started endpoint.
         
-        This triggers Message 2: "Cursor החל את עבודת הפיתוח..."
+        This triggers Message 2: "ברגעים אלה Cursor החל את עבודת הפיתוח..."
         Also saves the prompt to Drive for deployment notification (Message 3).
         """
         try:

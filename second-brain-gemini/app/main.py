@@ -799,7 +799,7 @@ async def test_sms(request: Request):
 async def notify_cursor_started(request: Request):
     """
     Receive notification from the local Cursor bridge that it has started working.
-    Sends Message 2: "Cursor החל את עבודת הפיתוח..."
+    Sends Message 2: "ברגעים אלה Cursor החל את עבודת הפיתוח..."
     Also stores the prompt in Google Drive for use in deployment notification (Message 3).
     
     Called by local_cursor_bridge.py after activating Cursor and injecting the prompt.
@@ -835,8 +835,8 @@ async def notify_cursor_started(request: Request):
             except Exception as save_error:
                 print(f"⚠️  Could not save last prompt to Drive: {save_error}")
             
-            # Message 2: Cursor started working
-            message = "🛠️ Cursor החל את עבודת הפיתוח וההטמעה לפרודקשן. הודעה תישלח כשהגרסה החדשה הוטמעה בהצלחה."
+            # Message 2: Cursor started working (RTL-friendly text)
+            message = "🛠️ ברגעים אלה Cursor החל את עבודת הפיתוח וההטמעה לפרודקשן. הודעה תישלח כשהגרסה החדשה הוטמעה בהצלחה."
         
         # Send via Meta WhatsApp (primary) or Twilio (fallback)
         from app.services.meta_whatsapp_service import meta_whatsapp_service
