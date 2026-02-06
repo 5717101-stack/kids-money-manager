@@ -161,20 +161,65 @@ class CursorBridge:
             print(f"❌ Error reading task file: {e}")
             return ""
     
+    def is_screen_locked(self) -> bool:
+        """Check if the Mac screen is locked or sleeping."""
+        try:
+            # Check if screen is locked using CGSession
+            result = subprocess.run(
+                ['python3', '-c', 
+                 'import Quartz; print(Quartz.CGSessionCopyCurrentDictionary().get("CGSSessionScreenIsLocked", False))'],
+                capture_output=True, text=True, timeout=5
+            )
+            is_locked = 'True' in result.stdout
+            if is_locked:
+                print("🔒 Screen is LOCKED - cannot execute GUI commands!")
+            return is_locked
+        except Exception as e:
+            # If we can't check, assume it's not locked
+            print(f"⚠️  Could not check screen lock status: {e}")
+            return False
+    
     def activate_cursor(self) -> bool:
         """Activate Cursor IDE using AppleScript."""
+        # First check if screen is locked
+        if self.is_screen_locked():
+            print("❌ Cannot activate Cursor - screen is locked!")
+            print("   💡 Unlock your Mac or run with: caffeinate -i python3 local_cursor_bridge.py")
+            return False
+        
         try:
             script = '''
             tell application "Cursor"
                 activate
             end tell
             '''
-            subprocess.run(['osascript', '-e', script], check=True, capture_output=True)
+            result = subprocess.run(['osascript', '-e', script], check=True, capture_output=True, text=True)
             time.sleep(0.5)  # Wait for app to come to foreground
-            print("✅ Cursor activated")
-            return True
+            
+            # Verify Cursor is actually frontmost
+            verify_script = '''
+            tell application "System Events"
+                set frontApp to name of first application process whose frontmost is true
+                return frontApp
+            end tell
+            '''
+            verify_result = subprocess.run(['osascript', '-e', verify_script], capture_output=True, text=True)
+            front_app = verify_result.stdout.strip()
+            
+            if 'Cursor' in front_app:
+                print(f"✅ Cursor activated (front app: {front_app})")
+                return True
+            else:
+                print(f"⚠️  Cursor may not be frontmost (front app: {front_app})")
+                # Try one more time
+                time.sleep(0.5)
+                subprocess.run(['osascript', '-e', script], check=True, capture_output=True)
+                return True
+                
         except subprocess.CalledProcessError as e:
             print(f"❌ Failed to activate Cursor: {e}")
+            if e.stderr:
+                print(f"   Error: {e.stderr}")
             return False
         except FileNotFoundError:
             print("❌ osascript not found. Are you running on macOS?")
@@ -340,11 +385,15 @@ class CursorBridge:
         else:
             print("❌ Failed to activate Cursor")
         
-        # Archive the task after execution (success or fail - to prevent re-processing)
+        # Archive the task after execution (to prevent re-processing)
+        self.archive_task(content)
+        
+        # Send WhatsApp notification with result
         if task_success:
-            self.archive_task(content)
-            # Send WhatsApp notification that task was completed
             self.send_completion_notification(content, success=True)
+        else:
+            # Send failure notification so user knows something went wrong
+            self.send_completion_notification(content, success=False)
         
         print(f"{'='*60}\n")
     
