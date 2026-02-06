@@ -383,7 +383,66 @@ app.add_middleware(
 # Startup event: Pre-warm memory cache
 @app.on_event("startup")
 async def startup_event():
-    """Pre-warm memory cache and start scheduler on server startup."""
+    """Pre-warm memory cache, start scheduler, and send deployment notification."""
+    
+    # ================================================================
+    # DEPLOYMENT NOTIFICATION: Send WhatsApp when server starts
+    # This is triggered when Render finishes deploying and restarts the service
+    # ================================================================
+    try:
+        # Read current version
+        version_file = Path(__file__).parent.parent / "VERSION"
+        current_version = version_file.read_text().strip() if version_file.exists() else "unknown"
+        
+        # Check if we should send notification (only in production)
+        is_production = os.environ.get('RENDER', '') == 'true'
+        
+        if is_production:
+            print(f"🚀 Production deployment detected - Version {current_version}")
+            
+            # Read last commit message from environment (set by render.yaml build command)
+            commit_msg = os.environ.get('LAST_COMMIT_MSG', 'No commit message available')
+            
+            # Try to get commit info from a file created during build
+            commit_file = Path(__file__).parent.parent / ".last_commit"
+            if commit_file.exists():
+                commit_msg = commit_file.read_text().strip()
+            
+            # Send deployment notification via WhatsApp
+            from app.services.meta_whatsapp_service import meta_whatsapp_service
+            
+            notification_msg = f"""🚀 *גרסה חדשה עלתה לפרודקשן!*
+
+📦 גרסה: *{current_version}*
+⏰ זמן: {datetime.now().strftime('%d/%m/%Y %H:%M')}
+
+📝 *שינויים:*
+{commit_msg[:500]}
+
+✅ השרת פעיל ומוכן לעבודה!"""
+            
+            if meta_whatsapp_service.is_configured:
+                result = meta_whatsapp_service.send_whatsapp(notification_msg)
+                if result.get('success'):
+                    print(f"✅ Deployment notification sent via WhatsApp")
+                else:
+                    print(f"⚠️  Failed to send deployment notification: {result.get('error')}")
+            elif twilio_service.is_configured:
+                result = twilio_service.send_whatsapp(notification_msg)
+                if result.get('success'):
+                    print(f"✅ Deployment notification sent via Twilio")
+                else:
+                    print(f"⚠️  Failed to send deployment notification: {result.get('error')}")
+            else:
+                print("⚠️  No WhatsApp provider configured for deployment notification")
+        else:
+            print(f"📍 Local development - Version {current_version} (no notification)")
+            
+    except Exception as e:
+        print(f"⚠️  Deployment notification error: {e}")
+        import traceback
+        traceback.print_exc()
+    
     # Pre-warm memory cache
     if drive_memory_service.is_configured:
         print("🔥 Pre-warming memory cache...")
