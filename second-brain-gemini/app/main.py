@@ -1477,37 +1477,49 @@ def process_audio_in_background(
                     print(f"⚠️  [WhatsApp] Failed to send expert summary: {reply_result.get('error')}")
             else:
                 # Fallback: Basic summary if expert analysis failed
-                print(f"   ⚠️  Using FALLBACK (basic summary) - expert analysis not available")
-                reply_message = "✅ *ההקלטה נשמרה וסוכמה בהצלחה!*\n\n"
-                reply_message += "👥 *משתתפים:*\n"
+                print(f"   ⚠️  [CRITICAL] Using FALLBACK - expert analysis failed!")
+                if expert_analysis_result:
+                    print(f"   Error details: {expert_analysis_result.get('error', 'unknown')}")
+                
+                reply_message = "✅ *ההקלטה נשמרה!*\n\n"
+                reply_message += "👥 *משתתפים:* "
                 
                 if identified_speakers:
-                    for name in sorted(identified_speakers):
-                        reply_message += f"   ✓ {name}\n"
-                
+                    reply_message += ", ".join(sorted(identified_speakers))
                 if unidentified_count > 0:
-                    reply_message += f"   + {unidentified_count} דוברים לא מזוהים\n"
-                
+                    if identified_speakers:
+                        reply_message += f" (+{unidentified_count} לא מזוהים)"
+                    else:
+                        reply_message += f"{unidentified_count} דוברים לא מזוהים"
                 if not identified_speakers and unidentified_count == 0:
-                    reply_message += "   (לא זוהו דוברים)\n"
+                    reply_message += "(לא זוהו)"
                 
-                # Truncate summary if too long
-                if len(summary_text) > 1000:
-                    summary_text = summary_text[:800] + "... (הסיכום המלא בקובץ בדרייב)"
+                reply_message += "\n\n"
                 
-                if summary_text:
-                    reply_message += f"\n📝 *סיכום השיחה:*\n{summary_text}\n"
+                # Use summary_text as fallback content
+                if summary_text and len(summary_text.strip()) > 20:
+                    # Truncate if too long
+                    if len(summary_text) > 1200:
+                        summary_text = summary_text[:1000] + "..."
+                    reply_message += f"📝 *סיכום:*\n{summary_text}\n\n"
+                else:
+                    reply_message += "📝 *סיכום:* לא הצלחתי לייצר סיכום מפורט.\n\n"
                 
-                reply_message += "\n📄 התמלול המלא זמין בדרייב."
+                # Add Kaizen placeholder
+                reply_message += "📈 *קאיזן:*\n"
+                reply_message += "✓ לשימור: השיחה התקיימה והוקלטה\n"
+                reply_message += "→ לשיפור: בדוק את איכות ההקלטה\n\n"
+                
+                reply_message += "📄 התמלול המלא זמין בדרייב."
                 
                 reply_result = whatsapp_provider.send_whatsapp(
                     message=reply_message,
                     to=f"+{from_number}"
                 )
                 if reply_result.get('success'):
-                    print("✅ [WhatsApp] Message 1 (Basic Summary) sent")
+                    print("✅ [WhatsApp] Message 1 (Fallback Summary) sent")
                 else:
-                    print(f"⚠️  [WhatsApp] Failed to send summary: {reply_result.get('error')}")
+                    print(f"⚠️  [WhatsApp] Failed to send fallback: {reply_result.get('error')}")
         
         # ============================================================
         # MESSAGE 2: UNKNOWN SPEAKER QUERIES

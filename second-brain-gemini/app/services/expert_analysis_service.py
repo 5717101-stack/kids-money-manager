@@ -488,48 +488,98 @@ class ExpertAnalysisService:
         personas = [EXPERT_PERSONAS[pk] for pk in persona_keys]
         persona_names = [p["name"] for p in personas]
         
-        # Step 4: Build and run analysis
+        # Step 4: Build and run analysis with RETRY logic
         print(f"🧠 [Expert Analysis] Step 3/3: Running deep analysis with model: {self.model_name}")
         prompt = self.build_expert_prompt(persona_keys, transcript_text, speakers, context)
         print(f"📝 [Expert Analysis] Prompt length: {len(prompt)} chars")
         
-        try:
-            # Allow ~800 tokens for deeper analysis while staying under WhatsApp limit
-            response = self.model.generate_content(
-                prompt,
-                generation_config={
-                    'temperature': 0.4,  # Balance creativity and focus
-                    'max_output_tokens': 800  # ~1600 chars for rich output
-                }
-            )
-            
-            analysis_text = response.text if response.text else ""
-            print(f"✅ [Expert Analysis] Response received: {len(analysis_text)} chars")
-            israel_time = get_israel_time()
-            
-            return {
-                "success": True,
-                "persona": " + ".join(persona_names),
-                "persona_keys": persona_keys,
-                "context": context,
-                "speakers": speakers,
-                "raw_analysis": analysis_text,
-                "timestamp": israel_time.isoformat(),
-                "timestamp_display": israel_time.strftime('%d/%m/%Y %H:%M')
-            }
-            
-        except Exception as e:
-            logger.error(f"❌ ניתוח מומחה נכשל: {e}")
-            print(f"❌ [Expert Analysis] FAILED: {e}")
-            print(f"   Model used: {self.model_name}")
-            import traceback
-            traceback.print_exc()
+        analysis_text = ""
+        max_retries = 2
+        
+        for attempt in range(max_retries):
+            try:
+                print(f"   🔄 Attempt {attempt + 1}/{max_retries}")
+                
+                # Use simpler prompt on retry
+                current_prompt = prompt if attempt == 0 else self._build_fallback_prompt(transcript_text, speakers)
+                
+                response = self.model.generate_content(
+                    current_prompt,
+                    generation_config={
+                        'temperature': 0.3 if attempt > 0 else 0.4,
+                        'max_output_tokens': 1000
+                    }
+                )
+                
+                analysis_text = response.text if response.text else ""
+                print(f"   📝 Response: {len(analysis_text)} chars")
+                
+                # Check for empty response
+                if len(analysis_text.strip()) < 50:
+                    print(f"   ⚠️  Response too short ({len(analysis_text)} chars), retrying...")
+                    continue
+                
+                # SUCCESS - break out of retry loop
+                break
+                
+            except Exception as e:
+                print(f"   ❌ Attempt {attempt + 1} failed: {e}")
+                if attempt == max_retries - 1:
+                    logger.error(f"❌ [CRITICAL] ניתוח מומחה נכשל לאחר {max_retries} נסיונות: {e}")
+                    import traceback
+                    traceback.print_exc()
+        
+        # Final validation
+        if not analysis_text or len(analysis_text.strip()) < 50:
+            print("❌ [CRITICAL] Analysis returned EMPTY after all retries!")
+            logger.error("❌ [CRITICAL] Expert analysis returned empty text")
             return {
                 "success": False,
-                "error": str(e),
+                "error": "ניתוח חזר ריק - בדוק את המודל",
                 "persona": " + ".join(persona_names),
                 "model_used": self.model_name
             }
+        
+        print(f"✅ [Expert Analysis] SUCCESS - {len(analysis_text)} chars")
+        israel_time = get_israel_time()
+        
+        return {
+            "success": True,
+            "persona": " + ".join(persona_names),
+            "persona_keys": persona_keys,
+            "context": context,
+            "speakers": speakers,
+            "raw_analysis": analysis_text,
+            "timestamp": israel_time.isoformat(),
+            "timestamp_display": israel_time.strftime('%d/%m/%Y %H:%M')
+        }
+    
+    def _build_fallback_prompt(self, transcript_text: str, speakers: List[str]) -> str:
+        """Simple fallback prompt when main prompt fails."""
+        speakers_str = ", ".join(speakers) if speakers else "דוברים לא ידועים"
+        
+        return f"""סכם את השיחה הבאה בעברית.
+
+**משתתפים:** {speakers_str}
+
+**תמליל:**
+{transcript_text[:3000]}
+
+**תשובה בפורמט הבא:**
+
+🎯 סנטימנט: [חיובי/שלילי/מעורב]
+
+📋 תמצית:
+• [מי אמר מה - נקודה 1]
+• [מי אמר מה - נקודה 2]
+
+✅ משימות:
+• [שם]: [משימה]
+
+📈 קאיזן:
+✓ לשימור: [נקודה חיובית]
+→ לשיפור: [הזדמנות לצמיחה]
+"""
     
     def format_for_whatsapp(self, analysis_result: Dict, include_header: bool = True) -> str:
         """
