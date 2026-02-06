@@ -45,7 +45,7 @@ from pathlib import Path
 # 3. Drag the folder to Terminal to see the full path
 
 WATCH_PATH = os.path.expanduser(
-    "~/Library/CloudStorage/GoogleDrive-itzhakbachar@gmail.com/My Drive/second_brain_memory/Cursor_Inbox"
+    "~/Library/CloudStorage/GoogleDrive-5717101@gmail.com/My Drive/Second Brain Memory/Cursor_Inbox"
 )
 
 # Alternative paths to try if the above doesn't work
@@ -56,6 +56,7 @@ ALTERNATIVE_PATHS = [
 ]
 
 TASK_FILENAME = "pending_task.md"
+ARCHIVE_FOLDER = "Cursor_Inbox_Archive"  # Folder to move completed tasks
 CHECK_INTERVAL = 2  # seconds between checks
 DRIVE_SYNC_DELAY = 1  # seconds to wait for Drive sync
 
@@ -223,6 +224,42 @@ class CursorBridge:
             traceback.print_exc()
             return False
     
+    def archive_task(self, content: str) -> bool:
+        """
+        Move the completed task to the archive folder.
+        Creates a timestamped file to preserve history.
+        """
+        try:
+            # Get archive folder path (sibling to Cursor_Inbox)
+            archive_path = self.watch_path.parent / ARCHIVE_FOLDER
+            
+            if not archive_path.exists():
+                print(f"⚠️  Archive folder not found: {archive_path}")
+                print(f"   Creating it...")
+                archive_path.mkdir(parents=True, exist_ok=True)
+            
+            # Create timestamped filename
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            archive_filename = f"task_{timestamp}.md"
+            archive_file = archive_path / archive_filename
+            
+            # Write content to archive
+            archive_file.write_text(content, encoding='utf-8')
+            print(f"📦 Archived to: {archive_filename}")
+            
+            # Delete the original pending_task.md
+            if self.task_file.exists():
+                self.task_file.unlink()
+                print(f"🗑️  Removed: {TASK_FILENAME}")
+            
+            return True
+            
+        except Exception as e:
+            print(f"⚠️  Failed to archive task: {e}")
+            import traceback
+            traceback.print_exc()
+            return False
+    
     def process_task(self):
         """Process a new task from the inbox."""
         current_hash = self.get_file_hash()
@@ -246,14 +283,20 @@ class CursorBridge:
         print(f"{'='*60}")
         
         # Execute the task
+        task_success = False
         if self.activate_cursor():
             time.sleep(0.3)
             if self.trigger_composer(content):
                 print("✅ Task executed successfully!")
+                task_success = True
             else:
                 print("❌ Failed to trigger Composer")
         else:
             print("❌ Failed to activate Cursor")
+        
+        # Archive the task after execution (success or fail - to prevent re-processing)
+        if task_success:
+            self.archive_task(content)
         
         print(f"{'='*60}\n")
     
