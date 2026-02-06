@@ -977,12 +977,12 @@ class ExpertAnalysisService:
         if not raw:
             print("   ⚠️  WARNING: raw_analysis is EMPTY!")
         
-        # Build message - Direct analysis already has full formatting
+        # Build message - Direct/Combined analysis already has full formatting
         message = ""
         
-        if source == "direct":
-            # Direct audio analysis already includes expert header (🧠 הכובע שנבחר)
-            # No need to add extra header
+        if source in ("direct", "combined"):
+            # Direct audio analysis or Combined prompt already includes expert header (🧠 הכובע שנבחר)
+            # No need to add extra header - use raw content as-is
             message = raw
         else:
             # Transcript-based analysis - add minimal header

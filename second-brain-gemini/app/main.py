@@ -1059,113 +1059,69 @@ def process_audio_in_background(
                 print(f"⚠️  Error retrieving voice signatures: {e}")
                 reference_voices = []
         
-        # Step 6: Process with Gemini (Diarization Stage)
-        print("🤖 [Diarization] Processing audio with Gemini...")
-        print(f"   Stage: DIARIZATION - Speaker identification and transcription")
+        # Step 6: Process with Gemini (COMBINED Diarization + Expert Analysis)
+        # This uses a single Gemini call with COMBINED_DIARIZATION_EXPERT_PROMPT
+        # Same approach as process_meetings.py which works reliably
+        print("🤖 [Combined Analysis] Processing audio with Gemini...")
+        print(f"   Stage: COMBINED - Diarization + Expert Analysis in ONE call")
         result = gemini_service.analyze_day(
             audio_paths=[tmp_path],
             audio_file_metadata=[audio_metadata],
             reference_voices=reference_voices
         )
         
-        print("✅ [Diarization] Gemini analysis complete")
+        print("✅ [Combined Analysis] Gemini analysis complete")
         
-        # Extract transcript and segments
+        # Extract transcript, segments, and expert summary from SINGLE Gemini call
         transcript_json = result.get('transcript', {})
         segments = transcript_json.get('segments', [])
         summary_text = result.get('summary', '')
+        expert_summary = result.get('expert_summary', '')  # NEW: From combined prompt
         
-        # Debug: Log segment count and sample
-        print(f"📊 [Diarization] Extracted {len(segments)} segments")
+        # Debug: Log what we got
+        print(f"📊 [Combined Analysis] Results:")
+        print(f"   Segments: {len(segments)}")
+        print(f"   Expert Summary: {len(expert_summary)} chars")
+        
         if segments:
             first_seg = segments[0]
             print(f"   First segment: {first_seg.get('speaker', 'N/A')} - {first_seg.get('text', 'N/A')[:50]}...")
-            # Log all unique speakers found
             unique_speakers = set(seg.get('speaker', 'Unknown') for seg in segments)
             print(f"   Unique speakers: {unique_speakers}")
+        
+        if expert_summary:
+            print(f"   Expert preview: {expert_summary[:100]}...")
         else:
-            print("   ⚠️  NO SEGMENTS EXTRACTED - Expert Analysis will be skipped!")
+            print("   ⚠️  NO EXPERT SUMMARY - using basic summary as fallback")
         
         # ============================================================
-        # EXPERT ANALYSIS: Two-tier approach for reliability
-        # 
-        # PRIMARY (Direct): Send audio directly to Gemini with expert prompt
-        #   - This is the same approach that works in Drive Inbox
-        #   - Most reliable because Gemini gets full audio context
-        #
-        # FALLBACK (Transcript): Use multi-step transcript analysis
-        #   - Only if direct analysis fails
+        # BUILD EXPERT ANALYSIS RESULT
+        # The expert_summary comes directly from the combined Gemini call
+        # No need for a separate second call!
         # ============================================================
-        print("🧠 [Expert Analysis] Starting expert analysis...")
         expert_analysis_result = None
         
-        try:
-            from app.services.expert_analysis_service import expert_analysis_service
-            import asyncio
+        if expert_summary and len(expert_summary.strip()) > 50:
+            # Success - we have expert summary from combined prompt
+            from datetime import timezone
+            israel_time = datetime.now(timezone.utc) + timedelta(hours=2)
             
-            print(f"   expert_analysis_service.is_configured: {expert_analysis_service.is_configured}")
-            
-            if expert_analysis_service.is_configured:
-                # ============================================================
-                # PRIMARY: Direct Audio Analysis (proven reliable approach)
-                # ============================================================
-                print("🎙️ [Expert Analysis] Trying DIRECT audio analysis (primary method)...")
-                direct_result = expert_analysis_service.analyze_audio_direct(tmp_path)
-                
-                if direct_result.get('success'):
-                    print(f"✅ [Expert Analysis] DIRECT analysis succeeded: {len(direct_result.get('raw_analysis', ''))} chars")
-                    expert_analysis_result = direct_result
-                else:
-                    print(f"⚠️  [Expert Analysis] Direct failed: {direct_result.get('error')}")
-                    
-                    # ============================================================
-                    # FALLBACK: Transcript-based Analysis
-                    # ============================================================
-                    if segments:
-                        print("📝 [Expert Analysis] Trying TRANSCRIPT-based analysis (fallback)...")
-                        
-                        # Build voice map from known speakers
-                        current_voice_map = {}
-                        if drive_memory_service.is_configured:
-                            try:
-                                memory = drive_memory_service.get_memory()
-                                user_profile = memory.get('user_profile', {})
-                                current_voice_map = user_profile.get('voice_map', {})
-                                print(f"🗺️  [Expert Analysis] Voice map loaded: {current_voice_map}")
-                            except Exception as vm_error:
-                                print(f"⚠️  [Expert Analysis] Failed to load voice map: {vm_error}")
-                        
-                        # Also use the local cache as fallback
-                        if not current_voice_map and _voice_map_cache:
-                            current_voice_map = _voice_map_cache.copy()
-                            print(f"🗺️  [Expert Analysis] Using local cache: {current_voice_map}")
-                        
-                        # Run transcript-based expert analysis (async in sync context)
-                        loop = asyncio.new_event_loop()
-                        asyncio.set_event_loop(loop)
-                        try:
-                            expert_analysis_result = loop.run_until_complete(
-                                expert_analysis_service.analyze_transcript(
-                                    segments=segments,
-                                    voice_map=current_voice_map
-                                )
-                            )
-                        finally:
-                            loop.close()
-                        
-                        if expert_analysis_result.get('success'):
-                            print(f"✅ [Expert Analysis] Transcript analysis succeeded")
-                        else:
-                            print(f"⚠️  [Expert Analysis] Transcript analysis also failed: {expert_analysis_result.get('error')}")
-                    else:
-                        print("⚠️  [Expert Analysis] No segments for fallback analysis")
-            else:
-                print("⚠️  [Expert Analysis] Service not configured")
-                
-        except Exception as expert_error:
-            print(f"⚠️  [Expert Analysis] Error: {expert_error}")
-            import traceback
-            traceback.print_exc()
+            expert_analysis_result = {
+                "success": True,
+                "raw_analysis": expert_summary,
+                "source": "combined",  # Mark as coming from combined prompt
+                "timestamp": israel_time.isoformat(),
+                "timestamp_display": israel_time.strftime('%d/%m/%Y %H:%M')
+            }
+            print(f"✅ [Expert Analysis] SUCCESS from combined prompt: {len(expert_summary)} chars")
+        else:
+            # Fallback: Use basic summary if expert summary is empty
+            print(f"⚠️  [Expert Analysis] No expert summary - using basic fallback")
+            expert_analysis_result = {
+                "success": False,
+                "error": "Expert summary not generated",
+                "source": "combined"
+            }
         
         # Validate segments
         valid_segments = []

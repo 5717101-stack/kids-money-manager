@@ -10,7 +10,7 @@ from pathlib import Path
 import google.generativeai as genai
 
 from app.core.config import settings
-from app.prompts import SYSTEM_PROMPT, AUDIO_ANALYSIS_PROMPT, AUDIO_ANALYSIS_PROMPT_BASE, FORENSIC_ANALYST_PROMPT
+from app.prompts import SYSTEM_PROMPT, AUDIO_ANALYSIS_PROMPT, AUDIO_ANALYSIS_PROMPT_BASE, FORENSIC_ANALYST_PROMPT, COMBINED_DIARIZATION_EXPERT_PROMPT
 
 
 class GeminiService:
@@ -667,15 +667,17 @@ Summary: {summary}
         
         # Use appropriate prompt based on context
         if audio_paths:
+            # COMBINED DIARIZATION + EXPERT ANALYSIS in ONE call
+            # This is the same approach used by process_meetings.py which works reliably
+            print("🎙️ Using COMBINED Diarization + Expert Analysis prompt")
+            
+            # Start with the combined prompt
+            prompt = COMBINED_DIARIZATION_EXPERT_PROMPT
+            
             if reference_voice_files:
-                # MULTIMODAL VOICE COMPARISON: Use Forensic Analyst prompt with physical mapping
-                print("🔬 Using Forensic Analyst mode with multimodal voice comparison")
+                # Add reference voice information for speaker identification
                 print(f"   📊 Reference voices available: {[rv['name'] for rv in reference_voice_files]}")
                 
-                # Start with the forensic analyst system prompt
-                prompt = FORENSIC_ANALYST_PROMPT
-                
-                # Add explicit physical mapping for each reference voice
                 prompt += "\n\n" + "="*50 + "\n"
                 prompt += "**REFERENCE VOICE SAMPLES - ACOUSTIC FINGERPRINTS:**\n"
                 prompt += "="*50 + "\n\n"
@@ -692,12 +694,11 @@ Summary: {summary}
                 prompt += "The main audio file follows after all reference samples.\n"
                 prompt += "Compare EACH speaker in this conversation to the reference samples.\n"
                 prompt += "If voice matches reference with 90%+ confidence → use that name.\n"
-                prompt += "If NO match with 90%+ confidence → use 'Unknown Speaker X'.\n\n"
-                
-                contents.append(prompt)
+                prompt += "If NO match with 90%+ confidence → use 'Speaker X'.\n\n"
             else:
-                # No reference voices - use standard transcription prompt
-                contents.append(AUDIO_ANALYSIS_PROMPT_BASE)
+                print("   📊 No reference voices - using speaker labels only")
+            
+            contents.append(prompt)
         else:
             # Regular text/image analysis
             contents.append(SYSTEM_PROMPT)
@@ -852,23 +853,29 @@ Summary: {summary}
         original_length = len(response_text)
         print(f"📄 Response length: {original_length} characters")
         
-        # Check if this is an audio analysis response (should be JSON with segments)
+        # Check if this is an audio analysis response (should be JSON with segments + expert_summary)
         if audio_paths:
-            # Parse audio analysis response (JSON format with segments)
-            print("🎤 Detected audio analysis response - parsing JSON transcript...")
+            # Parse audio analysis response (JSON format with segments + expert_summary)
+            print("🎤 Detected audio analysis response - parsing JSON transcript + expert summary...")
             transcript_json = self._parse_audio_response(response_text)
             
-            # Return structured audio analysis result
+            # Extract expert_summary from the combined response
+            expert_summary = transcript_json.get('expert_summary', '')
+            
+            # Return structured audio analysis result with expert summary
             result = {
                 "type": "audio_analysis",
                 "transcript": transcript_json,  # Full JSON object with segments
-                "summary": transcript_json.get('summary', ''),  # Extract summary from JSON
+                "summary": transcript_json.get('summary', ''),  # Extract basic summary (if any)
+                "expert_summary": expert_summary,  # NEW: Full expert analysis from combined prompt
                 "audio_file_metadata": audio_file_metadata or []
             }
             
             print("✅ Audio analysis complete!")
             print(f"   Segments: {len(transcript_json.get('segments', []))} segments")
-            print(f"   Summary: {result['summary'][:100]}..." if result['summary'] else "   Summary: (none)")
+            print(f"   Expert Summary: {len(expert_summary)} chars" if expert_summary else "   Expert Summary: (none)")
+            if expert_summary:
+                print(f"   First 100 chars: {expert_summary[:100]}...")
             
             return result
         
