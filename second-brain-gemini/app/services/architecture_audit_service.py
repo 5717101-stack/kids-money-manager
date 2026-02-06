@@ -35,10 +35,16 @@ class ArchitectureAuditService:
         self.api_key = settings.google_api_key
         if self.api_key:
             genai.configure(api_key=self.api_key)
-            # Use Gemini 2.0 with Google Search grounding
-            self.model = genai.GenerativeModel('gemini-2.0-flash-exp')
+            # Use Gemini 1.5 Pro for reliable responses
+            self.model = genai.GenerativeModel('gemini-1.5-pro')
+            # Also create a model with Google Search grounding for research
+            self.search_model = genai.GenerativeModel(
+                'gemini-1.5-pro',
+                tools=[genai.protos.Tool(google_search_retrieval=genai.protos.GoogleSearchRetrieval())]
+            )
         else:
             self.model = None
+            self.search_model = None
             logger.warning("⚠️  Google API key not set - Audit service limited")
         
         self.is_configured = bool(self.api_key)
@@ -85,10 +91,38 @@ class ArchitectureAuditService:
         """
         
         try:
-            # Use Google Search grounding
+            # Try with Google Search grounding first
+            if self.search_model:
+                try:
+                    print("   Using Google Search grounding...")
+                    response = self.search_model.generate_content(
+                        research_prompt,
+                        generation_config={
+                            'temperature': 0.3,
+                            'max_output_tokens': 2000
+                        }
+                    )
+                    return {
+                        "success": True,
+                        "findings": response.text,
+                        "timestamp": datetime.utcnow().isoformat(),
+                        "source": "google_search"
+                    }
+                except Exception as search_error:
+                    print(f"   ⚠️ Google Search failed: {search_error}")
+                    print("   Falling back to standard model...")
+            
+            # Fallback: Use standard model with knowledge cutoff
+            print("   Using standard model (knowledge cutoff)...")
+            fallback_prompt = research_prompt + """
+            
+            Note: Use your knowledge up to your training cutoff date.
+            If you don't have recent information, provide the latest known developments
+            and recommend checking official sources for updates.
+            """
+            
             response = self.model.generate_content(
-                research_prompt,
-                tools='google_search_retrieval',
+                fallback_prompt,
                 generation_config={
                     'temperature': 0.3,
                     'max_output_tokens': 2000
@@ -97,16 +131,19 @@ class ArchitectureAuditService:
             
             return {
                 "success": True,
-                "findings": response.text,
-                "timestamp": datetime.utcnow().isoformat()
+                "findings": response.text + "\n\n⚠️ _מידע מבוסס על ידע עד תאריך החיתוך של המודל_",
+                "timestamp": datetime.utcnow().isoformat(),
+                "source": "knowledge_cutoff"
             }
             
         except Exception as e:
             logger.error(f"❌ External scan failed: {e}")
+            import traceback
+            traceback.print_exc()
             return {
                 "success": False,
                 "error": str(e),
-                "findings": "לא הצלחתי לבצע סריקה חיצונית. בדוק את החיבור ל-Google Search."
+                "findings": f"לא הצלחתי לבצע סריקה חיצונית. שגיאה: {str(e)[:100]}"
             }
     
     def compare_to_competitors(self) -> Dict[str, Any]:
@@ -129,16 +166,16 @@ class ArchitectureAuditService:
         | Pricing (per hour) | ? | ? | ? |
         | Accuracy (estimated) | ? | ? | ? |
         
-        Fill in this table with current data (use Google Search to verify).
+        Fill in this table based on your knowledge.
         Add a recommendation: Which is best for a personal voice assistant with Hebrew?
         
         Output in Hebrew.
         """
         
         try:
+            # Use standard model for comparison (doesn't need live search)
             response = self.model.generate_content(
                 comparison_prompt,
-                tools='google_search_retrieval',
                 generation_config={
                     'temperature': 0.2,
                     'max_output_tokens': 1500

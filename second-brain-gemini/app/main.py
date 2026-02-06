@@ -428,18 +428,18 @@ async def startup_event():
         
         scheduler = AsyncIOScheduler()
         
-        # Schedule for every Friday at 08:00 AM Israel time (UTC+2/+3)
-        # Using UTC: Friday 06:00 (summer) or 05:00 (winter) - using 06:00 as middle ground
+        # Schedule for every Friday at 13:00 (1 PM) Israel time (UTC+2/+3)
+        # Using UTC: Friday 11:00 (summer) or 10:00 (winter) - using 11:00 as middle ground
         scheduler.add_job(
             run_scheduled_audit,
-            CronTrigger(day_of_week='fri', hour=6, minute=0),  # 06:00 UTC = 08:00 Israel
+            CronTrigger(day_of_week='fri', hour=11, minute=0),  # 11:00 UTC = 13:00 Israel
             id='weekly_architecture_audit',
-            name='Weekly Architecture Audit (Friday 08:00)',
+            name='Weekly Architecture Audit (Friday 13:00)',
             replace_existing=True
         )
         
         scheduler.start()
-        print("📅 Scheduler started: Weekly Architecture Audit (Friday 08:00 AM)")
+        print("📅 Scheduler started: Weekly Architecture Audit (Friday 13:00 / 1 PM)")
         
     except Exception as e:
         print(f"⚠️  Failed to start scheduler: {e}")
