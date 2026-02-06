@@ -626,6 +626,109 @@ async def test_sms(request: Request):
         )
 
 
+@app.post("/notify-cursor-complete")
+async def notify_cursor_complete(request: Request):
+    """
+    Receive notification from the local Cursor bridge that a task was completed.
+    Sends a WhatsApp message to confirm the execution.
+    
+    Called by local_cursor_bridge.py after a task is executed in Cursor.
+    """
+    try:
+        data = await request.json()
+        status = data.get('status', 'הושלם')
+        task_preview = data.get('task_preview', '')
+        success = data.get('success', True)
+        
+        print(f"📥 Cursor completion notification received:")
+        print(f"   Status: {status}")
+        print(f"   Task: {task_preview[:50]}...")
+        
+        # Construct the WhatsApp message
+        if success:
+            message = f"✅ ההטמעה ב-Cursor הושלמה!\n\n📝 משימה: {task_preview}"
+        else:
+            message = f"❌ ההטמעה ב-Cursor נכשלה.\n\n📝 משימה: {task_preview}"
+        
+        # Send via Meta WhatsApp (primary) or Twilio (fallback)
+        from app.services.meta_whatsapp_service import meta_whatsapp_service
+        
+        if meta_whatsapp_service.is_configured:
+            result = meta_whatsapp_service.send_whatsapp(message)
+        elif twilio_service.is_configured:
+            result = twilio_service.send_whatsapp(message)
+        else:
+            result = {"success": False, "error": "No WhatsApp provider configured"}
+        
+        if result.get('success'):
+            print(f"✅ WhatsApp notification sent")
+            return {"status": "ok", "message": "Notification sent"}
+        else:
+            print(f"⚠️  Failed to send WhatsApp notification: {result.get('error')}")
+            return {"status": "warning", "message": "Task completed but notification failed"}
+            
+    except Exception as e:
+        print(f"❌ Error in notify-cursor-complete: {e}")
+        import traceback
+        traceback.print_exc()
+        # Return success anyway - don't fail the bridge
+        return {"status": "error", "message": str(e)}
+
+
+@app.post("/notify-deployment")
+async def notify_deployment(request: Request):
+    """
+    Receive notification from Render/GitHub Actions that a deployment was successful.
+    Sends a WhatsApp message with the new version and changes.
+    
+    Expected JSON body:
+    {
+        "version": "3.1.0",
+        "changes": "Description of main changes",
+        "status": "success" | "failed"
+    }
+    """
+    try:
+        data = await request.json()
+        version = data.get('version', 'unknown')
+        changes = data.get('changes', 'לא צוינו שינויים')
+        status = data.get('status', 'success')
+        
+        print(f"📥 Deployment notification received:")
+        print(f"   Version: {version}")
+        print(f"   Status: {status}")
+        print(f"   Changes: {changes[:100]}...")
+        
+        # Construct the WhatsApp message
+        if status == 'success':
+            message = f"🚀 גרסה חדשה שוחררה!\n\n📦 גרסה: {version}\n\n📝 שינויים עיקריים:\n{changes}"
+        else:
+            message = f"❌ שחרור גרסה נכשל\n\n📦 גרסה: {version}\n\n⚠️ סיבה: {changes}"
+        
+        # Send via Meta WhatsApp (primary) or Twilio (fallback)
+        from app.services.meta_whatsapp_service import meta_whatsapp_service
+        
+        if meta_whatsapp_service.is_configured:
+            result = meta_whatsapp_service.send_whatsapp(message)
+        elif twilio_service.is_configured:
+            result = twilio_service.send_whatsapp(message)
+        else:
+            result = {"success": False, "error": "No WhatsApp provider configured"}
+        
+        if result.get('success'):
+            print(f"✅ Deployment notification sent via WhatsApp")
+            return {"status": "ok", "message": "Notification sent"}
+        else:
+            print(f"⚠️  Failed to send deployment notification: {result.get('error')}")
+            return {"status": "warning", "message": "Deployment succeeded but notification failed"}
+            
+    except Exception as e:
+        print(f"❌ Error in notify-deployment: {e}")
+        import traceback
+        traceback.print_exc()
+        return {"status": "error", "message": str(e)}
+
+
 @app.get("/whatsapp")
 async def whatsapp_webhook_verify(request: Request):
     """
@@ -1377,7 +1480,7 @@ async def webhook(request: Request, background_tasks: BackgroundTasks):
                                                 # Send confirmation to user
                                                 if whatsapp_provider:
                                                     whatsapp_provider.send_whatsapp(
-                                                        message="🚀 הפקודה הועברה למחשב המקומי. בדוק את Cursor בעוד רגע.",
+                                                        message="🚀 הפקודה הועברה ל-Cursor, הודעה תישלח כשההטמעה תסתיים.",
                                                         to=f"+{from_number}"
                                                     )
                                             else:

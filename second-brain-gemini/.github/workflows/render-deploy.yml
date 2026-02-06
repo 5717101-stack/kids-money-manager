@@ -49,3 +49,28 @@ jobs:
           echo "**Status:** Triggered" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "💡 Check your Render dashboard for deployment status" >> $GITHUB_STEP_SUMMARY
+      
+      - name: ⏳ Wait for Render to finish deployment
+        run: |
+          echo "⏳ Waiting 2 minutes for Render to complete deployment..."
+          sleep 120
+      
+      - name: 📱 Get commit message for changelog
+        id: commit
+        run: |
+          COMMIT_MSG=$(git log -1 --pretty=%B)
+          # Escape newlines for JSON
+          COMMIT_MSG_ESCAPED=$(echo "$COMMIT_MSG" | head -5 | tr '\n' ' ' | sed 's/"/\\"/g')
+          echo "message=$COMMIT_MSG_ESCAPED" >> $GITHUB_OUTPUT
+      
+      - name: 📲 Send WhatsApp Deployment Notification
+        run: |
+          echo "📲 Sending deployment notification via WhatsApp..."
+          curl -X POST "https://second-brain-6q8c.onrender.com/notify-deployment" \
+            -H "Content-Type: application/json" \
+            -d '{
+              "version": "${{ steps.version.outputs.version }}",
+              "changes": "${{ steps.commit.outputs.message }}",
+              "status": "success"
+            }' \
+            || echo "⚠️  Failed to send WhatsApp notification (server may not be ready yet)"

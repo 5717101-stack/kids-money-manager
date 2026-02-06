@@ -60,6 +60,10 @@ ARCHIVE_FOLDER = "Cursor_Inbox_Archive"  # Folder to move completed tasks
 CHECK_INTERVAL = 2  # seconds between checks
 DRIVE_SYNC_DELAY = 1  # seconds to wait for Drive sync
 
+# Server URL for sending completion notifications
+SERVER_URL = "https://second-brain-6q8c.onrender.com"  # Production server
+# SERVER_URL = "http://localhost:8001"  # Local development
+
 # ================================================================
 # WATCHDOG-BASED MONITORING
 # ================================================================
@@ -225,6 +229,47 @@ class CursorBridge:
             traceback.print_exc()
             return False
     
+    def send_completion_notification(self, content: str, success: bool = True) -> bool:
+        """
+        Send a WhatsApp notification that the task was completed.
+        Calls the server's /notify-cursor-complete endpoint.
+        """
+        try:
+            import urllib.request
+            import json
+            
+            # Prepare the payload
+            status = "✅ הושלם בהצלחה" if success else "❌ נכשל"
+            preview = content[:100] + "..." if len(content) > 100 else content
+            
+            payload = {
+                "status": status,
+                "task_preview": preview,
+                "success": success
+            }
+            
+            # Send to server
+            url = f"{SERVER_URL}/notify-cursor-complete"
+            data = json.dumps(payload).encode('utf-8')
+            
+            req = urllib.request.Request(
+                url,
+                data=data,
+                headers={'Content-Type': 'application/json'},
+                method='POST'
+            )
+            
+            print(f"📤 Sending completion notification to server...")
+            with urllib.request.urlopen(req, timeout=10) as response:
+                result = json.loads(response.read().decode('utf-8'))
+                print(f"✅ Server notified: {result}")
+                return True
+                
+        except Exception as e:
+            print(f"⚠️  Failed to send completion notification: {e}")
+            # Don't fail the whole process if notification fails
+            return False
+    
     def archive_task(self, content: str) -> bool:
         """
         Move the completed task to the archive folder.
@@ -298,6 +343,8 @@ class CursorBridge:
         # Archive the task after execution (success or fail - to prevent re-processing)
         if task_success:
             self.archive_task(content)
+            # Send WhatsApp notification that task was completed
+            self.send_completion_notification(content, success=True)
         
         print(f"{'='*60}\n")
     
