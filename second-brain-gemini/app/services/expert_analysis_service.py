@@ -518,14 +518,20 @@ class ExpertAnalysisService:
         print(f"📝 [Expert Analysis] Prompt length: {len(prompt)} chars")
         
         analysis_text = ""
-        max_retries = 2
+        max_retries = 3  # Increased to 3 attempts
         
         for attempt in range(max_retries):
             try:
                 print(f"   🔄 Attempt {attempt + 1}/{max_retries}")
                 
-                # Use simpler prompt on retry
-                current_prompt = prompt if attempt == 0 else self._build_fallback_prompt(transcript_text, speakers)
+                # Use progressively simpler prompts
+                if attempt == 0:
+                    current_prompt = prompt
+                elif attempt == 1:
+                    current_prompt = self._build_fallback_prompt(transcript_text, speakers)
+                else:
+                    # Ultra-simple prompt for third attempt
+                    current_prompt = self._build_minimal_prompt(transcript_text, speakers)
                 
                 response = self.model.generate_content(
                     current_prompt,
@@ -535,12 +541,33 @@ class ExpertAnalysisService:
                     }
                 )
                 
+                # Debug: Check response structure
+                print(f"   📊 Response type: {type(response)}")
+                if hasattr(response, 'candidates') and response.candidates:
+                    print(f"   📊 Candidates count: {len(response.candidates)}")
+                    if response.candidates[0].content and response.candidates[0].content.parts:
+                        print(f"   📊 Parts count: {len(response.candidates[0].content.parts)}")
+                else:
+                    print(f"   ⚠️ No candidates in response!")
+                    if hasattr(response, 'prompt_feedback'):
+                        print(f"   📊 Prompt feedback: {response.prompt_feedback}")
+                
                 # Safe extraction of response.text
                 try:
                     analysis_text = response.text.strip() if response.text else ""
                 except (ValueError, AttributeError) as text_err:
                     print(f"   ⚠️ response.text access failed: {text_err}")
-                    analysis_text = ""
+                    # Try to extract from candidates directly
+                    if hasattr(response, 'candidates') and response.candidates:
+                        try:
+                            parts = response.candidates[0].content.parts
+                            analysis_text = "".join(p.text for p in parts if hasattr(p, 'text'))
+                            print(f"   ✅ Extracted from candidates: {len(analysis_text)} chars")
+                        except Exception as extract_err:
+                            print(f"   ⚠️ Candidates extraction failed: {extract_err}")
+                            analysis_text = ""
+                    else:
+                        analysis_text = ""
                 
                 print(f"   📝 Response: {len(analysis_text)} chars")
                 
@@ -554,10 +581,10 @@ class ExpertAnalysisService:
                 
             except Exception as e:
                 print(f"   ❌ Attempt {attempt + 1} failed: {e}")
+                import traceback
+                traceback.print_exc()
                 if attempt == max_retries - 1:
                     logger.error(f"❌ [CRITICAL] ניתוח מומחה נכשל לאחר {max_retries} נסיונות: {e}")
-                    import traceback
-                    traceback.print_exc()
         
         # Final validation
         if not analysis_text or len(analysis_text.strip()) < 50:
@@ -609,6 +636,22 @@ class ExpertAnalysisService:
 📈 קאיזן:
 ✓ לשימור: [נקודה חיובית]
 → לשיפור: [הזדמנות לצמיחה]
+"""
+    
+    def _build_minimal_prompt(self, transcript_text: str, speakers: List[str]) -> str:
+        """Ultra-simple prompt for last resort attempt."""
+        speakers_str = ", ".join(speakers) if speakers else "דוברים"
+        
+        # Very short transcript sample
+        short_transcript = transcript_text[:1500] if len(transcript_text) > 1500 else transcript_text
+        
+        return f"""סכם בקצרה את השיחה הזאת בעברית:
+
+{short_transcript}
+
+משתתפים: {speakers_str}
+
+כתוב 3-4 משפטים קצרים שמסכמים את עיקר השיחה.
 """
     
     def format_for_whatsapp(self, analysis_result: Dict, include_header: bool = True) -> str:
