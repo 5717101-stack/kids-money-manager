@@ -1011,6 +1011,21 @@ Summary: {summary}
                 json_text = text
                 print(f"⚠️  No JSON object found via regex, using cleaned text: {len(json_text)} characters")
             
+            # SANITIZE: Remove invalid control characters that break JSON parsing
+            # Control characters (0x00-0x1F except \t, \n, \r) are invalid in JSON strings
+            def sanitize_json_string(s):
+                """Remove invalid control characters from JSON string."""
+                # Replace problematic control chars with space
+                import re
+                # Match control chars except tab, newline, carriage return
+                s = re.sub(r'[\x00-\x08\x0b\x0c\x0e-\x1f]', ' ', s)
+                # Also fix unescaped newlines inside strings by finding quoted sections
+                # This is a simplified approach - replace literal newlines with \n
+                return s
+            
+            json_text = sanitize_json_string(json_text)
+            print(f"🧹 Sanitized JSON: {len(json_text)} characters")
+            
             # Try to parse as JSON
             try:
                 transcript_json = json.loads(json_text)
@@ -1030,10 +1045,23 @@ Summary: {summary}
                 
             except json.JSONDecodeError as e:
                 print(f"⚠️  JSON decode error: {e}")
-                print(f"   Attempted to parse: {json_text[:500]}")
+                print(f"   Error position: char {e.pos if hasattr(e, 'pos') else 'unknown'}")
+                
+                # Try additional sanitization: escape unescaped newlines in strings
+                # Find the problematic area and try to fix it
+                try:
+                    # More aggressive sanitization: replace all newlines with escaped versions
+                    sanitized = json_text.replace('\n', '\\n').replace('\r', '\\r').replace('\t', '\\t')
+                    transcript_json = json.loads(sanitized)
+                    if "segments" in transcript_json:
+                        print(f"✅ Aggressive sanitization worked! Parsed {len(transcript_json['segments'])} segments")
+                        return transcript_json
+                except:
+                    pass
                 
                 # Try to fix incomplete JSON using existing helper
                 fixed_text = self._fix_incomplete_json(json_text)
+                fixed_text = sanitize_json_string(fixed_text)
                 try:
                     transcript_json = json.loads(fixed_text)
                     if "segments" in transcript_json:
