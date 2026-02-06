@@ -981,6 +981,18 @@ def process_audio_in_background(
     reference_voices = []
     slice_files_to_cleanup = []  # Track audio slices separately
     
+    # Send immediate "Processing..." message to manage user expectations
+    try:
+        if whatsapp_provider:
+            processing_msg = "🎙️ מקבל את ההקלטה... מנתח דוברים ומריץ את מועצת המומחים. זה עלול לקחת דקה-שתיים."
+            whatsapp_provider.send_whatsapp(
+                message=processing_msg,
+                to=f"+{from_number}"
+            )
+            print("📤 Sent 'Processing...' notification")
+    except Exception as notify_error:
+        print(f"⚠️  Failed to send processing notification: {notify_error}")
+    
     try:
         # Step 1: Get media URL from WhatsApp API
         print("🔐 Downloading media from WhatsApp...")
@@ -1063,6 +1075,17 @@ def process_audio_in_background(
         segments = transcript_json.get('segments', [])
         summary_text = result.get('summary', '')
         
+        # Debug: Log segment count and sample
+        print(f"📊 [Diarization] Extracted {len(segments)} segments")
+        if segments:
+            first_seg = segments[0]
+            print(f"   First segment: {first_seg.get('speaker', 'N/A')} - {first_seg.get('text', 'N/A')[:50]}...")
+            # Log all unique speakers found
+            unique_speakers = set(seg.get('speaker', 'Unknown') for seg in segments)
+            print(f"   Unique speakers: {unique_speakers}")
+        else:
+            print("   ⚠️  NO SEGMENTS EXTRACTED - Expert Analysis will be skipped!")
+        
         # ============================================================
         # EXPERT ANALYSIS: Apply multi-agent persona analysis
         # This runs AFTER diarization, BEFORE WhatsApp notification
@@ -1082,8 +1105,14 @@ def process_audio_in_background(
                         memory = drive_memory_service.get_memory()
                         user_profile = memory.get('user_profile', {})
                         current_voice_map = user_profile.get('voice_map', {})
-                    except:
-                        pass
+                        print(f"🗺️  [Expert Analysis] Voice map loaded: {current_voice_map}")
+                    except Exception as vm_error:
+                        print(f"⚠️  [Expert Analysis] Failed to load voice map: {vm_error}")
+                
+                # Also use the local cache as fallback
+                if not current_voice_map and _voice_map_cache:
+                    current_voice_map = _voice_map_cache.copy()
+                    print(f"🗺️  [Expert Analysis] Using local cache: {current_voice_map}")
                 
                 # Run expert analysis (async in sync context)
                 loop = asyncio.new_event_loop()
@@ -2380,6 +2409,9 @@ async def analyze_day(
         elif audio_paths and not settings.enable_multimodal_voice:
             print("ℹ️  Multimodal voice comparison disabled (ENABLE_MULTIMODAL_VOICE=false)")
         
+        # Initialize expert_analysis_result at top level for scope
+        expert_analysis_result = None
+        
         try:
             result = gemini_service.analyze_day(
                 audio_paths=audio_paths,
@@ -2407,6 +2439,46 @@ async def analyze_day(
                             speaker_names.add(speaker)
                     speaker_names = list(speaker_names) if speaker_names else ["User", "Unknown"]
                     
+                    # ============================================================
+                    # EXPERT ANALYSIS: Same analysis as WhatsApp flow
+                    # ============================================================
+                    expert_analysis_result = None
+                    try:
+                        from app.services.expert_analysis_service import expert_analysis_service
+                        import asyncio
+                        
+                        if expert_analysis_service.is_configured and segments:
+                            print(f"🧠 [/analyze] Running Expert Analysis on {len(segments)} segments...")
+                            
+                            # Load voice map
+                            current_voice_map = {}
+                            try:
+                                memory = drive_memory_service.get_memory()
+                                user_profile = memory.get('user_profile', {})
+                                current_voice_map = user_profile.get('voice_map', {})
+                            except:
+                                pass
+                            
+                            # Run expert analysis
+                            loop = asyncio.new_event_loop()
+                            asyncio.set_event_loop(loop)
+                            try:
+                                expert_analysis_result = loop.run_until_complete(
+                                    expert_analysis_service.analyze_transcript(
+                                        segments=segments,
+                                        voice_map=current_voice_map
+                                    )
+                                )
+                            finally:
+                                loop.close()
+                            
+                            if expert_analysis_result and expert_analysis_result.get('success'):
+                                print(f"✅ [/analyze] Expert Analysis complete - Persona: {expert_analysis_result.get('persona')}")
+                            else:
+                                print(f"⚠️  [/analyze] Expert Analysis failed: {expert_analysis_result.get('error') if expert_analysis_result else 'No result'}")
+                    except Exception as expert_err:
+                        print(f"⚠️  [/analyze] Expert Analysis error: {expert_err}")
+                    
                     # Create structured audio interaction entry
                     for i, audio_meta in enumerate(audio_file_metadata):
                         audio_interaction = {
@@ -2421,6 +2493,17 @@ async def analyze_day(
                             "speakers": speaker_names  # List of identified speaker names for searchability
                         }
                         
+                        # Include expert analysis in memory
+                        if i == 0 and expert_analysis_result and expert_analysis_result.get('success'):
+                            audio_interaction["expert_analysis"] = {
+                                "persona": expert_analysis_result.get("persona"),
+                                "persona_keys": expert_analysis_result.get("persona_keys"),
+                                "context": expert_analysis_result.get("context"),
+                                "speakers": expert_analysis_result.get("speakers"),
+                                "raw_analysis": expert_analysis_result.get("raw_analysis"),
+                                "timestamp": expert_analysis_result.get("timestamp")
+                            }
+                        
                         # Save to memory
                         success = drive_memory_service.update_memory(audio_interaction, background_tasks=background_tasks)
                         if success:
@@ -2434,8 +2517,16 @@ async def analyze_day(
             
             # Send summary via WhatsApp and SMS if configured
             try:
-                # Format the summary message (using TwilioService formatter, works for all providers)
-                formatted_message = twilio_service.format_summary_message(result)
+                # Use Expert Analysis if available, otherwise fall back to basic formatting
+                if expert_analysis_result and expert_analysis_result.get('success'):
+                    from app.services.expert_analysis_service import expert_analysis_service
+                    formatted_message = "✅ *ההקלטה נשמרה ונותחה!*\n\n"
+                    formatted_message += expert_analysis_service.format_for_whatsapp(expert_analysis_result)
+                    print("📊 Using Expert Analysis format for WhatsApp")
+                else:
+                    # Fallback: Format the summary message (using TwilioService formatter)
+                    formatted_message = twilio_service.format_summary_message(result)
+                    print("📊 Using basic format for WhatsApp (no expert analysis available)")
                 
                 results = {
                     "whatsapp": None,
