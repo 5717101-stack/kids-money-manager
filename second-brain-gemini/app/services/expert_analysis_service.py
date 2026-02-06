@@ -21,6 +21,85 @@ Each persona provides:
 - Mandatory Kaizen Feedback (לשימור / לשיפור)
 """
 
+# ============================================================================
+# DIRECT AUDIO ANALYSIS PROMPT
+# This is the proven prompt from process_meetings.py that works reliably
+# for Drive Inbox uploads. We use it for WhatsApp audio as well.
+# ============================================================================
+DIRECT_AUDIO_SYSTEM_INSTRUCTION = """You are an expert AI assistant with access to multiple expert personas. Listen to the attached audio meeting and generate a Hebrew summary using a sophisticated Multi-Agent System.
+
+Step 1: CONTEXT & SPEAKER IDENTIFICATION
+
+First, identify the speakers. Specifically look for:
+- Itzik (Me)
+- Eran (Husband/Partner)
+
+Then, classify the conversation context:
+
+If the conversation is between Itzik and Eran about their relationship, feelings, or shared life -> Flag as COUPLE_DYNAMICS (unless they explicitly talk about kids only).
+
+If the conversation is about raising children/home logistics -> Flag as PARENTING.
+
+If the conversation is about team culture/leadership/mentoring -> Flag as LEADERSHIP.
+
+If the conversation is about business strategy, product decisions, or roadmap -> Flag as STRATEGY.
+
+Step 2: SELECT THE EXPERT PERSONA
+
+Based on the flag, adopt a specific mental framework for the analysis:
+
+RELATIONSHIP (Esther Perel Mode):
+- Trigger: Discussions between Itzik & Eran about their relationship, feelings, or shared life.
+- Focus: Emotional intelligence, balance between security and freedom, listening to the "unsaid", reconciling desire with domestic life.
+- Tone: Empathetic, insightful, deep.
+
+STRATEGY (McKinsey + Tech Innovation Mode):
+- Trigger: Business decisions, product roadmap, tech strategy.
+- Focus: "MECE" (Mutually Exclusive, Collectively Exhaustive) structure, data-driven insights, scalability, combined with Agile/Lean Startup thinking (MVP, iteration, speed).
+- Tone: Sharp, professional, action-oriented, cutting through the noise.
+
+LEADERSHIP (Simon Sinek Mode):
+- Trigger: Team management, hiring, mentoring, culture.
+- Focus: "Start with Why", The Infinite Game, creating a Circle of Safety, leaders eat last.
+- Tone: Inspiring, human-centric, visionary.
+
+PARENTING (Adler Institute Mode):
+- Trigger: Kids, education, home rules.
+- Focus: Encouragement, natural consequences, cooperation, avoiding power struggles.
+- Tone: Supportive, practical, educational.
+
+Step 3: GENERATE THE HEBREW OUTPUT
+
+Structure the response strictly as follows (add relevant emojis):
+
+🧠 הכובע שנבחר: [Name of the Expert/Mode used - e.g., "אסתר פרל (יחסים)", "מקינזי + Tech Innovation (אסטרטגיה)", "סיימון סינק (מנהיגות)", "מכון אדלר (הורות)"]
+
+📌 נושא השיחה: [Concise Subject - 3-5 words]
+
+🕵️ הסאב-טקסט (ניתוח עומק): [2-3 sentences analyzing NOT just what was said, but the underlying dynamics/principles based on the chosen expert persona. Go deep into what's really happening beneath the surface.]
+
+💡 תובנה מרכזית (The Insight): [The single most valuable takeaway using the expert's specific terminology and framework. This should be the "aha moment" that the expert would highlight.]
+
+⚖️ מדד הבהירות / טיב היחסים: 
+[If Strategy: Rate clarity of decision 1-10 with brief explanation]
+[If Relationship: Rate quality of communication 1-10 with brief explanation]
+[If Leadership: Rate effectiveness of leadership approach 1-10 with brief explanation]
+[If Parenting: Rate quality of parenting approach 1-10 with brief explanation]
+
+✅ אקשן אייטמס (תכלס):
+[Task 1 - specific and actionable]
+[Task 2 - specific and actionable]
+(Or "אין משימות להמשך" if no action items)
+
+📈 קאיזן - פידבק לצמיחה:
+✓ לשימור: [One specific positive behavior/decision to preserve]
+→ לשיפור: [One MANDATORY area for growth - always find something]
+
+❓ שאלה למחשבה (Reflection): [One provocative/hard question that the expert would ask to help grow. This should challenge assumptions and encourage deeper thinking.]
+
+CRITICAL: The entire output must be in Hebrew. Use the expert's specific terminology and framework throughout. Be insightful, not just descriptive. Keep the total response under 1500 characters for WhatsApp compatibility.
+"""
+
 import json
 import logging
 from typing import Dict, List, Any, Optional, Tuple
@@ -702,6 +781,177 @@ class ExpertAnalysisService:
 כתוב 3-4 משפטים קצרים שמסכמים את עיקר השיחה.
 """
     
+    def analyze_audio_direct(self, audio_path: str) -> Dict[str, Any]:
+        """
+        Direct audio analysis using the proven SYSTEM_INSTRUCTION prompt.
+        
+        This bypasses the multi-step transcript analysis and sends audio
+        directly to Gemini with a comprehensive expert prompt.
+        This is the same approach used in process_meetings.py which works reliably.
+        
+        Args:
+            audio_path: Path to the audio file
+            
+        Returns:
+            Dict with success status and analysis text
+        """
+        import time
+        from pathlib import Path
+        
+        if not self.is_configured:
+            return {
+                "success": False,
+                "error": "שירות הניתוח לא מוגדר",
+                "source": "direct"
+            }
+        
+        audio_file = Path(audio_path)
+        if not audio_file.exists():
+            return {
+                "success": False,
+                "error": f"קובץ האודיו לא נמצא: {audio_path}",
+                "source": "direct"
+            }
+        
+        print(f"🎙️ [Direct Analysis] Starting direct audio analysis...")
+        print(f"   📁 File: {audio_file.name}")
+        print(f"   📏 Size: {audio_file.stat().st_size / 1024:.1f} KB")
+        
+        try:
+            # Determine MIME type from file extension
+            mime_type_map = {
+                '.mp3': 'audio/mpeg',
+                '.wav': 'audio/wav',
+                '.wave': 'audio/wav',
+                '.m4a': 'audio/mp4',
+                '.aac': 'audio/aac',
+                '.ogg': 'audio/ogg',
+                '.flac': 'audio/flac',
+                '.mp4': 'audio/mp4',
+                '.opus': 'audio/opus',
+            }
+            
+            file_ext = audio_file.suffix.lower()
+            mime_type = mime_type_map.get(file_ext, 'audio/mpeg')
+            print(f"   📋 MIME type: {mime_type}")
+            
+            # Upload file to Gemini
+            print(f"   📤 Uploading to Gemini...")
+            file_ref = genai.upload_file(
+                path=str(audio_path),
+                display_name=audio_file.name,
+                mime_type=mime_type
+            )
+            
+            # Wait for file to be processed
+            print(f"   ⏳ Waiting for Gemini processing...")
+            max_wait = 120  # 2 minutes
+            start_time = time.time()
+            
+            while time.time() - start_time < max_wait:
+                file_ref = genai.get_file(file_ref.name)
+                state = file_ref.state.name if hasattr(file_ref.state, 'name') else str(file_ref.state)
+                
+                if state == "ACTIVE":
+                    print(f"   ✅ File processing complete")
+                    break
+                elif state == "FAILED":
+                    return {
+                        "success": False,
+                        "error": f"Gemini failed to process file: {file_ref.name}",
+                        "source": "direct"
+                    }
+                
+                time.sleep(2)
+            else:
+                return {
+                    "success": False,
+                    "error": "Timeout waiting for Gemini to process audio",
+                    "source": "direct"
+                }
+            
+            # Generate content with expert prompt
+            print(f"   🧠 Running expert analysis...")
+            contents = [
+                DIRECT_AUDIO_SYSTEM_INSTRUCTION,
+                file_ref
+            ]
+            
+            # Use safety settings to prevent blocking
+            safety_settings = [
+                {"category": "HARM_CATEGORY_HARASSMENT", "threshold": "BLOCK_NONE"},
+                {"category": "HARM_CATEGORY_HATE_SPEECH", "threshold": "BLOCK_NONE"},
+                {"category": "HARM_CATEGORY_SEXUALLY_EXPLICIT", "threshold": "BLOCK_NONE"},
+                {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_NONE"},
+            ]
+            
+            response = self.model.generate_content(
+                contents,
+                generation_config={
+                    'temperature': 0.7,
+                    'top_p': 0.95,
+                    'top_k': 40,
+                    'max_output_tokens': 2000,
+                },
+                safety_settings=safety_settings
+            )
+            
+            # Extract text safely
+            analysis_text = ""
+            try:
+                analysis_text = response.text.strip() if response.text else ""
+            except (ValueError, AttributeError):
+                # Try direct extraction from candidates
+                if response.candidates and len(response.candidates) > 0:
+                    candidate = response.candidates[0]
+                    if hasattr(candidate, 'content') and hasattr(candidate.content, 'parts'):
+                        for part in candidate.content.parts:
+                            if hasattr(part, 'text'):
+                                analysis_text += part.text
+            
+            # Clean up uploaded file
+            try:
+                genai.delete_file(file_ref.name)
+                print(f"   🗑️ Deleted temp file from Gemini")
+            except Exception as del_err:
+                print(f"   ⚠️ Could not delete Gemini file: {del_err}")
+            
+            if not analysis_text or len(analysis_text.strip()) < 50:
+                return {
+                    "success": False,
+                    "error": "Gemini returned empty analysis",
+                    "source": "direct"
+                }
+            
+            israel_time = get_israel_time()
+            print(f"   ✅ Direct analysis complete: {len(analysis_text)} chars")
+            
+            return {
+                "success": True,
+                "raw_analysis": analysis_text,
+                "source": "direct",
+                "timestamp": israel_time.isoformat(),
+                "timestamp_display": israel_time.strftime('%d/%m/%Y %H:%M')
+            }
+            
+        except Exception as e:
+            print(f"   ❌ Direct analysis error: {type(e).__name__}: {e}")
+            import traceback
+            traceback.print_exc()
+            
+            # Record error for health reporting
+            try:
+                from app.services.architecture_audit_service import architecture_audit_service
+                architecture_audit_service.record_expert_error(f"Direct: {str(e)[:50]}")
+            except:
+                pass
+            
+            return {
+                "success": False,
+                "error": f"{type(e).__name__}: {str(e)[:100]}",
+                "source": "direct"
+            }
+    
     def format_for_whatsapp(self, analysis_result: Dict, include_header: bool = True) -> str:
         """
         Format the expert analysis for WhatsApp message.
@@ -719,25 +969,31 @@ class ExpertAnalysisService:
             error = analysis_result.get('error', 'שגיאה לא ידועה')
             return f"⚠️ לא הצלחתי לבצע ניתוח מומחה: {error}"
         
-        persona = analysis_result.get("persona", "עוזר אישי")
-        context = analysis_result.get("context", {})
         raw = analysis_result.get("raw_analysis", "")
+        source = analysis_result.get("source", "transcript")
         
         # Debug logging
-        print(f"📊 [format_for_whatsapp] Raw analysis: {len(raw)} chars")
+        print(f"📊 [format_for_whatsapp] Source: {source}, Raw analysis: {len(raw)} chars")
         if not raw:
             print("   ⚠️  WARNING: raw_analysis is EMPTY!")
         
-        # Build message with minimal header
+        # Build message - Direct analysis already has full formatting
         message = ""
         
-        if include_header:
-            # Minimal header - ONE line
-            category = context.get('primary_category', 'כללי')
-            message += f"🧠 *{persona}* | {category}\n\n"
-        
-        # Add the raw analysis (formatted by Gemini)
-        message += raw
+        if source == "direct":
+            # Direct audio analysis already includes expert header (🧠 הכובע שנבחר)
+            # No need to add extra header
+            message = raw
+        else:
+            # Transcript-based analysis - add minimal header
+            persona = analysis_result.get("persona", "עוזר אישי")
+            context = analysis_result.get("context", {})
+            
+            if include_header:
+                category = context.get('primary_category', 'כללי')
+                message += f"🧠 *{persona}* | {category}\n\n"
+            
+            message += raw
         
         # STRICT: Enforce 1200 char limit to prevent truncation
         MAX_LENGTH = 1200

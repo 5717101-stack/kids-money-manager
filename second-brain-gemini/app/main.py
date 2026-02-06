@@ -1087,10 +1087,16 @@ def process_audio_in_background(
             print("   ⚠️  NO SEGMENTS EXTRACTED - Expert Analysis will be skipped!")
         
         # ============================================================
-        # EXPERT ANALYSIS: Apply multi-agent persona analysis
-        # This runs AFTER diarization, BEFORE WhatsApp notification
+        # EXPERT ANALYSIS: Two-tier approach for reliability
+        # 
+        # PRIMARY (Direct): Send audio directly to Gemini with expert prompt
+        #   - This is the same approach that works in Drive Inbox
+        #   - Most reliable because Gemini gets full audio context
+        #
+        # FALLBACK (Transcript): Use multi-step transcript analysis
+        #   - Only if direct analysis fails
         # ============================================================
-        print("🧠 [Expert Analysis] Starting multi-agent analysis...")
+        print("🧠 [Expert Analysis] Starting expert analysis...")
         expert_analysis_result = None
         
         try:
@@ -1098,44 +1104,63 @@ def process_audio_in_background(
             import asyncio
             
             print(f"   expert_analysis_service.is_configured: {expert_analysis_service.is_configured}")
-            print(f"   segments count: {len(segments) if segments else 0}")
             
-            if expert_analysis_service.is_configured and segments:
-                # Build voice map from known speakers
-                current_voice_map = {}
-                if drive_memory_service.is_configured:
-                    try:
-                        memory = drive_memory_service.get_memory()
-                        user_profile = memory.get('user_profile', {})
-                        current_voice_map = user_profile.get('voice_map', {})
-                        print(f"🗺️  [Expert Analysis] Voice map loaded: {current_voice_map}")
-                    except Exception as vm_error:
-                        print(f"⚠️  [Expert Analysis] Failed to load voice map: {vm_error}")
+            if expert_analysis_service.is_configured:
+                # ============================================================
+                # PRIMARY: Direct Audio Analysis (proven reliable approach)
+                # ============================================================
+                print("🎙️ [Expert Analysis] Trying DIRECT audio analysis (primary method)...")
+                direct_result = expert_analysis_service.analyze_audio_direct(tmp_path)
                 
-                # Also use the local cache as fallback
-                if not current_voice_map and _voice_map_cache:
-                    current_voice_map = _voice_map_cache.copy()
-                    print(f"🗺️  [Expert Analysis] Using local cache: {current_voice_map}")
-                
-                # Run expert analysis (async in sync context)
-                loop = asyncio.new_event_loop()
-                asyncio.set_event_loop(loop)
-                try:
-                    expert_analysis_result = loop.run_until_complete(
-                        expert_analysis_service.analyze_transcript(
-                            segments=segments,
-                            voice_map=current_voice_map
-                        )
-                    )
-                finally:
-                    loop.close()
-                
-                if expert_analysis_result.get('success'):
-                    print(f"✅ [Expert Analysis] Complete - Persona: {expert_analysis_result.get('persona')}")
+                if direct_result.get('success'):
+                    print(f"✅ [Expert Analysis] DIRECT analysis succeeded: {len(direct_result.get('raw_analysis', ''))} chars")
+                    expert_analysis_result = direct_result
                 else:
-                    print(f"⚠️  [Expert Analysis] Failed: {expert_analysis_result.get('error')}")
+                    print(f"⚠️  [Expert Analysis] Direct failed: {direct_result.get('error')}")
+                    
+                    # ============================================================
+                    # FALLBACK: Transcript-based Analysis
+                    # ============================================================
+                    if segments:
+                        print("📝 [Expert Analysis] Trying TRANSCRIPT-based analysis (fallback)...")
+                        
+                        # Build voice map from known speakers
+                        current_voice_map = {}
+                        if drive_memory_service.is_configured:
+                            try:
+                                memory = drive_memory_service.get_memory()
+                                user_profile = memory.get('user_profile', {})
+                                current_voice_map = user_profile.get('voice_map', {})
+                                print(f"🗺️  [Expert Analysis] Voice map loaded: {current_voice_map}")
+                            except Exception as vm_error:
+                                print(f"⚠️  [Expert Analysis] Failed to load voice map: {vm_error}")
+                        
+                        # Also use the local cache as fallback
+                        if not current_voice_map and _voice_map_cache:
+                            current_voice_map = _voice_map_cache.copy()
+                            print(f"🗺️  [Expert Analysis] Using local cache: {current_voice_map}")
+                        
+                        # Run transcript-based expert analysis (async in sync context)
+                        loop = asyncio.new_event_loop()
+                        asyncio.set_event_loop(loop)
+                        try:
+                            expert_analysis_result = loop.run_until_complete(
+                                expert_analysis_service.analyze_transcript(
+                                    segments=segments,
+                                    voice_map=current_voice_map
+                                )
+                            )
+                        finally:
+                            loop.close()
+                        
+                        if expert_analysis_result.get('success'):
+                            print(f"✅ [Expert Analysis] Transcript analysis succeeded")
+                        else:
+                            print(f"⚠️  [Expert Analysis] Transcript analysis also failed: {expert_analysis_result.get('error')}")
+                    else:
+                        print("⚠️  [Expert Analysis] No segments for fallback analysis")
             else:
-                print("⚠️  [Expert Analysis] Skipped - service not configured or no segments")
+                print("⚠️  [Expert Analysis] Service not configured")
                 
         except Exception as expert_error:
             print(f"⚠️  [Expert Analysis] Error: {expert_error}")
