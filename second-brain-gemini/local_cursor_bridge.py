@@ -274,27 +274,27 @@ class CursorBridge:
             traceback.print_exc()
             return False
     
-    def send_completion_notification(self, content: str, success: bool = True) -> bool:
+    def send_started_notification(self, content: str, success: bool = True) -> bool:
         """
-        Send a WhatsApp notification that the task was completed.
-        Calls the server's /notify-cursor-complete endpoint.
+        Send a WhatsApp notification that Cursor has started working on the task.
+        Calls the server's /notify-cursor-started endpoint.
+        
+        This triggers Message 2: "Cursor החל את עבודת הפיתוח..."
         """
         try:
             import urllib.request
             import json
             
-            # Prepare the payload
-            status = "✅ הושלם בהצלחה" if success else "❌ נכשל"
-            preview = content[:100] + "..." if len(content) > 100 else content
+            # Prepare the payload with task preview for later use in deployment message
+            preview = content[:200] + "..." if len(content) > 200 else content
             
             payload = {
-                "status": status,
                 "task_preview": preview,
                 "success": success
             }
             
             # Send to server
-            url = f"{SERVER_URL}/notify-cursor-complete"
+            url = f"{SERVER_URL}/notify-cursor-started"
             data = json.dumps(payload).encode('utf-8')
             
             req = urllib.request.Request(
@@ -304,14 +304,14 @@ class CursorBridge:
                 method='POST'
             )
             
-            print(f"📤 Sending completion notification to server...")
+            print(f"📤 Sending 'started' notification to server...")
             with urllib.request.urlopen(req, timeout=10) as response:
                 result = json.loads(response.read().decode('utf-8'))
-                print(f"✅ Server notified: {result}")
+                print(f"✅ Server notified (Message 2 sent): {result}")
                 return True
                 
         except Exception as e:
-            print(f"⚠️  Failed to send completion notification: {e}")
+            print(f"⚠️  Failed to send started notification: {e}")
             # Don't fail the whole process if notification fails
             return False
     
@@ -378,7 +378,7 @@ class CursorBridge:
         if self.activate_cursor():
             time.sleep(0.3)
             if self.trigger_composer(content):
-                print("✅ Task executed successfully!")
+                print("✅ Task injected into Cursor!")
                 task_success = True
             else:
                 print("❌ Failed to trigger Composer")
@@ -388,12 +388,9 @@ class CursorBridge:
         # Archive the task after execution (to prevent re-processing)
         self.archive_task(content)
         
-        # Send WhatsApp notification with result
-        if task_success:
-            self.send_completion_notification(content, success=True)
-        else:
-            # Send failure notification so user knows something went wrong
-            self.send_completion_notification(content, success=False)
+        # Send WhatsApp notification: "Cursor started working" (Message 2)
+        # This is sent right after injecting the prompt, not when work is "complete"
+        self.send_started_notification(content, success=task_success)
         
         print(f"{'='*60}\n")
     

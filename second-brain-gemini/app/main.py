@@ -400,24 +400,49 @@ async def startup_event():
         if is_production:
             print(f"🚀 Production deployment detected - Version {current_version}")
             
-            # Read last commit message from environment (set by render.yaml build command)
-            commit_msg = os.environ.get('LAST_COMMIT_MSG', 'No commit message available')
+            # Get Israel time (UTC+2 in winter, UTC+3 in summer - using +2 as base)
+            from datetime import timezone, timedelta
+            israel_time = datetime.now(timezone.utc) + timedelta(hours=2)
+            israel_time_str = israel_time.strftime('%d/%m/%Y %H:%M')
             
-            # Try to get commit info from a file created during build
-            commit_file = Path(__file__).parent.parent / ".last_commit"
-            if commit_file.exists():
-                commit_msg = commit_file.read_text().strip()
+            # Try to get the original Cursor prompt (saved by notify-cursor-started)
+            changes_summary = "לא צוינו שינויים"
+            last_prompt_file = Path(__file__).parent.parent / ".last_cursor_prompt"
+            if last_prompt_file.exists():
+                try:
+                    original_prompt = last_prompt_file.read_text(encoding='utf-8').strip()
+                    # Create a short summary (first 100 chars)
+                    if original_prompt:
+                        changes_summary = original_prompt[:100]
+                        if len(original_prompt) > 100:
+                            changes_summary += "..."
+                    # Clean up the file after reading
+                    last_prompt_file.unlink()
+                    print(f"📝 Using Cursor prompt as changes: {changes_summary[:50]}...")
+                except Exception as read_error:
+                    print(f"⚠️  Could not read last prompt: {read_error}")
             
-            # Send deployment notification via WhatsApp
+            # Fallback to git commit message if no prompt available
+            if changes_summary == "לא צוינו שינויים":
+                commit_file = Path(__file__).parent.parent / ".last_commit"
+                if commit_file.exists():
+                    try:
+                        commit_msg = commit_file.read_text().strip()
+                        if commit_msg and commit_msg != "No commit message available":
+                            changes_summary = commit_msg[:150]
+                    except Exception:
+                        pass
+            
+            # Send deployment notification via WhatsApp (Message 3)
             from app.services.meta_whatsapp_service import meta_whatsapp_service
             
             notification_msg = f"""🚀 *גרסה חדשה עלתה לפרודקשן!*
 
 📦 גרסה: *{current_version}*
-⏰ זמן: {datetime.now().strftime('%d/%m/%Y %H:%M')}
+⏰ זמן: {israel_time_str} (שעון ישראל)
 
-📝 *שינויים:*
-{commit_msg[:500]}
+📝 *שינויים עיקריים:*
+{changes_summary}
 
 ✅ השרת פעיל ומוכן לעבודה!"""
             
@@ -741,29 +766,43 @@ async def test_sms(request: Request):
         )
 
 
-@app.post("/notify-cursor-complete")
-async def notify_cursor_complete(request: Request):
+@app.post("/notify-cursor-started")
+async def notify_cursor_started(request: Request):
     """
-    Receive notification from the local Cursor bridge that a task was completed.
-    Sends a WhatsApp message to confirm the execution.
+    Receive notification from the local Cursor bridge that it has started working.
+    Sends Message 2: "Cursor החל את עבודת הפיתוח..."
+    Also stores the prompt summary for use in deployment notification (Message 3).
     
-    Called by local_cursor_bridge.py after a task is executed in Cursor.
+    Called by local_cursor_bridge.py after activating Cursor and injecting the prompt.
     """
     try:
         data = await request.json()
-        status = data.get('status', 'הושלם')
         task_preview = data.get('task_preview', '')
         success = data.get('success', True)
         
-        print(f"📥 Cursor completion notification received:")
-        print(f"   Status: {status}")
-        print(f"   Task: {task_preview[:50]}...")
+        print(f"📥 Cursor STARTED notification received:")
+        print(f"   Task: {task_preview[:80]}...")
         
-        # Construct the WhatsApp message
-        if success:
-            message = f"✅ ההטמעה ב-Cursor הושלמה!\n\n📝 משימה: {task_preview}"
+        if not success:
+            # Bridge failed to inject the prompt
+            message = f"❌ הזרקת הפקודה ל-Cursor נכשלה.\n\n📝 משימה: {task_preview}"
         else:
-            message = f"❌ ההטמעה ב-Cursor נכשלה.\n\n📝 משימה: {task_preview}"
+            # Store the prompt summary for Message 3 (deployment notification)
+            # Create a short summary (first 50 chars or first sentence)
+            summary = task_preview[:50].strip()
+            if len(task_preview) > 50:
+                summary += "..."
+            
+            # Save to a file that deployment notification can read
+            try:
+                last_prompt_file = Path(__file__).parent.parent / ".last_cursor_prompt"
+                last_prompt_file.write_text(task_preview[:500], encoding='utf-8')
+                print(f"💾 Saved last prompt for deployment notification")
+            except Exception as save_error:
+                print(f"⚠️  Could not save last prompt: {save_error}")
+            
+            # Message 2: Cursor started working
+            message = "🛠️ Cursor החל את עבודת הפיתוח וההטמעה לפרודקשן. הודעה תישלח כשהגרסה החדשה הוטמעה בהצלחה."
         
         # Send via Meta WhatsApp (primary) or Twilio (fallback)
         from app.services.meta_whatsapp_service import meta_whatsapp_service
@@ -776,18 +815,25 @@ async def notify_cursor_complete(request: Request):
             result = {"success": False, "error": "No WhatsApp provider configured"}
         
         if result.get('success'):
-            print(f"✅ WhatsApp notification sent")
+            print(f"✅ WhatsApp notification sent (Message 2)")
             return {"status": "ok", "message": "Notification sent"}
         else:
             print(f"⚠️  Failed to send WhatsApp notification: {result.get('error')}")
-            return {"status": "warning", "message": "Task completed but notification failed"}
+            return {"status": "warning", "message": "Task started but notification failed"}
             
     except Exception as e:
-        print(f"❌ Error in notify-cursor-complete: {e}")
+        print(f"❌ Error in notify-cursor-started: {e}")
         import traceback
         traceback.print_exc()
         # Return success anyway - don't fail the bridge
         return {"status": "error", "message": str(e)}
+
+
+# Keep old endpoint for backwards compatibility
+@app.post("/notify-cursor-complete")
+async def notify_cursor_complete(request: Request):
+    """Backwards compatibility - redirects to notify-cursor-started."""
+    return await notify_cursor_started(request)
 
 
 @app.post("/notify-deployment")
@@ -1592,10 +1638,10 @@ async def webhook(request: Request, background_tasks: BackgroundTasks):
                                             if file_id:
                                                 print(f"✅ Cursor command saved to Drive (file_id: {file_id})")
                                                 
-                                                # Send confirmation to user
+                                                # Send confirmation to user (Message 1)
                                                 if whatsapp_provider:
                                                     whatsapp_provider.send_whatsapp(
-                                                        message="🚀 הפקודה הועברה ל-Cursor, הודעה תישלח כשההטמעה תסתיים.",
+                                                        message="🚀 הפקודה הועברה ל-Cursor. עדכון יתקבל כשהוא מתחיל לעבוד על הבקשה.",
                                                         to=f"+{from_number}"
                                                     )
                                             else:
