@@ -46,13 +46,23 @@ class ArchitectureAuditService:
         self.api_key = settings.google_api_key
         if self.api_key:
             genai.configure(api_key=self.api_key)
-            # Use Gemini 1.5 Pro for reliable responses
-            self.model = genai.GenerativeModel('gemini-1.5-pro')
+            # Use Gemini 1.5 Flash for more reliable API access
+            # Note: 'gemini-1.5-pro' sometimes returns 404, flash is more stable
+            try:
+                self.model = genai.GenerativeModel('gemini-1.5-flash')
+                logger.info("✅ Using Gemini 1.5 Flash model")
+            except Exception as e:
+                logger.warning(f"⚠️  Could not init flash model: {e}, trying pro")
+                try:
+                    self.model = genai.GenerativeModel('gemini-pro')
+                except Exception as e2:
+                    logger.error(f"❌ Could not init any model: {e2}")
+                    self.model = None
         else:
             self.model = None
             logger.warning("⚠️  Google API key not set - Audit service limited")
         
-        self.is_configured = bool(self.api_key)
+        self.is_configured = bool(self.api_key and self.model)
     
     # ================================================================
     # EXTERNAL SCAN: Market Research
@@ -114,13 +124,26 @@ class ArchitectureAuditService:
             }
             
         except Exception as e:
-            logger.error(f"❌ External scan failed: {e}")
+            error_str = str(e)
+            logger.error(f"❌ External scan failed: {error_str}")
             import traceback
             traceback.print_exc()
+            
+            # Provide graceful fallback message instead of just showing error
+            fallback_msg = ""
+            if "404" in error_str or "not found" in error_str.lower():
+                fallback_msg = "⚠️ מודל ה-AI לא זמין כרגע. מנסה שוב בסריקה הבאה."
+            elif "quota" in error_str.lower() or "rate" in error_str.lower():
+                fallback_msg = "⚠️ הגעתי למכסת השימוש. ננסה שוב מאוחר יותר."
+            elif "connection" in error_str.lower() or "timeout" in error_str.lower():
+                fallback_msg = "⚠️ בעיית חיבור לשרת. בדוק את החיבור לאינטרנט."
+            else:
+                fallback_msg = f"⚠️ שגיאה טכנית: {error_str[:50]}"
+            
             return {
                 "success": False,
-                "error": str(e),
-                "findings": f"⚠️ שגיאה בסריקה: {str(e)[:100]}"
+                "error": error_str,
+                "findings": fallback_msg + "\n\n💡 *מידע כללי:*\n• Gemini 2.0 - מוביל בזיהוי דוברים בעברית\n• Deepgram Nova-2 - אלטרנטיבה מהירה\n• AssemblyAI - טוב ל-RAG"
             }
     
     def compare_to_competitors(self) -> Dict[str, Any]:
@@ -208,10 +231,21 @@ class ArchitectureAuditService:
             print("   ✅ Drive service connected")
             
             # Method 1: Count voice signatures directly from folder
+            voice_signatures = []
             try:
+                # Debug: Print folder ID being scanned
+                if hasattr(drive_service, '_ensure_voice_signatures_folder') and drive_service.service:
+                    folder_id = drive_service._ensure_voice_signatures_folder()
+                    print(f"   📁 Voice Signatures folder ID: {folder_id}")
+                
                 voice_signatures = drive_service.get_voice_signatures(max_signatures=50)
                 metrics["voice_signatures_count"] = len(voice_signatures)
-                print(f"   📁 Voice signatures in folder: {len(voice_signatures)}")
+                print(f"   🎤 Voice signatures found: {len(voice_signatures)}")
+                
+                # List signature names
+                for sig in voice_signatures[:5]:
+                    print(f"      - {sig.get('name', 'unknown')}")
+                    
             except Exception as e:
                 print(f"   ⚠️ Could not get voice signatures: {e}")
             
@@ -220,57 +254,82 @@ class ArchitectureAuditService:
                 memory = drive_service.get_memory()
                 user_profile = memory.get('user_profile', {})
                 voice_map = user_profile.get('voice_map', {})
-                metrics["total_speakers"] = len(voice_map)
-                print(f"   👥 Speakers in voice_map: {len(voice_map)}")
                 
-                # List the speakers
-                if voice_map:
-                    for speaker_id, name in list(voice_map.items())[:5]:
+                # Count only identified speakers (exclude "Unknown" and empty names)
+                identified_speakers = {
+                    k: v for k, v in voice_map.items() 
+                    if v and v.lower() not in ['unknown', 'לא ידוע', '']
+                }
+                unknown_speakers = len(voice_map) - len(identified_speakers)
+                
+                metrics["total_speakers"] = len(identified_speakers)
+                print(f"   👥 Identified speakers: {len(identified_speakers)} (+ {unknown_speakers} unknown)")
+                
+                # List the identified speakers
+                if identified_speakers:
+                    for speaker_id, name in list(identified_speakers.items())[:5]:
                         print(f"      - {speaker_id}: {name}")
                 
-                # Analyze chat history for identification patterns
+                # Get chat history for context
                 chat_history = memory.get('chat_history', [])
                 print(f"   💬 Chat history entries: {len(chat_history)}")
                 
+                # Count identification events from chat
+                # Look for patterns indicating speaker learning
                 auto_count = 0
                 manual_count = 0
                 
                 for interaction in chat_history[-100:]:
                     content = str(interaction).lower()
-                    # Auto-identified patterns
-                    if 'auto' in content or 'אוטומטי' in content or 'זוהה' in content:
+                    # Auto-identified patterns (system recognized)
+                    if 'זוהה כ' in content or 'מזהה את' in content or 'speaker_' in content:
                         auto_count += 1
-                    # Manually tagged patterns
-                    if 'למדתי' in content or 'זה *' in content or 'נשמר במערכת' in content:
+                    # Manually tagged patterns (user taught)
+                    if 'זה ' in content and ('אבא' in content or 'אמא' in content or 'סבא' in content or 'סבתא' in content):
                         manual_count += 1
+                    if 'למדתי' in content or 'נשמר' in content:
+                        manual_count += 1
+                
+                # If we have identified speakers, infer identification
+                if len(identified_speakers) > 0 and auto_count == 0 and manual_count == 0:
+                    # Assume these were manually identified if we have names
+                    manual_count = len(identified_speakers)
+                    print(f"   ℹ️  Inferred {manual_count} manual identifications from voice_map")
                 
                 metrics["auto_identified"] = auto_count
                 metrics["manually_tagged"] = manual_count
                 
-                # Calculate accuracy only if we have data
+                # Calculate accuracy ratio
                 total_identifications = auto_count + manual_count
                 if total_identifications > 0:
                     metrics["accuracy_ratio"] = round(auto_count / total_identifications * 100, 1)
-                elif metrics["total_speakers"] > 0:
-                    # If we have speakers but no identification data, assume 50%
-                    metrics["accuracy_ratio"] = 50.0
+                elif len(identified_speakers) > 0:
+                    # Have speakers but no auto-detection data
+                    metrics["accuracy_ratio"] = 0.0  # All were manual
                 else:
                     metrics["accuracy_ratio"] = 0.0
                 
                 print(f"   🎯 Auto: {auto_count}, Manual: {manual_count}, Ratio: {metrics['accuracy_ratio']}%")
                 
                 # Check for weak signatures (speakers not in voice_signatures folder)
-                for speaker_id, name in voice_map.items():
-                    # Check if this speaker has a signature file
-                    has_signature = any(
-                        sig.get('name', '').lower() == name.lower() 
+                if voice_signatures:
+                    signature_names = [
+                        sig.get('name', '').lower().replace('.mp3', '').replace('_', ' ') 
                         for sig in voice_signatures
-                    ) if voice_signatures else False
-                    
-                    if not has_signature:
+                    ]
+                    for speaker_id, name in identified_speakers.items():
+                        has_signature = name.lower() in signature_names
+                        if not has_signature:
+                            metrics["weak_signatures"].append({
+                                "name": name,
+                                "reason": "אין קובץ חתימת קול"
+                            })
+                else:
+                    # No signatures at all - all speakers are weak
+                    for speaker_id, name in identified_speakers.items():
                         metrics["weak_signatures"].append({
                             "name": name,
-                            "reason": "אין קובץ חתימה בתיקייה"
+                            "reason": "לא נמצאו חתימות קול"
                         })
                 
             except Exception as e:
@@ -338,11 +397,34 @@ class ArchitectureAuditService:
             hygiene["drive_connected"] = True
             print("   ✅ Drive service connected")
             
-            # Get transcripts count
+            # Get transcripts count - try multiple methods
             try:
+                # Method 1: Use get_recent_transcripts (looks for .json files)
                 transcripts = drive_service.get_recent_transcripts(limit=200)
-                hygiene["transcript_count"] = len(transcripts) if transcripts else 0
-                print(f"   📄 Transcripts: {hygiene['transcript_count']}")
+                json_count = len(transcripts) if transcripts else 0
+                print(f"   📄 JSON transcripts: {json_count}")
+                
+                # Method 2: Also count .txt transcript files directly
+                txt_count = 0
+                try:
+                    if hasattr(drive_service, '_ensure_transcripts_folder') and drive_service.service:
+                        folder_id = drive_service._ensure_transcripts_folder()
+                        if folder_id:
+                            print(f"   📁 Transcripts folder ID: {folder_id}")
+                            # Count .txt files
+                            query = f"'{folder_id}' in parents and mimeType = 'text/plain' and trashed = false"
+                            results = drive_service.service.files().list(
+                                q=query,
+                                pageSize=500,
+                                fields="files(id)"
+                            ).execute()
+                            txt_count = len(results.get('files', []))
+                            print(f"   📄 TXT transcripts: {txt_count}")
+                except Exception as txt_error:
+                    print(f"   ⚠️ Could not count TXT files: {txt_error}")
+                
+                hygiene["transcript_count"] = json_count + txt_count
+                print(f"   📄 Total transcripts: {hygiene['transcript_count']}")
                 
                 if transcripts and len(transcripts) > 0:
                     # Get dates
@@ -491,8 +573,13 @@ class ArchitectureAuditService:
         report_parts.append("🧹 *היגיינת נתונים*")
         report_parts.append("")
         
+        # Show actual file counts
+        report_parts.append(f"📁 קבצי תמלול: *{transcript_count}*")
+        report_parts.append(f"🎤 קבצי חתימות קול: *{voice_sigs}*")
+        
         if hygiene.get('needs_archiving'):
-            report_parts.append("🔴 *נדרש ארכוב!*")
+            threshold = hygiene.get('archive_threshold', 100)
+            report_parts.append(f"🔴 *נדרש ארכוב!* (סף: {threshold})")
         elif transcript_count > 0:
             report_parts.append("✅ נפח תקין")
         else:
