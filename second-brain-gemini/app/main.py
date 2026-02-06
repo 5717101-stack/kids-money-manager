@@ -383,12 +383,68 @@ app.add_middleware(
 # Startup event: Pre-warm memory cache
 @app.on_event("startup")
 async def startup_event():
-    """Pre-warm memory cache on server startup."""
+    """Pre-warm memory cache and start scheduler on server startup."""
+    # Pre-warm memory cache
     if drive_memory_service.is_configured:
         print("🔥 Pre-warming memory cache...")
         drive_memory_service.preload_memory()
     else:
         print("⚠️  Skipping memory cache pre-warm (Drive Memory Service not configured)")
+    
+    # Start the APScheduler for weekly architecture audit
+    try:
+        from apscheduler.schedulers.asyncio import AsyncIOScheduler
+        from apscheduler.triggers.cron import CronTrigger
+        from app.services.architecture_audit_service import architecture_audit_service
+        from app.services.meta_whatsapp_service import meta_whatsapp_service
+        
+        def run_scheduled_audit():
+            """Run the weekly architecture audit and send report via WhatsApp."""
+            print("⏰ SCHEDULED AUDIT TRIGGERED (Friday 08:00 AM)")
+            try:
+                result = architecture_audit_service.run_weekly_architecture_audit(
+                    drive_service=drive_memory_service
+                )
+                
+                if result.get('success'):
+                    report = result.get('report', 'לא נוצר דו"ח')
+                    
+                    # Send via WhatsApp
+                    if meta_whatsapp_service.is_configured:
+                        meta_whatsapp_service.send_whatsapp(report)
+                        print("✅ Scheduled audit report sent via WhatsApp")
+                    elif twilio_service.is_configured:
+                        twilio_service.send_whatsapp(report)
+                        print("✅ Scheduled audit report sent via Twilio")
+                    else:
+                        print("⚠️  No WhatsApp provider configured for scheduled report")
+                else:
+                    print(f"❌ Scheduled audit failed: {result.get('error')}")
+                    
+            except Exception as e:
+                print(f"❌ Scheduled audit error: {e}")
+                import traceback
+                traceback.print_exc()
+        
+        scheduler = AsyncIOScheduler()
+        
+        # Schedule for every Friday at 08:00 AM Israel time (UTC+2/+3)
+        # Using UTC: Friday 06:00 (summer) or 05:00 (winter) - using 06:00 as middle ground
+        scheduler.add_job(
+            run_scheduled_audit,
+            CronTrigger(day_of_week='fri', hour=6, minute=0),  # 06:00 UTC = 08:00 Israel
+            id='weekly_architecture_audit',
+            name='Weekly Architecture Audit (Friday 08:00)',
+            replace_existing=True
+        )
+        
+        scheduler.start()
+        print("📅 Scheduler started: Weekly Architecture Audit (Friday 08:00 AM)")
+        
+    except Exception as e:
+        print(f"⚠️  Failed to start scheduler: {e}")
+        import traceback
+        traceback.print_exc()
 
 # Get the project root directory (parent of app/)
 _base_dir = Path(__file__).parent.parent.resolve()
@@ -1501,6 +1557,62 @@ async def webhook(request: Request, background_tasks: BackgroundTasks):
                                                 )
                                         
                                         print(f"🛑 CURSOR INTERCEPTOR COMPLETE - Returning immediately")
+                                        print(f"{'='*60}\n")
+                                        continue
+                                    
+                                    # ================================================================
+                                    # ARCHITECTURE AUDIT INTERCEPTOR: Weekly Stack Analysis
+                                    # Trigger: "בדוק את הסטאק" - runs the same function as Friday cron
+                                    # ================================================================
+                                    AUDIT_TRIGGER_PHRASES = ["בדוק את הסטאק", "סרוק את המערכת", "דוח ארכיטקטורה"]
+                                    if any(phrase in message_body_text.strip() for phrase in AUDIT_TRIGGER_PHRASES):
+                                        print(f"\n{'='*60}")
+                                        print(f"🏗️ ARCHITECTURE AUDIT INTERCEPTOR ACTIVATED")
+                                        print(f"{'='*60}")
+                                        
+                                        try:
+                                            from app.services.architecture_audit_service import architecture_audit_service
+                                            
+                                            # Send "working on it" message
+                                            if whatsapp_provider:
+                                                whatsapp_provider.send_whatsapp(
+                                                    message="🏗️ מריץ בדיקת ארכיטקטורה... זה עשוי לקחת כדקה.",
+                                                    to=f"+{from_number}"
+                                                )
+                                            
+                                            # Run the audit
+                                            audit_result = architecture_audit_service.run_weekly_architecture_audit(
+                                                drive_service=drive_memory_service
+                                            )
+                                            
+                                            if audit_result.get('success'):
+                                                report = audit_result.get('report', 'לא נוצר דו"ח')
+                                                
+                                                # Send the report via WhatsApp
+                                                if whatsapp_provider:
+                                                    whatsapp_provider.send_whatsapp(
+                                                        message=report,
+                                                        to=f"+{from_number}"
+                                                    )
+                                                print(f"✅ Audit report sent ({len(report)} chars)")
+                                            else:
+                                                if whatsapp_provider:
+                                                    whatsapp_provider.send_whatsapp(
+                                                        message=f"❌ בדיקת ארכיטקטורה נכשלה: {audit_result.get('error', 'Unknown error')}",
+                                                        to=f"+{from_number}"
+                                                    )
+                                                    
+                                        except Exception as audit_error:
+                                            print(f"❌ Audit error: {audit_error}")
+                                            import traceback
+                                            traceback.print_exc()
+                                            if whatsapp_provider:
+                                                whatsapp_provider.send_whatsapp(
+                                                    message=f"❌ שגיאה בבדיקה: {str(audit_error)[:100]}",
+                                                    to=f"+{from_number}"
+                                                )
+                                        
+                                        print(f"🛑 AUDIT INTERCEPTOR COMPLETE - Returning immediately")
                                         print(f"{'='*60}\n")
                                         continue
                                     

@@ -31,3 +31,6 @@ google-auth-httplib2==0.2.0
 
 # Audio processing for speaker identification
 pydub==0.25.1
+
+# Scheduling for cron jobs (weekly architecture audit)
+apscheduler==3.10.4
