@@ -536,6 +536,108 @@ class DriveMemoryService:
             logger.error(f"❌ Error in retroactive transcript update: {e}")
             return 0
     
+    def update_summary_speaker(self, speaker_id: str, real_name: str, limit: int = 5) -> int:
+        """
+        RETROACTIVE SUMMARY UPDATE: Replace generic speaker IDs with real names in expert analysis summaries.
+        
+        This ensures that future RAG queries use correct names when searching through
+        summaries stored in the memory file.
+        
+        Args:
+            speaker_id: The generic ID (e.g., "Unknown Speaker 2", "Speaker B", "דובר 2")
+            real_name: The real name to replace with (e.g., "שי", "Miri")
+            limit: Maximum number of recent memory entries to update
+            
+        Returns:
+            Number of summaries updated
+        """
+        if not self.is_configured or not self.service:
+            logger.warning("⚠️  Drive service not configured - cannot update summaries")
+            return 0
+        
+        self._refresh_credentials_if_needed()
+        
+        updated_count = 0
+        
+        try:
+            # Get current memory
+            memory = self.get_memory()
+            chat_history = memory.get('chat_history', [])
+            
+            if not chat_history:
+                logger.info("ℹ️  No chat history found to update")
+                return 0
+            
+            # Look at recent audio entries (they contain transcripts and summaries)
+            recent_audio_entries = []
+            for i, entry in enumerate(reversed(chat_history)):
+                if entry.get('type') == 'audio':
+                    recent_audio_entries.append((len(chat_history) - 1 - i, entry))
+                    if len(recent_audio_entries) >= limit:
+                        break
+            
+            logger.info(f"🔄 Checking {len(recent_audio_entries)} recent audio entries for '{speaker_id}'...")
+            
+            for idx, entry in recent_audio_entries:
+                has_changes = False
+                
+                # Update transcript segments
+                transcript = entry.get('transcript', {})
+                segments = transcript.get('segments', [])
+                for segment in segments:
+                    current_speaker = segment.get('speaker', '')
+                    if current_speaker.lower() == speaker_id.lower():
+                        segment['speaker'] = real_name
+                        has_changes = True
+                
+                # Update speakers list
+                speakers = entry.get('speakers', [])
+                for i, speaker in enumerate(speakers):
+                    if speaker.lower() == speaker_id.lower():
+                        speakers[i] = real_name
+                        has_changes = True
+                
+                # Update expert_analysis if present (for future queries)
+                expert_analysis = entry.get('expert_analysis', {})
+                if expert_analysis:
+                    raw_analysis = expert_analysis.get('raw_analysis', '')
+                    if speaker_id.lower() in raw_analysis.lower():
+                        # Replace variations of speaker ID with real name
+                        import re
+                        # Case-insensitive replacement
+                        pattern = re.compile(re.escape(speaker_id), re.IGNORECASE)
+                        updated_analysis = pattern.sub(real_name, raw_analysis)
+                        expert_analysis['raw_analysis'] = updated_analysis
+                        has_changes = True
+                        
+                        # Also update speakers list in expert_analysis
+                        analysis_speakers = expert_analysis.get('speakers', [])
+                        for i, speaker in enumerate(analysis_speakers):
+                            if speaker.lower() == speaker_id.lower():
+                                analysis_speakers[i] = real_name
+                
+                if has_changes:
+                    # Update the entry in place
+                    chat_history[idx] = entry
+                    updated_count += 1
+                    logger.info(f"✅ Updated memory entry {idx}: {speaker_id} -> {real_name}")
+            
+            if updated_count > 0:
+                # Save updated memory back to Drive
+                memory['chat_history'] = chat_history
+                self._upload_to_drive(memory)
+                logger.info(f"📝 Retroactive summary update complete: {updated_count} entries updated")
+            else:
+                logger.info("ℹ️  No matching speaker IDs found in recent entries")
+            
+            return updated_count
+            
+        except Exception as e:
+            logger.error(f"❌ Error in retroactive summary update: {e}")
+            import traceback
+            traceback.print_exc()
+            return 0
+    
     # ================================================================
     # CURSOR INBOX: Remote Execution via Google Drive
     # ================================================================

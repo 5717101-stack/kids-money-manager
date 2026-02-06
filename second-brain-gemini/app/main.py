@@ -75,10 +75,12 @@ _session_context_lock = Lock()
 
 def update_last_session_context(summary: str, speakers: list, timestamp: str, 
                                   transcript_file_id: str = '', segments: list = None,
-                                  full_transcript: dict = None, identified_speakers: dict = None):
+                                  full_transcript: dict = None, identified_speakers: dict = None,
+                                  expert_analysis: dict = None):
     """
     Update Working Memory with the last processed session.
     This provides Zero Latency access to the conversation that just ended.
+    Includes expert analysis for immediate RAG queries.
     """
     global _last_processed_session
     with _session_context_lock:
@@ -89,13 +91,16 @@ def update_last_session_context(summary: str, speakers: list, timestamp: str,
             'transcript_file_id': transcript_file_id,
             'segments': segments or [],
             'full_transcript': full_transcript or {},
-            'identified_speakers': identified_speakers or _voice_map_cache.copy()
+            'identified_speakers': identified_speakers or _voice_map_cache.copy(),
+            'expert_analysis': expert_analysis or {}
         }
         print(f"📝 WORKING MEMORY updated:")
         print(f"   Speakers: {speakers}")
         print(f"   Summary: {len(summary)} chars")
         print(f"   Segments: {len(segments or [])} entries")
         print(f"   Identified speakers: {identified_speakers or _voice_map_cache}")
+        if expert_analysis:
+            print(f"   Expert analysis: {expert_analysis.get('persona', 'N/A')}")
 
 def get_last_session_context() -> dict:
     """
@@ -1139,6 +1144,18 @@ def process_audio_in_background(
             "from_number": from_number
         }
         
+        # Include expert analysis for RAG queries
+        if expert_analysis_result and expert_analysis_result.get('success'):
+            audio_interaction["expert_analysis"] = {
+                "persona": expert_analysis_result.get("persona"),
+                "persona_keys": expert_analysis_result.get("persona_keys"),
+                "context": expert_analysis_result.get("context"),
+                "speakers": expert_analysis_result.get("speakers"),
+                "raw_analysis": expert_analysis_result.get("raw_analysis"),
+                "timestamp": expert_analysis_result.get("timestamp")
+            }
+            print(f"📊 Including expert analysis in memory (persona: {expert_analysis_result.get('persona')})")
+        
         drive_memory_service.update_memory(audio_interaction)
         print("✅ Saved audio interaction to memory")
         
@@ -1152,7 +1169,8 @@ def process_audio_in_background(
             transcript_file_id=audio_metadata.get('file_id', ''),
             segments=segments,
             full_transcript=transcript_json,
-            identified_speakers=_voice_map_cache.copy()
+            identified_speakers=_voice_map_cache.copy(),
+            expert_analysis=expert_analysis_result if expert_analysis_result and expert_analysis_result.get('success') else None
         )
         
         # Step 8: Detect unknown speakers and send "Who is this?" messages
@@ -1652,6 +1670,19 @@ async def webhook(request: Request, background_tasks: BackgroundTasks):
                                             print(f"📝 Retroactive update: {updated_count} transcript(s) updated with '{person_name}'")
                                     except Exception as transcript_error:
                                         print(f"⚠️  Failed to update transcripts: {transcript_error}")
+                                    
+                                    # Step 3.5: RETROACTIVE SUMMARY UPDATE
+                                    # Update expert analysis summaries in memory for RAG queries
+                                    try:
+                                        summary_updated = drive_memory_service.update_summary_speaker(
+                                            speaker_id=speaker_id,
+                                            real_name=person_name,
+                                            limit=5  # Update last 5 audio entries in memory
+                                        )
+                                        if summary_updated > 0:
+                                            print(f"📝 Retroactive summary update: {summary_updated} memory entries updated with '{person_name}'")
+                                    except Exception as summary_error:
+                                        print(f"⚠️  Failed to update summaries: {summary_error}")
                                     
                                     # Step 4: Send confirmation (surgical, no chat)
                                     if whatsapp_provider:
