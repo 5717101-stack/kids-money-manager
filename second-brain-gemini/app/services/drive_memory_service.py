@@ -536,6 +536,135 @@ class DriveMemoryService:
             logger.error(f"❌ Error in retroactive transcript update: {e}")
             return 0
     
+    # ================================================================
+    # CURSOR INBOX: Remote Execution via Google Drive
+    # ================================================================
+    
+    def _ensure_cursor_inbox_folder(self) -> Optional[str]:
+        """
+        Ensure the Cursor_Inbox subfolder exists in the main memory folder.
+        This folder is monitored by the local Mac bridge for remote execution.
+        
+        Returns:
+            Folder ID of Cursor_Inbox folder, or None if creation failed
+        """
+        if not self.is_configured or not self.service:
+            return None
+        
+        self._refresh_credentials_if_needed()
+        
+        try:
+            # Check if Cursor_Inbox folder already exists
+            query = f"name = 'Cursor_Inbox' and '{self.folder_id}' in parents and mimeType = 'application/vnd.google-apps.folder' and trashed = false"
+            results = self.service.files().list(
+                q=query,
+                fields="files(id, name)"
+            ).execute()
+            
+            files = results.get('files', [])
+            if files:
+                folder_id = files[0]['id']
+                logger.info(f"✅ Cursor_Inbox folder already exists (ID: {folder_id})")
+                return folder_id
+
+            # Create Cursor_Inbox folder
+            folder_metadata = {
+                'name': 'Cursor_Inbox',
+                'mimeType': 'application/vnd.google-apps.folder',
+                'parents': [self.folder_id]
+            }
+            
+            folder = self.service.files().create(
+                body=folder_metadata,
+                fields='id'
+            ).execute()
+            
+            folder_id = folder.get('id')
+            logger.info(f"✅ Created Cursor_Inbox folder (ID: {folder_id})")
+            return folder_id
+            
+        except Exception as e:
+            logger.error(f"❌ Error ensuring Cursor_Inbox folder: {e}")
+            return None
+    
+    def save_cursor_command(self, prompt_content: str) -> Optional[str]:
+        """
+        Save a Cursor command to pending_task.md in the Cursor_Inbox folder.
+        This file will be monitored by the local Mac bridge for remote execution.
+        
+        Args:
+            prompt_content: The coding prompt to execute in Cursor
+            
+        Returns:
+            File ID of saved command, or None if failed
+        """
+        if not self.is_configured or not self.service:
+            logger.warning("⚠️  Drive service not configured - cannot save Cursor command")
+            return None
+        
+        self._refresh_credentials_if_needed()
+        
+        # Get the Cursor_Inbox folder
+        inbox_folder_id = self._ensure_cursor_inbox_folder()
+        if not inbox_folder_id:
+            logger.error("❌ Cannot save Cursor command: Cursor_Inbox folder not available")
+            return None
+        
+        try:
+            filename = "pending_task.md"
+            
+            # Check if file already exists (we want to overwrite)
+            query = f"name = '{filename}' and '{inbox_folder_id}' in parents and trashed = false"
+            results = self.service.files().list(
+                q=query,
+                fields="files(id, name)"
+            ).execute()
+            
+            existing_files = results.get('files', [])
+            
+            # Prepare content with UTF-8 encoding
+            file_content = prompt_content.encode('utf-8')
+            
+            from googleapiclient.http import MediaIoBaseUpload
+            media = MediaIoBaseUpload(
+                io.BytesIO(file_content),
+                mimetype='text/markdown',
+                resumable=True
+            )
+            
+            if existing_files:
+                # Update existing file (overwrite)
+                file_id = existing_files[0]['id']
+                self.service.files().update(
+                    fileId=file_id,
+                    media_body=media
+                ).execute()
+                logger.info(f"✅ Updated pending_task.md (overwrite mode)")
+            else:
+                # Create new file
+                file_metadata = {
+                    'name': filename,
+                    'parents': [inbox_folder_id],
+                    'mimeType': 'text/markdown'
+                }
+                
+                result = self.service.files().create(
+                    body=file_metadata,
+                    media_body=media,
+                    fields='id'
+                ).execute()
+                
+                file_id = result.get('id')
+                logger.info(f"✅ Created pending_task.md (ID: {file_id})")
+            
+            return file_id
+            
+        except Exception as e:
+            logger.error(f"❌ Error saving Cursor command: {e}")
+            import traceback
+            traceback.print_exc()
+            return None
+    
     def upload_audio_to_archive(
         self,
         audio_path: str = None,

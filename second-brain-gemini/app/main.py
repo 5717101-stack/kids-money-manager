@@ -1342,6 +1342,68 @@ async def webhook(request: Request, background_tasks: BackgroundTasks):
                                 # Text message handling follows (elif block)
                                 # Process message with memory
                                 elif whatsapp_provider and message_type == "text" and message_body_text:
+                                    
+                                    # ================================================================
+                                    # CURSOR COMMAND INTERCEPTOR: Remote Execution via WhatsApp
+                                    # If message starts with "הרץ בקרסר", save to Drive for local Mac bridge
+                                    # ================================================================
+                                    CURSOR_COMMAND_PREFIX = "הרץ בקרסר"
+                                    if message_body_text.strip().startswith(CURSOR_COMMAND_PREFIX):
+                                        print(f"\n{'='*60}")
+                                        print(f"🎮 CURSOR COMMAND INTERCEPTOR ACTIVATED")
+                                        print(f"{'='*60}")
+                                        
+                                        # Extract the prompt content (everything after the prefix)
+                                        prompt_content = message_body_text[len(CURSOR_COMMAND_PREFIX):].strip()
+                                        
+                                        if not prompt_content:
+                                            # No content after prefix
+                                            if whatsapp_provider:
+                                                whatsapp_provider.send_whatsapp(
+                                                    message="⚠️ לא קיבלתי תוכן לביצוע. שלח: 'הרץ בקרסר [הפקודה שלך]'",
+                                                    to=f"+{from_number}"
+                                                )
+                                            continue
+                                        
+                                        print(f"📝 Prompt content: {prompt_content[:100]}...")
+                                        
+                                        # Save to Google Drive Cursor_Inbox folder
+                                        try:
+                                            file_id = drive_memory_service.save_cursor_command(prompt_content)
+                                            
+                                            if file_id:
+                                                print(f"✅ Cursor command saved to Drive (file_id: {file_id})")
+                                                
+                                                # Send confirmation to user
+                                                if whatsapp_provider:
+                                                    whatsapp_provider.send_whatsapp(
+                                                        message="🚀 הפקודה הועברה למחשב המקומי. בדוק את Cursor בעוד רגע.",
+                                                        to=f"+{from_number}"
+                                                    )
+                                            else:
+                                                print(f"❌ Failed to save Cursor command")
+                                                if whatsapp_provider:
+                                                    whatsapp_provider.send_whatsapp(
+                                                        message="❌ נכשל בשמירת הפקודה. נסה שוב.",
+                                                        to=f"+{from_number}"
+                                                    )
+                                        except Exception as cursor_error:
+                                            print(f"❌ Cursor command error: {cursor_error}")
+                                            import traceback
+                                            traceback.print_exc()
+                                            if whatsapp_provider:
+                                                whatsapp_provider.send_whatsapp(
+                                                    message=f"❌ שגיאה: {str(cursor_error)[:100]}",
+                                                    to=f"+{from_number}"
+                                                )
+                                        
+                                        print(f"🛑 CURSOR INTERCEPTOR COMPLETE - Returning immediately")
+                                        print(f"{'='*60}\n")
+                                        continue
+                                    
+                                    # ================================================================
+                                    # REGULAR TEXT MESSAGE HANDLING
+                                    # ================================================================
                                     try:
                                         # CRITICAL: Get memory at the very start to trigger cache refresh check
                                         # This ensures we detect manual edits before processing the message
