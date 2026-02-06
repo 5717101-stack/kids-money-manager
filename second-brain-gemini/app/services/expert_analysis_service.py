@@ -533,30 +533,46 @@ class ExpertAnalysisService:
                     # Ultra-simple prompt for third attempt
                     current_prompt = self._build_minimal_prompt(transcript_text, speakers)
                 
+                print(f"   📊 Model: {self.model_name}")
+                print(f"   📊 Prompt length: {len(current_prompt)} chars")
+                
+                # Add safety settings to allow more content
+                safety_settings = [
+                    {"category": "HARM_CATEGORY_HARASSMENT", "threshold": "BLOCK_NONE"},
+                    {"category": "HARM_CATEGORY_HATE_SPEECH", "threshold": "BLOCK_NONE"},
+                    {"category": "HARM_CATEGORY_SEXUALLY_EXPLICIT", "threshold": "BLOCK_NONE"},
+                    {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_NONE"},
+                ]
+                
                 response = self.model.generate_content(
                     current_prompt,
                     generation_config={
                         'temperature': 0.3 if attempt > 0 else 0.4,
                         'max_output_tokens': 1000
-                    }
+                    },
+                    safety_settings=safety_settings
                 )
                 
                 # Debug: Check response structure
-                print(f"   📊 Response type: {type(response)}")
+                print(f"   📊 Response received")
                 if hasattr(response, 'candidates') and response.candidates:
-                    print(f"   📊 Candidates count: {len(response.candidates)}")
-                    if response.candidates[0].content and response.candidates[0].content.parts:
-                        print(f"   📊 Parts count: {len(response.candidates[0].content.parts)}")
+                    print(f"   📊 Candidates: {len(response.candidates)}")
+                    candidate = response.candidates[0]
+                    if hasattr(candidate, 'finish_reason'):
+                        print(f"   📊 Finish reason: {candidate.finish_reason}")
+                    if candidate.content and candidate.content.parts:
+                        print(f"   📊 Parts: {len(candidate.content.parts)}")
                 else:
-                    print(f"   ⚠️ No candidates in response!")
+                    print(f"   ⚠️ No candidates!")
                     if hasattr(response, 'prompt_feedback'):
                         print(f"   📊 Prompt feedback: {response.prompt_feedback}")
                 
                 # Safe extraction of response.text
                 try:
                     analysis_text = response.text.strip() if response.text else ""
+                    print(f"   ✅ Got text: {len(analysis_text)} chars")
                 except (ValueError, AttributeError) as text_err:
-                    print(f"   ⚠️ response.text access failed: {text_err}")
+                    print(f"   ⚠️ response.text failed: {text_err}")
                     # Try to extract from candidates directly
                     if hasattr(response, 'candidates') and response.candidates:
                         try:
@@ -569,7 +585,7 @@ class ExpertAnalysisService:
                     else:
                         analysis_text = ""
                 
-                print(f"   📝 Response: {len(analysis_text)} chars")
+                print(f"   📝 Final text: {len(analysis_text)} chars")
                 
                 # Check for empty response
                 if len(analysis_text.strip()) < 50:
