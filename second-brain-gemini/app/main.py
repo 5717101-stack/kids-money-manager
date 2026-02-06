@@ -405,33 +405,62 @@ async def startup_event():
             israel_time = datetime.now(timezone.utc) + timedelta(hours=2)
             israel_time_str = israel_time.strftime('%d/%m/%Y %H:%M')
             
-            # Try to get the original Cursor prompt (saved by notify-cursor-started)
-            changes_summary = "לא צוינו שינויים"
-            last_prompt_file = Path(__file__).parent.parent / ".last_cursor_prompt"
-            if last_prompt_file.exists():
-                try:
-                    original_prompt = last_prompt_file.read_text(encoding='utf-8').strip()
-                    # Create a short summary (first 100 chars)
-                    if original_prompt:
-                        changes_summary = original_prompt[:100]
-                        if len(original_prompt) > 100:
-                            changes_summary += "..."
-                    # Clean up the file after reading
-                    last_prompt_file.unlink()
-                    print(f"📝 Using Cursor prompt as changes: {changes_summary[:50]}...")
-                except Exception as read_error:
-                    print(f"⚠️  Could not read last prompt: {read_error}")
+            # Get changes summary for deployment notification
+            # Priority: 1) git log, 2) Google Drive memory, 3) .last_commit file
+            changes_summary = ""
             
-            # Fallback to git commit message if no prompt available
-            if changes_summary == "לא צוינו שינויים":
+            # Method 1: Try git log to get latest commit message
+            try:
+                import subprocess
+                result = subprocess.run(
+                    ['git', 'log', '-1', '--pretty=%B'],
+                    capture_output=True, text=True, timeout=5,
+                    cwd=Path(__file__).parent.parent
+                )
+                if result.returncode == 0 and result.stdout.strip():
+                    git_msg = result.stdout.strip()
+                    # Extract meaningful part (skip version tags like "v3.9.1 - ")
+                    if ' - ' in git_msg:
+                        git_msg = git_msg.split(' - ', 1)[1]
+                    changes_summary = git_msg[:150]
+                    print(f"📝 Using git commit message: {changes_summary[:50]}...")
+            except Exception as git_error:
+                print(f"⚠️  Could not get git log: {git_error}")
+            
+            # Method 2: Fall back to Google Drive memory (saved by notify-cursor-started)
+            if not changes_summary:
+                try:
+                    if drive_memory_service.is_configured:
+                        memory = drive_memory_service.get_memory()
+                        last_task = memory.get('last_cursor_task', {})
+                        if last_task and last_task.get('prompt'):
+                            prompt = last_task['prompt']
+                            changes_summary = prompt[:150]
+                            if len(prompt) > 150:
+                                changes_summary += "..."
+                            print(f"📝 Using Drive memory: {changes_summary[:50]}...")
+                            
+                            # Clear after reading to avoid stale data
+                            memory.pop('last_cursor_task', None)
+                            drive_memory_service.save_memory(memory)
+                except Exception as drive_error:
+                    print(f"⚠️  Could not read from Drive: {drive_error}")
+            
+            # Method 3: Fall back to .last_commit file (created during build)
+            if not changes_summary:
                 commit_file = Path(__file__).parent.parent / ".last_commit"
                 if commit_file.exists():
                     try:
                         commit_msg = commit_file.read_text().strip()
-                        if commit_msg and commit_msg != "No commit message available":
+                        if commit_msg and commit_msg not in ['No commit message available', '']:
                             changes_summary = commit_msg[:150]
+                            print(f"📝 Using .last_commit: {changes_summary[:50]}...")
                     except Exception:
                         pass
+            
+            # Final fallback
+            if not changes_summary:
+                changes_summary = "עדכון מערכת"
             
             # Send deployment notification via WhatsApp (Message 3)
             from app.services.meta_whatsapp_service import meta_whatsapp_service
@@ -771,7 +800,7 @@ async def notify_cursor_started(request: Request):
     """
     Receive notification from the local Cursor bridge that it has started working.
     Sends Message 2: "Cursor החל את עבודת הפיתוח..."
-    Also stores the prompt summary for use in deployment notification (Message 3).
+    Also stores the prompt in Google Drive for use in deployment notification (Message 3).
     
     Called by local_cursor_bridge.py after activating Cursor and injecting the prompt.
     """
@@ -779,27 +808,32 @@ async def notify_cursor_started(request: Request):
         data = await request.json()
         task_preview = data.get('task_preview', '')
         success = data.get('success', True)
+        save_to_drive = data.get('save_to_drive', False)
         
         print(f"📥 Cursor STARTED notification received:")
         print(f"   Task: {task_preview[:80]}...")
+        print(f"   Save to Drive: {save_to_drive}")
         
         if not success:
             # Bridge failed to inject the prompt
             message = f"❌ הזרקת הפקודה ל-Cursor נכשלה.\n\n📝 משימה: {task_preview}"
         else:
-            # Store the prompt summary for Message 3 (deployment notification)
-            # Create a short summary (first 50 chars or first sentence)
-            summary = task_preview[:50].strip()
-            if len(task_preview) > 50:
-                summary += "..."
-            
-            # Save to a file that deployment notification can read
+            # Store the prompt for Message 3 (deployment notification)
+            # Save to Google Drive for persistence across deployments
             try:
-                last_prompt_file = Path(__file__).parent.parent / ".last_cursor_prompt"
-                last_prompt_file.write_text(task_preview[:500], encoding='utf-8')
-                print(f"💾 Saved last prompt for deployment notification")
+                if drive_memory_service.is_configured:
+                    # Save as a special "last_cursor_task" in memory
+                    memory = drive_memory_service.get_memory()
+                    memory['last_cursor_task'] = {
+                        'prompt': task_preview[:500],
+                        'timestamp': datetime.now().isoformat()
+                    }
+                    drive_memory_service.save_memory(memory)
+                    print(f"💾 Saved last prompt to Google Drive for deployment notification")
+                else:
+                    print(f"⚠️  Drive not configured - cannot persist prompt")
             except Exception as save_error:
-                print(f"⚠️  Could not save last prompt: {save_error}")
+                print(f"⚠️  Could not save last prompt to Drive: {save_error}")
             
             # Message 2: Cursor started working
             message = "🛠️ Cursor החל את עבודת הפיתוח וההטמעה לפרודקשן. הודעה תישלח כשהגרסה החדשה הוטמעה בהצלחה."

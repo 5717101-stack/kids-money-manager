@@ -274,23 +274,52 @@ class CursorBridge:
             traceback.print_exc()
             return False
     
+    def save_change_description(self, content: str) -> bool:
+        """
+        Save a simplified version of the prompt to a local file.
+        This can be used as a reference for git commit messages.
+        
+        Also saves to the repo's .last_change file for deployment notifications.
+        """
+        try:
+            # Create a simplified summary (first 100 chars, clean)
+            summary = content.strip()[:100]
+            if len(content) > 100:
+                summary += "..."
+            
+            # Save to local file in the project directory
+            project_dir = Path(__file__).parent
+            change_file = project_dir / ".last_change"
+            change_file.write_text(summary, encoding='utf-8')
+            print(f"💾 Saved change description: {summary[:50]}...")
+            
+            return True
+        except Exception as e:
+            print(f"⚠️  Could not save change description: {e}")
+            return False
+    
     def send_started_notification(self, content: str, success: bool = True) -> bool:
         """
         Send a WhatsApp notification that Cursor has started working on the task.
         Calls the server's /notify-cursor-started endpoint.
         
         This triggers Message 2: "Cursor החל את עבודת הפיתוח..."
+        Also saves the prompt to Drive for deployment notification (Message 3).
         """
         try:
             import urllib.request
             import json
             
+            # Save change description locally for potential git commit reference
+            self.save_change_description(content)
+            
             # Prepare the payload with task preview for later use in deployment message
-            preview = content[:200] + "..." if len(content) > 200 else content
+            preview = content[:300] if len(content) <= 300 else content[:300] + "..."
             
             payload = {
                 "task_preview": preview,
-                "success": success
+                "success": success,
+                "save_to_drive": True  # Request server to persist for deployment notification
             }
             
             # Send to server
