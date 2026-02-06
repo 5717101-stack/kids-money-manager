@@ -1042,20 +1042,68 @@ def process_audio_in_background(
                 print(f"⚠️  Error retrieving voice signatures: {e}")
                 reference_voices = []
         
-        # Step 6: Process with Gemini
-        print("🤖 Processing audio with Gemini...")
+        # Step 6: Process with Gemini (Diarization Stage)
+        print("🤖 [Diarization] Processing audio with Gemini...")
+        print(f"   Stage: DIARIZATION - Speaker identification and transcription")
         result = gemini_service.analyze_day(
             audio_paths=[tmp_path],
             audio_file_metadata=[audio_metadata],
             reference_voices=reference_voices
         )
         
-        print("✅ Gemini analysis complete")
+        print("✅ [Diarization] Gemini analysis complete")
         
         # Extract transcript and segments
         transcript_json = result.get('transcript', {})
         segments = transcript_json.get('segments', [])
         summary_text = result.get('summary', '')
+        
+        # ============================================================
+        # EXPERT ANALYSIS: Apply multi-agent persona analysis
+        # This runs AFTER diarization, BEFORE WhatsApp notification
+        # ============================================================
+        print("🧠 [Expert Analysis] Starting multi-agent analysis...")
+        expert_analysis_result = None
+        
+        try:
+            from app.services.expert_analysis_service import expert_analysis_service
+            import asyncio
+            
+            if expert_analysis_service.is_configured and segments:
+                # Build voice map from known speakers
+                current_voice_map = {}
+                if drive_memory_service.is_configured:
+                    try:
+                        memory = drive_memory_service.get_memory()
+                        user_profile = memory.get('user_profile', {})
+                        current_voice_map = user_profile.get('voice_map', {})
+                    except:
+                        pass
+                
+                # Run expert analysis (async in sync context)
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+                try:
+                    expert_analysis_result = loop.run_until_complete(
+                        expert_analysis_service.analyze_transcript(
+                            segments=segments,
+                            voice_map=current_voice_map
+                        )
+                    )
+                finally:
+                    loop.close()
+                
+                if expert_analysis_result.get('success'):
+                    print(f"✅ [Expert Analysis] Complete - Persona: {expert_analysis_result.get('persona')}")
+                else:
+                    print(f"⚠️  [Expert Analysis] Failed: {expert_analysis_result.get('error')}")
+            else:
+                print("⚠️  [Expert Analysis] Skipped - service not configured or no segments")
+                
+        except Exception as expert_error:
+            print(f"⚠️  [Expert Analysis] Error: {expert_error}")
+            import traceback
+            traceback.print_exc()
         
         # Validate segments
         valid_segments = []
@@ -1076,7 +1124,8 @@ def process_audio_in_background(
                 speaker_names.add(speaker)
         speaker_names = list(speaker_names)
         
-        # Step 7: Save to memory
+        # Step 7: Save to memory (Drive Upload Stage)
+        print("💾 [Drive Upload] Saving audio interaction to memory...")
         audio_interaction = {
             "timestamp": datetime.utcnow().isoformat() + "Z",
             "type": "audio",
@@ -1299,9 +1348,16 @@ def process_audio_in_background(
             import traceback
             traceback.print_exc()
         
-        print(f"✅ Speaker identification: {len(unknown_speakers_processed)} unknown speakers sent for identification")
+        print(f"✅ [Diarization] Speaker identification: {len(unknown_speakers_processed)} unknown speakers queued")
         
-        # Step 9: Build and send confirmation message
+        # ============================================================
+        # SMART NOTIFICATION SEQUENCE
+        # Message 1: Expert Summary (Sentiment, Analysis, Action Items)
+        # Message 2: Unknown Speaker Queries (if any) - sent above
+        # ============================================================
+        print("📱 [WhatsApp Notification] Building smart notification sequence...")
+        
+        # Count speakers
         all_speakers = set()
         for seg in segments:
             speaker = seg.get('speaker', '')
@@ -1326,39 +1382,76 @@ def process_audio_in_background(
             else:
                 identified_speakers.append(speaker)
         
-        # Truncate summary if too long
-        if len(summary_text) > 1000:
-            summary_text = summary_text[:800] + "... (הסיכום המלא בקובץ בדרייב)"
-        
-        # Build confirmation message
-        reply_message = "✅ *ההקלטה נשמרה וסוכמה בהצלחה!*\n\n"
-        reply_message += "👥 *משתתפים:*\n"
-        
-        if identified_speakers:
-            for name in sorted(identified_speakers):
-                reply_message += f"   ✓ {name}\n"
-        
-        if unidentified_count > 0:
-            reply_message += f"   + {unidentified_count} דוברים לא מזוהים\n"
-        
-        if not identified_speakers and unidentified_count == 0:
-            reply_message += "   (לא זוהו דוברים)\n"
-        
-        if summary_text:
-            reply_message += f"\n📝 *סיכום השיחה:*\n{summary_text}\n"
-        
-        reply_message += "\n📄 התמלול המלא זמין בדרייב."
-        
-        # Send confirmation
+        # ============================================================
+        # MESSAGE 1: EXPERT SUMMARY (Primary notification)
+        # ============================================================
         if whatsapp_provider:
-            reply_result = whatsapp_provider.send_whatsapp(
-                message=reply_message,
-                to=f"+{from_number}"
-            )
-            if reply_result.get('success'):
-                print("✅ Confirmation sent to user")
+            if expert_analysis_result and expert_analysis_result.get('success'):
+                # Use expert analysis as primary message
+                from app.services.expert_analysis_service import expert_analysis_service
+                expert_message = expert_analysis_service.format_for_whatsapp(expert_analysis_result)
+                
+                # Add speaker info header
+                header = "✅ *ההקלטה נשמרה ונותחה!*\n\n"
+                header += "👥 *משתתפים:* "
+                if identified_speakers:
+                    header += ", ".join(sorted(identified_speakers))
+                if unidentified_count > 0:
+                    header += f" (+{unidentified_count} לא מזוהים)"
+                if not identified_speakers and unidentified_count == 0:
+                    header += "(לא זוהו)"
+                header += "\n\n"
+                
+                full_message = header + expert_message
+                
+                # Send expert summary
+                reply_result = whatsapp_provider.send_whatsapp(
+                    message=full_message,
+                    to=f"+{from_number}"
+                )
+                if reply_result.get('success'):
+                    print("✅ [WhatsApp] Message 1 (Expert Summary) sent")
+                else:
+                    print(f"⚠️  [WhatsApp] Failed to send expert summary: {reply_result.get('error')}")
             else:
-                print(f"⚠️  Failed to send confirmation: {reply_result.get('error')}")
+                # Fallback: Basic summary if expert analysis failed
+                reply_message = "✅ *ההקלטה נשמרה וסוכמה בהצלחה!*\n\n"
+                reply_message += "👥 *משתתפים:*\n"
+                
+                if identified_speakers:
+                    for name in sorted(identified_speakers):
+                        reply_message += f"   ✓ {name}\n"
+                
+                if unidentified_count > 0:
+                    reply_message += f"   + {unidentified_count} דוברים לא מזוהים\n"
+                
+                if not identified_speakers and unidentified_count == 0:
+                    reply_message += "   (לא זוהו דוברים)\n"
+                
+                # Truncate summary if too long
+                if len(summary_text) > 1000:
+                    summary_text = summary_text[:800] + "... (הסיכום המלא בקובץ בדרייב)"
+                
+                if summary_text:
+                    reply_message += f"\n📝 *סיכום השיחה:*\n{summary_text}\n"
+                
+                reply_message += "\n📄 התמלול המלא זמין בדרייב."
+                
+                reply_result = whatsapp_provider.send_whatsapp(
+                    message=reply_message,
+                    to=f"+{from_number}"
+                )
+                if reply_result.get('success'):
+                    print("✅ [WhatsApp] Message 1 (Basic Summary) sent")
+                else:
+                    print(f"⚠️  [WhatsApp] Failed to send summary: {reply_result.get('error')}")
+        
+        # ============================================================
+        # MESSAGE 2: UNKNOWN SPEAKER QUERIES
+        # Already sent above during speaker processing loop
+        # ============================================================
+        if unknown_speakers_processed:
+            print(f"✅ [WhatsApp] Message 2 (Speaker ID queries) sent for: {unknown_speakers_processed}")
         
         print(f"\n{'='*60}")
         print(f"✅ BACKGROUND AUDIO PROCESSING COMPLETED")
