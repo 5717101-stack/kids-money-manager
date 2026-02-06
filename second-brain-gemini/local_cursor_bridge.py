@@ -209,13 +209,14 @@ class CursorBridge:
                 # ASCII content - type directly
                 pyautogui.typewrite(content, interval=0.01)
             
-            time.sleep(0.3)
+            time.sleep(0.5)
             
-            # Press Enter to submit
-            print("⌨️  Submitting (Enter)...")
-            pyautogui.press('enter')
+            # Press Cmd+Enter to EXECUTE the command in Cursor Composer
+            # Regular Enter just adds a new line - Cmd+Enter actually runs it!
+            print("⌨️  Executing (Cmd+Enter)...")
+            pyautogui.hotkey('command', 'enter')
             
-            print("✅ Composer triggered successfully")
+            print("✅ Composer triggered and EXECUTED!")
             return True
             
         except Exception as e:
