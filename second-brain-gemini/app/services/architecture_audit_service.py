@@ -74,6 +74,167 @@ class ArchitectureAuditService:
             logger.warning("⚠️  Google API key not set - Audit service limited")
         
         self.is_configured = bool(self.api_key and self.model)
+        
+        # Store recent errors for health reporting
+        self.last_expert_error: Optional[str] = None
+        self.last_expert_error_time: Optional[datetime] = None
+    
+    # ================================================================
+    # SYSTEM HEALTH CHECK
+    # ================================================================
+    
+    def check_system_health(self, drive_service=None) -> Dict[str, Any]:
+        """
+        Comprehensive system health diagnostic.
+        
+        Checks:
+        1. Gemini API connectivity (ping with simple prompt)
+        2. Google Drive access (list files in key folders)
+        3. Environment variables (critical keys)
+        4. Recent errors from expert analysis
+        
+        Returns:
+            Dict with health status for each component
+        """
+        israel_time = get_israel_time()
+        
+        health = {
+            "timestamp": israel_time.isoformat(),
+            "timestamp_display": israel_time.strftime('%d/%m/%Y %H:%M'),
+            "gemini": {"status": "unknown"},
+            "drive": {"status": "unknown", "transcripts": 0, "voice_signatures": 0},
+            "env": {"all_present": False, "missing": []},
+            "errors": []
+        }
+        
+        # 1. Gemini API Connectivity
+        print("🏥 [Health] Checking Gemini API...")
+        try:
+            import time
+            start = time.time()
+            response = self.model.generate_content(
+                "שלום, החזר 'OK'",
+                generation_config={'max_output_tokens': 10}
+            )
+            elapsed = (time.time() - start) * 1000  # ms
+            
+            # Safe text extraction
+            try:
+                text = response.text.strip() if response.text else ""
+            except (ValueError, AttributeError):
+                text = ""
+            
+            if text:
+                health["gemini"] = {
+                    "status": "ok",
+                    "model": self.model_name,
+                    "response_time_ms": round(elapsed)
+                }
+                print(f"   ✅ Gemini OK ({self.model_name}, {elapsed:.0f}ms)")
+            else:
+                health["gemini"] = {
+                    "status": "error",
+                    "model": self.model_name,
+                    "error": "Empty response"
+                }
+                print(f"   ⚠️ Gemini returned empty response")
+                
+        except Exception as e:
+            error_msg = str(e)[:100]
+            health["gemini"] = {
+                "status": "error",
+                "model": self.model_name,
+                "error": error_msg
+            }
+            print(f"   ❌ Gemini error: {error_msg}")
+        
+        # 2. Google Drive Access
+        print("🏥 [Health] Checking Google Drive...")
+        if drive_service and drive_service.is_configured:
+            try:
+                # Count transcripts
+                transcripts = 0
+                voice_sigs = 0
+                
+                if hasattr(drive_service, 'get_voice_signatures'):
+                    try:
+                        sigs = drive_service.get_voice_signatures(max_signatures=50)
+                        voice_sigs = len(sigs) if sigs else 0
+                    except:
+                        pass
+                
+                # Count transcript files using memory
+                if hasattr(drive_service, 'get_memory'):
+                    try:
+                        memory = drive_service.get_memory()
+                        chat_history = memory.get('chat_history', [])
+                        # Count audio interactions
+                        transcripts = sum(1 for h in chat_history if h.get('type') == 'audio')
+                    except:
+                        pass
+                
+                health["drive"] = {
+                    "status": "connected",
+                    "transcripts": transcripts,
+                    "voice_signatures": voice_sigs
+                }
+                print(f"   ✅ Drive connected (transcripts: {transcripts}, voice sigs: {voice_sigs})")
+                
+            except Exception as e:
+                health["drive"] = {
+                    "status": "error",
+                    "error": str(e)[:100]
+                }
+                print(f"   ❌ Drive error: {e}")
+        else:
+            health["drive"] = {"status": "not_configured"}
+            print("   ⚠️ Drive not configured")
+        
+        # 3. Environment Variables
+        print("🏥 [Health] Checking environment...")
+        from app.core.config import settings
+        
+        critical_vars = {
+            "GOOGLE_API_KEY": bool(settings.google_api_key),
+            "DRIVE_FOLDER_ID": bool(settings.drive_memory_folder_id),
+            "WHATSAPP_TOKEN": bool(settings.whatsapp_cloud_api_token),
+            "WHATSAPP_PHONE_ID": bool(settings.whatsapp_phone_number_id)
+        }
+        
+        missing = [k for k, v in critical_vars.items() if not v]
+        health["env"] = {
+            "all_present": len(missing) == 0,
+            "missing": missing,
+            "checked": list(critical_vars.keys())
+        }
+        
+        if missing:
+            print(f"   ⚠️ Missing: {', '.join(missing)}")
+        else:
+            print(f"   ✅ All critical env vars present")
+        
+        # 4. Recent Errors
+        if self.last_expert_error:
+            health["errors"].append({
+                "source": "expert_analysis",
+                "error": self.last_expert_error,
+                "time": self.last_expert_error_time.isoformat() if self.last_expert_error_time else None
+            })
+            print(f"   ⚠️ Recent error: {self.last_expert_error[:50]}...")
+        else:
+            print(f"   ✅ No recent errors")
+        
+        return health
+    
+    def record_expert_error(self, error: str):
+        """Record an expert analysis error for health reporting."""
+        self.last_expert_error = error
+        self.last_expert_error_time = get_israel_time()
+    
+    def clear_expert_error(self):
+        """Clear the recorded error after successful analysis."""
+        self.last_expert_error = None
+        self.last_expert_error_time = None
     
     # ================================================================
     # EXTERNAL SCAN: Market Research
@@ -536,7 +697,8 @@ class ArchitectureAuditService:
         external_scan: Dict[str, Any],
         comparison: Dict[str, Any],
         voice_metrics: Dict[str, Any],
-        data_hygiene: Dict[str, Any]
+        data_hygiene: Dict[str, Any],
+        health_status: Dict[str, Any] = None
     ) -> str:
         """
         Generate the comprehensive WhatsApp report.
@@ -550,6 +712,55 @@ class ArchitectureAuditService:
         # Header
         report_parts.append("🏗️ *דו״ח ארכיטקטורה שבועי*")
         report_parts.append(f"📅 {israel_time.strftime('%d/%m/%Y %H:%M')} (שעון ישראל)")
+        report_parts.append("")
+        
+        # ============== SYSTEM HEALTH DASHBOARD (NEW) ==============
+        report_parts.append("═" * 25)
+        report_parts.append("🏥 *בריאות המערכת*")
+        report_parts.append("")
+        
+        if health_status:
+            # Gemini status
+            gemini = health_status.get('gemini', {})
+            gemini_status = gemini.get('status', 'unknown')
+            if gemini_status == 'ok':
+                model = gemini.get('model', 'N/A')
+                time_ms = gemini.get('response_time_ms', 0)
+                report_parts.append(f"✅ Gemini API: תקין ({model}, {time_ms}ms)")
+            else:
+                error = gemini.get('error', 'Unknown')[:30]
+                report_parts.append(f"❌ Gemini API: שגיאה ({error})")
+            
+            # Drive status
+            drive = health_status.get('drive', {})
+            drive_status = drive.get('status', 'unknown')
+            if drive_status == 'connected':
+                transcripts = drive.get('transcripts', 0)
+                sigs = drive.get('voice_signatures', 0)
+                report_parts.append(f"✅ Google Drive: מחובר ({transcripts} תמלולים, {sigs} חתימות)")
+            elif drive_status == 'not_configured':
+                report_parts.append("⚠️ Google Drive: לא מוגדר")
+            else:
+                report_parts.append(f"❌ Google Drive: {drive.get('error', 'שגיאה')[:30]}")
+            
+            # Environment
+            env = health_status.get('env', {})
+            if env.get('all_present'):
+                report_parts.append("✅ משתני סביבה: תקינים")
+            else:
+                missing = env.get('missing', [])
+                report_parts.append(f"⚠️ משתנים חסרים: {', '.join(missing[:3])}")
+            
+            # Recent errors
+            errors = health_status.get('errors', [])
+            if errors:
+                latest = errors[0]
+                report_parts.append(f"⚠️ שגיאה אחרונה: {latest.get('error', '')[:40]}")
+            else:
+                report_parts.append("✅ שגיאות אחרונות: אין")
+        else:
+            report_parts.append("⚠️ בדיקת בריאות לא זמינה")
+        
         report_parts.append("")
         
         # ============== SYSTEM STATUS ==============
@@ -684,33 +895,41 @@ class ArchitectureAuditService:
         else:
             print("📁 Drive service: Not provided")
         
+        # Step 0: System Health Check (NEW)
+        print("\n🏥 Step 0/5: System Health Check...")
+        health_status = self.check_system_health(drive_service)
+        print(f"   Gemini: {health_status['gemini'].get('status', 'unknown')}")
+        print(f"   Drive: {health_status['drive'].get('status', 'unknown')}")
+        print(f"   Env: {'OK' if health_status['env'].get('all_present') else 'Missing vars'}")
+        
         # Step 1: External Scan
-        print("\n📡 Step 1/4: External market scan...")
+        print("\n📡 Step 1/5: External market scan...")
         external_scan = self.research_ai_updates()
         print(f"   Result: {'Success' if external_scan.get('success') else 'Failed'}")
         
         # Step 2: Competitor Comparison
-        print("\n⚔️ Step 2/4: Competitor comparison...")
+        print("\n⚔️ Step 2/5: Competitor comparison...")
         comparison = self.compare_to_competitors()
         print(f"   Result: {'Success' if comparison.get('success') else 'Failed'}")
         
         # Step 3: Voice Identification Analysis
-        print("\n📊 Step 3/4: Voice identification analysis...")
+        print("\n📊 Step 3/5: Voice identification analysis...")
         voice_metrics = self.analyze_voice_identification(drive_service)
         print(f"   Result: {'Success' if voice_metrics.get('success') else 'Failed'}")
         
         # Step 4: Data Hygiene
-        print("\n🧹 Step 4/4: Data hygiene check...")
+        print("\n🧹 Step 4/5: Data hygiene check...")
         data_hygiene = self.analyze_data_hygiene(drive_service)
         print(f"   Result: {'Success' if data_hygiene.get('success') else 'Failed'}")
         
-        # Generate Report
-        print("\n📝 Generating strategic report...")
+        # Generate Report (Step 5)
+        print("\n📝 Step 5/5: Generating strategic report...")
         report = self.generate_strategic_report(
             external_scan=external_scan,
             comparison=comparison,
             voice_metrics=voice_metrics,
-            data_hygiene=data_hygiene
+            data_hygiene=data_hygiene,
+            health_status=health_status
         )
         
         end_time = datetime.now(timezone.utc)
@@ -725,6 +944,7 @@ class ArchitectureAuditService:
             "duration_seconds": duration,
             "timestamp": israel_time.isoformat(),
             "data": {
+                "health_status": health_status,
                 "external_scan": external_scan,
                 "comparison": comparison,
                 "voice_metrics": voice_metrics,

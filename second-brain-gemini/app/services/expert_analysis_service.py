@@ -609,21 +609,44 @@ class ExpertAnalysisService:
                 import traceback
                 traceback.print_exc()
                 if attempt == max_retries - 1:
+                    error_msg = f"Exception: {type(e).__name__}: {str(e)[:50]}"
                     logger.error(f"❌ [CRITICAL] ניתוח מומחה נכשל לאחר {max_retries} נסיונות: {e}")
+                    # Record error for system health reporting
+                    try:
+                        from app.services.architecture_audit_service import architecture_audit_service
+                        architecture_audit_service.record_expert_error(error_msg)
+                    except:
+                        pass
         
         # Final validation
         if not analysis_text or len(analysis_text.strip()) < 50:
             print("❌ [CRITICAL] Analysis returned EMPTY after all retries!")
             logger.error("❌ [CRITICAL] Expert analysis returned empty text")
+            error_msg = "ניתוח חזר ריק - בדוק את המודל"
+            
+            # Record error for system health reporting
+            try:
+                from app.services.architecture_audit_service import architecture_audit_service
+                architecture_audit_service.record_expert_error(error_msg)
+            except:
+                pass
+            
             return {
                 "success": False,
-                "error": "ניתוח חזר ריק - בדוק את המודל",
+                "error": error_msg,
                 "persona": " + ".join(persona_names),
                 "model_used": self.model_name
             }
         
         print(f"✅ [Expert Analysis] SUCCESS - {len(analysis_text)} chars")
         israel_time = get_israel_time()
+        
+        # Clear any recorded errors on success
+        try:
+            from app.services.architecture_audit_service import architecture_audit_service
+            architecture_audit_service.clear_expert_error()
+        except:
+            pass
         
         return {
             "success": True,
