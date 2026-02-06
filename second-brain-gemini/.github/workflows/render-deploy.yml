@@ -52,25 +52,53 @@ jobs:
       
       - name: ⏳ Wait for Render to finish deployment
         run: |
-          echo "⏳ Waiting 2 minutes for Render to complete deployment..."
-          sleep 120
+          echo "⏳ Waiting 3 minutes for Render to complete deployment..."
+          sleep 180
       
       - name: 📱 Get commit message for changelog
         id: commit
         run: |
-          COMMIT_MSG=$(git log -1 --pretty=%B)
-          # Escape newlines for JSON
-          COMMIT_MSG_ESCAPED=$(echo "$COMMIT_MSG" | head -5 | tr '\n' ' ' | sed 's/"/\\"/g')
-          echo "message=$COMMIT_MSG_ESCAPED" >> $GITHUB_OUTPUT
+          # Get commit message and escape for JSON
+          COMMIT_MSG=$(git log -1 --pretty=%B | head -5)
+          # Replace newlines with spaces and escape quotes
+          COMMIT_MSG_CLEAN=$(echo "$COMMIT_MSG" | tr '\n' ' ' | sed 's/"/\\"/g' | sed "s/'/\\'/g")
+          echo "message=$COMMIT_MSG_CLEAN" >> $GITHUB_OUTPUT
+          echo "📝 Commit message: $COMMIT_MSG_CLEAN"
       
       - name: 📲 Send WhatsApp Deployment Notification
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+          CHANGES: ${{ steps.commit.outputs.message }}
         run: |
           echo "📲 Sending deployment notification via WhatsApp..."
-          curl -X POST "https://second-brain-6q8c.onrender.com/notify-deployment" \
+          echo "   Version: $VERSION"
+          echo "   Changes: $CHANGES"
+          
+          # Build JSON payload
+          JSON_PAYLOAD=$(cat <<EOF
+          {
+            "version": "${VERSION}",
+            "changes": "${CHANGES}",
+            "status": "success"
+          }
+          EOF
+          )
+          
+          echo "   Payload: $JSON_PAYLOAD"
+          
+          # Send notification
+          RESPONSE=$(curl -s -w "\n%{http_code}" -X POST "https://second-brain-6q8c.onrender.com/notify-deployment" \
             -H "Content-Type: application/json" \
-            -d '{
-              "version": "${{ steps.version.outputs.version }}",
-              "changes": "${{ steps.commit.outputs.message }}",
-              "status": "success"
-            }' \
-            || echo "⚠️  Failed to send WhatsApp notification (server may not be ready yet)"
+            -d "$JSON_PAYLOAD")
+          
+          HTTP_CODE=$(echo "$RESPONSE" | tail -n1)
+          BODY=$(echo "$RESPONSE" | sed '$d')
+          
+          echo "   Response Code: $HTTP_CODE"
+          echo "   Response Body: $BODY"
+          
+          if [ "$HTTP_CODE" = "200" ]; then
+            echo "✅ WhatsApp notification sent successfully!"
+          else
+            echo "⚠️  Failed to send WhatsApp notification (HTTP $HTTP_CODE)"
+          fi
