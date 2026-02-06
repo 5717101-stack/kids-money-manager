@@ -522,19 +522,25 @@ class ExpertAnalysisService:
         
         for attempt in range(max_retries):
             try:
-                print(f"   🔄 Attempt {attempt + 1}/{max_retries}")
+                print(f"\n   {'='*40}")
+                print(f"   🔄 ATTEMPT {attempt + 1}/{max_retries}")
+                print(f"   {'='*40}")
                 
                 # Use progressively simpler prompts
                 if attempt == 0:
                     current_prompt = prompt
+                    print(f"   📋 Using: FULL expert prompt")
                 elif attempt == 1:
                     current_prompt = self._build_fallback_prompt(transcript_text, speakers)
+                    print(f"   📋 Using: FALLBACK prompt")
                 else:
                     # Ultra-simple prompt for third attempt
                     current_prompt = self._build_minimal_prompt(transcript_text, speakers)
+                    print(f"   📋 Using: MINIMAL prompt")
                 
                 print(f"   📊 Model: {self.model_name}")
                 print(f"   📊 Prompt length: {len(current_prompt)} chars")
+                print(f"   📊 Prompt preview: {current_prompt[:200]}...")
                 
                 # Add safety settings to allow more content
                 safety_settings = [
@@ -589,14 +595,17 @@ class ExpertAnalysisService:
                 
                 # Check for empty response
                 if len(analysis_text.strip()) < 50:
-                    print(f"   ⚠️  Response too short ({len(analysis_text)} chars), retrying...")
+                    print(f"   ⚠️  Response too short ({len(analysis_text)} chars)")
+                    print(f"   ⚠️  Content: '{analysis_text[:100]}'" if analysis_text else "   ⚠️  Content: EMPTY")
+                    print(f"   🔄 Retrying with simpler prompt...")
                     continue
                 
                 # SUCCESS - break out of retry loop
+                print(f"   ✅ SUCCESS! Got {len(analysis_text)} chars")
                 break
                 
             except Exception as e:
-                print(f"   ❌ Attempt {attempt + 1} failed: {e}")
+                print(f"   ❌ EXCEPTION in attempt {attempt + 1}: {type(e).__name__}: {e}")
                 import traceback
                 traceback.print_exc()
                 if attempt == max_retries - 1:
