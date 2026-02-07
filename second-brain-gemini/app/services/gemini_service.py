@@ -946,8 +946,7 @@ Summary: {summary}
         except json.JSONDecodeError as e:
             print(f"❌ JSON parsing error: {e}")
             print(f"Error position: line {e.lineno}, column {e.colno}")
-            print(f"Response text (first 1000 chars): {response_text[:1000]}")
-            print(f"Response text (last 500 chars): {response_text[-500:]}")
+            # Verbose response logging removed - check logs in debug mode if needed
             
             # Try to fix common JSON issues
             try:
@@ -987,11 +986,8 @@ Summary: {summary}
             Dictionary with 'segments' key containing list of segment dicts
         """
         try:
-            # CRITICAL: Log the RAW AI response before any processing
-            print("=" * 80)
-            print("📥 RAW_AI_RESPONSE from Gemini:")
-            print(response_text)
-            print("=" * 80)
+            # Note: Raw response logging removed to reduce log noise
+            # If debugging needed, uncomment: print(f"RAW: {response_text[:500]}...")
             
             # Try to extract JSON from response (might be wrapped in markdown code blocks)
             text = response_text.strip()
@@ -1013,10 +1009,9 @@ Summary: {summary}
             json_match = re.search(r'\{.*\}', text, re.DOTALL)
             if json_match:
                 json_text = json_match.group(0)
-                print(f"🔍 Found JSON object via regex: {len(json_text)} characters")
             else:
                 json_text = text
-                print(f"⚠️  No JSON object found via regex, using cleaned text: {len(json_text)} characters")
+                print(f"⚠️  No JSON object found via regex")
             
             # SANITIZE: Remove invalid control characters that break JSON parsing
             # Control characters (0x00-0x1F except \t, \n, \r) are invalid in JSON strings
@@ -1031,7 +1026,6 @@ Summary: {summary}
                 return s
             
             json_text = sanitize_json_string(json_text)
-            print(f"🧹 Sanitized JSON: {len(json_text)} characters")
             
             # Try to parse as JSON
             try:

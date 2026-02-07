@@ -1213,10 +1213,7 @@ def process_audio_in_background(
             # Gemini now provides "purest_segments" for unknown speakers - these are
             # isolated segments with ZERO overlap from other speakers
             purest_segments = result.get('purest_segments', [])
-            print(f"🎯 Purest segments from Gemini: {len(purest_segments)}")
-            
-            for ps in purest_segments:
-                print(f"   - {ps.get('speaker')}: {ps.get('start', 0):.1f}s - {ps.get('end', 0):.1f}s (quality: {ps.get('quality', 'unknown')})")
+            print(f"🎯 Purest segments: {len(purest_segments)}")
             
             # Build map of speaker -> purest segment
             speaker_purest = {}  # {speaker_id: purest_segment_data}
