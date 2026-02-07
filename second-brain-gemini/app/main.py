@@ -244,6 +244,13 @@ def is_kb_query(message: str) -> bool:
         'מה ההיררכיה',
         'תראה לי את המבנה',
         'מי אחראי על',
+        'מה השכר של',
+        'מה המשכורת של',
+        'כמה מרוויח',
+        'כמה מרוויחה',
+        'מה הדירוג של',
+        'מה הציון של',
+        'מה ה-rating של',
     ]
     
     # Check prefix triggers
@@ -252,7 +259,9 @@ def is_kb_query(message: str) -> bool:
             return True
     
     # Hebrew keyword combinations (must contain at least one keyword from each group)
-    org_keywords = ['מדווח', 'כפוף', 'היררכיה', 'ארגוני', 'מבנה ארגוני', 'דרג', 'תפקיד']
+    org_keywords = ['מדווח', 'כפוף', 'היררכיה', 'ארגוני', 'מבנה ארגוני', 'דרג', 'תפקיד',
+                    'שכר', 'משכורת', 'בונוס', 'דירוג', 'rating', 'individual factor',
+                    'פקטור', 'compensation', 'salary']
     question_words = ['מי', 'מה', 'איפה', 'כמה', 'האם']
     
     has_org = any(kw in message_stripped for kw in org_keywords)
@@ -272,6 +281,12 @@ def is_kb_query(message: str) -> bool:
         'org structure',
         'reporting line',
         'what team is',
+        'what is the salary',
+        'how much does',
+        'what is the rating',
+        'individual factor',
+        'compensation of',
+        'who earns',
     ]
     
     message_lower = message_stripped.lower()
@@ -578,6 +593,30 @@ async def startup_event():
         drive_memory_service.preload_memory()
     else:
         print("⚠️  Skipping memory cache pre-warm (Drive Memory Service not configured)")
+    
+    # ================================================================
+    # IDENTITY CONTEXT VERIFICATION: Pre-load KB and print summary
+    # ================================================================
+    try:
+        from app.services.knowledge_base_service import load_context, get_identity_context_summary
+        
+        print("\n📚 ══════════════════════════════════════════════")
+        print("📚  IDENTITY CONTEXT INITIALIZATION")
+        print("📚 ══════════════════════════════════════════════")
+        
+        kb_context = load_context()
+        summary = get_identity_context_summary()
+        
+        if kb_context:
+            print(f"✅ {summary}")
+        else:
+            print("⚠️  Identity Context: No data loaded (KB empty or not configured)")
+        
+        print("📚 ══════════════════════════════════════════════\n")
+    except Exception as kb_init_error:
+        print(f"⚠️  Identity Context initialization error: {kb_init_error}")
+        import traceback
+        traceback.print_exc()
     
     # Start the APScheduler for weekly architecture audit
     try:

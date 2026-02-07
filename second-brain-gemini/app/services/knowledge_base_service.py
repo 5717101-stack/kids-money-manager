@@ -54,6 +54,10 @@ VISION_CACHE_TTL = 86400  # 24 hours
 _identity_graph: Optional[Dict[str, Any]] = None
 _identity_graph_timestamp: float = 0
 
+# ── Structured JSON Data Cache (raw parsed org_structure + family_tree) ──
+_org_structure_data: Optional[Dict[str, Any]] = None
+_family_tree_data: Optional[Dict[str, Any]] = None
+
 
 # ═══════════════════════════════════════════════════════════════════════
 # GOOGLE DRIVE ACCESS
@@ -147,7 +151,7 @@ def _download_file_content(service, file_id: str, file_name: str, mime_type: str
         if mime_type == 'application/pdf':
             return _extract_pdf_with_vision(raw_bytes, file_id, file_name)
         elif mime_type == 'application/json':
-            return _extract_json_text(raw_bytes)
+            return _extract_json_text(raw_bytes, file_name=file_name)
         elif mime_type in ('application/vnd.google-apps.document',
                            'application/vnd.google-apps.spreadsheet'):
             return raw_bytes.decode('utf-8', errors='replace')
@@ -648,26 +652,30 @@ def get_identity_graph() -> Optional[Dict[str, Any]]:
 # FILE CONTENT EXTRACTION
 # ═══════════════════════════════════════════════════════════════════════
 
-def _extract_json_text(raw_bytes: bytes) -> str:
+def _extract_json_text(raw_bytes: bytes, file_name: str = "") -> str:
     """Extract readable text from JSON bytes and integrate into identity graph."""
     try:
         data = json.loads(raw_bytes.decode('utf-8'))
         
         # If this looks like a family tree or identity context, merge into identity graph
         if isinstance(data, dict):
-            _merge_json_into_identity_graph(data)
+            _merge_json_into_identity_graph(data, source_file_name=file_name)
+        elif isinstance(data, list):
+            _merge_json_into_identity_graph({"people": data}, source_file_name=file_name)
         
         return json.dumps(data, ensure_ascii=False, indent=2)
     except Exception as e:
         return f"[JSON parse failed: {e}]"
 
 
-def _merge_json_into_identity_graph(data: Dict[str, Any]):
+def _merge_json_into_identity_graph(data: Dict[str, Any], source_file_name: str = ""):
     """
-    Merge JSON data (family_tree.json, identity_context.json) into
-    the unified identity graph.
+    Merge JSON data (org_structure.json, family_tree.json, identity_context.json)
+    into the unified identity graph.
+    
+    Also caches the raw structured data for financial/hierarchy queries.
     """
-    global _identity_graph
+    global _identity_graph, _org_structure_data, _family_tree_data
     
     if _identity_graph is None:
         _identity_graph = {
@@ -676,6 +684,15 @@ def _merge_json_into_identity_graph(data: Dict[str, Any]):
             "work_hierarchy": {},
             "family_tree": {},
         }
+    
+    # ── Cache raw structured data by source type ──
+    source_lower = source_file_name.lower() if source_file_name else ""
+    if 'org_structure' in source_lower or 'org_chart' in source_lower or 'employees' in source_lower:
+        _org_structure_data = data
+        print(f"   💾 [Identity] Cached org_structure data from {source_file_name}")
+    elif 'family' in source_lower:
+        _family_tree_data = data
+        print(f"   💾 [Identity] Cached family_tree data from {source_file_name}")
     
     # Look for people/members/family arrays
     people_arrays = []
@@ -723,8 +740,25 @@ def _merge_json_into_identity_graph(data: Dict[str, Any]):
             if person_data.get(field):
                 person["reports_to"] = person_data[field]
         
-        # Context
-        context = person_data.get('context', 'family')
+        # ── Financial fields (salary, rating, individual_factor, etc.) ──
+        for fin_field in ['salary', 'base_salary', 'total_comp', 'compensation',
+                          'rating', 'performance_rating', 'review',
+                          'individual_factor', 'bonus', 'equity',
+                          'start_date', 'hire_date', 'location', 'level']:
+            if person_data.get(fin_field) is not None:
+                person[fin_field] = person_data[fin_field]
+        
+        # Context — distinguish work vs family
+        context = person_data.get('context', '')
+        if not context:
+            # Auto-detect context based on source file
+            if 'family' in source_lower:
+                context = 'family'
+            elif any(k in source_lower for k in ['org', 'employee', 'structure']):
+                context = 'work'
+            else:
+                context = 'unknown'
+        
         if context not in person.get("contexts", []):
             person.setdefault("contexts", []).append(context)
         
@@ -744,7 +778,7 @@ def _merge_json_into_identity_graph(data: Dict[str, Any]):
         first = name.split()[0] if ' ' in name else name
         _identity_graph["name_map"][first.lower()] = name
     
-    print(f"   🔗 [Identity Graph] Merged JSON data ({len(people_arrays)} people entries)")
+    print(f"   🔗 [Identity Graph] Merged JSON data ({len(people_arrays)} people entries from {source_file_name or 'unknown'})")
 
 
 # ═══════════════════════════════════════════════════════════════════════
@@ -771,7 +805,7 @@ def _load_from_local_fallback() -> str:
             if filepath.suffix.lower() in ('.txt', '.md', '.text'):
                 text = filepath.read_text(encoding='utf-8')
             elif filepath.suffix.lower() == '.json':
-                text = _extract_json_text(filepath.read_bytes())
+                text = _extract_json_text(filepath.read_bytes(), file_name=filepath.name)
             elif filepath.suffix.lower() == '.pdf':
                 text = _extract_pdf_with_vision(filepath.read_bytes(), file_name=filepath.name)
             else:
@@ -909,7 +943,7 @@ def _format_identity_graph_for_context() -> str:
     
     lines = []
     lines.append("This is a unified identity graph merging all organizational and personal data.")
-    lines.append("Use this for semantic name resolution and hierarchy navigation.\n")
+    lines.append("Use this for semantic name resolution, hierarchy navigation, and financial queries.\n")
     
     # Name mappings (critical for Hebrew ↔ English resolution)
     name_map = _identity_graph.get("name_map", {})
@@ -925,10 +959,10 @@ def _format_identity_graph_for_context() -> str:
                 lines.append(f"  {canonical} ← {', '.join(sorted(other))}")
         lines.append("")
     
-    # People with roles and reporting
+    # People with roles, reporting, and financial data
     people = _identity_graph.get("people", {})
     if people:
-        lines.append("── People Directory ──")
+        lines.append("── People Directory (roles, hierarchy, financial data) ──")
         for name, info in sorted(people.items()):
             title = info.get('title', '')
             dept = info.get('department', '')
@@ -950,9 +984,111 @@ def _format_identity_graph_for_context() -> str:
             if direct_reports:
                 line += f"\n      ↓ manages: {', '.join(direct_reports)}"
             
+            # Financial fields
+            fin_parts = []
+            for fk, label in [('salary', 'Salary'), ('base_salary', 'Base Salary'),
+                              ('total_comp', 'Total Comp'), ('compensation', 'Compensation'),
+                              ('rating', 'Rating'), ('performance_rating', 'Performance'),
+                              ('individual_factor', 'Individual Factor'),
+                              ('bonus', 'Bonus'), ('level', 'Level'),
+                              ('location', 'Location'), ('start_date', 'Start Date')]:
+                if info.get(fk) is not None:
+                    fin_parts.append(f"{label}: {info[fk]}")
+            if fin_parts:
+                line += f"\n      💰 {' | '.join(fin_parts)}"
+            
             lines.append(line)
     
+    # ── Hierarchy tree for recursive queries ──
+    if people:
+        lines.append("\n── Hierarchy Tree (reports_to chains) ──")
+        # Build a flat manager→reports mapping
+        manager_map: Dict[str, List[str]] = {}
+        for name, info in people.items():
+            mgr = info.get('reports_to', '')
+            if mgr:
+                manager_map.setdefault(mgr, []).append(name)
+        
+        # Find top-level (people who don't report to anyone, or whose manager isn't in people)
+        top_level = [n for n, info in people.items() if not info.get('reports_to')]
+        
+        def _print_tree(person_name: str, indent: int = 0):
+            prefix = "  " * indent + ("└─ " if indent > 0 else "")
+            info = people.get(person_name, {})
+            title = info.get('title', '')
+            title_str = f" ({title})" if title else ""
+            lines.append(f"{prefix}{person_name}{title_str}")
+            for sub in sorted(manager_map.get(person_name, [])):
+                _print_tree(sub, indent + 1)
+        
+        for top in sorted(top_level):
+            _print_tree(top)
+    
     return "\n".join(lines)
+
+
+def get_all_reports_under(person_name: str) -> List[str]:
+    """
+    Recursive graph search: get ALL direct + indirect reports under a person.
+    Uses the reports_to field in the identity graph.
+    """
+    if not _identity_graph:
+        return []
+    
+    people = _identity_graph.get("people", {})
+    
+    # Build manager→reports mapping
+    manager_map: Dict[str, List[str]] = {}
+    for name, info in people.items():
+        mgr = info.get('reports_to', '')
+        if mgr:
+            manager_map.setdefault(mgr, []).append(name)
+    
+    # Recursive collect
+    result = []
+    
+    def _collect(mgr_name):
+        for sub in manager_map.get(mgr_name, []):
+            result.append(sub)
+            _collect(sub)
+    
+    _collect(person_name)
+    return result
+
+
+def get_identity_context_summary() -> str:
+    """
+    Returns a startup verification summary of the loaded identity context.
+    Called after load_context() to print verification log.
+    """
+    people_count = len(_identity_graph.get("people", {})) if _identity_graph else 0
+    family_count = 0
+    work_count = 0
+    
+    if _identity_graph:
+        for info in _identity_graph.get("people", {}).values():
+            contexts = info.get("contexts", [])
+            if "family" in contexts:
+                family_count += 1
+            if "work" in contexts:
+                work_count += 1
+    
+    has_org = _org_structure_data is not None
+    has_family = _family_tree_data is not None
+    
+    parts = []
+    if has_org:
+        parts.append("org_structure.json ✅")
+    if has_family:
+        parts.append("family_tree.json ✅")
+    
+    sources = ", ".join(parts) if parts else "none loaded"
+    
+    return (
+        f"SUCCESS: Identity Context active. API set to v1. "
+        f"{people_count} identities loaded ({work_count} employees, {family_count} family). "
+        f"Sources: {sources}."
+    )
 
 
 def _smart_truncate(sections: List[str], max_chars: int) -> str:
@@ -1065,6 +1201,17 @@ def get_status() -> Dict[str, Any]:
     
     identity_count = len(_identity_graph.get("people", {})) if _identity_graph else 0
     
+    # Count work vs family contexts
+    work_count = 0
+    family_count = 0
+    if _identity_graph:
+        for info in _identity_graph.get("people", {}).values():
+            ctxs = info.get("contexts", [])
+            if "work" in ctxs:
+                work_count += 1
+            if "family" in ctxs:
+                family_count += 1
+    
     return {
         "connected": _drive_connected or bool(_cached_context),
         "source": "Google Drive" if _drive_connected else ("Local" if _cached_context else "None"),
@@ -1075,6 +1222,11 @@ def get_status() -> Dict[str, Any]:
         "cache_age_minutes": round(cache_age / 60, 1) if cache_age >= 0 else -1,
         "vision_cache_count": len(_vision_graph_cache),
         "identity_graph_people": identity_count,
+        "identity_work_count": work_count,
+        "identity_family_count": family_count,
+        "org_structure_loaded": _org_structure_data is not None,
+        "family_tree_loaded": _family_tree_data is not None,
+        "identity_summary": get_identity_context_summary(),
     }
 
 
