@@ -11,6 +11,7 @@ import google.generativeai as genai
 
 from app.core.config import settings
 from app.prompts import SYSTEM_PROMPT, AUDIO_ANALYSIS_PROMPT, AUDIO_ANALYSIS_PROMPT_BASE, FORENSIC_ANALYST_PROMPT, COMBINED_DIARIZATION_EXPERT_PROMPT
+from app.services.knowledge_base_service import get_system_instruction_block as get_kb_context
 
 
 class GeminiService:
@@ -671,8 +672,14 @@ Summary: {summary}
             # This is the same approach used by process_meetings.py which works reliably
             print("🎙️ Using COMBINED Diarization + Expert Analysis prompt")
             
-            # Start with the combined prompt
+            # Start with the combined prompt + Knowledge Base context
             prompt = COMBINED_DIARIZATION_EXPERT_PROMPT
+            
+            # Inject personal knowledge base (cached in memory)
+            kb_context = get_kb_context()
+            if kb_context:
+                prompt += "\n" + kb_context
+                print(f"   📚 Knowledge Base injected ({len(kb_context)} chars)")
             
             if reference_voice_files:
                 # Add reference voice information for speaker identification

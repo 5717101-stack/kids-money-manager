@@ -108,6 +108,7 @@ from datetime import datetime, timezone, timedelta
 import google.generativeai as genai
 
 from app.core.config import settings
+from app.services.knowledge_base_service import get_system_instruction_block as get_kb_context
 
 logger = logging.getLogger(__name__)
 
@@ -492,8 +493,17 @@ class ExpertAnalysisService:
         else:
             persona_section = f"**הפרסונות שלך:** {personas[0]['name']} + {personas[1]['name']}"
         
+        # Inject knowledge base context if available
+        kb_block = ""
+        try:
+            kb_context = get_kb_context()
+            if kb_context:
+                kb_block = f"\n{kb_context}\n"
+        except Exception:
+            pass
+        
         prompt = f"""אתה חבר במועצת המומחים של "המוח השני".
-
+{kb_block}
 {persona_section}
 
 **משתתפים:** {speakers_str}
@@ -870,10 +880,18 @@ class ExpertAnalysisService:
                     "source": "direct"
                 }
             
-            # Generate content with expert prompt
+            # Generate content with expert prompt + Knowledge Base
             print(f"   🧠 Running expert analysis...")
+            
+            # Inject personal knowledge base into system instruction
+            system_instruction = DIRECT_AUDIO_SYSTEM_INSTRUCTION
+            kb_context = get_kb_context()
+            if kb_context:
+                system_instruction += "\n" + kb_context
+                print(f"   📚 Knowledge Base injected ({len(kb_context)} chars)")
+            
             contents = [
-                DIRECT_AUDIO_SYSTEM_INSTRUCTION,
+                system_instruction,
                 file_ref
             ]
             

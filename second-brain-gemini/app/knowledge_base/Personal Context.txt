@@ -1,0 +1,18 @@
+# Personal Context - Knowledge Base
+# =================================
+# Add personal context here for the AI to reference during analysis.
+# This file is loaded automatically on startup.
+#
+# Examples:
+# - Family members and their roles
+# - Work colleagues and their positions
+# - Important relationships and dynamics
+# - Regular meeting participants
+#
+# Format: Free text, the AI will extract relevant information.
+
+# Family:
+# Itzik - Me (the user)
+# Eran - Husband/Partner
+
+# Add more context below:
