@@ -203,7 +203,7 @@ def _tool_search_person(name: str) -> str:
             "suggestion": "Try a different spelling, or use the full English name."
         }, ensure_ascii=False)
 
-    # Enrich each match with report count
+    # Enrich each match with report count and clear summary
     results = []
     for person in matches:
         entry = dict(person)
@@ -216,11 +216,32 @@ def _tool_search_person(name: str) -> str:
             reports = get_all_reports_under(canonical)
             entry["all_reports_count"] = len(reports)
             entry["all_reports_names"] = reports[:20]  # Cap for payload size
+        # Add a human-readable summary line for quick disambiguation
+        title = entry.get("title", "")
+        dept = entry.get("department", "")
+        mgr = entry.get("reports_to", "")
+        summary_parts = [canonical]
+        if title:
+            summary_parts.append(f"({title})")
+        if dept:
+            summary_parts.append(f"[{dept}]")
+        if mgr:
+            summary_parts.append(f"reports to: {mgr}")
+        entry["_summary"] = " — ".join(summary_parts) if len(summary_parts) > 1 else canonical
         results.append(entry)
+
+    disambiguation_hint = ""
+    if len(results) > 1:
+        disambiguation_hint = (
+            "MULTIPLE MATCHES: Use conversation history to pick the most relevant person. "
+            "Check who 'reports_to' someone recently discussed, or shares their department. "
+            "Show that person's data first, and offer alternatives at the end."
+        )
 
     return json.dumps({
         "found": True,
         "count": len(results),
+        "disambiguation_hint": disambiguation_hint,
         "people": results
     }, ensure_ascii=False, default=str)
 
@@ -444,10 +465,25 @@ class ConversationEngine:
 4. לשיחה רגילה (שאלות כלליות, הודעות אישיות) — ענה ישירות בלי כלים.
 5. כינויי גוף: אם המשתמש אומר "שלו", "שלה", "הוא", "היא" — הסתכל בהיסטוריית השיחה ותבין למי הוא מתכוון. אל תשאל אלא אם באמת אי אפשר לדעת.
 6. שמות בעברית: כשהמשתמש מזכיר שם בעברית, השתמש ב-search_person כדי למצוא את השם המלא באנגלית.
-7. אם search_person מחזיר יותר מתוצאה אחת — הצג למשתמש רשימה ממוספרת ושאל "למי התכוונת?".
+7. 🔴 חיזוי חכם כשיש כמה תוצאות (SMART DISAMBIGUATION):
+   אם search_person מחזיר יותר מתוצאה אחת, אל תציג רשימה סתמית!
+   במקום זה, בצע ניתוח הקשרי:
+   א. בדוק מי מבין התוצאות קשור להקשר השיחה האחרונה:
+      - האם מישהו מהם מדווח למנהל שדיברנו עליו זה עתה?
+      - האם מישהו מהם באותה מחלקה שהוזכרה?
+      - האם מישהו מהם נזכר קודם בשיחה?
+   ב. אם יש מועמד מועדף לפי ההקשר — הנח שהמשתמש מתכוון אליו, הצג את הנתונים שלו, ואז הוסף בסוף:
+      "אם התכוונת ל-[שם2] שלח 2, ל-[שם3] שלח 3"
+   ג. רק אם אין שום הקשר שעוזר להבחין — הצג רשימה ממוספרת ושאל "למי התכוונת?".
+   דוגמה:
+      - המשתמש שאל על "יובל" (Yuval Laikin, מנהל), ואז שאל על "שי"
+      - search_person("שי") מחזיר 3 תוצאות: שי הובן (מדווח ליובל), שי פינקלשטיין, שי אמיר
+      - ← הנח ששי הובן הוא הכוונה (כי מדווח ליובל שדיברנו עליו), הצג את הנתונים שלו, ובסוף:
+        "אם התכוונת לשי פינקלשטיין שלח 2, לשי אמיר שלח 3"
 8. לעולם אל תמציא מידע. אם לא מצאת — אמור "לא מצאתי מידע על X בבסיס הידע".
 9. כשמציג מידע פיננסי (שכר, בונוס) — ציין את המספר המדויק, אל תעגל.
 10. כשמציג היררכיה — הבחן בין כפופים ישירים לעקיפים.
+11. אם המשתמש משיב ספרה בודדת (1-9), הבן שהוא בוחר מהרשימה האחרונה שהצגת. הצג את הנתונים של האדם שנבחר.
 
 ══════════════════════════════════════════════════════
 כלים (Tools) — אל תקרא להם בשמם בפני המשתמש:
