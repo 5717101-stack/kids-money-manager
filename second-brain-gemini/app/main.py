@@ -911,7 +911,7 @@ async def notify_cursor_started(request: Request):
                 print(f"⚠️  Could not save last prompt to Drive: {save_error}")
             
             # Message 2: Cursor started working (RTL-friendly text)
-            message = "🛠️ ברגעים אלה Cursor החל את עבודת הפיתוח וההטמעה לפרודקשן. הודעה תישלח כשהגרסה החדשה הוטמעה בהצלחה."
+            message = "🛠️ הוא על זה"
         
         # Send via Meta WhatsApp (primary) or Twilio (fallback)
         from app.services.meta_whatsapp_service import meta_whatsapp_service
@@ -2307,7 +2307,7 @@ async def webhook(request: Request, background_tasks: BackgroundTasks):
                                                 # Send confirmation to user (Message 1)
                                                 if whatsapp_provider:
                                                     whatsapp_provider.send_whatsapp(
-                                                        message="🚀 הפקודה הועברה ל-Cursor. עדכון יתקבל כשהוא מתחיל לעבוד על הבקשה.",
+                                                        message="🚀 שלחתי לו",
                                                         to=f"+{from_number}"
                                                     )
                                             else:
