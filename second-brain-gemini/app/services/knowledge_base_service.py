@@ -259,15 +259,24 @@ def _vision_analyze_pdf(raw_bytes: bytes, file_id: str = "", file_name: str = ""
                     return ""
                 time.sleep(2)
             
-            # ── Model: gemini-1.5-pro with flash fallback ──
+            # ── Model selection: use PRIMARY_KB_MODEL if set by health check ──
             model = None
             model_name = None
             try:
-                model = genai.GenerativeModel("gemini-1.5-pro")
+                from app.services.architecture_audit_service import PRIMARY_KB_MODEL
+                if PRIMARY_KB_MODEL:
+                    model_name = PRIMARY_KB_MODEL
+                    print(f"   👁️ [Vision] Using PRIMARY_KB_MODEL from health check: {model_name}")
+                else:
+                    model_name = "gemini-1.5-pro"
+            except (ImportError, Exception):
                 model_name = "gemini-1.5-pro"
+            
+            try:
+                model = genai.GenerativeModel(model_name)
             except Exception as model_err:
-                print(f"   ⚠️ [Vision] WARNING: Pro model failed ({model_err}), using Flash. Results may be inaccurate.")
-                logger.warning(f"[Vision] WARNING: gemini-1.5-pro failed, falling back to gemini-1.5-flash. Results may be inaccurate.")
+                print(f"   ⚠️ [Vision] WARNING: {model_name} failed ({model_err}), using Flash. Results may be inaccurate.")
+                logger.warning(f"[Vision] WARNING: {model_name} failed, falling back to gemini-1.5-flash.")
                 model = genai.GenerativeModel("gemini-1.5-flash")
                 model_name = "gemini-1.5-flash"
             print(f"   👁️ [Vision] Using model: {model_name}")

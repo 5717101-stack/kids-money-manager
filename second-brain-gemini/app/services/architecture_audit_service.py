@@ -29,6 +29,9 @@ logger = logging.getLogger(__name__)
 # Using UTC+2 as default
 ISRAEL_TZ_OFFSET = timedelta(hours=2)
 
+# Dynamic model selection — set by health check, read by KB/Gemini services
+PRIMARY_KB_MODEL: Optional[str] = None
+
 
 def get_israel_time() -> datetime:
     """Get current time in Israel timezone."""
@@ -184,6 +187,62 @@ class ArchitectureAuditService:
         return ""
     
     # ================================================================
+    # MULTI-MODEL CONNECTIVITY TEST
+    # ================================================================
+    
+    def _classify_error(self, error: Exception) -> str:
+        """Classify a Gemini API error into a human-readable category."""
+        msg = str(error).lower()
+        if '404' in msg or 'not found' in msg:
+            return "Model not found (404)"
+        elif '401' in msg or 'unauthorized' in msg or 'invalid api key' in msg:
+            return "Invalid API Key (401)"
+        elif '403' in msg or 'forbidden' in msg or 'permission' in msg:
+            return "Forbidden/No access (403)"
+        elif '429' in msg or 'quota' in msg or 'rate limit' in msg or 'resource exhausted' in msg:
+            return "Quota exceeded (429)"
+        elif 'timeout' in msg:
+            return "Timeout"
+        else:
+            return str(error)[:80]
+    
+    def _ping_model(self, model_name: str) -> Dict[str, Any]:
+        """
+        Ping a specific Gemini model with a simple "Hello" prompt.
+        Returns status dict with model name, status, latency, and error details.
+        """
+        import time
+        result = {"model": model_name, "status": "unknown", "response_time_ms": 0, "error": None, "error_type": None}
+        
+        try:
+            model = genai.GenerativeModel(model_name)
+            start = time.time()
+            response = model.generate_content(
+                "Say OK",
+                generation_config={'max_output_tokens': 10},
+                safety_settings=self.safety_settings
+            )
+            elapsed = (time.time() - start) * 1000
+            
+            text = self._safe_extract_text(response)
+            api_reachable = bool(text) or (hasattr(response, 'candidates') and bool(response.candidates))
+            
+            if api_reachable:
+                result["status"] = "active"
+                result["response_time_ms"] = round(elapsed)
+            else:
+                result["status"] = "no_response"
+                result["error"] = "No response returned"
+                result["error_type"] = "No response"
+                
+        except Exception as e:
+            result["status"] = "error"
+            result["error"] = str(e)[:120]
+            result["error_type"] = self._classify_error(e)
+        
+        return result
+    
+    # ================================================================
     # SYSTEM HEALTH CHECK
     # ================================================================
     
@@ -192,10 +251,12 @@ class ArchitectureAuditService:
         Comprehensive system health diagnostic.
         
         Checks:
-        1. Gemini API connectivity (ping with simple prompt)
+        1. Multi-model Gemini connectivity (Pro, Flash-exp, Flash)
         2. Google Drive access (list files in key folders)
         3. Environment variables (critical keys)
-        4. Recent errors from expert analysis
+        4. Knowledge Base status with file names
+        5. Recent errors from expert analysis
+        6. Sets PRIMARY_KB_MODEL based on model availability
         
         Returns:
             Dict with health status for each component
@@ -206,60 +267,79 @@ class ArchitectureAuditService:
             "timestamp": israel_time.isoformat(),
             "timestamp_display": israel_time.strftime('%d/%m/%Y %H:%M'),
             "gemini": {"status": "unknown"},
+            "gemini_models": {},
+            "primary_kb_model": None,
             "drive": {"status": "unknown", "transcripts": 0, "voice_signatures": 0},
             "env": {"all_present": False, "missing": []},
             "errors": []
         }
         
-        # 1. Gemini API Connectivity
-        print("🏥 [Health] Checking Gemini API...")
-        try:
-            import time
-            start = time.time()
-            # Use a simple, safe prompt that won't trigger safety filters
-            response = self.model.generate_content(
-                "Say OK",
-                generation_config={'max_output_tokens': 10},
-                safety_settings=self.safety_settings
-            )
-            elapsed = (time.time() - start) * 1000  # ms
+        # 1. Multi-Model Gemini Connectivity Test
+        print("🏥 [Health] Running multi-model Gemini connectivity test...")
+        models_to_test = [
+            'gemini-1.5-pro',
+            'gemini-2.0-flash-exp',
+            'gemini-1.5-flash',
+        ]
+        
+        model_results = {}
+        primary_kb_model = None
+        
+        for model_name in models_to_test:
+            print(f"   🔍 Pinging {model_name}...")
+            result = self._ping_model(model_name)
+            model_results[model_name] = result
             
-            # Safe text extraction using helper
-            text = self._safe_extract_text(response)
-            
-            # Even if text is empty but we got a response object, the API is reachable
-            # finish_reason 1 (STOP) or even 2 (SAFETY) means the API is working
-            api_reachable = False
-            if text:
-                api_reachable = True
-            elif hasattr(response, 'candidates') and response.candidates:
-                # API responded but content was filtered - still means API is working
-                api_reachable = True
-                text = "OK (filtered)"
-            
-            if api_reachable:
-                health["gemini"] = {
-                    "status": "ok",
-                    "model": self.model_name,
-                    "response_time_ms": round(elapsed)
-                }
-                print(f"   ✅ Gemini OK ({self.model_name}, {elapsed:.0f}ms)")
+            if result["status"] == "active":
+                print(f"   ✅ {model_name}: Active ({result['response_time_ms']}ms)")
             else:
-                health["gemini"] = {
-                    "status": "error",
-                    "model": self.model_name,
-                    "error": "No response at all"
-                }
-                print(f"   ⚠️ Gemini returned no response")
-                
-        except Exception as e:
-            error_msg = str(e)[:100]
+                error_type = result.get("error_type", "Unknown")
+                print(f"   ❌ {model_name}: {error_type}")
+                if result.get("error"):
+                    print(f"      Detail: {result['error'][:100]}")
+        
+        health["gemini_models"] = model_results
+        
+        # Determine PRIMARY_KB_MODEL (prefer Pro for accuracy)
+        if model_results.get('gemini-1.5-pro', {}).get('status') == 'active':
+            primary_kb_model = 'gemini-1.5-pro'
+            print(f"   🎯 PRIMARY_KB_MODEL: gemini-1.5-pro (Pro is available)")
+        elif model_results.get('gemini-1.5-flash', {}).get('status') == 'active':
+            primary_kb_model = 'gemini-1.5-flash'
+            print(f"   ⚠️ PRIMARY_KB_MODEL: gemini-1.5-flash (Pro unavailable, using Flash)")
+        elif model_results.get('gemini-2.0-flash-exp', {}).get('status') == 'active':
+            primary_kb_model = 'gemini-2.0-flash-exp'
+            print(f"   ⚠️ PRIMARY_KB_MODEL: gemini-2.0-flash-exp (Pro unavailable, using Flash-exp)")
+        else:
+            primary_kb_model = None
+            print(f"   ❌ PRIMARY_KB_MODEL: None — all models failed!")
+        
+        health["primary_kb_model"] = primary_kb_model
+        
+        # Also update the module-level PRIMARY_KB_MODEL for other services to use
+        import app.services.architecture_audit_service as _self_module
+        _self_module.PRIMARY_KB_MODEL = primary_kb_model
+        
+        # Overall Gemini status (based on audit model)
+        any_active = any(r.get('status') == 'active' for r in model_results.values())
+        if any_active:
+            # Report the audit model's own status
+            audit_result = self._ping_model(self.model_name) if self.model_name else {"status": "unknown"}
+            health["gemini"] = {
+                "status": "ok" if audit_result.get("status") == "active" else "degraded",
+                "model": self.model_name,
+                "response_time_ms": audit_result.get("response_time_ms", 0),
+                "active_models": sum(1 for r in model_results.values() if r.get('status') == 'active'),
+                "total_tested": len(models_to_test)
+            }
+        else:
             health["gemini"] = {
                 "status": "error",
                 "model": self.model_name,
-                "error": error_msg
+                "error": "All models failed",
+                "active_models": 0,
+                "total_tested": len(models_to_test)
             }
-            print(f"   ❌ Gemini error: {error_msg}")
         
         # 2. Google Drive Access
         print("🏥 [Health] Checking Google Drive...")
@@ -326,14 +406,17 @@ class ArchitectureAuditService:
         else:
             print(f"   ✅ All critical env vars present")
         
-        # 4. Knowledge Base Status
+        # 4. Knowledge Base Status (with file names)
         print("🏥 [Health] Checking Knowledge Base...")
         try:
             from app.services.knowledge_base_service import get_status as get_kb_status
             kb_status = get_kb_status()
             health["knowledge_base"] = kb_status
             if kb_status.get('connected'):
-                print(f"   ✅ Knowledge Base: {kb_status.get('source')} ({kb_status.get('file_count')} files, {kb_status.get('chars')} chars)")
+                file_names = kb_status.get('files', [])
+                print(f"   ✅ Knowledge Base: {kb_status.get('source')} ({len(file_names)} files, {kb_status.get('chars')} chars)")
+                for fn in file_names:
+                    print(f"      📄 {fn}")
             else:
                 print(f"   ⚠️ Knowledge Base: not connected")
         except Exception as kb_err:
@@ -810,16 +893,42 @@ class ArchitectureAuditService:
         report_parts.append("")
         
         if health_status:
-            # Gemini status
-            gemini = health_status.get('gemini', {})
-            gemini_status = gemini.get('status', 'unknown')
-            if gemini_status == 'ok':
-                model = gemini.get('model', 'N/A')
-                time_ms = gemini.get('response_time_ms', 0)
-                report_parts.append(f"✅ Gemini API: תקין ({model}, {time_ms}ms)")
+            # ── Per-Model Connectivity Status ──
+            model_results = health_status.get('gemini_models', {})
+            if model_results:
+                report_parts.append("🤖 *מודלים:*")
+                model_labels = {
+                    'gemini-1.5-pro': 'Pro',
+                    'gemini-2.0-flash-exp': 'Flash-exp',
+                    'gemini-1.5-flash': 'Flash',
+                }
+                for model_name, result in model_results.items():
+                    label = model_labels.get(model_name, model_name)
+                    if result.get('status') == 'active':
+                        ms = result.get('response_time_ms', 0)
+                        report_parts.append(f"   ✅ {label}: Active ({ms}ms)")
+                    else:
+                        error_type = result.get('error_type', 'Unknown')
+                        report_parts.append(f"   ❌ {label}: {error_type}")
+                
+                # PRIMARY_KB_MODEL indicator
+                primary = health_status.get('primary_kb_model')
+                if primary:
+                    plabel = model_labels.get(primary, primary)
+                    is_pro = 'pro' in primary.lower()
+                    icon = "✅" if is_pro else "⚠️"
+                    report_parts.append(f"   {icon} KB Model: *{plabel}*")
+                else:
+                    report_parts.append("   ❌ KB Model: *None* — כל המודלים נכשלו")
             else:
-                error = gemini.get('error', 'Unknown')[:30]
-                report_parts.append(f"❌ Gemini API: שגיאה ({error})")
+                # Fallback to old single-model display
+                gemini = health_status.get('gemini', {})
+                if gemini.get('status') == 'ok':
+                    report_parts.append(f"✅ Gemini API: תקין ({gemini.get('model', 'N/A')})")
+                else:
+                    report_parts.append(f"❌ Gemini API: שגיאה ({gemini.get('error', 'Unknown')[:30]})")
+            
+            report_parts.append("")
             
             # Drive status
             drive = health_status.get('drive', {})
@@ -841,12 +950,16 @@ class ArchitectureAuditService:
                 missing = env.get('missing', [])
                 report_parts.append(f"⚠️ משתנים חסרים: {', '.join(missing[:3])}")
             
-            # Knowledge Base status
+            # Knowledge Base status — with file names
             kb_status = health_status.get('knowledge_base', {})
             if kb_status.get('connected'):
                 kb_source = kb_status.get('source', 'Unknown')
-                kb_files = kb_status.get('file_count', 0)
-                report_parts.append(f"📚 Knowledge Base: [Connected] - Found {kb_files} files ({kb_source})")
+                file_names = kb_status.get('files', [])
+                if file_names:
+                    names_str = ", ".join(file_names)
+                    report_parts.append(f"📚 Knowledge Base: [Connected] - Found: {names_str}")
+                else:
+                    report_parts.append(f"📚 Knowledge Base: [Connected] ({kb_source})")
             else:
                 report_parts.append("⚠️ Knowledge Base: לא מחובר")
             

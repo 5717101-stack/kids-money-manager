@@ -719,14 +719,26 @@ STEP 4 — DIRECT ANSWER MODE (תשובה ישירה):
                 {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_NONE"},
             ]
             
-            # ── Dedicated model for org queries: gemini-1.5-pro ──
-            # Do NOT use self.model (gemini-2.5-pro) — it hallucinates roles
+            # ── Dedicated model for org queries ──
+            # Use PRIMARY_KB_MODEL from health check if available, else try Pro
+            kb_model_name = None
             try:
-                kb_model = genai.GenerativeModel("gemini-1.5-pro")
-                print(f"📚 [KB Query] Using model: gemini-1.5-pro")
+                from app.services.architecture_audit_service import PRIMARY_KB_MODEL
+                if PRIMARY_KB_MODEL:
+                    kb_model_name = PRIMARY_KB_MODEL
+            except (ImportError, Exception):
+                pass
+            
+            if not kb_model_name:
+                kb_model_name = "gemini-1.5-pro"
+            
+            try:
+                kb_model = genai.GenerativeModel(kb_model_name)
+                print(f"📚 [KB Query] Using model: {kb_model_name}")
             except Exception as model_err:
-                print(f"📚 [KB Query] ⚠️ WARNING: Pro model failed ({model_err}), using Flash. Results may be inaccurate.")
+                print(f"📚 [KB Query] ⚠️ WARNING: {kb_model_name} failed ({model_err}), using Flash. Results may be inaccurate.")
                 kb_model = genai.GenerativeModel("gemini-1.5-flash")
+                kb_model_name = "gemini-1.5-flash"
             
             response = kb_model.generate_content(
                 prompt,
