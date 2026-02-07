@@ -257,8 +257,13 @@ class GeminiService:
         # Use gemini-2.5-pro (available model) or gemini-1.5-pro as fallback
         model_name = os.environ.get('GEMINI_MODEL', 'gemini-2.5-pro')
         # Map old/legacy model names
-        if model_name in ['gemini-1.5-pro-latest']:
-            model_name = 'gemini-1.5-pro'
+        # Normalize legacy model names to stable strings
+        legacy_map = {
+            'gemini-1.5-pro-latest': 'gemini-1.5-pro',
+            'gemini-1.5-flash-latest': 'gemini-1.5-flash',
+        }
+        if model_name in legacy_map:
+            model_name = legacy_map[model_name]
         self.model = genai.GenerativeModel(model_name)
         logger.info(f"✅ Gemini service initialized with model: {model_name}")
     

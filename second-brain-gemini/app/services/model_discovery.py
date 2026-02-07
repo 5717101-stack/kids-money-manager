@@ -53,9 +53,12 @@ _configured = False
 
 def configure_genai(api_key: str = None):
     """
-    Configure the Google Generative AI client with stable REST transport.
+    Configure the Google Generative AI client with stable v1 REST transport.
     
-    Uses transport='rest' to avoid gRPC/v1beta issues that cause 404s.
+    Uses transport='rest' to avoid gRPC issues, and explicitly sets the
+    client_options api_endpoint to the stable v1 endpoint to prevent
+    the SDK from defaulting to v1beta (which causes 404 errors).
+    
     Safe to call multiple times — only configures once.
     """
     global _configured
@@ -72,9 +75,10 @@ def configure_genai(api_key: str = None):
     genai.configure(
         api_key=api_key,
         transport="rest",
+        client_options={"api_endpoint": "generativelanguage.googleapis.com"},
     )
     _configured = True
-    print("✅ [Model Discovery] genai configured with REST transport (stable, no v1beta)")
+    print("✅ [Model Discovery] genai configured: transport=rest, endpoint=generativelanguage.googleapis.com (stable v1, no v1beta)")
 
 
 # ── Cache (populated once on first call) ──
