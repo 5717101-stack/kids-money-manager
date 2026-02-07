@@ -477,9 +477,8 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-class _SkipNotification(Exception):
-    """Internal signal to skip deploy notification (dedup)."""
-    pass
+# Module-level dedup flag — atomic in Python (GIL), no race condition
+_deploy_notification_sent = False
 
 # Startup event: Pre-warm memory cache
 @app.on_event("startup")
@@ -499,93 +498,66 @@ async def startup_event():
         is_production = os.environ.get('RENDER', '') == 'true'
         
         if is_production:
-            # ── DEDUP: Prevent sending the same notification twice ──
-            # This handles edge cases where Render restarts the service
-            # multiple times during a single deploy cycle.
-            dedup_file = Path("/tmp/.deploy_notified")
-            try:
-                if dedup_file.exists():
-                    last_notified = dedup_file.read_text().strip()
-                    if last_notified == current_version:
-                        import time as _t
-                        file_age = _t.time() - dedup_file.stat().st_mtime
-                        if file_age < 300:  # 5 minutes
-                            print(f"🔇 Skipping duplicate deploy notification (v{current_version}, sent {file_age:.0f}s ago)")
-                            # Skip notification but continue with the rest of startup
-                            raise _SkipNotification()
-            except _SkipNotification:
-                raise
-            except Exception:
-                pass  # File check failed — send notification anyway
-            
-            print(f"🚀 Production deployment detected - Version {current_version}")
-            
-            # Get Israel time (UTC+2 in winter, UTC+3 in summer - using +2 as base)
-            from datetime import timezone, timedelta
-            israel_time = datetime.now(timezone.utc) + timedelta(hours=2)
-            israel_time_str = israel_time.strftime('%d/%m/%Y %H:%M')
-            
-            # Get changes summary for deployment notification
-            # Priority: 1) git log, 2) Google Drive memory, 3) .last_commit file
-            changes_summary = ""
-            
-            # Method 1: Try git log to get latest commit message
-            try:
-                import subprocess
-                result = subprocess.run(
-                    ['git', 'log', '-1', '--pretty=%B'],
-                    capture_output=True, text=True, timeout=5,
-                    cwd=Path(__file__).parent.parent
-                )
-                if result.returncode == 0 and result.stdout.strip():
-                    git_msg = result.stdout.strip()
-                    # Extract meaningful part (skip version tags like "v3.9.1 - ")
-                    if ' - ' in git_msg:
-                        git_msg = git_msg.split(' - ', 1)[1]
-                    changes_summary = git_msg[:150]
-                    print(f"📝 Using git commit message: {changes_summary[:50]}...")
-            except Exception as git_error:
-                print(f"⚠️  Could not get git log: {git_error}")
-            
-            # Method 2: Fall back to Google Drive memory (saved by notify-cursor-started)
-            if not changes_summary:
+            # ── DEDUP: Module-level flag prevents duplicate notifications ──
+            # Atomic in Python (GIL) — no race condition even if called concurrently
+            global _deploy_notification_sent
+            if _deploy_notification_sent:
+                print(f"🔇 Skipping duplicate deploy notification (v{current_version} — already sent in this process)")
+            else:
+                _deploy_notification_sent = True  # Mark BEFORE sending (prevents race)
+                
+                # Get Israel time
+                from datetime import timezone, timedelta
+                israel_time = datetime.now(timezone.utc) + timedelta(hours=2)
+                israel_time_str = israel_time.strftime('%d/%m/%Y %H:%M')
+                
+                # Get changes summary
+                changes_summary = ""
+                
                 try:
-                    if drive_memory_service.is_configured:
-                        memory = drive_memory_service.get_memory()
-                        last_task = memory.get('last_cursor_task', {})
-                        if last_task and last_task.get('prompt'):
-                            prompt = last_task['prompt']
-                            changes_summary = prompt[:150]
-                            if len(prompt) > 150:
-                                changes_summary += "..."
-                            print(f"📝 Using Drive memory: {changes_summary[:50]}...")
-                            
-                            # Clear after reading to avoid stale data
-                            memory.pop('last_cursor_task', None)
-                            drive_memory_service.save_memory(memory)
-                except Exception as drive_error:
-                    print(f"⚠️  Could not read from Drive: {drive_error}")
-            
-            # Method 3: Fall back to .last_commit file (created during build)
-            if not changes_summary:
-                commit_file = Path(__file__).parent.parent / ".last_commit"
-                if commit_file.exists():
+                    import subprocess
+                    result = subprocess.run(
+                        ['git', 'log', '-1', '--pretty=%B'],
+                        capture_output=True, text=True, timeout=5,
+                        cwd=Path(__file__).parent.parent
+                    )
+                    if result.returncode == 0 and result.stdout.strip():
+                        git_msg = result.stdout.strip()
+                        if ' - ' in git_msg:
+                            git_msg = git_msg.split(' - ', 1)[1]
+                        changes_summary = git_msg[:150]
+                except Exception:
+                    pass
+                
+                if not changes_summary:
                     try:
-                        commit_msg = commit_file.read_text().strip()
-                        if commit_msg and commit_msg not in ['No commit message available', '']:
-                            changes_summary = commit_msg[:150]
-                            print(f"📝 Using .last_commit: {changes_summary[:50]}...")
+                        if drive_memory_service.is_configured:
+                            memory = drive_memory_service.get_memory()
+                            last_task = memory.get('last_cursor_task', {})
+                            if last_task and last_task.get('prompt'):
+                                changes_summary = last_task['prompt'][:150]
+                                memory.pop('last_cursor_task', None)
+                                drive_memory_service.save_memory(memory)
                     except Exception:
                         pass
-            
-            # Final fallback
-            if not changes_summary:
-                changes_summary = "עדכון מערכת"
-            
-            # Send deployment notification via WhatsApp (Message 3)
-            from app.services.meta_whatsapp_service import meta_whatsapp_service
-            
-            notification_msg = f"""🚀 *גרסה חדשה עלתה לפרודקשן!*
+                
+                if not changes_summary:
+                    commit_file = Path(__file__).parent.parent / ".last_commit"
+                    if commit_file.exists():
+                        try:
+                            commit_msg = commit_file.read_text().strip()
+                            if commit_msg and commit_msg != 'No commit message available':
+                                changes_summary = commit_msg[:150]
+                        except Exception:
+                            pass
+                
+                if not changes_summary:
+                    changes_summary = "עדכון מערכת"
+                
+                # Send notification
+                from app.services.meta_whatsapp_service import meta_whatsapp_service
+                
+                notification_msg = f"""🚀 *גרסה חדשה עלתה לפרודקשן!*
 
 📦 גרסה: *{current_version}*
 ⏰ זמן: {israel_time_str} (שעון ישראל)
@@ -594,25 +566,18 @@ async def startup_event():
 {changes_summary}
 
 ✅ השרת פעיל ומוכן לעבודה!"""
-            
-            if meta_whatsapp_service.is_configured:
-                result = meta_whatsapp_service.send_whatsapp(notification_msg)
-                if result.get('success'):
-                    print(f"✅ Deployment notification sent via WhatsApp")
-                    # ── Mark as sent (dedup) ──
-                    try:
-                        dedup_file.write_text(current_version)
-                    except Exception:
-                        pass
+                
+                if meta_whatsapp_service.is_configured:
+                    result = meta_whatsapp_service.send_whatsapp(notification_msg)
+                    if result.get('success'):
+                        print(f"✅ Deployment notification sent via WhatsApp")
+                    else:
+                        print(f"⚠️  Failed to send deployment notification: {result.get('error')}")
                 else:
-                    print(f"⚠️  Failed to send deployment notification: {result.get('error')}")
-            else:
-                print(f"⚠️  Meta WhatsApp not configured — deployment notification not sent")
+                    print(f"⚠️  Meta WhatsApp not configured — deployment notification not sent")
         else:
             print(f"📍 Local development - Version {current_version} (no notification)")
             
-    except _SkipNotification:
-        pass  # Dedup — notification already sent for this version
     except Exception as e:
         print(f"⚠️  Deployment notification error: {e}")
         import traceback
