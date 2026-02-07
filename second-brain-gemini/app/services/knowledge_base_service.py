@@ -1234,3 +1234,69 @@ def get_loaded_files() -> List[str]:
     """Return list of loaded file names."""
     load_context()
     return list(_cached_file_list)
+
+
+def search_people(query: str) -> List[Dict[str, Any]]:
+    """
+    Search the identity graph for people matching a name query.
+    
+    Supports:
+    - Exact canonical match
+    - name_map lookup (Hebrew, nicknames, first-name)
+    - Fuzzy substring match across all aliases
+    
+    Returns a list of person dicts, each with:
+      canonical_name, title, department, reports_to, direct_reports, contexts, aliases, etc.
+    """
+    load_context()  # Ensure data is loaded
+    
+    if not _identity_graph:
+        return []
+    
+    query_lower = query.strip().lower()
+    if not query_lower:
+        return []
+    
+    people = _identity_graph.get("people", {})
+    name_map = _identity_graph.get("name_map", {})
+    
+    matches: List[Dict[str, Any]] = []
+    seen_canonical: set = set()
+    
+    # ── Strategy 1: Exact name_map hit (resolves Hebrew/nickname → canonical) ──
+    if query_lower in name_map:
+        canonical = name_map[query_lower]
+        if canonical in people:
+            person = dict(people[canonical])
+            # Convert set → list for JSON serialization
+            if isinstance(person.get("aliases"), set):
+                person["aliases"] = list(person["aliases"])
+            matches.append(person)
+            seen_canonical.add(canonical)
+    
+    # ── Strategy 2: Substring match on all name variants ──
+    # Finds cases like "שי" matching "שיי הובן" and "שי אמיר" etc.
+    for variant, canonical in name_map.items():
+        if canonical in seen_canonical:
+            continue
+        # Substring match in either direction
+        if query_lower in variant or variant in query_lower:
+            if canonical in people:
+                person = dict(people[canonical])
+                if isinstance(person.get("aliases"), set):
+                    person["aliases"] = list(person["aliases"])
+                matches.append(person)
+                seen_canonical.add(canonical)
+    
+    # ── Strategy 3: Substring match on canonical names ──
+    for canonical, info in people.items():
+        if canonical in seen_canonical:
+            continue
+        if query_lower in canonical.lower():
+            person = dict(info)
+            if isinstance(person.get("aliases"), set):
+                person["aliases"] = list(person["aliases"])
+            matches.append(person)
+            seen_canonical.add(canonical)
+    
+    return matches

@@ -2428,9 +2428,81 @@ async def webhook(request: Request, background_tasks: BackgroundTasks):
                                         continue
                                     
                                     # ================================================================
+                                    # SMART IDENTITY RESOLVER: Digit Selection Handler
+                                    # If user replies "1"-"9" and there's a pending options list,
+                                    # resolve to the selected person and re-execute the query.
+                                    # ================================================================
+                                    from app.services.identity_resolver_service import identity_resolver
+                                    
+                                    resolved_selection = identity_resolver.try_resolve_digit(from_number, message_body_text)
+                                    if resolved_selection:
+                                        print(f"\n{'='*60}")
+                                        print(f"🎯 IDENTITY RESOLVER: Digit selection → {resolved_selection.display_name}")
+                                        print(f"   Re-executing query: {resolved_selection.pending_query}")
+                                        print(f"{'='*60}")
+                                        
+                                        try:
+                                            from app.services.knowledge_base_service import get_kb_query_context
+                                            
+                                            kb_context = get_kb_query_context()
+                                            if kb_context:
+                                                # Re-execute the original query with the resolved person name
+                                                resolved_name = resolved_selection.display_name
+                                                original_q = resolved_selection.pending_query
+                                                # Inject the resolved name into context hint for Gemini
+                                                enhanced_query = (
+                                                    f"{original_q}\n\n"
+                                                    f"[SYSTEM: The user selected '{resolved_name}' from an ambiguity menu. "
+                                                    f"Answer ONLY about {resolved_name}.]"
+                                                )
+                                                
+                                                kb_answer = gemini_service.answer_kb_query(
+                                                    user_query=enhanced_query,
+                                                    kb_context=kb_context
+                                                )
+                                                
+                                                formatted_answer = f"📚 *תשובה מבסיס הידע:*\n\n{kb_answer}"
+                                                
+                                                if whatsapp_provider:
+                                                    whatsapp_provider.send_whatsapp(
+                                                        message=formatted_answer,
+                                                        to=f"+{from_number}"
+                                                    )
+                                                    print(f"   ✅ Resolved KB answer sent ({len(formatted_answer)} chars)")
+                                                
+                                                # Update session context from the answer
+                                                person = resolved_selection.person
+                                                identity_resolver.update_context(
+                                                    phone=from_number,
+                                                    department=person.get("department", ""),
+                                                    manager=person.get("reports_to", ""),
+                                                )
+                                                
+                                                # Save interaction to memory
+                                                new_interaction = {
+                                                    "user_message": message_body_text,
+                                                    "ai_response": formatted_answer,
+                                                    "timestamp": datetime.utcnow().isoformat() + "Z",
+                                                    "message_id": message_id,
+                                                    "from_number": from_number,
+                                                    "type": "kb_query_resolved"
+                                                }
+                                                drive_memory_service.update_memory(new_interaction, background_tasks=background_tasks)
+                                        
+                                        except Exception as resolve_err:
+                                            print(f"   ❌ Resolver error: {resolve_err}")
+                                            import traceback
+                                            traceback.print_exc()
+                                        
+                                        print(f"🛑 IDENTITY RESOLVER COMPLETE")
+                                        print(f"{'='*60}\n")
+                                        continue
+                                    
+                                    # ================================================================
                                     # KNOWLEDGE BASE QUERY INTERCEPTOR
                                     # Triggers: "מי מדווח ל...", "מה התפקיד של...", etc.
                                     # Skips audio-summary flow → direct fact-based answer from KB
+                                    # Now includes Smart Identity Resolver for ambiguous names.
                                     # ================================================================
                                     if is_kb_query(message_body_text):
                                         print(f"\n{'='*60}")
@@ -2439,8 +2511,47 @@ async def webhook(request: Request, background_tasks: BackgroundTasks):
                                         print(f"   Query: {message_body_text}")
                                         
                                         try:
-                                            from app.services.knowledge_base_service import get_kb_query_context
+                                            from app.services.knowledge_base_service import get_kb_query_context, search_people
                                             
+                                            # ── Step 1: Check for name ambiguity BEFORE calling Gemini ──
+                                            extracted_name = identity_resolver.extract_person_name(message_body_text)
+                                            
+                                            if extracted_name:
+                                                print(f"   🔍 Extracted name: '{extracted_name}'")
+                                                matches = search_people(extracted_name)
+                                                print(f"   🔍 Found {len(matches)} matches in identity graph")
+                                                
+                                                if len(matches) > 1:
+                                                    # Multiple matches → send disambiguation menu
+                                                    menu_msg = identity_resolver.handle_ambiguity(
+                                                        phone=from_number,
+                                                        name_query=extracted_name,
+                                                        matches=matches,
+                                                        original_question=message_body_text,
+                                                    )
+                                                    
+                                                    if whatsapp_provider:
+                                                        whatsapp_provider.send_whatsapp(
+                                                            message=menu_msg,
+                                                            to=f"+{from_number}"
+                                                        )
+                                                        print(f"   🔀 Disambiguation menu sent ({len(matches)} options)")
+                                                    
+                                                    print(f"🛑 KB QUERY PAUSED — waiting for user selection")
+                                                    print(f"{'='*60}\n")
+                                                    continue
+                                                
+                                                elif len(matches) == 1:
+                                                    # Single match → update session context and proceed
+                                                    person = matches[0]
+                                                    identity_resolver.update_context(
+                                                        phone=from_number,
+                                                        department=person.get("department", ""),
+                                                        manager=person.get("reports_to", ""),
+                                                    )
+                                                    print(f"   ✅ Unique match: {person.get('canonical_name')}")
+                                            
+                                            # ── Step 2: Proceed with normal KB query ──
                                             kb_context = get_kb_query_context()
                                             
                                             if not kb_context:
@@ -2469,6 +2580,15 @@ async def webhook(request: Request, background_tasks: BackgroundTasks):
                                                         to=f"+{from_number}"
                                                     )
                                                     print(f"   ✅ KB answer sent ({len(formatted_answer)} chars)")
+                                                
+                                                # Update session context from the answer
+                                                if extracted_name and len(matches) == 1:
+                                                    person = matches[0]
+                                                    identity_resolver.update_context(
+                                                        phone=from_number,
+                                                        department=person.get("department", ""),
+                                                        manager=person.get("reports_to", ""),
+                                                    )
                                                 
                                                 # Save interaction to memory
                                                 new_interaction = {
