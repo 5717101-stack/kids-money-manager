@@ -984,7 +984,7 @@ def process_audio_in_background(
     # Send immediate "Processing..." message to manage user expectations
     try:
         if whatsapp_provider:
-            processing_msg = "🎙️ מקבל את ההקלטה... מנתח דוברים ומריץ את מועצת המומחים. זה עלול לקחת דקה-שתיים."
+            processing_msg = "🎙️ קיבלתי, אני על זה."
             whatsapp_provider.send_whatsapp(
                 message=processing_msg,
                 to=f"+{from_number}"
