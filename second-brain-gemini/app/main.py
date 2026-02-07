@@ -2580,13 +2580,14 @@ async def webhook(request: Request, background_tasks: BackgroundTasks):
                                         )
                                         if pronoun_entity:
                                             print(f"🔗 [Pronoun] Resolved: '{message_body_text}' → '{effective_query}'")
-                                        elif not is_kb_query(message_body_text):
-                                            # Has pronouns but no entity in memory — check if it looks like a KB query
-                                            # If so, ask "Who are you referring to?" instead of guessing
+                                        else:
+                                            # Has pronouns but no entity in memory — ask for clarification
+                                            # This applies to ALL queries (KB and non-KB) to avoid guessing
                                             pronoun_keywords = ['שכר', 'משכורת', 'תפקיד', 'מדווח', 'מנהל',
-                                                               'דירוג', 'rating', 'salary', 'role', 'manager']
+                                                               'דירוג', 'rating', 'salary', 'role', 'manager',
+                                                               'כמה', 'מרוויח', 'בונוס', 'factor', 'ציון']
                                             if any(kw in message_body_text for kw in pronoun_keywords):
-                                                fallback_msg = "❓ למי אתה מתכוון? אין לי הקשר מהשיחה האחרונה."
+                                                fallback_msg = "❓ למי התכוונת? ציין את השם כדי שאוכל לענות."
                                                 if whatsapp_provider:
                                                     whatsapp_provider.send_whatsapp(
                                                         message=fallback_msg,
@@ -2693,6 +2694,31 @@ async def webhook(request: Request, background_tasks: BackgroundTasks):
                                                         department=person.get("department", ""),
                                                         manager=person.get("reports_to", ""),
                                                         entity=person,
+                                                    )
+                                                elif extracted_name and len(matches) == 0 and kb_answer:
+                                                    # Gemini resolved the name — try to find entity by
+                                                    # re-searching with broader terms from the answer
+                                                    # Look for English names mentioned in the answer
+                                                    import re as _re
+                                                    eng_names = _re.findall(r'([A-Z][a-z]+ [A-Z][a-z]+)', kb_answer)
+                                                    if eng_names:
+                                                        retry_matches = search_people(eng_names[0])
+                                                        if len(retry_matches) == 1:
+                                                            person = retry_matches[0]
+                                                            identity_resolver.update_context(
+                                                                phone=from_number,
+                                                                department=person.get("department", ""),
+                                                                manager=person.get("reports_to", ""),
+                                                                entity=person,
+                                                            )
+                                                            print(f"   🧠 Entity stored from answer: {eng_names[0]}")
+                                                elif pronoun_entity:
+                                                    # Pronoun was resolved — keep entity fresh
+                                                    identity_resolver.update_context(
+                                                        phone=from_number,
+                                                        department=pronoun_entity.get("department", ""),
+                                                        manager=pronoun_entity.get("reports_to", ""),
+                                                        entity=pronoun_entity,
                                                     )
                                                 
                                                 # Save interaction to memory

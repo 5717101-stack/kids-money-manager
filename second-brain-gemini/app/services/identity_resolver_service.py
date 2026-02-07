@@ -366,7 +366,7 @@ class IdentityResolverService:
             "מי המנהל של שי?"      → "שי"
             "מה השכר של Guy Klein?" → "Guy Klein"
         """
-        # Hebrew patterns with prepositions
+        # Hebrew patterns with prepositions — covers many natural variations
         patterns = [
             r'מי מדווח ל(.+?)[\?؟\s]*$',
             r'מה התפקיד של (.+?)[\?؟\s]*$',
@@ -384,6 +384,15 @@ class IdentityResolverService:
             r'מה הציון של (.+?)[\?؟\s]*$',
             r'מה ה-rating של (.+?)[\?؟\s]*$',
             r'ספר לי על (.+?)[\?؟\s]*$',
+            # Natural variations with "וכמה", "כמה", "ומה" prefixes
+            r'(?:ו?)כמה (?:ה?)משכורת(?:\s+\S+)* של (.+?)[\?؟\s]*$',
+            r'(?:ו?)כמה (?:ה?)שכר(?:\s+\S+)* של (.+?)[\?؟\s]*$',
+            r'(?:ו?)מה (?:ה?)משכורת(?:\s+\S+)* של (.+?)[\?؟\s]*$',
+            r'(?:ו?)מה (?:ה?)שכר(?:\s+\S+)* של (.+?)[\?؟\s]*$',
+            r'(?:ו?)מה (?:ה?)דירוג(?:\s+\S+)* של (.+?)[\?؟\s]*$',
+            r'(?:ו?)מה (?:ה?)ציון(?:\s+\S+)* של (.+?)[\?؟\s]*$',
+            # Generic "של" extractor — last resort (catches "X של NAME")
+            r'(?:מה|כמה|ומה|וכמה)\s+.+\s+של\s+(.+?)[\?؟\s]*$',
         ]
         
         text = message.strip()
