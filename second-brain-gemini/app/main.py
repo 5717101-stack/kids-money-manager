@@ -1208,26 +1208,28 @@ def process_audio_in_background(
             print(f"✅ Loaded audio for slicing: {len(audio_segment)}ms")
             
             # ============================================================
-            # SMART SLICING ENGINE v2
-            # Algorithmic isolation + RMS validation + overlap-safe padding
-            # Goal: 5-7 seconds of CLEAR solo speech for each unknown speaker
+            # SMART SLICING ENGINE v3 — WebRTC VAD
+            # Professional Voice Activity Detection + overlap-safe padding
+            # Goal: 5-7 seconds of VERIFIED speech for unknown speakers
             # ============================================================
             
             TARGET_MIN_MS = 5000      # Target minimum: 5 seconds
             TARGET_MAX_MS = 7000      # Target maximum: 7 seconds
-            ABS_MIN_MS = 3000         # Absolute minimum: 3 seconds
-            ABS_MAX_MS = 12000        # Absolute maximum: 12 seconds
-            PAD_BUFFER_MS = 500       # 0.5s buffer before speech
-            INNER_TRIM_MS = 500       # Trim first/last 0.5s of segment boundaries
+            ABS_MIN_MS = 2000         # Absolute minimum for a speech cluster
+            PAD_BUFFER_MS = 500       # 0.5s buffer for natural sound
             FADE_MS = 40              # Fade in/out for clean cuts
             OVERLAP_MARGIN_MS = 300   # Safety margin around other speakers
-            MIN_RMS_THRESHOLD = 200   # Minimum RMS energy (silence detection)
-            MIN_RMS_RATIO = 0.3       # At least 30% of clip must have speech-level energy
+            VAD_AGGRESSIVENESS = 2    # WebRTC VAD aggressiveness (0-3, higher = stricter)
+            VAD_FRAME_MS = 30         # Frame size for VAD analysis (10, 20, or 30ms)
+            VAD_SAMPLE_RATE = 16000   # Sample rate for VAD (must be 8k/16k/32k/48k)
+            MIN_SPEECH_CLUSTER_MS = 2000  # Min continuous speech block (2 seconds)
+            MIN_SPEECH_RATIO = 0.50   # At least 50% of frames in cluster must be speech
+            MAX_SCAN_MS = 30000       # Only scan first 30s of each turn
             
             # ──────────────────────────────────────────────────────────────
             # STEP A: Build segment map for ALL speakers
             # ──────────────────────────────────────────────────────────────
-            all_segments_by_speaker = {}  # {speaker_id: [segments]}
+            all_segments_by_speaker = {}
             unknown_speakers = set()
             
             for segment in segments:
@@ -1271,8 +1273,19 @@ def process_audio_in_background(
                 print("⚠️  No unknown speakers detected - all identified or skipped.")
             
             # ──────────────────────────────────────────────────────────────
-            # STEP B: Helper functions
+            # STEP B: WebRTC VAD helpers
             # ──────────────────────────────────────────────────────────────
+            
+            # Initialize WebRTC VAD (with graceful fallback)
+            vad = None
+            try:
+                import webrtcvad
+                vad = webrtcvad.Vad(VAD_AGGRESSIVENESS)
+                print(f"✅ [VAD] WebRTC VAD initialized (aggressiveness={VAD_AGGRESSIVENESS})")
+            except ImportError:
+                print("⚠️  [VAD] webrtcvad not installed — falling back to RMS-based detection")
+            except Exception as vad_init_err:
+                print(f"⚠️  [VAD] WebRTC VAD init failed ({vad_init_err}) — falling back to RMS")
             
             def get_other_segments(target_speaker):
                 """Get all segments from speakers other than target."""
@@ -1295,316 +1308,321 @@ def process_audio_in_background(
                 return total
             
             def calc_safe_padding(start_ms, end_ms, other_segs, audio_len_ms):
-                """
-                Add 0.5s buffer BEFORE the segment, but stop if it would
-                overlap with another speaker's segment.
-                """
+                """Add 0.5s buffer but stop at other speaker boundaries."""
                 safe_start = max(0, start_ms - PAD_BUFFER_MS)
-                safe_end = min(audio_len_ms, end_ms + 200)  # Small after-pad
+                safe_end = min(audio_len_ms, end_ms + PAD_BUFFER_MS)
                 
-                # Check if pre-padding would enter another speaker's territory
                 for o in other_segs:
-                    o_end = o['end_ms']
-                    # If another speaker ends right before our segment
-                    if o_end > safe_start and o_end <= start_ms:
-                        # Don't pad before this point
-                        safe_start = max(safe_start, o_end + 100)  # 100ms gap
-                
-                # Check if post-padding would enter another speaker's territory
+                    if o['end_ms'] > safe_start and o['end_ms'] <= start_ms:
+                        safe_start = max(safe_start, o['end_ms'] + 100)
                 for o in other_segs:
-                    o_start = o['start_ms']
-                    if o_start >= end_ms and o_start < safe_end:
-                        safe_end = min(safe_end, o_start - 100)
+                    if o['start_ms'] >= end_ms and o['start_ms'] < safe_end:
+                        safe_end = min(safe_end, o['start_ms'] - 100)
                 
                 return safe_start, safe_end
             
-            def check_rms_quality(audio_clip, speaker_label):
+            def vad_analyze_clip(audio_clip):
                 """
-                Voice Activity Detection via RMS energy check.
+                Run WebRTC VAD frame-by-frame on an audio clip.
                 
-                Splits clip into 500ms windows and checks:
-                1. Overall RMS is above silence threshold
-                2. At least 30% of windows have speech-level energy
-                
-                Returns: (passed: bool, rms: float, active_ratio: float)
+                Returns: list of (frame_offset_ms, is_speech) tuples
                 """
-                import math
+                if vad is None:
+                    return None  # Signal to use RMS fallback
                 
-                clip_rms = audio_clip.rms
-                
-                if clip_rms < MIN_RMS_THRESHOLD:
-                    print(f"   ❌ [RMS] FAILED: clip RMS={clip_rms} < threshold={MIN_RMS_THRESHOLD} (silence/noise)")
-                    return False, clip_rms, 0.0
-                
-                # Check speech activity in 500ms windows
-                window_ms = 500
-                total_windows = max(1, len(audio_clip) // window_ms)
-                active_windows = 0
-                
-                for i in range(total_windows):
-                    window_start = i * window_ms
-                    window_end = min(window_start + window_ms, len(audio_clip))
-                    window = audio_clip[window_start:window_end]
-                    if window.rms >= MIN_RMS_THRESHOLD:
-                        active_windows += 1
-                
-                active_ratio = active_windows / total_windows
-                
-                if active_ratio < MIN_RMS_RATIO:
-                    print(f"   ❌ [RMS] FAILED: only {active_ratio:.0%} of clip has speech (need {MIN_RMS_RATIO:.0%})")
-                    print(f"      RMS={clip_rms}, active windows={active_windows}/{total_windows}")
-                    return False, clip_rms, active_ratio
-                
-                print(f"   ✅ [RMS] PASSED: RMS={clip_rms}, speech activity={active_ratio:.0%} ({active_windows}/{total_windows} windows)")
-                return True, clip_rms, active_ratio
+                try:
+                    # Convert to 16kHz mono 16-bit PCM (required by webrtcvad)
+                    pcm_clip = audio_clip.set_frame_rate(VAD_SAMPLE_RATE).set_channels(1).set_sample_width(2)
+                    raw_data = pcm_clip.raw_data
+                    
+                    bytes_per_frame = VAD_SAMPLE_RATE * 2 * VAD_FRAME_MS // 1000  # 16-bit = 2 bytes
+                    total_frames = len(raw_data) // bytes_per_frame
+                    
+                    results = []
+                    for i in range(total_frames):
+                        offset = i * bytes_per_frame
+                        frame = raw_data[offset:offset + bytes_per_frame]
+                        if len(frame) < bytes_per_frame:
+                            break
+                        is_speech = vad.is_speech(frame, VAD_SAMPLE_RATE)
+                        frame_offset_ms = i * VAD_FRAME_MS
+                        results.append((frame_offset_ms, is_speech))
+                    
+                    return results
+                except Exception as vad_err:
+                    print(f"      ⚠️  [VAD] Frame analysis failed: {vad_err}")
+                    return None
             
-            def rank_segments_for_speaker(target_speaker, other_segs):
+            def find_best_speech_cluster(vad_results, clip_duration_ms):
                 """
-                Rank ALL segments for an unknown speaker by quality.
-                Returns list sorted best-first: [(segment, overlap_ms, duration_ms)]
-                """
-                target_segs = all_segments_by_speaker.get(target_speaker, [])
-                if not target_segs:
-                    return []
+                Find the longest continuous block where majority of frames
+                are speech. A 'cluster' is a contiguous run where ≥50% of
+                frames in any sliding window are speech.
                 
-                ranked = []
-                for seg in target_segs:
-                    raw_dur = seg['end_ms'] - seg['start_ms']
-                    if raw_dur < 1000:  # Skip segments shorter than 1s
-                        continue
-                    
-                    overlap = calc_overlap_ms(seg['start_ms'], seg['end_ms'], other_segs)
-                    
-                    # Scoring: prefer isolated, then closest to 5-7s range, then longest
-                    in_target_range = TARGET_MIN_MS <= raw_dur <= TARGET_MAX_MS
-                    range_distance = 0 if in_target_range else min(
-                        abs(raw_dur - TARGET_MIN_MS), abs(raw_dur - TARGET_MAX_MS)
-                    )
-                    
-                    ranked.append({
-                        'seg': seg,
-                        'overlap': overlap,
-                        'duration': raw_dur,
-                        'in_range': in_target_range,
-                        'range_dist': range_distance
-                    })
-                
-                # Sort: least overlap → in target range → closest to range → longest
-                ranked.sort(key=lambda r: (r['overlap'], not r['in_range'], r['range_dist'], -r['duration']))
-                return ranked
-            
-            def try_merge_consecutive(target_speaker, other_segs):
+                Returns: (cluster_start_ms, cluster_end_ms, speech_ratio, confidence)
+                         or None if no valid cluster found.
                 """
-                Merge consecutive segments from same speaker if gap is clean.
-                Target: 5-7 seconds total.
-                """
-                target_segs = sorted(
-                    all_segments_by_speaker.get(target_speaker, []),
-                    key=lambda s: s['start_ms']
-                )
-                if len(target_segs) < 2:
+                if not vad_results:
                     return None
                 
-                best_merged = None
-                best_score = float('inf')
+                total_frames = len(vad_results)
+                speech_flags = [is_speech for (_, is_speech) in vad_results]
                 
-                for i in range(len(target_segs) - 1):
-                    gap_start = target_segs[i]['end_ms']
-                    gap_end = target_segs[i + 1]['start_ms']
-                    gap_ms = gap_end - gap_start
+                # ── Find all speech "runs" (consecutive speech frames) ──
+                # Allow small gaps (up to 3 frames = 90ms) inside a cluster
+                # This handles natural micro-pauses mid-sentence
+                GAP_TOLERANCE = 3  # frames (~90ms)
+                
+                # Smooth: fill small gaps between speech frames
+                smoothed = list(speech_flags)
+                for i in range(len(smoothed)):
+                    if not smoothed[i]:
+                        # Check if there's speech within GAP_TOLERANCE on both sides
+                        left_speech = any(smoothed[max(0, i-GAP_TOLERANCE):i])
+                        right_speech = any(smoothed[i+1:min(len(smoothed), i+1+GAP_TOLERANCE)])
+                        if left_speech and right_speech:
+                            smoothed[i] = True
+                
+                # ── Find contiguous speech clusters ──
+                clusters = []
+                cluster_start = None
+                
+                for i, is_speech in enumerate(smoothed):
+                    if is_speech and cluster_start is None:
+                        cluster_start = i
+                    elif not is_speech and cluster_start is not None:
+                        cluster_end = i
+                        clusters.append((cluster_start, cluster_end))
+                        cluster_start = None
+                
+                if cluster_start is not None:
+                    clusters.append((cluster_start, len(smoothed)))
+                
+                if not clusters:
+                    return None
+                
+                # ── Score each cluster ──
+                best = None
+                best_score = -1
+                
+                for c_start, c_end in clusters:
+                    c_len_frames = c_end - c_start
+                    c_duration_ms = c_len_frames * VAD_FRAME_MS
                     
-                    if gap_ms > 2000 or gap_ms < 0:
-                        continue
+                    if c_duration_ms < MIN_SPEECH_CLUSTER_MS:
+                        continue  # Skip clusters shorter than 2s
                     
-                    # Check gap is clean (no other speaker)
-                    gap_dirty = False
-                    for o in other_segs:
-                        if o['start_ms'] < gap_end and o['end_ms'] > gap_start:
-                            gap_dirty = True
-                            break
-                    if gap_dirty:
-                        continue
+                    # Calculate actual speech ratio (from original, not smoothed)
+                    actual_speech = sum(1 for f in speech_flags[c_start:c_end] if f)
+                    ratio = actual_speech / c_len_frames if c_len_frames > 0 else 0
                     
-                    merged_start = target_segs[i]['start_ms']
-                    merged_end = target_segs[i + 1]['end_ms']
-                    merged_dur = merged_end - merged_start
+                    if ratio < MIN_SPEECH_RATIO:
+                        continue  # Not enough speech in this cluster
                     
-                    if merged_dur < ABS_MIN_MS or merged_dur > ABS_MAX_MS:
-                        continue
+                    # Score: prefer longer clusters with higher speech ratio
+                    score = c_duration_ms * ratio
                     
-                    # Check overlap of the merged range
-                    overlap = calc_overlap_ms(merged_start, merged_end, other_segs)
-                    score = overlap * 1000 + abs(merged_dur - TARGET_MIN_MS)
-                    
-                    if score < best_score:
+                    if score > best_score:
                         best_score = score
-                        best_merged = {
-                            'speaker': target_speaker,
-                            'start': target_segs[i]['start'],
-                            'end': target_segs[i + 1]['end'],
-                            'start_ms': merged_start,
-                            'end_ms': merged_end,
-                            'text': target_segs[i].get('text', '') + ' ' + target_segs[i + 1].get('text', '')
-                        }
+                        start_ms = vad_results[c_start][0]
+                        end_ms = vad_results[min(c_end, total_frames) - 1][0] + VAD_FRAME_MS
+                        confidence = 'High' if ratio >= 0.75 else 'Low'
+                        best = (start_ms, end_ms, ratio, confidence)
                 
-                return best_merged
+                return best
+            
+            def rms_fallback_check(audio_clip):
+                """RMS-based speech check as fallback when webrtcvad is unavailable."""
+                clip_rms = audio_clip.rms
+                if clip_rms < 200:
+                    return False, 0.0, 'None'
+                
+                window_ms = 500
+                total_windows = max(1, len(audio_clip) // window_ms)
+                active = sum(1 for i in range(total_windows)
+                             if audio_clip[i*window_ms:min((i+1)*window_ms, len(audio_clip))].rms >= 200)
+                ratio = active / total_windows
+                
+                if ratio < 0.3:
+                    return False, ratio, 'None'
+                
+                confidence = 'High' if ratio >= 0.6 else 'Low'
+                return True, ratio, confidence
             
             # ──────────────────────────────────────────────────────────────
-            # STEP C: Process each unknown speaker with SMART SLICING
+            # STEP C: Process each unknown speaker with VAD SMART SLICING
             # ──────────────────────────────────────────────────────────────
             
             for speaker in unknown_speakers:
-                print(f"\n{'─'*50}")
-                print(f"❓ SMART SLICING for unknown speaker: {speaker}")
-                print(f"{'─'*50}")
+                print(f"\n{'═'*60}")
+                print(f"❓ [VAD] SMART SLICING for unknown speaker: {speaker}")
+                print(f"{'═'*60}")
                 
                 other_segs = get_other_segments(speaker)
-                ranked = rank_segments_for_speaker(speaker, other_segs)
+                target_segs = all_segments_by_speaker.get(speaker, [])
                 
-                # Also try merged segments
-                merged = try_merge_consecutive(speaker, other_segs)
-                if merged:
-                    m_dur = merged['end_ms'] - merged['start_ms']
-                    m_overlap = calc_overlap_ms(merged['start_ms'], merged['end_ms'], other_segs)
-                    print(f"   🔗 Merged candidate: {merged['start']:.1f}s-{merged['end']:.1f}s ({m_dur}ms, overlap={m_overlap}ms)")
-                
-                if not ranked and not merged:
-                    print(f"   ⚠️  No valid segments found for {speaker} - SKIPPING")
+                if not target_segs:
+                    print(f"   ⚠️  No segments found for {speaker} - SKIPPING")
                     continue
                 
-                # Log all candidates
-                print(f"   📋 Candidates (sorted best-first):")
-                for idx, r in enumerate(ranked[:5]):
-                    s = r['seg']
-                    print(f"      [{idx}] {s['start']:.1f}s-{s['end']:.1f}s | dur={r['duration']}ms | overlap={r['overlap']}ms | range={'✅' if r['in_range'] else '❌'}")
+                # Sort segments by start time (process in conversation order)
+                target_segs_sorted = sorted(target_segs, key=lambda s: s['start_ms'])
                 
-                # Try each candidate until one passes RMS validation
+                print(f"   📋 Speaker has {len(target_segs_sorted)} turn(s):")
+                for idx, s in enumerate(target_segs_sorted):
+                    dur = s['end_ms'] - s['start_ms']
+                    overlap = calc_overlap_ms(s['start_ms'], s['end_ms'], other_segs)
+                    print(f"      Turn {idx}: {s['start']:.1f}s-{s['end']:.1f}s ({dur}ms) overlap={overlap}ms")
+                
                 clip_sent = False
                 
-                # Build candidate list: ranked segments + merged
-                candidates = [(r['seg'], f"seg[{i}]") for i, r in enumerate(ranked)]
-                if merged:
-                    candidates.append((merged, "merged"))
-                    # If merged is good, try it first if ranked segments are short
-                    if ranked and ranked[0]['duration'] < ABS_MIN_MS:
-                        candidates.insert(0, (merged, "merged"))
-                
-                for candidate_seg, candidate_label in candidates:
+                # ── Iterate through turns until we find clear speech ──
+                for turn_idx, turn_seg in enumerate(target_segs_sorted):
                     if clip_sent:
                         break
                     
-                    seg_start_ms = candidate_seg.get('start_ms', int(candidate_seg.get('start', 0) * 1000))
-                    seg_end_ms = candidate_seg.get('end_ms', int(candidate_seg.get('end', 0) * 1000))
-                    seg_start_sec = candidate_seg.get('start', seg_start_ms / 1000)
-                    seg_end_sec = candidate_seg.get('end', seg_end_ms / 1000)
-                    raw_duration = seg_end_ms - seg_start_ms
+                    turn_start_ms = turn_seg['start_ms']
+                    turn_end_ms = turn_seg['end_ms']
+                    turn_duration = turn_end_ms - turn_start_ms
                     
-                    print(f"\n   🔍 Trying candidate {candidate_label}: {seg_start_sec:.1f}s-{seg_end_sec:.1f}s ({raw_duration}ms)")
-                    print(f"      Segment start: {seg_start_ms}ms | Segment end: {seg_end_ms}ms")
+                    if turn_duration < 1000:
+                        print(f"\n   ⏭️  Turn {turn_idx}: too short ({turn_duration}ms) - skipping")
+                        continue
                     
-                    # ── INNER TRIM: Skip first/last 0.5s of boundaries ──
-                    # Segment boundaries often have silence or speaker transitions
-                    trimmed_start = seg_start_ms + INNER_TRIM_MS
-                    trimmed_end = seg_end_ms - INNER_TRIM_MS
+                    # Cap scan to first 30 seconds of this turn
+                    scan_end_ms = min(turn_end_ms, turn_start_ms + MAX_SCAN_MS)
                     
-                    # Only trim if segment is long enough (keep at least 2s after trim)
-                    if (trimmed_end - trimmed_start) < 2000:
-                        # Too short to trim - use original with smaller trim
-                        trimmed_start = seg_start_ms + 200
-                        trimmed_end = seg_end_ms - 200
-                        if (trimmed_end - trimmed_start) < 1000:
-                            trimmed_start = seg_start_ms
-                            trimmed_end = seg_end_ms
-                        print(f"      ⚠️  Segment too short for full trim, using reduced trim")
+                    print(f"\n   🔍 [VAD] Analyzing Turn {turn_idx}: {turn_start_ms}ms → {scan_end_ms}ms ({scan_end_ms - turn_start_ms}ms)")
                     
-                    print(f"      After inner trim: {trimmed_start}ms - {trimmed_end}ms ({trimmed_end - trimmed_start}ms)")
+                    # Extract the audio for this turn
+                    turn_audio = audio_segment[turn_start_ms:scan_end_ms]
                     
-                    # ── OVERLAP-SAFE PADDING ──
-                    # Add 0.5s buffer before, but STOP at other speaker's territory
-                    padded_start, padded_end = calc_safe_padding(
-                        trimmed_start, trimmed_end, other_segs, len(audio_segment)
+                    if len(turn_audio) < 1000:
+                        print(f"      ⏭️  Audio too short after extraction - skipping")
+                        continue
+                    
+                    # ── WebRTC VAD Frame-by-Frame Analysis ──
+                    vad_results = vad_analyze_clip(turn_audio)
+                    
+                    speech_cluster = None
+                    vad_confidence = 'None'
+                    
+                    if vad_results is not None:
+                        total_frames = len(vad_results)
+                        speech_frames = sum(1 for _, is_speech in vad_results if is_speech)
+                        overall_ratio = speech_frames / total_frames if total_frames > 0 else 0
+                        
+                        print(f"      📊 [VAD] Frames: {total_frames} total, {speech_frames} speech ({overall_ratio:.0%})")
+                        
+                        # Find best continuous speech cluster
+                        speech_cluster = find_best_speech_cluster(vad_results, len(turn_audio))
+                        
+                        if speech_cluster:
+                            cl_start, cl_end, cl_ratio, vad_confidence = speech_cluster
+                            print(f"      🎯 [VAD] Best speech cluster: {cl_start}ms-{cl_end}ms ({cl_end-cl_start}ms, {cl_ratio:.0%} speech, confidence={vad_confidence})")
+                        else:
+                            print(f"      ❌ [VAD] No speech cluster ≥{MIN_SPEECH_CLUSTER_MS}ms with ≥{MIN_SPEECH_RATIO:.0%} speech ratio found")
+                            continue
+                    else:
+                        # ── RMS Fallback ──
+                        print(f"      📊 [RMS Fallback] Running RMS-based check...")
+                        rms_passed, rms_ratio, vad_confidence = rms_fallback_check(turn_audio)
+                        
+                        if not rms_passed:
+                            print(f"      ❌ [RMS] Failed: speech ratio={rms_ratio:.0%}")
+                            continue
+                        
+                        print(f"      ✅ [RMS] Passed: speech ratio={rms_ratio:.0%}, confidence={vad_confidence}")
+                        # Use the entire turn as the "cluster" for RMS fallback
+                        speech_cluster = (0, len(turn_audio), rms_ratio, vad_confidence)
+                    
+                    # ── DYNAMIC SLICING around the speech cluster ──
+                    cluster_start_in_turn, cluster_end_in_turn, cluster_ratio, confidence = speech_cluster
+                    
+                    # Convert cluster offsets to absolute audio positions
+                    abs_cluster_start = turn_start_ms + cluster_start_in_turn
+                    abs_cluster_end = turn_start_ms + cluster_end_in_turn
+                    cluster_duration = abs_cluster_end - abs_cluster_start
+                    
+                    print(f"      📍 Cluster in absolute audio: {abs_cluster_start}ms → {abs_cluster_end}ms ({cluster_duration}ms)")
+                    
+                    # Determine slice window: 5-7s centered on the speech cluster
+                    if cluster_duration >= TARGET_MIN_MS:
+                        # Cluster is long enough — trim to 7s from center
+                        if cluster_duration > TARGET_MAX_MS:
+                            center = (abs_cluster_start + abs_cluster_end) // 2
+                            slice_start = center - TARGET_MAX_MS // 2
+                            slice_end = center + TARGET_MAX_MS // 2
+                        else:
+                            slice_start = abs_cluster_start
+                            slice_end = abs_cluster_end
+                    else:
+                        # Cluster is short — expand to 5s with 500ms padding
+                        center = (abs_cluster_start + abs_cluster_end) // 2
+                        slice_start = center - TARGET_MIN_MS // 2
+                        slice_end = center + TARGET_MIN_MS // 2
+                    
+                    # Apply overlap-safe padding (500ms natural buffer)
+                    slice_start, slice_end = calc_safe_padding(
+                        slice_start, slice_end, other_segs, len(audio_segment)
                     )
                     
-                    print(f"      After safe padding: {padded_start}ms - {padded_end}ms ({padded_end - padded_start}ms)")
+                    # Clamp to audio bounds
+                    slice_start = max(0, slice_start)
+                    slice_end = min(len(audio_segment), slice_end)
                     
-                    # ── TARGET 5-7 SECONDS ──
-                    current_dur = padded_end - padded_start
-                    if current_dur < TARGET_MIN_MS:
-                        # Extend carefully (without overlapping other speakers)
-                        needed = TARGET_MIN_MS - current_dur
-                        ext_before = needed // 2
-                        ext_after = needed - ext_before
-                        new_start = max(0, padded_start - ext_before)
-                        new_end = min(len(audio_segment), padded_end + ext_after)
-                        
-                        # Verify extension doesn't overlap
-                        ext_overlap = calc_overlap_ms(new_start, new_end, other_segs)
-                        if ext_overlap == 0:
-                            padded_start = new_start
-                            padded_end = new_end
-                            print(f"      Extended to: {padded_start}ms - {padded_end}ms ({padded_end - padded_start}ms)")
-                        else:
-                            print(f"      ⚠️  Extension would overlap ({ext_overlap}ms), keeping shorter clip")
-                    
-                    # Cap at target max (7s) unless already shorter
-                    if (padded_end - padded_start) > TARGET_MAX_MS:
-                        # Center the trim around the middle of the segment
-                        center = (padded_start + padded_end) // 2
-                        padded_start = max(0, center - TARGET_MAX_MS // 2)
-                        padded_end = min(len(audio_segment), padded_start + TARGET_MAX_MS)
-                        print(f"      Capped to target max: {padded_start}ms - {padded_end}ms ({padded_end - padded_start}ms)")
-                    
-                    # Final bounds check
-                    if padded_start >= padded_end or (padded_end - padded_start) < 1000:
-                        print(f"      ⚠️  Invalid bounds ({padded_start}ms-{padded_end}ms) - trying next candidate")
+                    # Ensure minimum duration
+                    if (slice_end - slice_start) < ABS_MIN_MS:
+                        print(f"      ⚠️  Slice too short after padding ({slice_end - slice_start}ms) - skipping turn")
                         continue
+                    
+                    # Cap at 7s max
+                    if (slice_end - slice_start) > TARGET_MAX_MS:
+                        slice_end = slice_start + TARGET_MAX_MS
+                    
+                    print(f"      ✂️  Slice window: {slice_start}ms → {slice_end}ms ({slice_end - slice_start}ms)")
                     
                     # ── SLICE AUDIO ──
-                    audio_slice = audio_segment[padded_start:padded_end]
+                    audio_slice = audio_segment[slice_start:slice_end]
                     
-                    print(f"      🎵 Sliced: {len(audio_slice)}ms from source audio")
-                    print(f"      🎵 Raw dBFS: {audio_slice.dBFS:.1f}")
-                    
-                    # ── RMS VOICE ACTIVITY VALIDATION ──
-                    rms_passed, rms_value, active_ratio = check_rms_quality(audio_slice, speaker)
-                    
-                    if not rms_passed:
-                        print(f"      ⏭️  Clip failed RMS check - trying next candidate")
-                        continue
+                    # ── FINAL VAD VERIFICATION on the actual clip ──
+                    if vad is not None:
+                        final_vad = vad_analyze_clip(audio_slice)
+                        if final_vad:
+                            final_speech = sum(1 for _, s in final_vad if s)
+                            final_ratio = final_speech / len(final_vad) if final_vad else 0
+                            if final_ratio < 0.30:
+                                print(f"      ❌ [VAD] Final clip verification FAILED: only {final_ratio:.0%} speech")
+                                continue
+                            print(f"      ✅ [VAD] Final clip verified: {final_ratio:.0%} speech ({final_speech}/{len(final_vad)} frames)")
                     
                     # ── AUDIO ENHANCEMENTS ──
                     try:
-                        # Normalize volume to -16 dBFS (broadcast standard)
                         target_dbfs = -16.0
                         current_dbfs = audio_slice.dBFS
                         if current_dbfs != float('-inf') and current_dbfs < 0:
                             gain = target_dbfs - current_dbfs
-                            gain = min(gain, 20.0)
-                            gain = max(gain, -10.0)  # Don't reduce too much either
+                            gain = max(min(gain, 20.0), -10.0)
                             audio_slice = audio_slice.apply_gain(gain)
-                        
-                        # Fade in/out for clean cuts
                         audio_slice = audio_slice.fade_in(FADE_MS).fade_out(FADE_MS)
                     except Exception as enhance_err:
                         print(f"      ⚠️  Enhancement failed: {enhance_err}")
                     
-                    # ── DETAILED DEBUG LOG ──
+                    # ── [VAD] VERIFICATION LOG ──
                     final_duration = len(audio_slice)
-                    print(f"   ✂️  ═══ FINAL CLIP for {speaker} ═══")
-                    print(f"      📍 Source segment: {seg_start_ms}ms → {seg_end_ms}ms ({raw_duration}ms)")
-                    print(f"      📍 Inner trimmed: {trimmed_start}ms → {trimmed_end}ms")
-                    print(f"      📍 Safe padded:   {padded_start}ms → {padded_end}ms")
-                    print(f"      📍 Final clip:    {final_duration}ms ({final_duration/1000:.1f}s)")
-                    print(f"      🔊 Volume: {audio_slice.dBFS:.1f} dBFS | RMS: {rms_value}")
-                    print(f"      🎯 Speech activity: {active_ratio:.0%}")
-                    print(f"      💬 Text: \"{candidate_seg.get('text', '')[:80]}\"")
-                    print(f"      ✅ Quality: {candidate_label} | PASSED all checks")
+                    print(f"\n   ✂️  ═══ [VAD] FINAL CLIP for {speaker} ═══")
+                    print(f"      📍 Turn {turn_idx}: {turn_start_ms}ms → {turn_end_ms}ms")
+                    print(f"      📍 Speech cluster: {abs_cluster_start}ms → {abs_cluster_end}ms ({cluster_duration}ms)")
+                    print(f"      📍 Final slice: {slice_start}ms → {slice_end}ms ({final_duration}ms / {final_duration/1000:.1f}s)")
+                    print(f"      🔊 Volume: {audio_slice.dBFS:.1f} dBFS")
+                    print(f"      🎯 Speech ratio: {cluster_ratio:.0%} | Confidence: {confidence}")
+                    print(f"      💬 Text: \"{turn_seg.get('text', '')[:80]}\"")
+                    print(f"   [VAD] Clip generated for {speaker} at {slice_start}ms-{slice_end}ms with confidence {confidence}")
                 
-                    # ── EXPORT & SEND (only reached if RMS passed) ──
+                    # ── EXPORT & SEND (only reached if VAD passed) ──
                     import tempfile as tf
                     slice_path = None
                     
-                    # Try OGG/Opus first (native WhatsApp format)
                     try:
                         with tf.NamedTemporaryFile(delete=False, suffix='.ogg') as slice_file:
                             audio_slice.export(
@@ -1631,7 +1649,7 @@ def process_audio_in_background(
                     
                     slice_files_to_cleanup.append(slice_path)
                     
-                    # Send "מי זה?" ONLY because clip passed quality check
+                    # Send "מי זה?" ONLY because clip passed VAD quality check
                     if whatsapp_provider and hasattr(whatsapp_provider, 'send_audio'):
                         caption = f"🔊 זוהה דובר חדש: *{speaker}*\nמי זה/זו? (הגב עם השם)"
                         
@@ -1656,13 +1674,13 @@ def process_audio_in_background(
                             print(f"   ⚠️  Failed to send audio slice: {audio_result.get('error')}")
                     
                     clip_sent = True
-                    break  # Done with this speaker, move to next
+                    break  # Done with this speaker
                 
-                # ── QUALITY GATE: No clip passed validation ──
+                # ── QUALITY GATE: No speech found across all turns ──
                 if not clip_sent:
-                    print(f"\n   🚫 QUALITY GATE: No clip for {speaker} passed RMS validation!")
-                    print(f"      Tested {len(candidates)} candidate(s) - all were silence/noise.")
-                    print(f"      ❌ NOT sending 'מי זה?' - would be useless with bad audio.")
+                    print(f"\n   🚫 [VAD] No clear speech detected for {speaker}")
+                    print(f"      Scanned {len(target_segs_sorted)} turn(s) — all silence/noise.")
+                    print(f"      ❌ NOT sending 'מי זה?' — no valid audio clip available.")
                 
         except ImportError:
             print("⚠️  pydub not installed - cannot slice audio for speaker identification")

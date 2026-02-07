@@ -1,1 +1,2 @@
-עדכן גרסא לפרודקשן
+@Codebase
+The current audio slicing for speaker identification is failing because it captures silenc...
