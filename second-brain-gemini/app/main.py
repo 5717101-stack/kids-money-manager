@@ -1276,9 +1276,13 @@ def process_audio_in_background(
             
             # ============================================================
             # PROCESS EACH UNKNOWN SPEAKER: Use purest segment or fallback
+            # Enhanced audio quality for clear speaker identification
             # ============================================================
-            MIN_SLICE_MS = 3000  # Minimum 3 seconds for clean signature
-            MAX_SLICE_MS = 10000  # Maximum 10 seconds
+            MIN_SLICE_MS = 3000   # Minimum 3 seconds for clean signature
+            MAX_SLICE_MS = 12000  # Maximum 12 seconds
+            PAD_BEFORE_MS = 500   # 500ms padding BEFORE speech (avoid clipping start)
+            PAD_AFTER_MS = 300    # 300ms padding AFTER speech (avoid clipping end)
+            FADE_MS = 50          # 50ms fade in/out for clean cuts
             
             for speaker in speaker_best_segments.keys():
                 print(f"\n❓ Processing unknown speaker: {speaker}")
@@ -1302,41 +1306,93 @@ def process_audio_in_background(
                 start_ms = int(start_sec * 1000)
                 end_ms = int(end_sec * 1000)
                 
+                # Add padding BEFORE and AFTER to avoid clipping speech
+                # Gemini timestamps can be slightly off - padding ensures full utterance is captured
+                padded_start_ms = max(0, start_ms - PAD_BEFORE_MS)
+                padded_end_ms = min(len(audio_segment), end_ms + PAD_AFTER_MS)
+                
                 # Validate minimum duration (3 seconds for clean signature)
-                duration_ms = end_ms - start_ms
+                duration_ms = padded_end_ms - padded_start_ms
                 if duration_ms < MIN_SLICE_MS:
-                    print(f"   ⚠️  Segment too short ({duration_ms}ms < {MIN_SLICE_MS}ms), extending...")
-                    end_ms = min(start_ms + MIN_SLICE_MS, len(audio_segment))
+                    # Extend BOTH directions equally (center the speech)
+                    needed = MIN_SLICE_MS - duration_ms
+                    extend_before = needed // 2
+                    extend_after = needed - extend_before
+                    padded_start_ms = max(0, padded_start_ms - extend_before)
+                    padded_end_ms = min(len(audio_segment), padded_end_ms + extend_after)
+                    print(f"   ⚠️  Segment too short ({duration_ms}ms), extended to {padded_end_ms - padded_start_ms}ms")
                 
                 # Cap at maximum
-                if (end_ms - start_ms) > MAX_SLICE_MS:
-                    end_ms = start_ms + MAX_SLICE_MS
+                if (padded_end_ms - padded_start_ms) > MAX_SLICE_MS:
+                    padded_end_ms = padded_start_ms + MAX_SLICE_MS
                 
-                # Bounds check
-                if start_ms < 0:
-                    start_ms = 0
-                if end_ms > len(audio_segment):
-                    end_ms = len(audio_segment)
-                if start_ms >= end_ms:
-                    print(f"   ⚠️  Invalid segment bounds: {start_ms}ms - {end_ms}ms - SKIPPING")
+                # Final bounds check
+                if padded_start_ms >= padded_end_ms:
+                    print(f"   ⚠️  Invalid segment bounds: {padded_start_ms}ms - {padded_end_ms}ms - SKIPPING")
                     continue
                 
-                # Slice audio
-                audio_slice = audio_segment[start_ms:end_ms]
+                # Slice audio with padding
+                audio_slice = audio_segment[padded_start_ms:padded_end_ms]
+                
+                # Apply audio enhancements for clarity
+                try:
+                    # 1. Normalize volume to -16 dBFS (standard broadcast level)
+                    target_dbfs = -16.0
+                    current_dbfs = audio_slice.dBFS
+                    if current_dbfs < -50:
+                        print(f"   ⚠️  Audio very quiet ({current_dbfs:.1f} dBFS), boosting...")
+                    if current_dbfs != float('-inf'):
+                        gain = target_dbfs - current_dbfs
+                        # Limit gain to avoid amplifying noise too much
+                        gain = min(gain, 20.0)
+                        audio_slice = audio_slice.apply_gain(gain)
+                        print(f"   🔊 Normalized: {current_dbfs:.1f} → {target_dbfs:.1f} dBFS (gain: {gain:+.1f})")
+                    
+                    # 2. Apply fade in/out for clean cuts (no jarring pops/clicks)
+                    audio_slice = audio_slice.fade_in(FADE_MS).fade_out(FADE_MS)
+                except Exception as enhance_err:
+                    print(f"   ⚠️  Audio enhancement failed (continuing with raw): {enhance_err}")
                 
                 # VERIFICATION LOG: Confirm isolated segment
                 print(f"   ✂️  ISOLATED SEGMENT for {speaker}:")
-                print(f"      Timestamps: {start_sec:.1f}s - {end_sec:.1f}s ({len(audio_slice)}ms)")
+                print(f"      Original: {start_sec:.1f}s - {end_sec:.1f}s")
+                print(f"      Padded:   {padded_start_ms/1000:.1f}s - {padded_end_ms/1000:.1f}s ({len(audio_slice)}ms)")
                 print(f"      Quality: {quality}")
-                print(f"      Contains: ONLY {speaker}'s voice (verified by Gemini)")
+                print(f"      Volume: {audio_slice.dBFS:.1f} dBFS")
                 
-                # Export to temp file
+                # Export to temp file - try OGG first (native WhatsApp format),
+                # fall back to high-quality MP3 if OGG/Opus codec not available
                 import tempfile as tf
-                with tf.NamedTemporaryFile(delete=False, suffix='.mp3') as slice_file:
-                    audio_slice.export(slice_file.name, format='mp3')
-                    slice_path = slice_file.name
-                    # Track for cleanup (if not saved to pending_identifications)
-                    slice_files_to_cleanup.append(slice_path)
+                slice_path = None
+                
+                # Try OGG/Opus first (avoids double compression from OGG source)
+                try:
+                    with tf.NamedTemporaryFile(delete=False, suffix='.ogg') as slice_file:
+                        audio_slice.export(
+                            slice_file.name, 
+                            format='ogg',
+                            codec='libopus',
+                            parameters=['-b:a', '64k', '-ar', '48000']
+                        )
+                        slice_path = slice_file.name
+                        slice_size = os.path.getsize(slice_path)
+                        print(f"   💾 Exported: OGG/Opus ({slice_size} bytes)")
+                except Exception as ogg_err:
+                    print(f"   ⚠️  OGG export failed ({ogg_err}), falling back to MP3...")
+                    # Fallback: High-quality MP3
+                    with tf.NamedTemporaryFile(delete=False, suffix='.mp3') as slice_file:
+                        audio_slice.export(
+                            slice_file.name, 
+                            format='mp3',
+                            bitrate='128k',
+                            parameters=['-ar', '44100']
+                        )
+                        slice_path = slice_file.name
+                        slice_size = os.path.getsize(slice_path)
+                        print(f"   💾 Exported: MP3/128k ({slice_size} bytes)")
+                
+                # Track for cleanup (if not saved to pending_identifications)
+                slice_files_to_cleanup.append(slice_path)
                 
                 # Send "Who is this?" with exact Speaker ID
                 if whatsapp_provider and hasattr(whatsapp_provider, 'send_audio'):
