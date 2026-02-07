@@ -33,10 +33,10 @@ logger = logging.getLogger(__name__)
 # STATIC MODEL MAPPING — Single source of truth for model strings
 # ═══════════════════════════════════════════════════════════════════════
 # NOTE: No "models/" prefix — the SDK adds it automatically.
-# Using bare names avoids v1/v1beta path conflicts.
+# Using latest stable model names that are available on v1beta endpoint.
 MODEL_MAPPING = {
-    "pro": "gemini-1.5-pro",
-    "flash": "gemini-1.5-flash",
+    "pro": "gemini-2.5-pro",
+    "flash": "gemini-2.0-flash",
 }
 
 
@@ -173,12 +173,12 @@ def startup_connection_test():
     Call this AFTER configure_genai() and discover_models().
     """
     print("\n🧪 ══════════════════════════════════════════════")
-    print("🧪  CONNECTION TEST (direct HTTP v1 endpoint)")
+    print("🧪  CONNECTION TEST (direct HTTP v1beta endpoint)")
     print("🧪 ══════════════════════════════════════════════")
     
     for alias, model_name in MODEL_MAPPING.items():
-        url = f"{GEMINI_V1_BASE_URL}/{model_name}:generateContent?key={_get_api_key()}"
-        print(f"   🔗 CONNECTION TEST: {alias.upper()} model [{model_name}] on {GEMINI_V1_BASE_URL}")
+        url = f"{GEMINI_API_BASE_URL}/{model_name}:generateContent?key={_get_api_key()}"
+        print(f"   🔗 CONNECTION TEST: {alias.upper()} model [{model_name}] on {GEMINI_API_BASE_URL}")
         try:
             start = time.time()
             result = gemini_v1_generate("Say 'OK' in one word.", model_name=model_name, max_output_tokens=10)
@@ -193,9 +193,9 @@ def startup_connection_test():
 
 
 # ═══════════════════════════════════════════════════════════════════════
-# DIRECT HTTP v1 API — Bypass SDK's v1beta endpoint entirely
+# DIRECT HTTP API — v1beta endpoint (has ALL model names incl. aliases)
 # ═══════════════════════════════════════════════════════════════════════
-GEMINI_V1_BASE_URL = "https://generativelanguage.googleapis.com/v1/models"
+GEMINI_API_BASE_URL = "https://generativelanguage.googleapis.com/v1beta/models"
 
 
 def _get_api_key() -> str:
@@ -212,14 +212,14 @@ def gemini_v1_generate(
     timeout: int = 90,
 ) -> str:
     """
-    Direct HTTP POST to Gemini v1 API — completely bypasses the SDK.
+    Direct HTTP POST to Gemini API — completely bypasses the SDK.
     
-    URL: https://generativelanguage.googleapis.com/v1/models/{model}:generateContent?key=...
-    (Notice: v1 — NOT v1beta)
+    URL: https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key=...
+    Uses v1beta which supports ALL model names (incl. aliases like gemini-2.5-pro).
     
     Args:
         prompt: The text prompt to send
-        model_name: Model name (e.g. "gemini-1.5-pro"). If None, auto-selects based on is_kb_query.
+        model_name: Model name (e.g. "gemini-2.5-pro"). If None, auto-selects based on is_kb_query.
         temperature: Sampling temperature (0.0-1.0)
         max_output_tokens: Maximum response length
         is_kb_query: If True, uses Pro model; otherwise Flash
@@ -241,7 +241,7 @@ def gemini_v1_generate(
     if model_name is None:
         model_name = MODEL_MAPPING["pro"] if is_kb_query else MODEL_MAPPING["flash"]
     
-    url = f"{GEMINI_V1_BASE_URL}/{model_name}:generateContent?key={api_key}"
+    url = f"{GEMINI_API_BASE_URL}/{model_name}:generateContent?key={api_key}"
     
     # ── Payload (Gemini v1 format) ──
     payload = {
@@ -266,7 +266,7 @@ def gemini_v1_generate(
     
     headers = {"Content-Type": "application/json"}
     
-    print(f"🌐 [Direct HTTP] POST {GEMINI_V1_BASE_URL}/{model_name}:generateContent")
+    print(f"🌐 [Direct HTTP] POST {GEMINI_API_BASE_URL}/{model_name}:generateContent")
     
     resp = http_requests.post(url, json=payload, headers=headers, timeout=timeout)
     
@@ -280,7 +280,7 @@ def gemini_v1_generate(
         if model_name == MODEL_MAPPING["pro"]:
             fallback = MODEL_MAPPING["flash"]
             print(f"⚠️ [Direct HTTP] Pro failed ({resp.status_code}), falling back to Flash: {fallback}")
-            fallback_url = f"{GEMINI_V1_BASE_URL}/{fallback}:generateContent?key={api_key}"
+            fallback_url = f"{GEMINI_API_BASE_URL}/{fallback}:generateContent?key={api_key}"
             resp = http_requests.post(fallback_url, json=payload, headers=headers, timeout=timeout)
             model_name = fallback
             if resp.status_code != 200:
@@ -401,7 +401,7 @@ def get_best_model(
 
 def get_best_pro_model() -> Optional[str]:
     """Shorthand: get the best available Pro model for KB/vision tasks."""
-    return get_best_model("gemini-1.5-pro", category="pro")
+    return get_best_model("gemini-2.5-pro", category="pro")
 
 
 def get_best_flash_model() -> Optional[str]:

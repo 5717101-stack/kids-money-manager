@@ -21,7 +21,7 @@ class Settings(BaseSettings):
     
     # Google Gemini Settings
     google_api_key: Optional[str] = None
-    gemini_model: str = "gemini-1.5-pro"
+    gemini_model: str = "gemini-2.5-pro"
     
     # WhatsApp Provider Selection
     whatsapp_provider: str = "twilio"  # Options: 'twilio' or 'meta'

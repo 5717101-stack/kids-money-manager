@@ -277,7 +277,7 @@ class ArchitectureAuditService:
         models_to_test = {}
         
         # Find best Pro model
-        best_pro = get_best_model("gemini-1.5-pro", category="pro")
+        best_pro = get_best_model("gemini-2.5-pro", category="pro")
         if best_pro:
             models_to_test["Pro"] = best_pro
         

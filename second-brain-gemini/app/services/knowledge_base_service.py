@@ -268,7 +268,7 @@ def _vision_analyze_pdf(raw_bytes: bytes, file_id: str = "", file_name: str = ""
             # Vision analysis still uses the SDK for file upload + generate_content
             # because file_ref objects require the SDK pipeline.
             # But we fall back to Flash via direct HTTP if Pro 404s.
-            model_name = MODEL_MAPPING["pro"]   # "gemini-1.5-pro"
+            model_name = MODEL_MAPPING["pro"]   # latest pro model
             print(f"   👁️ [Vision] Using MODEL_MAPPING['pro']: {model_name}")
             model = genai.GenerativeModel(model_name)
             

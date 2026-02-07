@@ -760,11 +760,11 @@ STEP 5 — RESPONSE FORMATTING (פורמט תשובה):
             # ── Direct HTTP to Gemini v1 API (bypasses SDK v1beta entirely) ──
             from app.services.model_discovery import gemini_v1_generate, MODEL_MAPPING
             
-            print(f"📚 [KB Query] Using DIRECT HTTP v1 with model: {MODEL_MAPPING['pro']}")
+            print(f"📚 [KB Query] Using DIRECT HTTP with model: {MODEL_MAPPING['pro']}")
             
             answer = gemini_v1_generate(
                 prompt=prompt,
-                model_name=MODEL_MAPPING["pro"],   # "gemini-1.5-pro" — auto-falls back to Flash on 404
+                model_name=MODEL_MAPPING["pro"],   # auto-falls back to Flash on 404
                 temperature=0.1,
                 max_output_tokens=1500,
                 is_kb_query=True,
