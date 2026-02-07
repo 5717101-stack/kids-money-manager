@@ -29,8 +29,7 @@ logger = logging.getLogger(__name__)
 # Using UTC+2 as default
 ISRAEL_TZ_OFFSET = timedelta(hours=2)
 
-# Dynamic model selection — set by health check, read by KB/Gemini services
-PRIMARY_KB_MODEL: Optional[str] = None
+# PRIMARY_KB_MODEL is now in model_discovery.py
 
 
 def get_israel_time() -> datetime:
@@ -53,28 +52,17 @@ class ArchitectureAuditService:
         if self.api_key:
             genai.configure(api_key=self.api_key)
             
-            # For audit tasks use FLASH models (lightweight, less safety restrictions)
-            # gemini-2.5-pro is a "thinking" model with stricter safety filters
-            # that block even simple prompts - NOT suitable for audit pings
-            models_to_try = [
-                'gemini-2.0-flash',        # Primary - fast, reliable, less safety issues
-                'gemini-1.5-flash-latest', # Fallback 1 - flash with latest suffix
-                'gemini-1.5-flash',        # Fallback 2 - basic flash
-                'gemini-pro',              # Fallback 3 - basic pro
-            ]
+            # Use dynamic model discovery (finds what's actually available)
+            from app.services.model_discovery import get_best_model
             
-            for model_name in models_to_try:
-                try:
-                    self.model = genai.GenerativeModel(model_name)
-                    self.model_name = model_name
-                    logger.info(f"✅ Audit service using model: {model_name}")
-                    break
-                except Exception as e:
-                    logger.warning(f"⚠️  Could not init {model_name}: {e}")
-                    continue
-            
-            if not self.model:
-                logger.error("❌ Could not init any model for audit service")
+            # For audit tasks prefer Flash models (lightweight, less safety restrictions)
+            model_name = get_best_model("gemini-2.0-flash", category="flash")
+            if model_name:
+                self.model = genai.GenerativeModel(model_name)
+                self.model_name = model_name
+                logger.info(f"✅ Audit service using model: {model_name}")
+            else:
+                logger.error("❌ Could not find any model for audit service")
         else:
             logger.warning("⚠️  Google API key not set - Audit service limited")
         
@@ -274,71 +262,104 @@ class ArchitectureAuditService:
             "errors": []
         }
         
-        # 1. Multi-Model Gemini Connectivity Test
-        print("🏥 [Health] Running multi-model Gemini connectivity test...")
-        models_to_test = [
-            'gemini-1.5-pro',
-            'gemini-2.0-flash-exp',
-            'gemini-1.5-flash',
-        ]
+        # 1. Multi-Model Gemini Connectivity Test (via dynamic discovery)
+        print("🏥 [Health] Running Gemini model discovery + connectivity test...")
+        
+        from app.services.model_discovery import (
+            discover_models, get_best_model, get_model_status_report,
+            get_best_pro_model, get_best_flash_model
+        )
+        import app.services.model_discovery as _discovery_module
+        
+        # Force fresh discovery
+        discover_models(force=True)
+        model_status = get_model_status_report()
+        
+        # Test the key model categories with actual pings
+        models_to_test = {}
+        
+        # Find best Pro model
+        best_pro = get_best_model("gemini-1.5-pro", category="pro")
+        if best_pro:
+            models_to_test["Pro"] = best_pro
+        
+        # Find best Flash model
+        best_flash = get_best_model("gemini-2.0-flash", category="flash")
+        if best_flash and best_flash != best_pro:
+            models_to_test["Flash"] = best_flash
+        
+        # Also try gemini-2.5-pro if available (main model)
+        best_25_pro = get_best_model("gemini-2.5-pro", category="general")
+        if best_25_pro and best_25_pro not in models_to_test.values():
+            models_to_test["2.5-Pro"] = best_25_pro
         
         model_results = {}
         primary_kb_model = None
         
-        for model_name in models_to_test:
-            print(f"   🔍 Pinging {model_name}...")
-            result = self._ping_model(model_name)
-            model_results[model_name] = result
-            
-            if result["status"] == "active":
-                print(f"   ✅ {model_name}: Active ({result['response_time_ms']}ms)")
-            else:
-                error_type = result.get("error_type", "Unknown")
-                print(f"   ❌ {model_name}: {error_type}")
-                if result.get("error"):
-                    print(f"      Detail: {result['error'][:100]}")
+        if not models_to_test:
+            print(f"   ❌ No models discovered at all! API key may lack permissions.")
+            model_results["none"] = {"model": "none", "status": "error", "error": "No models discovered", "error_type": "No models available"}
+        else:
+            for label, model_name in models_to_test.items():
+                print(f"   🔍 Pinging {label} ({model_name})...")
+                result = self._ping_model(model_name)
+                result["label"] = label
+                model_results[model_name] = result
+                
+                if result["status"] == "active":
+                    print(f"   ✅ {label}: Active ({result['response_time_ms']}ms)")
+                else:
+                    error_type = result.get("error_type", "Unknown")
+                    print(f"   ❌ {label}: {error_type}")
+                    if result.get("error"):
+                        print(f"      Detail: {result['error'][:100]}")
         
         health["gemini_models"] = model_results
+        health["discovered_models"] = model_status
         
         # Determine PRIMARY_KB_MODEL (prefer Pro for accuracy)
-        if model_results.get('gemini-1.5-pro', {}).get('status') == 'active':
-            primary_kb_model = 'gemini-1.5-pro'
-            print(f"   🎯 PRIMARY_KB_MODEL: gemini-1.5-pro (Pro is available)")
-        elif model_results.get('gemini-1.5-flash', {}).get('status') == 'active':
-            primary_kb_model = 'gemini-1.5-flash'
-            print(f"   ⚠️ PRIMARY_KB_MODEL: gemini-1.5-flash (Pro unavailable, using Flash)")
-        elif model_results.get('gemini-2.0-flash-exp', {}).get('status') == 'active':
-            primary_kb_model = 'gemini-2.0-flash-exp'
-            print(f"   ⚠️ PRIMARY_KB_MODEL: gemini-2.0-flash-exp (Pro unavailable, using Flash-exp)")
-        else:
-            primary_kb_model = None
-            print(f"   ❌ PRIMARY_KB_MODEL: None — all models failed!")
+        for model_name, result in model_results.items():
+            if result.get("status") == "active" and "pro" in model_name.lower():
+                primary_kb_model = model_name
+                print(f"   🎯 PRIMARY_KB_MODEL: {model_name} (Pro is available)")
+                break
+        
+        if not primary_kb_model:
+            # Fall back to any active model
+            for model_name, result in model_results.items():
+                if result.get("status") == "active":
+                    primary_kb_model = model_name
+                    print(f"   ⚠️ PRIMARY_KB_MODEL: {model_name} (no Pro available, using fallback)")
+                    break
+        
+        if not primary_kb_model:
+            print(f"   ❌ PRIMARY_KB_MODEL: None — no models responded!")
         
         health["primary_kb_model"] = primary_kb_model
         
-        # Also update the module-level PRIMARY_KB_MODEL for other services to use
-        import app.services.architecture_audit_service as _self_module
-        _self_module.PRIMARY_KB_MODEL = primary_kb_model
+        # Update the shared PRIMARY_KB_MODEL for other services
+        _discovery_module.PRIMARY_KB_MODEL = primary_kb_model
         
-        # Overall Gemini status (based on audit model)
-        any_active = any(r.get('status') == 'active' for r in model_results.values())
-        if any_active:
-            # Report the audit model's own status
-            audit_result = self._ping_model(self.model_name) if self.model_name else {"status": "unknown"}
+        # Overall Gemini status
+        active_count = sum(1 for r in model_results.values() if r.get('status') == 'active')
+        total_tested = len(model_results)
+        
+        if active_count > 0:
             health["gemini"] = {
-                "status": "ok" if audit_result.get("status") == "active" else "degraded",
+                "status": "ok",
                 "model": self.model_name,
-                "response_time_ms": audit_result.get("response_time_ms", 0),
-                "active_models": sum(1 for r in model_results.values() if r.get('status') == 'active'),
-                "total_tested": len(models_to_test)
+                "active_models": active_count,
+                "total_tested": total_tested,
+                "total_discovered": model_status.get("total_available", 0),
             }
         else:
             health["gemini"] = {
                 "status": "error",
                 "model": self.model_name,
-                "error": "All models failed",
+                "error": f"0/{total_tested} models responded ({model_status.get('total_available', 0)} discovered)",
                 "active_models": 0,
-                "total_tested": len(models_to_test)
+                "total_tested": total_tested,
+                "total_discovered": model_status.get("total_available", 0),
             }
         
         # 2. Google Drive Access
@@ -893,17 +914,16 @@ class ArchitectureAuditService:
         report_parts.append("")
         
         if health_status:
-            # ── Per-Model Connectivity Status ──
+            # ── Model Discovery + Connectivity Status ──
+            discovered = health_status.get('discovered_models', {})
+            total_discovered = discovered.get('total_available', 0)
+            report_parts.append(f"🔍 Models discovered: *{total_discovered}*")
+            
             model_results = health_status.get('gemini_models', {})
             if model_results:
-                report_parts.append("🤖 *מודלים:*")
-                model_labels = {
-                    'gemini-1.5-pro': 'Pro',
-                    'gemini-2.0-flash-exp': 'Flash-exp',
-                    'gemini-1.5-flash': 'Flash',
-                }
+                report_parts.append("🤖 *מודלים (ping):*")
                 for model_name, result in model_results.items():
-                    label = model_labels.get(model_name, model_name)
+                    label = result.get('label', model_name.split('/')[-1] if '/' in model_name else model_name)
                     if result.get('status') == 'active':
                         ms = result.get('response_time_ms', 0)
                         report_parts.append(f"   ✅ {label}: Active ({ms}ms)")
@@ -914,14 +934,13 @@ class ArchitectureAuditService:
                 # PRIMARY_KB_MODEL indicator
                 primary = health_status.get('primary_kb_model')
                 if primary:
-                    plabel = model_labels.get(primary, primary)
+                    short_name = primary.split('/')[-1] if '/' in primary else primary
                     is_pro = 'pro' in primary.lower()
                     icon = "✅" if is_pro else "⚠️"
-                    report_parts.append(f"   {icon} KB Model: *{plabel}*")
+                    report_parts.append(f"   {icon} KB Model: *{short_name}*")
                 else:
-                    report_parts.append("   ❌ KB Model: *None* — כל המודלים נכשלו")
+                    report_parts.append("   ❌ KB Model: *None* — no model available")
             else:
-                # Fallback to old single-model display
                 gemini = health_status.get('gemini', {})
                 if gemini.get('status') == 'ok':
                     report_parts.append(f"✅ Gemini API: תקין ({gemini.get('model', 'N/A')})")

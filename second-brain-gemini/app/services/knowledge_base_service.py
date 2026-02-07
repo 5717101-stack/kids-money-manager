@@ -259,27 +259,24 @@ def _vision_analyze_pdf(raw_bytes: bytes, file_id: str = "", file_name: str = ""
                     return ""
                 time.sleep(2)
             
-            # ── Model selection: use PRIMARY_KB_MODEL if set by health check ──
+            # ── Model selection via dynamic discovery ──
             model = None
             model_name = None
             try:
-                from app.services.architecture_audit_service import PRIMARY_KB_MODEL
+                from app.services.model_discovery import get_best_model, PRIMARY_KB_MODEL
                 if PRIMARY_KB_MODEL:
                     model_name = PRIMARY_KB_MODEL
-                    print(f"   👁️ [Vision] Using PRIMARY_KB_MODEL from health check: {model_name}")
+                    print(f"   👁️ [Vision] Using PRIMARY_KB_MODEL: {model_name}")
                 else:
-                    model_name = "gemini-1.5-pro"
+                    model_name = get_best_model("gemini-1.5-pro", category="pro")
+                    if not model_name:
+                        model_name = get_best_model("gemini-1.5-flash", category="flash")
+                    print(f"   👁️ [Vision] Discovered model: {model_name}")
             except (ImportError, Exception):
                 model_name = "gemini-1.5-pro"
+                print(f"   👁️ [Vision] Discovery unavailable, using: {model_name}")
             
-            try:
-                model = genai.GenerativeModel(model_name)
-            except Exception as model_err:
-                print(f"   ⚠️ [Vision] WARNING: {model_name} failed ({model_err}), using Flash. Results may be inaccurate.")
-                logger.warning(f"[Vision] WARNING: {model_name} failed, falling back to gemini-1.5-flash.")
-                model = genai.GenerativeModel("gemini-1.5-flash")
-                model_name = "gemini-1.5-flash"
-            print(f"   👁️ [Vision] Using model: {model_name}")
+            model = genai.GenerativeModel(model_name)
             
             vision_prompt = """Analyze this organizational chart IMAGE visually. This is a VISION task.
 

@@ -266,26 +266,18 @@ class ExpertAnalysisService:
         if self.api_key:
             genai.configure(api_key=self.api_key)
             
-            # Try models in order of preference (same as gemini_service.py)
-            # gemini-2.5-pro is the stable model that works
-            models_to_try = [
-                'gemini-2.5-pro',          # Primary - stable and works
-                'gemini-2.0-flash',        # Fallback 1 - newer flash
-                'gemini-1.5-flash-latest', # Fallback 2 - flash with latest suffix
-                'gemini-pro',              # Fallback 3 - basic pro
-            ]
+            # Use dynamic model discovery
+            from app.services.model_discovery import get_best_model
             
-            for model_name in models_to_try:
-                try:
-                    self.model = genai.GenerativeModel(model_name)
-                    self.model_name = model_name
-                    logger.info(f"✅ שירות ניתוח המומחים אותחל עם {model_name}")
-                    print(f"✅ [Expert Analysis] Model initialized: {model_name}")
-                    break
-                except Exception as e:
-                    logger.warning(f"⚠️  Could not init {model_name}: {e}")
-                    print(f"⚠️  [Expert Analysis] Model {model_name} failed: {e}")
-                    continue
+            model_name = get_best_model("gemini-2.5-pro", category="general")
+            if model_name:
+                self.model = genai.GenerativeModel(model_name)
+                self.model_name = model_name
+                logger.info(f"✅ שירות ניתוח המומחים אותחל עם {model_name}")
+                print(f"✅ [Expert Analysis] Model initialized: {model_name}")
+            else:
+                logger.error("❌ No model found for Expert Analysis service")
+                print("❌ [Expert Analysis] No model found via discovery")
             
             if not self.model:
                 logger.error("❌ לא הצלחתי לאתחל אף מודל")

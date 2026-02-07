@@ -99,7 +99,7 @@ class GeminiService:
         return text
     
     def __init__(self):
-        """Initialize Gemini service with API key."""
+        """Initialize Gemini service with API key and dynamic model discovery."""
         if not settings.google_api_key:
             print("⚠️  WARNING: GOOGLE_API_KEY not set. Please set GOOGLE_API_KEY in environment variables.")
             print("   The service will start but Gemini analysis will not work until API key is configured.")
@@ -109,11 +109,18 @@ class GeminiService:
         
         genai.configure(api_key=settings.google_api_key)
         self.is_configured = True
-        # Use gemini-2.5-pro (available model) or gemini-pro-latest as fallback
-        model_name = getattr(settings, 'gemini_model', 'gemini-2.5-pro')
-        # Map old model names to new ones
-        if model_name in ['gemini-1.5-pro', 'gemini-1.5-pro-latest']:
-            model_name = 'gemini-2.5-pro'
+        
+        # Dynamic model discovery — find what's actually available
+        from app.services.model_discovery import discover_models, get_best_model
+        discover_models()  # Logs all available models on startup
+        
+        # Find best available model (prefer pro for main service)
+        preferred = getattr(settings, 'gemini_model', 'gemini-2.5-pro')
+        model_name = get_best_model(preferred, category="general")
+        if not model_name:
+            model_name = preferred  # Last resort — try as-is
+        
+        # Strip "models/" prefix if present (GenerativeModel handles it)
         self.model = genai.GenerativeModel(model_name)
         print(f"✅ Initialized Gemini model: {model_name}")
         self.uploaded_files = []
@@ -719,26 +726,15 @@ STEP 4 — DIRECT ANSWER MODE (תשובה ישירה):
                 {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_NONE"},
             ]
             
-            # ── Dedicated model for org queries ──
-            # Use PRIMARY_KB_MODEL from health check if available, else try Pro
-            kb_model_name = None
-            try:
-                from app.services.architecture_audit_service import PRIMARY_KB_MODEL
-                if PRIMARY_KB_MODEL:
-                    kb_model_name = PRIMARY_KB_MODEL
-            except (ImportError, Exception):
-                pass
+            # ── Dedicated model for org queries (via dynamic discovery) ──
+            from app.services.model_discovery import get_best_model, PRIMARY_KB_MODEL
             
+            kb_model_name = PRIMARY_KB_MODEL if PRIMARY_KB_MODEL else get_best_model("gemini-1.5-pro", category="pro")
             if not kb_model_name:
-                kb_model_name = "gemini-1.5-pro"
+                kb_model_name = get_best_model("gemini-1.5-flash", category="flash") or "gemini-1.5-flash"
             
-            try:
-                kb_model = genai.GenerativeModel(kb_model_name)
-                print(f"📚 [KB Query] Using model: {kb_model_name}")
-            except Exception as model_err:
-                print(f"📚 [KB Query] ⚠️ WARNING: {kb_model_name} failed ({model_err}), using Flash. Results may be inaccurate.")
-                kb_model = genai.GenerativeModel("gemini-1.5-flash")
-                kb_model_name = "gemini-1.5-flash"
+            kb_model = genai.GenerativeModel(kb_model_name)
+            print(f"📚 [KB Query] Using model: {kb_model_name}")
             
             response = kb_model.generate_content(
                 prompt,
