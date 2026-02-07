@@ -47,6 +47,9 @@ class Settings(BaseSettings):
     # Google Drive Memory Settings
     drive_memory_folder_id: Optional[str] = None     # Google Drive folder ID for storing memory file
     
+    # Knowledge Base (Personal Context from Google Drive)
+    context_folder_id: Optional[str] = None          # Google Drive folder ID for Second_Brain_Context
+    
     # Voice Signature Settings (Memory Optimization)
     max_voice_signatures: int = 2  # Max signatures to download (0 = disable multimodal, reduces memory usage)
     enable_multimodal_voice: bool = True  # Enable multimodal voice comparison (set False on low-memory hosts)

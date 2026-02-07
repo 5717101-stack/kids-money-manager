@@ -326,7 +326,21 @@ class ArchitectureAuditService:
         else:
             print(f"   ✅ All critical env vars present")
         
-        # 4. Recent Errors
+        # 4. Knowledge Base Status
+        print("🏥 [Health] Checking Knowledge Base...")
+        try:
+            from app.services.knowledge_base_service import get_status as get_kb_status
+            kb_status = get_kb_status()
+            health["knowledge_base"] = kb_status
+            if kb_status.get('connected'):
+                print(f"   ✅ Knowledge Base: {kb_status.get('source')} ({kb_status.get('file_count')} files, {kb_status.get('chars')} chars)")
+            else:
+                print(f"   ⚠️ Knowledge Base: not connected")
+        except Exception as kb_err:
+            health["knowledge_base"] = {"connected": False, "error": str(kb_err)[:50]}
+            print(f"   ⚠️ Knowledge Base check failed: {kb_err}")
+        
+        # 5. Recent Errors
         if self.last_expert_error:
             health["errors"].append({
                 "source": "expert_analysis",
@@ -826,6 +840,15 @@ class ArchitectureAuditService:
             else:
                 missing = env.get('missing', [])
                 report_parts.append(f"⚠️ משתנים חסרים: {', '.join(missing[:3])}")
+            
+            # Knowledge Base status
+            kb_status = health_status.get('knowledge_base', {})
+            if kb_status.get('connected'):
+                kb_source = kb_status.get('source', 'Unknown')
+                kb_files = kb_status.get('file_count', 0)
+                report_parts.append(f"📚 Knowledge Base: [Connected] - Found {kb_files} files ({kb_source})")
+            else:
+                report_parts.append("⚠️ Knowledge Base: לא מחובר")
             
             # Recent errors
             errors = health_status.get('errors', [])
