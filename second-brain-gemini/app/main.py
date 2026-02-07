@@ -1215,16 +1215,18 @@ def process_audio_in_background(
             
             TARGET_MIN_MS = 5000      # Target minimum: 5 seconds
             TARGET_MAX_MS = 7000      # Target maximum: 7 seconds
-            ABS_MIN_MS = 2000         # Absolute minimum for a speech cluster
+            ABS_MIN_MS = 1500         # Absolute minimum for a speech cluster
             PAD_BUFFER_MS = 500       # 0.5s buffer for natural sound
             FADE_MS = 40              # Fade in/out for clean cuts
             OVERLAP_MARGIN_MS = 300   # Safety margin around other speakers
-            VAD_AGGRESSIVENESS = 2    # WebRTC VAD aggressiveness (0-3, higher = stricter)
+            VAD_AGGRESSIVENESS = 1    # WebRTC VAD: 0=permissive, 3=strict. 1=forgiving for noisy envs
             VAD_FRAME_MS = 30         # Frame size for VAD analysis (10, 20, or 30ms)
             VAD_SAMPLE_RATE = 16000   # Sample rate for VAD (must be 8k/16k/32k/48k)
-            MIN_SPEECH_CLUSTER_MS = 2000  # Min continuous speech block (2 seconds)
-            MIN_SPEECH_RATIO = 0.50   # At least 50% of frames in cluster must be speech
+            MIN_SPEECH_CLUSTER_MS = 1500  # Min continuous speech block (1.5 seconds — short replies OK)
+            MIN_SPEECH_RATIO = 0.40   # At least 40% of frames in cluster must be speech
             MAX_SCAN_MS = 30000       # Only scan first 30s of each turn
+            FALLBACK_SLICE_MS = 5000  # Fallback: first 5s of longest segment
+            MAX_VAD_RETRIES = 2       # Try 2 turns with VAD before falling back
             
             # ──────────────────────────────────────────────────────────────
             # STEP A: Build segment map for ALL speakers
@@ -1321,22 +1323,44 @@ def process_audio_in_background(
                 
                 return safe_start, safe_end
             
-            def vad_analyze_clip(audio_clip):
+            def vad_analyze_clip(audio_clip, log_format=False):
                 """
                 Run WebRTC VAD frame-by-frame on an audio clip.
                 
-                Returns: list of (frame_offset_ms, is_speech) tuples
+                webrtcvad REQUIRES: 16-bit PCM, mono, 8000/16000/32000/48000 Hz.
+                We explicitly convert and verify before passing frames.
+                
+                Returns: list of (frame_offset_ms, is_speech) tuples, or None on failure.
                 """
                 if vad is None:
                     return None  # Signal to use RMS fallback
                 
                 try:
-                    # Convert to 16kHz mono 16-bit PCM (required by webrtcvad)
+                    # ── MANDATORY CONVERSION to VAD-compatible format ──
+                    # webrtcvad will return False for ALL frames if format is wrong
                     pcm_clip = audio_clip.set_frame_rate(VAD_SAMPLE_RATE).set_channels(1).set_sample_width(2)
                     raw_data = pcm_clip.raw_data
                     
-                    bytes_per_frame = VAD_SAMPLE_RATE * 2 * VAD_FRAME_MS // 1000  # 16-bit = 2 bytes
+                    if log_format:
+                        print(f"      📐 [VAD] Audio format: {pcm_clip.frame_rate}Hz, {pcm_clip.channels}ch, {pcm_clip.sample_width*8}-bit, {len(raw_data)} bytes")
+                    
+                    # Verify format is correct
+                    if pcm_clip.frame_rate != VAD_SAMPLE_RATE:
+                        print(f"      ❌ [VAD] ERROR: frame_rate={pcm_clip.frame_rate} (expected {VAD_SAMPLE_RATE})")
+                        return None
+                    if pcm_clip.channels != 1:
+                        print(f"      ❌ [VAD] ERROR: channels={pcm_clip.channels} (expected 1)")
+                        return None
+                    if pcm_clip.sample_width != 2:
+                        print(f"      ❌ [VAD] ERROR: sample_width={pcm_clip.sample_width} (expected 2)")
+                        return None
+                    
+                    bytes_per_frame = VAD_SAMPLE_RATE * 2 * VAD_FRAME_MS // 1000  # 16-bit = 2 bytes/sample
                     total_frames = len(raw_data) // bytes_per_frame
+                    
+                    if total_frames == 0:
+                        print(f"      ⚠️  [VAD] No complete frames in {len(raw_data)} bytes")
+                        return None
                     
                     results = []
                     for i in range(total_frames):
@@ -1351,6 +1375,8 @@ def process_audio_in_background(
                     return results
                 except Exception as vad_err:
                     print(f"      ⚠️  [VAD] Frame analysis failed: {vad_err}")
+                    import traceback
+                    traceback.print_exc()
                     return None
             
             def find_best_speech_cluster(vad_results, clip_duration_ms):
@@ -1453,6 +1479,66 @@ def process_audio_in_background(
             # STEP C: Process each unknown speaker with VAD SMART SLICING
             # ──────────────────────────────────────────────────────────────
             
+            def export_and_send_clip(audio_slice, speaker, clip_label):
+                """
+                Export audio clip and send via WhatsApp.
+                Returns True if successfully sent, False otherwise.
+                """
+                import tempfile as tf
+                slice_path = None
+                
+                try:
+                    with tf.NamedTemporaryFile(delete=False, suffix='.ogg') as slice_file:
+                        audio_slice.export(
+                            slice_file.name, 
+                            format='ogg',
+                            codec='libopus',
+                            parameters=['-b:a', '64k', '-ar', '48000']
+                        )
+                        slice_path = slice_file.name
+                        slice_size = os.path.getsize(slice_path)
+                        print(f"   💾 Exported: OGG/Opus ({slice_size} bytes) [{clip_label}]")
+                except Exception as ogg_err:
+                    print(f"   ⚠️  OGG export failed ({ogg_err}), falling back to MP3...")
+                    with tf.NamedTemporaryFile(delete=False, suffix='.mp3') as slice_file:
+                        audio_slice.export(
+                            slice_file.name, 
+                            format='mp3',
+                            bitrate='128k',
+                            parameters=['-ar', '44100']
+                        )
+                        slice_path = slice_file.name
+                        slice_size = os.path.getsize(slice_path)
+                        print(f"   💾 Exported: MP3/128k ({slice_size} bytes) [{clip_label}]")
+                
+                slice_files_to_cleanup.append(slice_path)
+                
+                if whatsapp_provider and hasattr(whatsapp_provider, 'send_audio'):
+                    caption = f"🔊 זוהה דובר חדש: *{speaker}*\nמי זה/זו? (הגב עם השם)"
+                    
+                    audio_result = whatsapp_provider.send_audio(
+                        audio_path=slice_path,
+                        caption=caption,
+                        to=f"+{from_number}"
+                    )
+                    
+                    if audio_result.get('success'):
+                        sent_msg_id = audio_result.get('caption_message_id') or audio_result.get('wam_id') or audio_result.get('message_id')
+                        if sent_msg_id:
+                            pending_identifications[sent_msg_id] = {
+                                'file_path': slice_path,
+                                'speaker_id': speaker
+                            }
+                            print(f"   📝 Pending identification stored: {sent_msg_id} -> {speaker}")
+                            unknown_speakers_processed.append(speaker)
+                            if slice_path in slice_files_to_cleanup:
+                                slice_files_to_cleanup.remove(slice_path)
+                        return True
+                    else:
+                        print(f"   ⚠️  Failed to send audio slice: {audio_result.get('error')}")
+                        return False
+                return False
+            
             for speaker in unknown_speakers:
                 print(f"\n{'═'*60}")
                 print(f"❓ [VAD] SMART SLICING for unknown speaker: {speaker}")
@@ -1475,6 +1561,7 @@ def process_audio_in_background(
                     print(f"      Turn {idx}: {s['start']:.1f}s-{s['end']:.1f}s ({dur}ms) overlap={overlap}ms")
                 
                 clip_sent = False
+                vad_rejections = 0  # Count VAD rejections for fallback trigger
                 
                 # ── Iterate through turns until we find clear speech ──
                 for turn_idx, turn_seg in enumerate(target_segs_sorted):
@@ -1485,7 +1572,7 @@ def process_audio_in_background(
                     turn_end_ms = turn_seg['end_ms']
                     turn_duration = turn_end_ms - turn_start_ms
                     
-                    if turn_duration < 1000:
+                    if turn_duration < 500:  # Lowered from 1000 — even short replies matter
                         print(f"\n   ⏭️  Turn {turn_idx}: too short ({turn_duration}ms) - skipping")
                         continue
                     
@@ -1497,12 +1584,12 @@ def process_audio_in_background(
                     # Extract the audio for this turn
                     turn_audio = audio_segment[turn_start_ms:scan_end_ms]
                     
-                    if len(turn_audio) < 1000:
+                    if len(turn_audio) < 500:
                         print(f"      ⏭️  Audio too short after extraction - skipping")
                         continue
                     
                     # ── WebRTC VAD Frame-by-Frame Analysis ──
-                    vad_results = vad_analyze_clip(turn_audio)
+                    vad_results = vad_analyze_clip(turn_audio, log_format=(turn_idx == 0))
                     
                     speech_cluster = None
                     vad_confidence = 'None'
@@ -1521,19 +1608,28 @@ def process_audio_in_background(
                             cl_start, cl_end, cl_ratio, vad_confidence = speech_cluster
                             print(f"      🎯 [VAD] Best speech cluster: {cl_start}ms-{cl_end}ms ({cl_end-cl_start}ms, {cl_ratio:.0%} speech, confidence={vad_confidence})")
                         else:
-                            print(f"      ❌ [VAD] No speech cluster ≥{MIN_SPEECH_CLUSTER_MS}ms with ≥{MIN_SPEECH_RATIO:.0%} speech ratio found")
+                            vad_rejections += 1
+                            print(f"      ❌ [VAD] Rejected clip for {speaker} (No speech cluster ≥{MIN_SPEECH_CLUSTER_MS}ms found, rejection #{vad_rejections})")
+                            
+                            # Check if we should trigger fallback
+                            if vad_rejections >= MAX_VAD_RETRIES:
+                                print(f"      🔄 [VAD] {MAX_VAD_RETRIES} rejections reached — triggering FALLBACK SLICER")
+                                break  # Exit turn loop, fallback will handle it
                             continue
                     else:
-                        # ── RMS Fallback ──
+                        # ── RMS Fallback (webrtcvad not available) ──
                         print(f"      📊 [RMS Fallback] Running RMS-based check...")
                         rms_passed, rms_ratio, vad_confidence = rms_fallback_check(turn_audio)
                         
                         if not rms_passed:
-                            print(f"      ❌ [RMS] Failed: speech ratio={rms_ratio:.0%}")
+                            vad_rejections += 1
+                            print(f"      ❌ [VAD] Rejected clip for {speaker} (RMS confidence too low: {rms_ratio:.0%}, rejection #{vad_rejections})")
+                            if vad_rejections >= MAX_VAD_RETRIES:
+                                print(f"      🔄 [VAD] {MAX_VAD_RETRIES} rejections reached — triggering FALLBACK SLICER")
+                                break
                             continue
                         
                         print(f"      ✅ [RMS] Passed: speech ratio={rms_ratio:.0%}, confidence={vad_confidence}")
-                        # Use the entire turn as the "cluster" for RMS fallback
                         speech_cluster = (0, len(turn_audio), rms_ratio, vad_confidence)
                     
                     # ── DYNAMIC SLICING around the speech cluster ──
@@ -1548,7 +1644,6 @@ def process_audio_in_background(
                     
                     # Determine slice window: 5-7s centered on the speech cluster
                     if cluster_duration >= TARGET_MIN_MS:
-                        # Cluster is long enough — trim to 7s from center
                         if cluster_duration > TARGET_MAX_MS:
                             center = (abs_cluster_start + abs_cluster_end) // 2
                             slice_start = center - TARGET_MAX_MS // 2
@@ -1557,7 +1652,6 @@ def process_audio_in_background(
                             slice_start = abs_cluster_start
                             slice_end = abs_cluster_end
                     else:
-                        # Cluster is short — expand to 5s with 500ms padding
                         center = (abs_cluster_start + abs_cluster_end) // 2
                         slice_start = center - TARGET_MIN_MS // 2
                         slice_end = center + TARGET_MIN_MS // 2
@@ -1574,6 +1668,9 @@ def process_audio_in_background(
                     # Ensure minimum duration
                     if (slice_end - slice_start) < ABS_MIN_MS:
                         print(f"      ⚠️  Slice too short after padding ({slice_end - slice_start}ms) - skipping turn")
+                        vad_rejections += 1
+                        if vad_rejections >= MAX_VAD_RETRIES:
+                            break
                         continue
                     
                     # Cap at 7s max
@@ -1585,14 +1682,18 @@ def process_audio_in_background(
                     # ── SLICE AUDIO ──
                     audio_slice = audio_segment[slice_start:slice_end]
                     
-                    # ── FINAL VAD VERIFICATION on the actual clip ──
+                    # ── FINAL VAD VERIFICATION (lenient — 20% speech is OK) ──
                     if vad is not None:
                         final_vad = vad_analyze_clip(audio_slice)
                         if final_vad:
                             final_speech = sum(1 for _, s in final_vad if s)
                             final_ratio = final_speech / len(final_vad) if final_vad else 0
-                            if final_ratio < 0.30:
-                                print(f"      ❌ [VAD] Final clip verification FAILED: only {final_ratio:.0%} speech")
+                            if final_ratio < 0.20:
+                                vad_rejections += 1
+                                print(f"      ❌ [VAD] Final clip verification FAILED: only {final_ratio:.0%} speech (rejection #{vad_rejections})")
+                                print(f"      ❌ [VAD] Rejected clip for {speaker} (Confidence too low: {final_ratio:.0%})")
+                                if vad_rejections >= MAX_VAD_RETRIES:
+                                    break
                                 continue
                             print(f"      ✅ [VAD] Final clip verified: {final_ratio:.0%} speech ({final_speech}/{len(final_vad)} frames)")
                     
@@ -1618,68 +1719,63 @@ def process_audio_in_background(
                     print(f"      🎯 Speech ratio: {cluster_ratio:.0%} | Confidence: {confidence}")
                     print(f"      💬 Text: \"{turn_seg.get('text', '')[:80]}\"")
                     print(f"   [VAD] Clip generated for {speaker} at {slice_start}ms-{slice_end}ms with confidence {confidence}")
+                    
+                    # ── EXPORT & SEND ──
+                    if export_and_send_clip(audio_slice, speaker, f"VAD-{confidence}"):
+                        clip_sent = True
+                        break
                 
-                    # ── EXPORT & SEND (only reached if VAD passed) ──
-                    import tempfile as tf
-                    slice_path = None
+                # ══════════════════════════════════════════════════════════
+                # FALLBACK SLICER: If VAD failed after retries, send the
+                # first 5 seconds of the LONGEST segment regardless.
+                # A slightly noisy clip is better than NO clip.
+                # ══════════════════════════════════════════════════════════
+                if not clip_sent and target_segs_sorted:
+                    print(f"\n   🔄 ═══ FALLBACK SLICER for {speaker} ═══")
+                    print(f"      VAD rejected {vad_rejections} clip(s). Using brute-force slice.")
                     
-                    try:
-                        with tf.NamedTemporaryFile(delete=False, suffix='.ogg') as slice_file:
-                            audio_slice.export(
-                                slice_file.name, 
-                                format='ogg',
-                                codec='libopus',
-                                parameters=['-b:a', '64k', '-ar', '48000']
-                            )
-                            slice_path = slice_file.name
-                            slice_size = os.path.getsize(slice_path)
-                            print(f"   💾 Exported: OGG/Opus ({slice_size} bytes)")
-                    except Exception as ogg_err:
-                        print(f"   ⚠️  OGG export failed ({ogg_err}), falling back to MP3...")
-                        with tf.NamedTemporaryFile(delete=False, suffix='.mp3') as slice_file:
-                            audio_slice.export(
-                                slice_file.name, 
-                                format='mp3',
-                                bitrate='128k',
-                                parameters=['-ar', '44100']
-                            )
-                            slice_path = slice_file.name
-                            slice_size = os.path.getsize(slice_path)
-                            print(f"   💾 Exported: MP3/128k ({slice_size} bytes)")
+                    # Pick the LONGEST segment
+                    longest_seg = max(target_segs_sorted, key=lambda s: s['end_ms'] - s['start_ms'])
+                    fb_start = longest_seg['start_ms']
+                    fb_end = min(longest_seg['end_ms'], fb_start + FALLBACK_SLICE_MS)
+                    fb_duration = fb_end - fb_start
                     
-                    slice_files_to_cleanup.append(slice_path)
+                    print(f"      📍 Longest segment: {longest_seg['start']:.1f}s-{longest_seg['end']:.1f}s ({longest_seg['end_ms'] - longest_seg['start_ms']}ms)")
+                    print(f"      📍 Fallback slice: {fb_start}ms → {fb_end}ms ({fb_duration}ms)")
                     
-                    # Send "מי זה?" ONLY because clip passed VAD quality check
-                    if whatsapp_provider and hasattr(whatsapp_provider, 'send_audio'):
-                        caption = f"🔊 זוהה דובר חדש: *{speaker}*\nמי זה/זו? (הגב עם השם)"
+                    if fb_duration >= 500:
+                        # Apply safe padding
+                        fb_start, fb_end = calc_safe_padding(fb_start, fb_end, other_segs, len(audio_segment))
+                        fb_start = max(0, fb_start)
+                        fb_end = min(len(audio_segment), fb_end)
                         
-                        audio_result = whatsapp_provider.send_audio(
-                            audio_path=slice_path,
-                            caption=caption,
-                            to=f"+{from_number}"
-                        )
+                        fallback_slice = audio_segment[fb_start:fb_end]
                         
-                        if audio_result.get('success'):
-                            sent_msg_id = audio_result.get('caption_message_id') or audio_result.get('wam_id') or audio_result.get('message_id')
-                            if sent_msg_id:
-                                pending_identifications[sent_msg_id] = {
-                                    'file_path': slice_path,
-                                    'speaker_id': speaker
-                                }
-                                print(f"   📝 Pending identification stored: {sent_msg_id} -> {speaker}")
-                                unknown_speakers_processed.append(speaker)
-                                if slice_path in slice_files_to_cleanup:
-                                    slice_files_to_cleanup.remove(slice_path)
-                        else:
-                            print(f"   ⚠️  Failed to send audio slice: {audio_result.get('error')}")
+                        # Enhance
+                        try:
+                            target_dbfs = -16.0
+                            current_dbfs = fallback_slice.dBFS
+                            if current_dbfs != float('-inf') and current_dbfs < 0:
+                                gain = target_dbfs - current_dbfs
+                                gain = max(min(gain, 20.0), -10.0)
+                                fallback_slice = fallback_slice.apply_gain(gain)
+                            fallback_slice = fallback_slice.fade_in(FADE_MS).fade_out(FADE_MS)
+                        except Exception:
+                            pass
+                        
+                        print(f"      🔊 Fallback volume: {fallback_slice.dBFS:.1f} dBFS | Duration: {len(fallback_slice)}ms")
+                        print(f"   [VAD] Clip generated for {speaker} at {fb_start}ms-{fb_end}ms with confidence Fallback")
+                        
+                        if export_and_send_clip(fallback_slice, speaker, "FALLBACK"):
+                            clip_sent = True
                     
-                    clip_sent = True
-                    break  # Done with this speaker
+                    if not clip_sent:
+                        print(f"      ❌ Fallback also failed for {speaker}")
                 
-                # ── QUALITY GATE: No speech found across all turns ──
+                # ── Final status ──
                 if not clip_sent:
                     print(f"\n   🚫 [VAD] No clear speech detected for {speaker}")
-                    print(f"      Scanned {len(target_segs_sorted)} turn(s) — all silence/noise.")
+                    print(f"      Scanned {len(target_segs_sorted)} turn(s), {vad_rejections} VAD rejection(s).")
                     print(f"      ❌ NOT sending 'מי זה?' — no valid audio clip available.")
                 
         except ImportError:
