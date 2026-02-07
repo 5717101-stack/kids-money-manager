@@ -251,6 +251,13 @@ def is_kb_query(message: str) -> bool:
         'מה הדירוג של',
         'מה הציון של',
         'מה ה-rating של',
+        'תן לי את הדירוג',
+        'תן לי את השכר',
+        'תן לי את המשכורת',
+        'תן לי את התפקיד',
+        'תן לי מידע על',
+        'ספר לי על ',
+        'הראה לי את ',
     ]
     
     # Check prefix triggers
@@ -262,7 +269,7 @@ def is_kb_query(message: str) -> bool:
     org_keywords = ['מדווח', 'כפוף', 'היררכיה', 'ארגוני', 'מבנה ארגוני', 'דרג', 'תפקיד',
                     'שכר', 'משכורת', 'בונוס', 'דירוג', 'rating', 'individual factor',
                     'פקטור', 'compensation', 'salary']
-    question_words = ['מי', 'מה', 'איפה', 'כמה', 'האם']
+    question_words = ['מי', 'מה', 'איפה', 'כמה', 'האם', 'תן', 'הראה', 'ספר', 'איזה']
     
     has_org = any(kw in message_stripped for kw in org_keywords)
     has_question = any(kw in message_stripped for kw in question_words)
@@ -2595,6 +2602,38 @@ async def webhook(request: Request, background_tasks: BackgroundTasks):
                                                     )
                                                 print(f"🔗 [Pronoun] No entity in memory — asked for clarification")
                                                 continue
+                                    
+                                    # ── Pre-flight Entity Detection ──
+                                    # For EVERY message (KB or regular chat), detect the person
+                                    # being discussed and store as entity for future pronoun resolution.
+                                    # This ensures "ומה המשכורת שלו?" works after "תן לי את הדירוג של אלעד"
+                                    if not pronoun_entity:
+                                        try:
+                                            import re as _re_preflight
+                                            from app.services.knowledge_base_service import search_people as _sp
+                                            
+                                            # Try structured extraction first
+                                            _detected_name = identity_resolver.extract_person_name(effective_query)
+                                            
+                                            # Fallback: generic "של NAME" extraction
+                                            if not _detected_name:
+                                                _shel_match = _re_preflight.search(r'של\s+(.+?)[\?؟\s]*$', effective_query)
+                                                if _shel_match:
+                                                    _detected_name = _shel_match.group(1).strip().rstrip('?؟ ')
+                                            
+                                            if _detected_name:
+                                                _preflight_matches = _sp(_detected_name)
+                                                if len(_preflight_matches) == 1:
+                                                    _entity = _preflight_matches[0]
+                                                    identity_resolver.update_context(
+                                                        phone=from_number,
+                                                        department=_entity.get("department", ""),
+                                                        manager=_entity.get("reports_to", ""),
+                                                        entity=_entity,
+                                                    )
+                                                    print(f"🎯 [Pre-flight] Entity detected: {_entity.get('canonical_name', '?')}")
+                                        except Exception as _pf_err:
+                                            print(f"⚠️ [Pre-flight] Entity detection failed: {_pf_err}")
                                     
                                     if is_kb_query(effective_query):
                                         print(f"\n{'='*60}")
