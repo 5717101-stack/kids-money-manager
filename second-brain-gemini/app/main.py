@@ -24,6 +24,7 @@ from app.services.pdf_service import pdf_service
 from app.services.twilio_service import twilio_service  # Keep for SMS and message formatting
 from app.services.whatsapp_provider import WhatsAppProviderFactory
 from app.services.drive_memory_service import DriveMemoryService
+from app.services.conversation_engine import conversation_engine
 
 # Initialize WhatsApp provider based on configuration
 whatsapp_provider = WhatsAppProviderFactory.create_provider()
@@ -622,6 +623,17 @@ async def startup_event():
         print("📚 ══════════════════════════════════════════════\n")
     except Exception as kb_init_error:
         print(f"⚠️  Identity Context initialization error: {kb_init_error}")
+        import traceback
+        traceback.print_exc()
+    
+    # ================================================================
+    # CONVERSATION ENGINE: Initialize LLM-First engine with tools
+    # ================================================================
+    try:
+        conversation_engine.initialize()
+        print("✅ [ConvEngine] Conversation Engine ready — LLM-First architecture active")
+    except Exception as ce_error:
+        print(f"⚠️  Conversation Engine initialization error: {ce_error}")
         import traceback
         traceback.print_exc()
     
@@ -2568,304 +2580,39 @@ async def webhook(request: Request, background_tasks: BackgroundTasks):
                                             continue
                                     
                                     # ================================================================
-                                    # PRONOUN RESOLUTION + KNOWLEDGE BASE QUERY INTERCEPTOR
-                                    # Step 0: Resolve pronouns ("שלו", "his") → last entity name
-                                    # Triggers: "מי מדווח ל...", "מה התפקיד של...", etc.
-                                    # Skips audio-summary flow → direct fact-based answer from KB
-                                    # Now includes Smart Identity Resolver for ambiguous names.
-                                    # ================================================================
-                                    
-                                    # ── Step 0: Pronoun Resolution ──
-                                    # If user says "מה השכר שלו?" and we recently discussed Yuval,
-                                    # resolve to "מה השכר של Yuval Laikin?"
-                                    effective_query = message_body_text
-                                    pronoun_entity = None
-                                    
-                                    if identity_resolver.has_pronouns(message_body_text):
-                                        effective_query, pronoun_entity = identity_resolver.resolve_pronouns(
-                                            from_number, message_body_text
-                                        )
-                                        if pronoun_entity:
-                                            print(f"🔗 [Pronoun] Resolved: '{message_body_text}' → '{effective_query}'")
-                                        else:
-                                            # Has pronouns but no entity in memory — ask for clarification
-                                            # This applies to ALL queries (KB and non-KB) to avoid guessing
-                                            pronoun_keywords = ['שכר', 'משכורת', 'תפקיד', 'מדווח', 'מנהל',
-                                                               'דירוג', 'rating', 'salary', 'role', 'manager',
-                                                               'כמה', 'מרוויח', 'בונוס', 'factor', 'ציון']
-                                            if any(kw in message_body_text for kw in pronoun_keywords):
-                                                fallback_msg = "❓ למי התכוונת? ציין את השם כדי שאוכל לענות."
-                                                if whatsapp_provider:
-                                                    whatsapp_provider.send_whatsapp(
-                                                        message=fallback_msg,
-                                                        to=f"+{from_number}"
-                                                    )
-                                                print(f"🔗 [Pronoun] No entity in memory — asked for clarification")
-                                                continue
-                                    
-                                    # ── Pre-flight Entity Detection ──
-                                    # For EVERY message (KB or regular chat), detect the person
-                                    # being discussed and store as entity for future pronoun resolution.
-                                    # This ensures "ומה המשכורת שלו?" works after "תן לי את הדירוג של אלעד"
-                                    if not pronoun_entity:
-                                        try:
-                                            import re as _re_preflight
-                                            from app.services.knowledge_base_service import search_people as _sp
-                                            
-                                            # Try structured extraction first
-                                            _detected_name = identity_resolver.extract_person_name(effective_query)
-                                            
-                                            # Fallback: generic "של NAME" extraction
-                                            if not _detected_name:
-                                                _shel_match = _re_preflight.search(r'של\s+(.+?)[\?؟\s]*$', effective_query)
-                                                if _shel_match:
-                                                    _detected_name = _shel_match.group(1).strip().rstrip('?؟ ')
-                                            
-                                            if _detected_name:
-                                                _preflight_matches = _sp(_detected_name)
-                                                if len(_preflight_matches) == 1:
-                                                    _entity = _preflight_matches[0]
-                                                    identity_resolver.update_context(
-                                                        phone=from_number,
-                                                        department=_entity.get("department", ""),
-                                                        manager=_entity.get("reports_to", ""),
-                                                        entity=_entity,
-                                                    )
-                                                    print(f"🎯 [Pre-flight] Entity detected: {_entity.get('canonical_name', '?')}")
-                                        except Exception as _pf_err:
-                                            print(f"⚠️ [Pre-flight] Entity detection failed: {_pf_err}")
-                                    
-                                    if is_kb_query(effective_query):
-                                        print(f"\n{'='*60}")
-                                        print(f"📚 KNOWLEDGE BASE QUERY INTERCEPTOR ACTIVATED")
-                                        print(f"{'='*60}")
-                                        print(f"   Query: {effective_query}")
-                                        if effective_query != message_body_text:
-                                            print(f"   Original: {message_body_text}")
-                                        
-                                        try:
-                                            from app.services.knowledge_base_service import get_kb_query_context, search_people
-                                            
-                                            # ── Step 1: Check for name ambiguity BEFORE calling Gemini ──
-                                            extracted_name = identity_resolver.extract_person_name(effective_query)
-                                            
-                                            if extracted_name:
-                                                print(f"   🔍 Extracted name: '{extracted_name}'")
-                                                matches = search_people(extracted_name)
-                                                print(f"   🔍 Found {len(matches)} matches in identity graph")
-                                                
-                                                if len(matches) > 1:
-                                                    # Multiple matches → send disambiguation menu
-                                                    menu_msg = identity_resolver.handle_ambiguity(
-                                                        phone=from_number,
-                                                        name_query=extracted_name,
-                                                        matches=matches,
-                                                        original_question=message_body_text,
-                                                    )
-                                                    
-                                                    if whatsapp_provider:
-                                                        whatsapp_provider.send_whatsapp(
-                                                            message=menu_msg,
-                                                            to=f"+{from_number}"
-                                                        )
-                                                        print(f"   🔀 Disambiguation menu sent ({len(matches)} options)")
-                                                    
-                                                    print(f"🛑 KB QUERY PAUSED — waiting for user selection")
-                                                    print(f"{'='*60}\n")
-                                                    continue
-                                                
-                                                elif len(matches) == 1:
-                                                    # Single match → update session context and proceed
-                                                    person = matches[0]
-                                                    identity_resolver.update_context(
-                                                        phone=from_number,
-                                                        department=person.get("department", ""),
-                                                        manager=person.get("reports_to", ""),
-                                                        entity=person,
-                                                    )
-                                                    print(f"   ✅ Unique match: {person.get('canonical_name')}")
-                                            
-                                            # If pronoun was resolved, also update context with the entity
-                                            if pronoun_entity and not extracted_name:
-                                                identity_resolver.update_context(
-                                                    phone=from_number,
-                                                    department=pronoun_entity.get("department", ""),
-                                                    manager=pronoun_entity.get("reports_to", ""),
-                                                    entity=pronoun_entity,
-                                                )
-                                            
-                                            # ── Step 2: Proceed with normal KB query ──
-                                            kb_context = get_kb_query_context()
-                                            
-                                            if not kb_context:
-                                                # KB is empty or not configured
-                                                if whatsapp_provider:
-                                                    whatsapp_provider.send_whatsapp(
-                                                        message="⚠️ בסיס הידע לא מוגדר או ריק.\nודא ש-CONTEXT_FOLDER_ID מוגדר ושיש קבצים בתיקיית Second_Brain_Context ב-Google Drive.",
-                                                        to=f"+{from_number}"
-                                                    )
-                                                print(f"   ⚠️ KB context is empty - cannot answer")
-                                            else:
-                                                print(f"   📚 KB context loaded: {len(kb_context)} chars")
-                                                
-                                                # Use Gemini to answer directly from KB
-                                                # IMPORTANT: Use effective_query (with resolved pronouns)
-                                                kb_answer = gemini_service.answer_kb_query(
-                                                    user_query=effective_query,
-                                                    kb_context=kb_context
-                                                )
-                                                
-                                                # Prepend a header to indicate this is a KB answer
-                                                formatted_answer = f"📚 *תשובה מבסיס הידע:*\n\n{kb_answer}"
-                                                
-                                                if whatsapp_provider:
-                                                    whatsapp_provider.send_whatsapp(
-                                                        message=formatted_answer,
-                                                        to=f"+{from_number}"
-                                                    )
-                                                    print(f"   ✅ KB answer sent ({len(formatted_answer)} chars)")
-                                                
-                                                # Update session context from the answer
-                                                if extracted_name and len(matches) == 1:
-                                                    person = matches[0]
-                                                    identity_resolver.update_context(
-                                                        phone=from_number,
-                                                        department=person.get("department", ""),
-                                                        manager=person.get("reports_to", ""),
-                                                        entity=person,
-                                                    )
-                                                elif extracted_name and len(matches) == 0 and kb_answer:
-                                                    # Gemini resolved the name — try to find entity by
-                                                    # re-searching with broader terms from the answer
-                                                    # Look for English names mentioned in the answer
-                                                    import re as _re
-                                                    eng_names = _re.findall(r'([A-Z][a-z]+ [A-Z][a-z]+)', kb_answer)
-                                                    if eng_names:
-                                                        retry_matches = search_people(eng_names[0])
-                                                        if len(retry_matches) == 1:
-                                                            person = retry_matches[0]
-                                                            identity_resolver.update_context(
-                                                                phone=from_number,
-                                                                department=person.get("department", ""),
-                                                                manager=person.get("reports_to", ""),
-                                                                entity=person,
-                                                            )
-                                                            print(f"   🧠 Entity stored from answer: {eng_names[0]}")
-                                                elif pronoun_entity:
-                                                    # Pronoun was resolved — keep entity fresh
-                                                    identity_resolver.update_context(
-                                                        phone=from_number,
-                                                        department=pronoun_entity.get("department", ""),
-                                                        manager=pronoun_entity.get("reports_to", ""),
-                                                        entity=pronoun_entity,
-                                                    )
-                                                
-                                                # Save interaction to memory
-                                                new_interaction = {
-                                                    "user_message": message_body_text,
-                                                    "ai_response": formatted_answer,
-                                                    "timestamp": datetime.utcnow().isoformat() + "Z",
-                                                    "message_id": message_id,
-                                                    "from_number": from_number,
-                                                    "type": "kb_query"
-                                                }
-                                                drive_memory_service.update_memory(new_interaction, background_tasks=background_tasks)
-                                        
-                                        except Exception as kb_error:
-                                            print(f"   ❌ KB Query error: {kb_error}")
-                                            import traceback
-                                            traceback.print_exc()
-                                            if whatsapp_provider:
-                                                whatsapp_provider.send_whatsapp(
-                                                    message=f"❌ שגיאה בשאילתת בסיס הידע: {str(kb_error)[:100]}",
-                                                    to=f"+{from_number}"
-                                                )
-                                        
-                                        print(f"🛑 KB QUERY INTERCEPTOR COMPLETE - Returning immediately")
-                                        print(f"{'='*60}\n")
-                                        continue
-                                    
-                                    # ================================================================
-                                    # REGULAR TEXT MESSAGE HANDLING
+                                    # CONVERSATION ENGINE — LLM-First Architecture
+                                    # Replaces: regex intent detection, pronoun resolution,
+                                    #           entity extraction, KB query routing, regular chat.
+                                    # Gemini Chat Session handles ALL of it natively.
                                     # ================================================================
                                     try:
-                                        # CRITICAL: Get memory at the very start to trigger cache refresh check
-                                        # This ensures we detect manual edits before processing the message
-                                        memory = drive_memory_service.get_memory()
-                                        chat_history = memory.get('chat_history', [])
-                                        user_profile = memory.get('user_profile', {})
-                                        
-                                        print(f"💾 Retrieved memory: {len(chat_history)} previous interactions")
-                                        if user_profile:
-                                            print(f"👤 User profile loaded: {list(user_profile.keys())}")
-                                        
-                                        # Check if this is a HISTORY QUERY (asking about past conversations)
-                                        if is_history_query(message_body_text):
-                                            print(f"🔍 Detected HISTORY QUERY: {message_body_text[:50]}...")
-                                            
-                                            # Search through chat history for relevant transcripts
-                                            history_context = search_history_for_context(chat_history, message_body_text)
-                                            
-                                            if history_context:
-                                                print(f"📚 Found relevant history context ({len(history_context)} chars)")
-                                            else:
-                                                print(f"📚 No relevant history found for query")
-                                            
-                                            # Generate answer using Gemini
-                                            ai_response = gemini_service.answer_history_query(
-                                                user_query=message_body_text,
-                                                history_context=history_context,
-                                                user_profile=user_profile
-                                            )
-                                        else:
-                                            # Regular chat: Generate AI response with context and user profile
-                                            # INCLUDE CURRENT SESSION CONTEXT for RAG awareness
-                                            session_context = get_last_session_context()
-                                            
-                                            # Get recent transcripts for deep search (if searching)
-                                            recent_transcripts = []
-                                            search_keywords = ['מה', 'איך', 'מתי', 'למה', 'מי', 'החלטנו', 'דיברנו', 'אמר']
-                                            if any(keyword in message_body_text for keyword in search_keywords):
-                                                try:
-                                                    recent_transcripts = drive_memory_service.get_recent_transcripts(limit=2)
-                                                    print(f"📚 Loaded {len(recent_transcripts)} recent transcripts for RAG")
-                                                except Exception as e:
-                                                    print(f"⚠️  Failed to load recent transcripts: {e}")
-                                            
-                                            ai_response = gemini_service.chat_with_memory(
-                                                user_message=message_body_text,
-                                                chat_history=chat_history,
-                                                user_profile=user_profile,
-                                                current_session=session_context,
-                                                recent_transcripts=recent_transcripts
-                                            )
+                                        # Single entry point — Gemini decides everything
+                                        ai_response = conversation_engine.process_message(
+                                            phone=from_number,
+                                            message=message_body_text
+                                        )
                                         
                                         print(f"🤖 Generated AI response: {ai_response[:100]}...")
                                         
                                         # Send AI response via WhatsApp
                                         reply_result = whatsapp_provider.send_whatsapp(
                                             message=ai_response,
-                                            to=f"+{from_number}"  # Add + prefix for E.164 format
+                                            to=f"+{from_number}"
                                         )
                                         
                                         if reply_result.get('success'):
                                             print(f"✅ AI response sent successfully")
                                             
-                                            # Save interaction to memory (cache updated immediately, Drive sync in background)
+                                            # Save interaction to memory
                                             new_interaction = {
                                                 "user_message": message_body_text,
                                                 "ai_response": ai_response,
                                                 "timestamp": datetime.utcnow().isoformat() + "Z",
                                                 "message_id": message_id,
-                                                "from_number": from_number
+                                                "from_number": from_number,
+                                                "type": "conversation_engine"
                                             }
-                                            
-                                            # Update cache immediately, sync to Drive in background
-                                            success = drive_memory_service.update_memory(new_interaction, background_tasks=background_tasks)
-                                            if success:
-                                                print(f"✅ Saved interaction to memory cache (Drive sync in background)")
-                                            else:
-                                                print(f"⚠️  Failed to save interaction to memory")
+                                            drive_memory_service.update_memory(new_interaction, background_tasks=background_tasks)
                                         else:
                                             print(f"⚠️  Failed to send AI response: {reply_result.get('error')}")
                                     except Exception as reply_error:
