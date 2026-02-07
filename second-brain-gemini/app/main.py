@@ -1208,21 +1208,25 @@ def process_audio_in_background(
             print(f"✅ Loaded audio for slicing: {len(audio_segment)}ms")
             
             # ============================================================
-            # ALGORITHMIC ISOLATION FINDER
-            # Instead of trusting Gemini's purest_segments blindly,
-            # we verify isolation by checking ALL segments for overlaps.
-            # Goal: Find 5 seconds where the unknown speaker talks ALONE.
+            # SMART SLICING ENGINE v2
+            # Algorithmic isolation + RMS validation + overlap-safe padding
+            # Goal: 5-7 seconds of CLEAR solo speech for each unknown speaker
             # ============================================================
             
-            TARGET_DURATION_MS = 5000  # Target: 5 seconds of clear speech
-            MIN_SLICE_MS = 3000       # Absolute minimum: 3 seconds
-            MAX_SLICE_MS = 12000      # Maximum: 12 seconds
-            PAD_BEFORE_MS = 400       # Padding before speech
-            PAD_AFTER_MS = 300        # Padding after speech
-            FADE_MS = 50              # Fade in/out
-            OVERLAP_MARGIN_MS = 500   # Margin for overlap detection (0.5s grace)
+            TARGET_MIN_MS = 5000      # Target minimum: 5 seconds
+            TARGET_MAX_MS = 7000      # Target maximum: 7 seconds
+            ABS_MIN_MS = 3000         # Absolute minimum: 3 seconds
+            ABS_MAX_MS = 12000        # Absolute maximum: 12 seconds
+            PAD_BUFFER_MS = 500       # 0.5s buffer before speech
+            INNER_TRIM_MS = 500       # Trim first/last 0.5s of segment boundaries
+            FADE_MS = 40              # Fade in/out for clean cuts
+            OVERLAP_MARGIN_MS = 300   # Safety margin around other speakers
+            MIN_RMS_THRESHOLD = 200   # Minimum RMS energy (silence detection)
+            MIN_RMS_RATIO = 0.3       # At least 30% of clip must have speech-level energy
             
-            # Step A: Classify all segments by speaker
+            # ──────────────────────────────────────────────────────────────
+            # STEP A: Build segment map for ALL speakers
+            # ──────────────────────────────────────────────────────────────
             all_segments_by_speaker = {}  # {speaker_id: [segments]}
             unknown_speakers = set()
             
@@ -1266,280 +1270,399 @@ def process_audio_in_background(
             if not unknown_speakers and summary_text:
                 print("⚠️  No unknown speakers detected - all identified or skipped.")
             
-            # Step B: For each unknown speaker, find their MOST ISOLATED segment
-            def find_isolated_segment(target_speaker, all_segs, gemini_purest=None):
-                """
-                Find the best isolated segment for a speaker.
-                
-                Priority:
-                1. Algorithmically verified isolated segments (no overlap with others)
-                2. Gemini's purest_segments (if they pass overlap check)
-                3. Segment with least overlap
-                4. Longest segment (last resort)
-                
-                Returns: (segment_dict, quality_label)
-                """
-                target_segs = all_segs.get(target_speaker, [])
-                if not target_segs:
-                    return None, 'none'
-                
-                # Get all OTHER speakers' segments for overlap checking
-                other_segs = []
-                for spk, segs in all_segs.items():
-                    if spk != target_speaker:
-                        other_segs.extend(segs)
-                
-                def calc_overlap_ms(seg):
-                    """Calculate total overlap (ms) with other speakers."""
-                    s_start = seg['start_ms']
-                    s_end = seg['end_ms']
-                    total_overlap = 0
-                    for other in other_segs:
-                        o_start = other['start_ms'] - OVERLAP_MARGIN_MS
-                        o_end = other['end_ms'] + OVERLAP_MARGIN_MS
-                        # Calculate intersection
-                        overlap_start = max(s_start, o_start)
-                        overlap_end = min(s_end, o_end)
-                        if overlap_end > overlap_start:
-                            total_overlap += (overlap_end - overlap_start)
-                    return total_overlap
-                
-                # Score each segment: (overlap_ms, distance_from_target_duration, index)
-                scored = []
-                for i, seg in enumerate(target_segs):
-                    duration_ms = seg['end_ms'] - seg['start_ms']
-                    if duration_ms < 500:  # Skip very short segments (< 0.5s)
-                        continue
-                    overlap = calc_overlap_ms(seg)
-                    # Prefer segments closest to TARGET_DURATION_MS (5s)
-                    duration_score = abs(duration_ms - TARGET_DURATION_MS)
-                    scored.append((overlap, duration_score, -duration_ms, i, seg))
-                
-                if not scored:
-                    return target_segs[0], 'last_resort'
-                
-                # Sort: least overlap first, then closest to 5s, then longest
-                scored.sort(key=lambda x: (x[0], x[1], x[2]))
-                
-                best = scored[0]
-                overlap_ms = best[0]
-                seg = best[4]
-                duration = seg['end_ms'] - seg['start_ms']
-                
-                if overlap_ms == 0:
-                    quality = 'isolated'
-                    print(f"   ✅ Found ISOLATED segment: {seg['start']:.1f}s-{seg['end']:.1f}s ({duration}ms, zero overlap)")
-                elif overlap_ms < 500:
-                    quality = 'near_isolated'
-                    print(f"   🟡 Near-isolated segment: {seg['start']:.1f}s-{seg['end']:.1f}s ({duration}ms, {overlap_ms}ms overlap)")
-                else:
-                    quality = 'partial_overlap'
-                    print(f"   🟠 Best available: {seg['start']:.1f}s-{seg['end']:.1f}s ({duration}ms, {overlap_ms}ms overlap)")
-                
-                # If best segment is too short, try MERGING consecutive segments
-                if duration < MIN_SLICE_MS:
-                    merged = try_merge_consecutive(target_speaker, target_segs, other_segs)
-                    if merged and (merged['end_ms'] - merged['start_ms']) > duration:
-                        print(f"   🔗 Merged consecutive segments: {merged['start']:.1f}s-{merged['end']:.1f}s ({merged['end_ms']-merged['start_ms']}ms)")
-                        return merged, 'merged'
-                
-                return seg, quality
+            # ──────────────────────────────────────────────────────────────
+            # STEP B: Helper functions
+            # ──────────────────────────────────────────────────────────────
             
-            def try_merge_consecutive(target_speaker, target_segs, other_segs):
+            def get_other_segments(target_speaker):
+                """Get all segments from speakers other than target."""
+                other = []
+                for spk, segs in all_segments_by_speaker.items():
+                    if spk != target_speaker:
+                        other.extend(segs)
+                return other
+            
+            def calc_overlap_ms(seg_start_ms, seg_end_ms, other_segs):
+                """Calculate total ms of overlap with other speakers' segments."""
+                total = 0
+                for o in other_segs:
+                    o_start = o['start_ms'] - OVERLAP_MARGIN_MS
+                    o_end = o['end_ms'] + OVERLAP_MARGIN_MS
+                    overlap_start = max(seg_start_ms, o_start)
+                    overlap_end = min(seg_end_ms, o_end)
+                    if overlap_end > overlap_start:
+                        total += (overlap_end - overlap_start)
+                return total
+            
+            def calc_safe_padding(start_ms, end_ms, other_segs, audio_len_ms):
                 """
-                Try to merge consecutive segments from the same speaker
-                to create a longer clip. Only merge if the gap between them
-                has no other speaker.
+                Add 0.5s buffer BEFORE the segment, but stop if it would
+                overlap with another speaker's segment.
                 """
+                safe_start = max(0, start_ms - PAD_BUFFER_MS)
+                safe_end = min(audio_len_ms, end_ms + 200)  # Small after-pad
+                
+                # Check if pre-padding would enter another speaker's territory
+                for o in other_segs:
+                    o_end = o['end_ms']
+                    # If another speaker ends right before our segment
+                    if o_end > safe_start and o_end <= start_ms:
+                        # Don't pad before this point
+                        safe_start = max(safe_start, o_end + 100)  # 100ms gap
+                
+                # Check if post-padding would enter another speaker's territory
+                for o in other_segs:
+                    o_start = o['start_ms']
+                    if o_start >= end_ms and o_start < safe_end:
+                        safe_end = min(safe_end, o_start - 100)
+                
+                return safe_start, safe_end
+            
+            def check_rms_quality(audio_clip, speaker_label):
+                """
+                Voice Activity Detection via RMS energy check.
+                
+                Splits clip into 500ms windows and checks:
+                1. Overall RMS is above silence threshold
+                2. At least 30% of windows have speech-level energy
+                
+                Returns: (passed: bool, rms: float, active_ratio: float)
+                """
+                import math
+                
+                clip_rms = audio_clip.rms
+                
+                if clip_rms < MIN_RMS_THRESHOLD:
+                    print(f"   ❌ [RMS] FAILED: clip RMS={clip_rms} < threshold={MIN_RMS_THRESHOLD} (silence/noise)")
+                    return False, clip_rms, 0.0
+                
+                # Check speech activity in 500ms windows
+                window_ms = 500
+                total_windows = max(1, len(audio_clip) // window_ms)
+                active_windows = 0
+                
+                for i in range(total_windows):
+                    window_start = i * window_ms
+                    window_end = min(window_start + window_ms, len(audio_clip))
+                    window = audio_clip[window_start:window_end]
+                    if window.rms >= MIN_RMS_THRESHOLD:
+                        active_windows += 1
+                
+                active_ratio = active_windows / total_windows
+                
+                if active_ratio < MIN_RMS_RATIO:
+                    print(f"   ❌ [RMS] FAILED: only {active_ratio:.0%} of clip has speech (need {MIN_RMS_RATIO:.0%})")
+                    print(f"      RMS={clip_rms}, active windows={active_windows}/{total_windows}")
+                    return False, clip_rms, active_ratio
+                
+                print(f"   ✅ [RMS] PASSED: RMS={clip_rms}, speech activity={active_ratio:.0%} ({active_windows}/{total_windows} windows)")
+                return True, clip_rms, active_ratio
+            
+            def rank_segments_for_speaker(target_speaker, other_segs):
+                """
+                Rank ALL segments for an unknown speaker by quality.
+                Returns list sorted best-first: [(segment, overlap_ms, duration_ms)]
+                """
+                target_segs = all_segments_by_speaker.get(target_speaker, [])
+                if not target_segs:
+                    return []
+                
+                ranked = []
+                for seg in target_segs:
+                    raw_dur = seg['end_ms'] - seg['start_ms']
+                    if raw_dur < 1000:  # Skip segments shorter than 1s
+                        continue
+                    
+                    overlap = calc_overlap_ms(seg['start_ms'], seg['end_ms'], other_segs)
+                    
+                    # Scoring: prefer isolated, then closest to 5-7s range, then longest
+                    in_target_range = TARGET_MIN_MS <= raw_dur <= TARGET_MAX_MS
+                    range_distance = 0 if in_target_range else min(
+                        abs(raw_dur - TARGET_MIN_MS), abs(raw_dur - TARGET_MAX_MS)
+                    )
+                    
+                    ranked.append({
+                        'seg': seg,
+                        'overlap': overlap,
+                        'duration': raw_dur,
+                        'in_range': in_target_range,
+                        'range_dist': range_distance
+                    })
+                
+                # Sort: least overlap → in target range → closest to range → longest
+                ranked.sort(key=lambda r: (r['overlap'], not r['in_range'], r['range_dist'], -r['duration']))
+                return ranked
+            
+            def try_merge_consecutive(target_speaker, other_segs):
+                """
+                Merge consecutive segments from same speaker if gap is clean.
+                Target: 5-7 seconds total.
+                """
+                target_segs = sorted(
+                    all_segments_by_speaker.get(target_speaker, []),
+                    key=lambda s: s['start_ms']
+                )
                 if len(target_segs) < 2:
                     return None
                 
-                # Sort by start time
-                sorted_segs = sorted(target_segs, key=lambda s: s['start_ms'])
-                
                 best_merged = None
-                best_duration = 0
+                best_score = float('inf')
                 
-                for i in range(len(sorted_segs) - 1):
-                    # Try merging segment i with segment i+1
-                    merged_start = sorted_segs[i]['start_ms']
-                    merged_end = sorted_segs[i + 1]['end_ms']
-                    gap_start = sorted_segs[i]['end_ms']
-                    gap_end = sorted_segs[i + 1]['start_ms']
-                    
-                    # Check if gap is reasonable (< 2 seconds)
+                for i in range(len(target_segs) - 1):
+                    gap_start = target_segs[i]['end_ms']
+                    gap_end = target_segs[i + 1]['start_ms']
                     gap_ms = gap_end - gap_start
+                    
                     if gap_ms > 2000 or gap_ms < 0:
                         continue
                     
-                    # Check if any other speaker talks in the gap
-                    gap_clean = True
-                    for other in other_segs:
-                        o_start = other['start_ms']
-                        o_end = other['end_ms']
-                        # Check intersection with gap
-                        if o_start < gap_end and o_end > gap_start:
-                            gap_clean = False
+                    # Check gap is clean (no other speaker)
+                    gap_dirty = False
+                    for o in other_segs:
+                        if o['start_ms'] < gap_end and o['end_ms'] > gap_start:
+                            gap_dirty = True
                             break
+                    if gap_dirty:
+                        continue
                     
-                    if gap_clean:
-                        merged_duration = merged_end - merged_start
-                        if merged_duration > best_duration and merged_duration <= MAX_SLICE_MS:
-                            best_duration = merged_duration
-                            best_merged = {
-                                'speaker': target_speaker,
-                                'start': sorted_segs[i]['start'],
-                                'end': sorted_segs[i + 1]['end'],
-                                'start_ms': merged_start,
-                                'end_ms': merged_end,
-                                'text': sorted_segs[i]['text'] + ' ' + sorted_segs[i + 1]['text']
-                            }
+                    merged_start = target_segs[i]['start_ms']
+                    merged_end = target_segs[i + 1]['end_ms']
+                    merged_dur = merged_end - merged_start
+                    
+                    if merged_dur < ABS_MIN_MS or merged_dur > ABS_MAX_MS:
+                        continue
+                    
+                    # Check overlap of the merged range
+                    overlap = calc_overlap_ms(merged_start, merged_end, other_segs)
+                    score = overlap * 1000 + abs(merged_dur - TARGET_MIN_MS)
+                    
+                    if score < best_score:
+                        best_score = score
+                        best_merged = {
+                            'speaker': target_speaker,
+                            'start': target_segs[i]['start'],
+                            'end': target_segs[i + 1]['end'],
+                            'start_ms': merged_start,
+                            'end_ms': merged_end,
+                            'text': target_segs[i].get('text', '') + ' ' + target_segs[i + 1].get('text', '')
+                        }
                 
                 return best_merged
             
-            # Step C: Also get Gemini's purest segments as a hint
-            purest_segments = result.get('purest_segments', [])
-            speaker_purest = {}
-            for ps in purest_segments:
-                speaker = ps.get('speaker', '')
-                if speaker:
-                    speaker_purest[speaker] = ps
+            # ──────────────────────────────────────────────────────────────
+            # STEP C: Process each unknown speaker with SMART SLICING
+            # ──────────────────────────────────────────────────────────────
             
-            print(f"🎯 Gemini purest segments: {len(purest_segments)}")
-            
-            # Step D: Process each unknown speaker
             for speaker in unknown_speakers:
-                print(f"\n❓ Processing unknown speaker: {speaker}")
+                print(f"\n{'─'*50}")
+                print(f"❓ SMART SLICING for unknown speaker: {speaker}")
+                print(f"{'─'*50}")
                 
-                # Find the most isolated segment algorithmically
-                segment_data, quality = find_isolated_segment(
-                    speaker, all_segments_by_speaker, speaker_purest.get(speaker)
-                )
+                other_segs = get_other_segments(speaker)
+                ranked = rank_segments_for_speaker(speaker, other_segs)
                 
-                if not segment_data:
+                # Also try merged segments
+                merged = try_merge_consecutive(speaker, other_segs)
+                if merged:
+                    m_dur = merged['end_ms'] - merged['start_ms']
+                    m_overlap = calc_overlap_ms(merged['start_ms'], merged['end_ms'], other_segs)
+                    print(f"   🔗 Merged candidate: {merged['start']:.1f}s-{merged['end']:.1f}s ({m_dur}ms, overlap={m_overlap}ms)")
+                
+                if not ranked and not merged:
                     print(f"   ⚠️  No valid segments found for {speaker} - SKIPPING")
                     continue
                 
-                # Get segment timestamps
-                start_ms = segment_data.get('start_ms', int(segment_data.get('start', 0) * 1000))
-                end_ms = segment_data.get('end_ms', int(segment_data.get('end', 0) * 1000))
-                start_sec = segment_data.get('start', start_ms / 1000)
-                end_sec = segment_data.get('end', end_ms / 1000)
+                # Log all candidates
+                print(f"   📋 Candidates (sorted best-first):")
+                for idx, r in enumerate(ranked[:5]):
+                    s = r['seg']
+                    print(f"      [{idx}] {s['start']:.1f}s-{s['end']:.1f}s | dur={r['duration']}ms | overlap={r['overlap']}ms | range={'✅' if r['in_range'] else '❌'}")
                 
-                # Add padding to avoid clipping speech
-                padded_start_ms = max(0, start_ms - PAD_BEFORE_MS)
-                padded_end_ms = min(len(audio_segment), end_ms + PAD_AFTER_MS)
+                # Try each candidate until one passes RMS validation
+                clip_sent = False
                 
-                # Ensure we reach target duration (5s) if possible
-                duration_ms = padded_end_ms - padded_start_ms
-                if duration_ms < TARGET_DURATION_MS:
-                    needed = TARGET_DURATION_MS - duration_ms
-                    extend_before = needed // 2
-                    extend_after = needed - extend_before
-                    padded_start_ms = max(0, padded_start_ms - extend_before)
-                    padded_end_ms = min(len(audio_segment), padded_end_ms + extend_after)
-                    print(f"   📏 Extended to target: {padded_end_ms - padded_start_ms}ms (target: {TARGET_DURATION_MS}ms)")
+                # Build candidate list: ranked segments + merged
+                candidates = [(r['seg'], f"seg[{i}]") for i, r in enumerate(ranked)]
+                if merged:
+                    candidates.append((merged, "merged"))
+                    # If merged is good, try it first if ranked segments are short
+                    if ranked and ranked[0]['duration'] < ABS_MIN_MS:
+                        candidates.insert(0, (merged, "merged"))
                 
-                # Cap at maximum
-                if (padded_end_ms - padded_start_ms) > MAX_SLICE_MS:
-                    padded_end_ms = padded_start_ms + MAX_SLICE_MS
-                
-                # Final bounds check
-                if padded_start_ms >= padded_end_ms:
-                    print(f"   ⚠️  Invalid bounds after padding - SKIPPING")
-                    continue
-                
-                # Slice audio
-                audio_slice = audio_segment[padded_start_ms:padded_end_ms]
-                
-                # Apply audio enhancements for clarity
-                try:
-                    # 1. Normalize volume to -16 dBFS
-                    target_dbfs = -16.0
-                    current_dbfs = audio_slice.dBFS
-                    if current_dbfs != float('-inf'):
-                        gain = target_dbfs - current_dbfs
-                        gain = min(gain, 20.0)  # Cap to avoid noise amplification
-                        audio_slice = audio_slice.apply_gain(gain)
+                for candidate_seg, candidate_label in candidates:
+                    if clip_sent:
+                        break
                     
-                    # 2. Fade in/out for clean cuts
-                    audio_slice = audio_slice.fade_in(FADE_MS).fade_out(FADE_MS)
-                except Exception as enhance_err:
-                    print(f"   ⚠️  Enhancement failed: {enhance_err}")
-                
-                # Log final clip details
-                final_duration = len(audio_slice)
-                print(f"   ✂️  FINAL CLIP for {speaker}:")
-                print(f"      Original: {start_sec:.1f}s - {end_sec:.1f}s")
-                print(f"      Padded:   {padded_start_ms/1000:.1f}s - {padded_end_ms/1000:.1f}s ({final_duration}ms)")
-                print(f"      Quality:  {quality}")
-                print(f"      Volume:   {audio_slice.dBFS:.1f} dBFS")
-                print(f"      Text:     {segment_data.get('text', '')[:60]}...")
-                
-                # Export to temp file - try OGG first (native WhatsApp format),
-                # fall back to high-quality MP3 if OGG/Opus codec not available
-                import tempfile as tf
-                slice_path = None
-                
-                # Try OGG/Opus first (avoids double compression from OGG source)
-                try:
-                    with tf.NamedTemporaryFile(delete=False, suffix='.ogg') as slice_file:
-                        audio_slice.export(
-                            slice_file.name, 
-                            format='ogg',
-                            codec='libopus',
-                            parameters=['-b:a', '64k', '-ar', '48000']
-                        )
-                        slice_path = slice_file.name
-                        slice_size = os.path.getsize(slice_path)
-                        print(f"   💾 Exported: OGG/Opus ({slice_size} bytes)")
-                except Exception as ogg_err:
-                    print(f"   ⚠️  OGG export failed ({ogg_err}), falling back to MP3...")
-                    # Fallback: High-quality MP3
-                    with tf.NamedTemporaryFile(delete=False, suffix='.mp3') as slice_file:
-                        audio_slice.export(
-                            slice_file.name, 
-                            format='mp3',
-                            bitrate='128k',
-                            parameters=['-ar', '44100']
-                        )
-                        slice_path = slice_file.name
-                        slice_size = os.path.getsize(slice_path)
-                        print(f"   💾 Exported: MP3/128k ({slice_size} bytes)")
-                
-                # Track for cleanup (if not saved to pending_identifications)
-                slice_files_to_cleanup.append(slice_path)
-                
-                # Send "Who is this?" with exact Speaker ID
-                if whatsapp_provider and hasattr(whatsapp_provider, 'send_audio'):
-                    # Include exact Speaker ID for mapping
-                    caption = f"🔊 זוהה דובר חדש: *{speaker}*\nמי זה/זו? (הגב עם השם)"
+                    seg_start_ms = candidate_seg.get('start_ms', int(candidate_seg.get('start', 0) * 1000))
+                    seg_end_ms = candidate_seg.get('end_ms', int(candidate_seg.get('end', 0) * 1000))
+                    seg_start_sec = candidate_seg.get('start', seg_start_ms / 1000)
+                    seg_end_sec = candidate_seg.get('end', seg_end_ms / 1000)
+                    raw_duration = seg_end_ms - seg_start_ms
                     
-                    audio_result = whatsapp_provider.send_audio(
-                        audio_path=slice_path,
-                        caption=caption,
-                        to=f"+{from_number}"
+                    print(f"\n   🔍 Trying candidate {candidate_label}: {seg_start_sec:.1f}s-{seg_end_sec:.1f}s ({raw_duration}ms)")
+                    print(f"      Segment start: {seg_start_ms}ms | Segment end: {seg_end_ms}ms")
+                    
+                    # ── INNER TRIM: Skip first/last 0.5s of boundaries ──
+                    # Segment boundaries often have silence or speaker transitions
+                    trimmed_start = seg_start_ms + INNER_TRIM_MS
+                    trimmed_end = seg_end_ms - INNER_TRIM_MS
+                    
+                    # Only trim if segment is long enough (keep at least 2s after trim)
+                    if (trimmed_end - trimmed_start) < 2000:
+                        # Too short to trim - use original with smaller trim
+                        trimmed_start = seg_start_ms + 200
+                        trimmed_end = seg_end_ms - 200
+                        if (trimmed_end - trimmed_start) < 1000:
+                            trimmed_start = seg_start_ms
+                            trimmed_end = seg_end_ms
+                        print(f"      ⚠️  Segment too short for full trim, using reduced trim")
+                    
+                    print(f"      After inner trim: {trimmed_start}ms - {trimmed_end}ms ({trimmed_end - trimmed_start}ms)")
+                    
+                    # ── OVERLAP-SAFE PADDING ──
+                    # Add 0.5s buffer before, but STOP at other speaker's territory
+                    padded_start, padded_end = calc_safe_padding(
+                        trimmed_start, trimmed_end, other_segs, len(audio_segment)
                     )
                     
-                    if audio_result.get('success'):
-                        # Store pending identification with Speaker ID
-                        sent_msg_id = audio_result.get('caption_message_id') or audio_result.get('wam_id') or audio_result.get('message_id')
-                        if sent_msg_id:
-                            pending_identifications[sent_msg_id] = {
-                                'file_path': slice_path,
-                                'speaker_id': speaker  # CRITICAL: Store exact Speaker ID
-                            }
-                            print(f"📝 Pending identification stored: {sent_msg_id} -> {speaker}")
-                            unknown_speakers_processed.append(speaker)
-                            # REMOVE from cleanup list - file needed for voice imprinting
-                            if slice_path in slice_files_to_cleanup:
-                                slice_files_to_cleanup.remove(slice_path)
+                    print(f"      After safe padding: {padded_start}ms - {padded_end}ms ({padded_end - padded_start}ms)")
+                    
+                    # ── TARGET 5-7 SECONDS ──
+                    current_dur = padded_end - padded_start
+                    if current_dur < TARGET_MIN_MS:
+                        # Extend carefully (without overlapping other speakers)
+                        needed = TARGET_MIN_MS - current_dur
+                        ext_before = needed // 2
+                        ext_after = needed - ext_before
+                        new_start = max(0, padded_start - ext_before)
+                        new_end = min(len(audio_segment), padded_end + ext_after)
+                        
+                        # Verify extension doesn't overlap
+                        ext_overlap = calc_overlap_ms(new_start, new_end, other_segs)
+                        if ext_overlap == 0:
+                            padded_start = new_start
+                            padded_end = new_end
+                            print(f"      Extended to: {padded_start}ms - {padded_end}ms ({padded_end - padded_start}ms)")
                         else:
-                            # No message ID, file will be cleaned up by finally block
-                            pass
-                    else:
-                        print(f"⚠️  Failed to send audio slice: {audio_result.get('error')}")
-                        # File will be cleaned up by finally block
+                            print(f"      ⚠️  Extension would overlap ({ext_overlap}ms), keeping shorter clip")
+                    
+                    # Cap at target max (7s) unless already shorter
+                    if (padded_end - padded_start) > TARGET_MAX_MS:
+                        # Center the trim around the middle of the segment
+                        center = (padded_start + padded_end) // 2
+                        padded_start = max(0, center - TARGET_MAX_MS // 2)
+                        padded_end = min(len(audio_segment), padded_start + TARGET_MAX_MS)
+                        print(f"      Capped to target max: {padded_start}ms - {padded_end}ms ({padded_end - padded_start}ms)")
+                    
+                    # Final bounds check
+                    if padded_start >= padded_end or (padded_end - padded_start) < 1000:
+                        print(f"      ⚠️  Invalid bounds ({padded_start}ms-{padded_end}ms) - trying next candidate")
+                        continue
+                    
+                    # ── SLICE AUDIO ──
+                    audio_slice = audio_segment[padded_start:padded_end]
+                    
+                    print(f"      🎵 Sliced: {len(audio_slice)}ms from source audio")
+                    print(f"      🎵 Raw dBFS: {audio_slice.dBFS:.1f}")
+                    
+                    # ── RMS VOICE ACTIVITY VALIDATION ──
+                    rms_passed, rms_value, active_ratio = check_rms_quality(audio_slice, speaker)
+                    
+                    if not rms_passed:
+                        print(f"      ⏭️  Clip failed RMS check - trying next candidate")
+                        continue
+                    
+                    # ── AUDIO ENHANCEMENTS ──
+                    try:
+                        # Normalize volume to -16 dBFS (broadcast standard)
+                        target_dbfs = -16.0
+                        current_dbfs = audio_slice.dBFS
+                        if current_dbfs != float('-inf') and current_dbfs < 0:
+                            gain = target_dbfs - current_dbfs
+                            gain = min(gain, 20.0)
+                            gain = max(gain, -10.0)  # Don't reduce too much either
+                            audio_slice = audio_slice.apply_gain(gain)
+                        
+                        # Fade in/out for clean cuts
+                        audio_slice = audio_slice.fade_in(FADE_MS).fade_out(FADE_MS)
+                    except Exception as enhance_err:
+                        print(f"      ⚠️  Enhancement failed: {enhance_err}")
+                    
+                    # ── DETAILED DEBUG LOG ──
+                    final_duration = len(audio_slice)
+                    print(f"   ✂️  ═══ FINAL CLIP for {speaker} ═══")
+                    print(f"      📍 Source segment: {seg_start_ms}ms → {seg_end_ms}ms ({raw_duration}ms)")
+                    print(f"      📍 Inner trimmed: {trimmed_start}ms → {trimmed_end}ms")
+                    print(f"      📍 Safe padded:   {padded_start}ms → {padded_end}ms")
+                    print(f"      📍 Final clip:    {final_duration}ms ({final_duration/1000:.1f}s)")
+                    print(f"      🔊 Volume: {audio_slice.dBFS:.1f} dBFS | RMS: {rms_value}")
+                    print(f"      🎯 Speech activity: {active_ratio:.0%}")
+                    print(f"      💬 Text: \"{candidate_seg.get('text', '')[:80]}\"")
+                    print(f"      ✅ Quality: {candidate_label} | PASSED all checks")
+                
+                    # ── EXPORT & SEND (only reached if RMS passed) ──
+                    import tempfile as tf
+                    slice_path = None
+                    
+                    # Try OGG/Opus first (native WhatsApp format)
+                    try:
+                        with tf.NamedTemporaryFile(delete=False, suffix='.ogg') as slice_file:
+                            audio_slice.export(
+                                slice_file.name, 
+                                format='ogg',
+                                codec='libopus',
+                                parameters=['-b:a', '64k', '-ar', '48000']
+                            )
+                            slice_path = slice_file.name
+                            slice_size = os.path.getsize(slice_path)
+                            print(f"   💾 Exported: OGG/Opus ({slice_size} bytes)")
+                    except Exception as ogg_err:
+                        print(f"   ⚠️  OGG export failed ({ogg_err}), falling back to MP3...")
+                        with tf.NamedTemporaryFile(delete=False, suffix='.mp3') as slice_file:
+                            audio_slice.export(
+                                slice_file.name, 
+                                format='mp3',
+                                bitrate='128k',
+                                parameters=['-ar', '44100']
+                            )
+                            slice_path = slice_file.name
+                            slice_size = os.path.getsize(slice_path)
+                            print(f"   💾 Exported: MP3/128k ({slice_size} bytes)")
+                    
+                    slice_files_to_cleanup.append(slice_path)
+                    
+                    # Send "מי זה?" ONLY because clip passed quality check
+                    if whatsapp_provider and hasattr(whatsapp_provider, 'send_audio'):
+                        caption = f"🔊 זוהה דובר חדש: *{speaker}*\nמי זה/זו? (הגב עם השם)"
+                        
+                        audio_result = whatsapp_provider.send_audio(
+                            audio_path=slice_path,
+                            caption=caption,
+                            to=f"+{from_number}"
+                        )
+                        
+                        if audio_result.get('success'):
+                            sent_msg_id = audio_result.get('caption_message_id') or audio_result.get('wam_id') or audio_result.get('message_id')
+                            if sent_msg_id:
+                                pending_identifications[sent_msg_id] = {
+                                    'file_path': slice_path,
+                                    'speaker_id': speaker
+                                }
+                                print(f"   📝 Pending identification stored: {sent_msg_id} -> {speaker}")
+                                unknown_speakers_processed.append(speaker)
+                                if slice_path in slice_files_to_cleanup:
+                                    slice_files_to_cleanup.remove(slice_path)
+                        else:
+                            print(f"   ⚠️  Failed to send audio slice: {audio_result.get('error')}")
+                    
+                    clip_sent = True
+                    break  # Done with this speaker, move to next
+                
+                # ── QUALITY GATE: No clip passed validation ──
+                if not clip_sent:
+                    print(f"\n   🚫 QUALITY GATE: No clip for {speaker} passed RMS validation!")
+                    print(f"      Tested {len(candidates)} candidate(s) - all were silence/noise.")
+                    print(f"      ❌ NOT sending 'מי זה?' - would be useless with bad audio.")
                 
         except ImportError:
             print("⚠️  pydub not installed - cannot slice audio for speaker identification")
