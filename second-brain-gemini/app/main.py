@@ -477,6 +477,10 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+class _SkipNotification(Exception):
+    """Internal signal to skip deploy notification (dedup)."""
+    pass
+
 # Startup event: Pre-warm memory cache
 @app.on_event("startup")
 async def startup_event():
@@ -495,6 +499,25 @@ async def startup_event():
         is_production = os.environ.get('RENDER', '') == 'true'
         
         if is_production:
+            # ── DEDUP: Prevent sending the same notification twice ──
+            # This handles edge cases where Render restarts the service
+            # multiple times during a single deploy cycle.
+            dedup_file = Path("/tmp/.deploy_notified")
+            try:
+                if dedup_file.exists():
+                    last_notified = dedup_file.read_text().strip()
+                    if last_notified == current_version:
+                        import time as _t
+                        file_age = _t.time() - dedup_file.stat().st_mtime
+                        if file_age < 300:  # 5 minutes
+                            print(f"🔇 Skipping duplicate deploy notification (v{current_version}, sent {file_age:.0f}s ago)")
+                            # Skip notification but continue with the rest of startup
+                            raise _SkipNotification()
+            except _SkipNotification:
+                raise
+            except Exception:
+                pass  # File check failed — send notification anyway
+            
             print(f"🚀 Production deployment detected - Version {current_version}")
             
             # Get Israel time (UTC+2 in winter, UTC+3 in summer - using +2 as base)
@@ -576,6 +599,11 @@ async def startup_event():
                 result = meta_whatsapp_service.send_whatsapp(notification_msg)
                 if result.get('success'):
                     print(f"✅ Deployment notification sent via WhatsApp")
+                    # ── Mark as sent (dedup) ──
+                    try:
+                        dedup_file.write_text(current_version)
+                    except Exception:
+                        pass
                 else:
                     print(f"⚠️  Failed to send deployment notification: {result.get('error')}")
             else:
@@ -583,6 +611,8 @@ async def startup_event():
         else:
             print(f"📍 Local development - Version {current_version} (no notification)")
             
+    except _SkipNotification:
+        pass  # Dedup — notification already sent for this version
     except Exception as e:
         print(f"⚠️  Deployment notification error: {e}")
         import traceback

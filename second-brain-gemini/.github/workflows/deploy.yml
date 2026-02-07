@@ -47,21 +47,13 @@ jobs:
           echo "version=$VERSION" >> $GITHUB_OUTPUT
           echo "📌 Current version: $VERSION"
       
-      - name: 🏷️ Create Git Tag
-        if: steps.version.outputs.version != ''
+      # NOTE: Git tag push was removed because it triggered a SECOND
+      # Render deploy (Render treats tag pushes as push events),
+      # causing duplicate WhatsApp deployment notifications.
+      # Tags are no longer needed — version is tracked in VERSION file.
+      - name: 🏷️ Log Version
         run: |
-          VERSION="${{ steps.version.outputs.version }}"
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          
-          # Check if tag already exists
-          if git rev-parse "v$VERSION" >/dev/null 2>&1; then
-            echo "⚠️  Tag v$VERSION already exists, skipping..."
-          else
-            git tag -a "v$VERSION" -m "Release version $VERSION"
-            git push origin "v$VERSION"
-            echo "✅ Created and pushed tag v$VERSION"
-          fi
+          echo "📌 Version: ${{ steps.version.outputs.version }}"
       
       - name: 📊 Deployment Summary
         run: |
