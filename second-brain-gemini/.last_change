@@ -1,2 +1,1 @@
-@Codebase
-The SDK is stubbornly using the `v1beta` endpoint despite our changes, causing 404 errors....
+בנוסף לביטוי ״הרץ בקרסר״ אני רוצה שגם הביטוי ״שלח לקרסר״ יעשה את אותו הדבר בדיוק.

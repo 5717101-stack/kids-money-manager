@@ -2277,20 +2277,21 @@ async def webhook(request: Request, background_tasks: BackgroundTasks):
                                     # CURSOR COMMAND INTERCEPTOR: Remote Execution via WhatsApp
                                     # If message starts with "הרץ בקרסר", save to Drive for local Mac bridge
                                     # ================================================================
-                                    CURSOR_COMMAND_PREFIX = "הרץ בקרסר"
-                                    if message_body_text.strip().startswith(CURSOR_COMMAND_PREFIX):
+                                    CURSOR_COMMAND_PREFIXES = ["הרץ בקרסר", "שלח לקרסר"]
+                                    matched_prefix = next((p for p in CURSOR_COMMAND_PREFIXES if message_body_text.strip().startswith(p)), None)
+                                    if matched_prefix:
                                         print(f"\n{'='*60}")
                                         print(f"🎮 CURSOR COMMAND INTERCEPTOR ACTIVATED")
                                         print(f"{'='*60}")
                                         
                                         # Extract the prompt content (everything after the prefix)
-                                        prompt_content = message_body_text[len(CURSOR_COMMAND_PREFIX):].strip()
+                                        prompt_content = message_body_text[len(matched_prefix):].strip()
                                         
                                         if not prompt_content:
                                             # No content after prefix
                                             if whatsapp_provider:
                                                 whatsapp_provider.send_whatsapp(
-                                                    message="⚠️ לא קיבלתי תוכן לביצוע. שלח: 'הרץ בקרסר [הפקודה שלך]'",
+                                                    message="⚠️ לא קיבלתי תוכן לביצוע. שלח: 'הרץ בקרסר [הפקודה שלך]' או 'שלח לקרסר [הפקודה שלך]'",
                                                     to=f"+{from_number}"
                                                 )
                                             continue
