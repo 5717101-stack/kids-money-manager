@@ -2501,6 +2501,7 @@ async def webhook(request: Request, background_tasks: BackgroundTasks):
                                                     phone=from_number,
                                                     department=person.get("department", ""),
                                                     manager=person.get("reports_to", ""),
+                                                    entity=person,
                                                 )
                                                 
                                                 # Save interaction to memory
@@ -2560,22 +2561,53 @@ async def webhook(request: Request, background_tasks: BackgroundTasks):
                                             continue
                                     
                                     # ================================================================
-                                    # KNOWLEDGE BASE QUERY INTERCEPTOR
+                                    # PRONOUN RESOLUTION + KNOWLEDGE BASE QUERY INTERCEPTOR
+                                    # Step 0: Resolve pronouns ("שלו", "his") → last entity name
                                     # Triggers: "מי מדווח ל...", "מה התפקיד של...", etc.
                                     # Skips audio-summary flow → direct fact-based answer from KB
                                     # Now includes Smart Identity Resolver for ambiguous names.
                                     # ================================================================
-                                    if is_kb_query(message_body_text):
+                                    
+                                    # ── Step 0: Pronoun Resolution ──
+                                    # If user says "מה השכר שלו?" and we recently discussed Yuval,
+                                    # resolve to "מה השכר של Yuval Laikin?"
+                                    effective_query = message_body_text
+                                    pronoun_entity = None
+                                    
+                                    if identity_resolver.has_pronouns(message_body_text):
+                                        effective_query, pronoun_entity = identity_resolver.resolve_pronouns(
+                                            from_number, message_body_text
+                                        )
+                                        if pronoun_entity:
+                                            print(f"🔗 [Pronoun] Resolved: '{message_body_text}' → '{effective_query}'")
+                                        elif not is_kb_query(message_body_text):
+                                            # Has pronouns but no entity in memory — check if it looks like a KB query
+                                            # If so, ask "Who are you referring to?" instead of guessing
+                                            pronoun_keywords = ['שכר', 'משכורת', 'תפקיד', 'מדווח', 'מנהל',
+                                                               'דירוג', 'rating', 'salary', 'role', 'manager']
+                                            if any(kw in message_body_text for kw in pronoun_keywords):
+                                                fallback_msg = "❓ למי אתה מתכוון? אין לי הקשר מהשיחה האחרונה."
+                                                if whatsapp_provider:
+                                                    whatsapp_provider.send_whatsapp(
+                                                        message=fallback_msg,
+                                                        to=f"+{from_number}"
+                                                    )
+                                                print(f"🔗 [Pronoun] No entity in memory — asked for clarification")
+                                                continue
+                                    
+                                    if is_kb_query(effective_query):
                                         print(f"\n{'='*60}")
                                         print(f"📚 KNOWLEDGE BASE QUERY INTERCEPTOR ACTIVATED")
                                         print(f"{'='*60}")
-                                        print(f"   Query: {message_body_text}")
+                                        print(f"   Query: {effective_query}")
+                                        if effective_query != message_body_text:
+                                            print(f"   Original: {message_body_text}")
                                         
                                         try:
                                             from app.services.knowledge_base_service import get_kb_query_context, search_people
                                             
                                             # ── Step 1: Check for name ambiguity BEFORE calling Gemini ──
-                                            extracted_name = identity_resolver.extract_person_name(message_body_text)
+                                            extracted_name = identity_resolver.extract_person_name(effective_query)
                                             
                                             if extracted_name:
                                                 print(f"   🔍 Extracted name: '{extracted_name}'")
@@ -2609,8 +2641,18 @@ async def webhook(request: Request, background_tasks: BackgroundTasks):
                                                         phone=from_number,
                                                         department=person.get("department", ""),
                                                         manager=person.get("reports_to", ""),
+                                                        entity=person,
                                                     )
                                                     print(f"   ✅ Unique match: {person.get('canonical_name')}")
+                                            
+                                            # If pronoun was resolved, also update context with the entity
+                                            if pronoun_entity and not extracted_name:
+                                                identity_resolver.update_context(
+                                                    phone=from_number,
+                                                    department=pronoun_entity.get("department", ""),
+                                                    manager=pronoun_entity.get("reports_to", ""),
+                                                    entity=pronoun_entity,
+                                                )
                                             
                                             # ── Step 2: Proceed with normal KB query ──
                                             kb_context = get_kb_query_context()
@@ -2627,8 +2669,9 @@ async def webhook(request: Request, background_tasks: BackgroundTasks):
                                                 print(f"   📚 KB context loaded: {len(kb_context)} chars")
                                                 
                                                 # Use Gemini to answer directly from KB
+                                                # IMPORTANT: Use effective_query (with resolved pronouns)
                                                 kb_answer = gemini_service.answer_kb_query(
-                                                    user_query=message_body_text,
+                                                    user_query=effective_query,
                                                     kb_context=kb_context
                                                 )
                                                 
@@ -2649,6 +2692,7 @@ async def webhook(request: Request, background_tasks: BackgroundTasks):
                                                         phone=from_number,
                                                         department=person.get("department", ""),
                                                         manager=person.get("reports_to", ""),
+                                                        entity=person,
                                                     )
                                                 
                                                 # Save interaction to memory

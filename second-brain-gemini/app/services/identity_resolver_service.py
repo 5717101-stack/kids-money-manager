@@ -6,9 +6,13 @@ Handles name ambiguity with minimal user friction:
 2. Contextual scoring (department/manager affinity from recent conversation)
 3. Digit-only response handling (quick selection from numbered menus)
 4. WhatsApp-optimized Hebrew ambiguity menus
+5. Pronoun resolution — "מה השכר שלו?" → "מה השכר של Yuval Laikin?"
 
 Usage (in main.py):
     from app.services.identity_resolver_service import identity_resolver
+
+    # Before KB query — resolve pronouns to the last-mentioned entity
+    resolved_msg = identity_resolver.resolve_pronouns(from_number, message_text)
 
     # Before KB query — check if message is a digit selection
     resolved = identity_resolver.try_resolve_digit(from_number, message_text)
@@ -45,6 +49,7 @@ class SessionContext:
     """Short-term memory for a single user (phone number)."""
     last_department_mentioned: str = ""
     last_manager_mentioned: str = ""
+    last_mentioned_entity: Optional[Dict[str, Any]] = None  # Full person dict from last KB answer
     last_options_list: List[Dict[str, Any]] = field(default_factory=list)
     pending_query: str = ""            # The original question waiting for disambiguation
     last_activity: float = 0.0         # timestamp of last interaction
@@ -95,10 +100,17 @@ class IdentityResolverService:
                 self._sessions[phone] = session
             return session
 
-    def update_context(self, phone: str, department: str = "", manager: str = ""):
+    def update_context(
+        self, phone: str, department: str = "", manager: str = "",
+        entity: Optional[Dict[str, Any]] = None
+    ):
         """
         Update session context after a successful KB answer.
         Call this after every KB response so subsequent queries benefit.
+        
+        Args:
+            entity: Full person dict (canonical_name, title, department, etc.)
+                    Stored as last_mentioned_entity for pronoun resolution.
         """
         session = self._get_session(phone)
         session.touch()
@@ -106,6 +118,88 @@ class IdentityResolverService:
             session.last_department_mentioned = department
         if manager:
             session.last_manager_mentioned = manager
+        if entity:
+            session.last_mentioned_entity = entity
+            name = entity.get("canonical_name", "?")
+            logger.info(f"🧠 [Resolver] Entity stored for {phone}: {name}")
+            print(f"🧠 [Resolver] Entity stored for {phone}: {name}")
+
+    def get_last_entity(self, phone: str) -> Optional[Dict[str, Any]]:
+        """Get the last-mentioned entity for a phone number (if session is active)."""
+        session = self._get_session(phone)
+        if session.is_expired() or not session.last_mentioned_entity:
+            return None
+        return session.last_mentioned_entity
+
+    # ── Pronoun resolution ───────────────────────────────────────────
+
+    # Pronouns in Hebrew and English that refer to a previously mentioned person
+    _PRONOUNS_HE = {'שלו', 'שלה', 'הוא', 'היא', 'אותו', 'אותה', 'לו', 'לה', 'ממנו', 'ממנה', 'עליו', 'עליה'}
+    _PRONOUNS_EN = {'his', 'her', 'him', 'he', 'she', 'their', 'them', 'hers'}
+
+    @classmethod
+    def has_pronouns(cls, message: str) -> bool:
+        """Check if the message contains pronouns that need resolution."""
+        words = set(re.findall(r'[\w\u0590-\u05FF]+', message.lower()))
+        return bool(words & (cls._PRONOUNS_HE | cls._PRONOUNS_EN))
+
+    def resolve_pronouns(self, phone: str, message: str) -> Tuple[str, Optional[Dict[str, Any]]]:
+        """
+        If message contains pronouns and we have a last_mentioned_entity,
+        replace the pronoun with the entity's canonical name.
+        
+        Returns:
+            (resolved_message, entity_used) — entity_used is None if no resolution happened.
+        
+        Examples:
+            "מה השכר שלו?"      → ("מה השכר של Yuval Laikin?", {person_dict})
+            "What is his rating?" → ("What is Yuval Laikin's rating?", {person_dict})
+            "מי המנהל שלו?"     → ("מי המנהל של Yuval Laikin?", {person_dict})
+        """
+        if not self.has_pronouns(message):
+            return message, None
+
+        entity = self.get_last_entity(phone)
+        if not entity:
+            return message, None
+
+        name = entity.get("canonical_name", "")
+        if not name:
+            return message, None
+
+        resolved = message
+        # ── Hebrew pronoun replacement ──
+        # "שלו" / "שלה" → "של {name}"
+        resolved = re.sub(r'\bשלו\b', f'של {name}', resolved)
+        resolved = re.sub(r'\bשלה\b', f'של {name}', resolved)
+        # "הוא" / "היא" at start or after space → name
+        resolved = re.sub(r'\bהוא\b', name, resolved)
+        resolved = re.sub(r'\bהיא\b', name, resolved)
+        # "אותו" / "אותה" → name
+        resolved = re.sub(r'\bאותו\b', name, resolved)
+        resolved = re.sub(r'\bאותה\b', name, resolved)
+        # "לו" / "לה" (careful — only when standalone)
+        resolved = re.sub(r'\bממנו\b', f'מ-{name}', resolved)
+        resolved = re.sub(r'\bממנה\b', f'מ-{name}', resolved)
+        resolved = re.sub(r'\bעליו\b', f'על {name}', resolved)
+        resolved = re.sub(r'\bעליה\b', f'על {name}', resolved)
+
+        # ── English pronoun replacement ──
+        resolved = re.sub(r'\bhis\b', f"{name}'s", resolved, flags=re.IGNORECASE)
+        resolved = re.sub(r'\bher\b', f"{name}'s", resolved, flags=re.IGNORECASE)
+        resolved = re.sub(r'\bhers\b', f"{name}'s", resolved, flags=re.IGNORECASE)
+        resolved = re.sub(r'\bhe\b', name, resolved, flags=re.IGNORECASE)
+        resolved = re.sub(r'\bshe\b', name, resolved, flags=re.IGNORECASE)
+        resolved = re.sub(r'\bhim\b', name, resolved, flags=re.IGNORECASE)
+        resolved = re.sub(r'\bthem\b', name, resolved, flags=re.IGNORECASE)
+        resolved = re.sub(r'\btheir\b', f"{name}'s", resolved, flags=re.IGNORECASE)
+
+        if resolved != message:
+            logger.info(f"🔗 [Resolver] Pronoun resolved: '{message}' → '{resolved}'")
+            print(f"🔗 [Resolver] Pronoun resolved: '{message}' → '{resolved}'")
+            return resolved, entity
+
+        return message, None
 
     # ── Digit response handling ─────────────────────────────────────
 
