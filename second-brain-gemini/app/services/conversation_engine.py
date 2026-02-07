@@ -155,6 +155,33 @@ _TOOL_DECLARATIONS = [
             properties={},
         )
     ),
+
+    genai.protos.FunctionDeclaration(
+        name="search_meetings",
+        description=(
+            "Search through past meeting transcripts and recordings. "
+            "Use when the user asks about past conversations, previous meetings, "
+            "or wants to prepare for an upcoming meeting with someone. "
+            "Can search by speaker name, topic, keywords, or date. "
+            "Examples: 'When did I last talk to Yuval?', 'What did we discuss about budget?', "
+            "'Prepare me for a meeting with David', 'What did Yuval say about vacation?'. "
+            "Also use when user asks 'what did we talk about?' or 'summarize last meeting'."
+        ),
+        parameters=genai.protos.Schema(
+            type=genai.protos.Type.OBJECT,
+            properties={
+                "query": genai.protos.Schema(
+                    type=genai.protos.Type.STRING,
+                    description="Search query: keywords, topic, or speaker name (Hebrew or English)"
+                ),
+                "speaker_name": genai.protos.Schema(
+                    type=genai.protos.Type.STRING,
+                    description="Optional: specific speaker to search for (e.g. 'Yuval', 'יובל')"
+                ),
+            },
+            required=["query"]
+        )
+    ),
 ]
 
 
@@ -180,6 +207,12 @@ def _execute_tool(function_name: str, args: Dict[str, Any]) -> str:
 
         elif function_name == "list_org_stats":
             return _tool_list_org_stats()
+
+        elif function_name == "search_meetings":
+            return _tool_search_meetings(
+                query=args.get("query", ""),
+                speaker_name=args.get("speaker_name", ""),
+            )
 
         else:
             return json.dumps({"error": f"Unknown tool: {function_name}"}, ensure_ascii=False)
@@ -382,6 +415,114 @@ def _tool_list_org_stats() -> str:
     }, ensure_ascii=False, default=str)
 
 
+def _tool_search_meetings(query: str, speaker_name: str = "") -> str:
+    """Search past meeting transcripts for a query and/or speaker."""
+    dms = conversation_engine._drive_memory_service
+    if not dms:
+        return json.dumps({"error": "Drive service not available. Cannot search transcripts."}, ensure_ascii=False)
+
+    # 1. Try Transcripts folder first (dedicated files)
+    search_terms = [t.strip() for t in query.split() if t.strip()]
+    if speaker_name:
+        search_terms.append(speaker_name)
+
+    results = dms.search_transcripts(search_terms, limit=5) if search_terms else []
+
+    # 2. Also search in-memory working memory for the latest session
+    wm = conversation_engine._working_memory
+    wm_matches = []
+    for phone, mem in wm.items():
+        summary = mem.get("summary", "")
+        speakers = mem.get("speakers", [])
+        # Check if query matches summary or speaker
+        q_lower = query.lower()
+        if (q_lower and q_lower in summary.lower()) or \
+           any(speaker_name.lower() in s.lower() for s in speakers if speaker_name):
+            wm_matches.append({
+                "source": "working_memory (latest session)",
+                "timestamp": mem.get("timestamp", ""),
+                "speakers": speakers,
+                "summary": summary,
+            })
+
+    # 3. Also search chat_history in second_brain_memory.json
+    # This covers older meetings saved in the memory file
+    memory_matches = []
+    try:
+        memory = dms.get_memory()
+        chat_history = memory.get("chat_history", [])
+        for entry in reversed(chat_history):
+            if entry.get("type") != "audio":
+                continue
+            # Check against transcript, speakers, and expert analysis
+            entry_speakers = entry.get("speakers", [])
+            transcript = entry.get("transcript", {})
+            segments = transcript.get("segments", []) if isinstance(transcript, dict) else []
+            expert = entry.get("expert_analysis", {})
+            raw_analysis = expert.get("raw_analysis", "") if expert else ""
+            summary_text = ""
+            for seg in segments:
+                summary_text += seg.get("text", "") + " "
+            summary_text += raw_analysis
+
+            match_found = False
+            if query:
+                q_lower = query.lower()
+                if q_lower in summary_text.lower():
+                    match_found = True
+            if speaker_name:
+                for s in entry_speakers:
+                    if speaker_name.lower() in s.lower():
+                        match_found = True
+                        break
+
+            if match_found:
+                # Extract a concise summary instead of dumping everything
+                key_segments = []
+                for seg in segments:
+                    seg_text = seg.get("text", "")
+                    if query and query.lower() in seg_text.lower():
+                        key_segments.append({
+                            "speaker": seg.get("speaker", ""),
+                            "text": seg_text[:200],
+                        })
+                    elif speaker_name and speaker_name.lower() in seg.get("speaker", "").lower():
+                        key_segments.append({
+                            "speaker": seg.get("speaker", ""),
+                            "text": seg_text[:200],
+                        })
+
+                memory_matches.append({
+                    "source": "second_brain_memory (archived)",
+                    "timestamp": entry.get("timestamp", ""),
+                    "speakers": entry_speakers,
+                    "segment_count": len(segments),
+                    "key_segments": key_segments[:10],
+                    "expert_summary": raw_analysis[:500] if raw_analysis else "",
+                })
+
+                if len(memory_matches) >= 5:
+                    break
+    except Exception as e:
+        logger.error(f"[search_meetings] Error searching memory: {e}")
+
+    total_found = len(results) + len(wm_matches) + len(memory_matches)
+    if total_found == 0:
+        return json.dumps({
+            "found": False,
+            "message": f"No meetings found matching '{query}'{f' with speaker {speaker_name}' if speaker_name else ''}.",
+            "suggestion": "Try different keywords or a different speaker name."
+        }, ensure_ascii=False)
+
+    return json.dumps({
+        "found": True,
+        "total_matches": total_found,
+        "from_transcripts_folder": results[:5],
+        "from_working_memory": wm_matches,
+        "from_chat_history": memory_matches[:5],
+    }, ensure_ascii=False, default=str)
+
+
 # ═══════════════════════════════════════════════════════════════════════
 # CHAT SESSION MANAGEMENT — Per-user sessions with TTL
 # ═══════════════════════════════════════════════════════════════════════
@@ -423,8 +564,11 @@ class ConversationEngine:
         self._model_name: str = ""
         self._kb_system_instruction: str = ""
         self._initialized = False
+        self._user_profile: Dict[str, Any] = {}          # Phase 1: Personal profile
+        self._drive_memory_service = None                 # Phase 2B: For search_meetings
+        self._working_memory: Dict[str, Dict[str, Any]] = {}  # Phase 3: Per-user latest session
 
-    def initialize(self):
+    def initialize(self, user_profile: Dict[str, Any] = None, drive_memory_service=None):
         """Initialize the engine (called once on startup after KB is loaded)."""
         if self._initialized:
             return
@@ -439,14 +583,25 @@ class ConversationEngine:
 
         configure_genai(api_key)
 
+        # Store references (safe — no circular imports)
+        if user_profile:
+            self._user_profile = user_profile
+        if drive_memory_service:
+            self._drive_memory_service = drive_memory_service
+
         self._model_name = MODEL_MAPPING.get("pro", "gemini-2.5-pro")
 
         # Build the system instruction with KB context
         kb_block = get_system_instruction_block()
 
+        # Phase 1: Build user profile context block
+        profile_block = self._build_profile_block()
+
         self._kb_system_instruction = f"""אתה עוזר ארגוני מקצועי בשם "Second Brain".
 אתה עונה בעברית אלא אם נשאלת באנגלית.
-יש לך גישה לכלים (functions) שמאפשרים לך לחפש ולעדכן מידע ארגוני.
+יש לך גישה לכלים (functions) שמאפשרים לך לחפש, לעדכן ולהיזכר במידע.
+
+{profile_block}
 
 ══════════════════════════════════════════════════════
 כללי התנהגות:
@@ -459,6 +614,7 @@ class ConversationEngine:
    - "לשי יש ילד חדש שקוראים לו נועם" → save_fact(person_name="Shay Hovan", field="children", value="נועם")
 3. לשאלות כלליות על הארגון (כמה עובדים, מחלקות) — השתמש בכלי list_org_stats.
 4. לשיחה רגילה (שאלות כלליות, הודעות אישיות) — ענה ישירות בלי כלים.
+   🔴 חשוב: אם המשתמש שואל על עצמו (ילדים, משפחה, העדפות) — קודם בדוק את הפרופיל האישי למעלה לפני שעונה.
 5. כינויי גוף: אם המשתמש אומר "שלו", "שלה", "הוא", "היא" — הסתכל בהיסטוריית השיחה ותבין למי הוא מתכוון. אל תשאל אלא אם באמת אי אפשר לדעת.
 6. שמות בעברית: כשהמשתמש מזכיר שם בעברית, השתמש ב-search_person כדי למצוא את השם המלא באנגלית.
 7. 🔴 חיזוי חכם כשיש כמה תוצאות (SMART DISAMBIGUATION):
@@ -480,6 +636,9 @@ class ConversationEngine:
 9. כשמציג מידע פיננסי (שכר, בונוס) — ציין את המספר המדויק, אל תעגל.
 10. כשמציג היררכיה — הבחן בין כפופים ישירים לעקיפים.
 11. אם המשתמש משיב ספרה בודדת (1-9), הבן שהוא בוחר מהרשימה האחרונה שהצגת. הצג את הנתונים של האדם שנבחר.
+12. 📼 כשהמשתמש מבקש "הכנה לשיחה עם X", "על מה דיברנו עם X?", "מתי דיברתי עם X?" — השתמש בכלי search_meetings כדי למצוא שיחות קודמות.
+   שלב את הנתונים מהפגישות עם המידע מבסיס הידע (search_person) כדי לתת הכנה מקיפה.
+   דוגמה: "הכן אותי לשיחה עם יובל" → search_person("יובל") + search_meetings(query="יובל", speaker_name="Yuval") → שלב הכל לתשובה אחת.
 
 ══════════════════════════════════════════════════════
 כלים (Tools) — אל תקרא להם בשמם בפני המשתמש:
@@ -488,6 +647,7 @@ class ConversationEngine:
 • get_reports(manager_name) → כל הכפופים למנהל (ישירים + עקיפים)
 • save_fact(person_name, field, value) → שמירת עובדה (עבודה או משפחה) לבסיס הידע
 • list_org_stats() → סטטיסטיקות כלליות על הארגון
+• search_meetings(query, speaker_name) → חיפוש בתמלולי פגישות קודמות
 
 ══════════════════════════════════════════════════════
 זרימת עדכון מידע — save_fact:
@@ -516,6 +676,62 @@ class ConversationEngine:
         except Exception as e:
             logger.error(f"[ConvEngine] Init failed: {e}")
             print(f"❌ [ConvEngine] Init failed: {e}")
+
+    def _build_profile_block(self) -> str:
+        """Build the user profile context block for the system instruction."""
+        if not self._user_profile:
+            return ""
+
+        lines = ["══════════════════════════════════════════════════════",
+                 "פרופיל אישי של המשתמש (הבעלים של המערכת):",
+                 "══════════════════════════════════════════════════════"]
+
+        # Format profile data nicely
+        name = self._user_profile.get("name", "")
+        if name:
+            lines.append(f"שם: {name}")
+
+        children = self._user_profile.get("children", [])
+        if children:
+            if isinstance(children, list):
+                children_str = ", ".join(str(c) for c in children)
+            else:
+                children_str = str(children)
+            lines.append(f"ילדים: {children_str}")
+
+        # Include all other profile fields dynamically
+        skip_keys = {"name", "children", "chat_history"}
+        for key, value in self._user_profile.items():
+            if key in skip_keys or not value:
+                continue
+            if isinstance(value, (dict, list)):
+                lines.append(f"{key}: {json.dumps(value, ensure_ascii=False)}")
+            else:
+                lines.append(f"{key}: {value}")
+
+        lines.append("══════════════════════════════════════════════════════")
+        lines.append("🔴 כשהמשתמש שואל 'מה שמות הילדים שלי?' או שאלות אישיות אחרות — ענה מהפרופיל הזה!")
+        lines.append("")
+
+        return "\n".join(lines)
+
+    def inject_session_context(self, phone: str, summary: str, speakers: list,
+                                segments: list = None, expert_analysis: str = ""):
+        """
+        Phase 3: Inject the latest audio session as Working Memory.
+        
+        Called after audio processing completes. The context is injected
+        into the user's next chat interaction as a synthetic history entry,
+        so Gemini can reference it when the user asks "what did we talk about?".
+        """
+        self._working_memory[phone] = {
+            "summary": summary,
+            "speakers": speakers,
+            "timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+            "segment_count": len(segments) if segments else 0,
+            "expert_analysis_snippet": expert_analysis[:500] if expert_analysis else "",
+        }
+        print(f"💾 [ConvEngine] Working memory injected for {phone[-4:]}: {len(summary)} chars, {len(speakers)} speakers")
 
     def _get_or_create_session(self, phone: str) -> UserSession:
         """Get existing session or create a new one for this phone number."""
@@ -571,6 +787,35 @@ class ConversationEngine:
             print(f"   Message: {message[:100]}{'...' if len(message) > 100 else ''}")
             print(f"   Session: {session.message_count} prior messages")
             print(f"   History turns: {len(chat.history) // 2}")
+
+            # Phase 3: Inject Working Memory if available
+            # This adds the latest audio session as a synthetic history entry
+            if phone in self._working_memory:
+                wm = self._working_memory.pop(phone)
+                wm_text = f"[סיכום הקלטה אחרונה ({wm.get('timestamp', '')})]\n"
+                wm_text += f"דוברים: {', '.join(wm.get('speakers', []))}\n"
+                wm_text += f"סיכום: {wm.get('summary', '')}\n"
+                if wm.get('expert_analysis_snippet'):
+                    wm_text += f"ניתוח: {wm['expert_analysis_snippet']}\n"
+
+                try:
+                    # Inject as a synthetic user-model exchange in history
+                    chat.history.append(
+                        genai.protos.Content(
+                            role="user",
+                            parts=[genai.protos.Part(text="[SYSTEM: הקלטה חדשה עובדה ונשמרה]")]
+                        )
+                    )
+                    chat.history.append(
+                        genai.protos.Content(
+                            role="model",
+                            parts=[genai.protos.Part(text=wm_text)]
+                        )
+                    )
+                    print(f"   💾 Injected working memory ({len(wm.get('speakers', []))} speakers)")
+                except Exception as wm_err:
+                    print(f"   ⚠️ Working memory injection failed: {wm_err}")
+
             print(f"{'='*60}")
 
             # Send message to Gemini
@@ -715,9 +960,14 @@ class ConversationEngine:
 
     def refresh_system_instruction(self):
         """Reload KB context into system instruction (e.g., after KB update)."""
+        # Preserve references before re-init
+        saved_profile = self._user_profile
+        saved_dms = self._drive_memory_service
+        saved_wm = self._working_memory
         self._initialized = False
         self._sessions.clear()
-        self.initialize()
+        self.initialize(user_profile=saved_profile, drive_memory_service=saved_dms)
+        self._working_memory = saved_wm  # Restore working memory
         print(f"🔄 [ConvEngine] System instruction refreshed, all sessions cleared")
 
 

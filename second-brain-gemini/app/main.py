@@ -628,10 +628,29 @@ async def startup_event():
     
     # ================================================================
     # CONVERSATION ENGINE: Initialize LLM-First engine with tools
+    # Phase 1: Load user profile from memory → inject into CE
+    # Phase 2B: Pass drive_memory_service reference for search_meetings
     # ================================================================
     try:
-        conversation_engine.initialize()
+        user_profile = {}
+        try:
+            memory = drive_memory_service.get_memory()
+            user_profile = memory.get("user_profile", {})
+            if user_profile:
+                print(f"👤 [Profile] Loaded user profile: {list(user_profile.keys())}")
+            else:
+                print("ℹ️  [Profile] No user profile found in memory")
+        except Exception as profile_err:
+            print(f"⚠️  [Profile] Could not load user profile: {profile_err}")
+
+        conversation_engine.initialize(
+            user_profile=user_profile,
+            drive_memory_service=drive_memory_service
+        )
         print("✅ [ConvEngine] Conversation Engine ready — LLM-First architecture active")
+        if user_profile:
+            print(f"   📋 Profile injected: {', '.join(k for k in user_profile.keys() if k != 'chat_history')}")
+        print(f"   🔧 Tools: search_person, get_reports, save_fact, list_org_stats, search_meetings")
     except Exception as ce_error:
         print(f"⚠️  Conversation Engine initialization error: {ce_error}")
         import traceback
@@ -1385,8 +1404,38 @@ def process_audio_in_background(
                 speaker_names.add(speaker)
         speaker_names = list(speaker_names)
         
-        # Step 7: Save to memory (Drive Upload Stage)
-        print("💾 [Drive Upload] Saving audio interaction to memory...")
+        # ============================================================
+        # Step 7: Save transcript + memory (Phase 2A + Phase 4)
+        # ============================================================
+        
+        # Phase 2A: Save FULL transcript as separate file in Transcripts/
+        transcript_file_id = None
+        try:
+            transcript_save_data = {
+                "timestamp": datetime.utcnow().isoformat() + "Z",
+                "segments": segments,
+                "summary": summary_text,
+                "speakers": speaker_names,
+                "audio_file_id": audio_metadata.get('file_id', ''),
+                "duration_segments": len(segments),
+            }
+            if expert_analysis_result and expert_analysis_result.get('success'):
+                transcript_save_data["expert_analysis"] = expert_analysis_result.get("raw_analysis", "")
+                transcript_save_data["persona"] = expert_analysis_result.get("persona", "")
+            
+            transcript_file_id = drive_memory_service.save_transcript(
+                transcript_data=transcript_save_data,
+                speakers=speaker_names
+            )
+            if transcript_file_id:
+                print(f"📄 [Transcript] Saved to Transcripts/ folder (ID: {transcript_file_id})")
+            else:
+                print("⚠️  [Transcript] Failed to save to Transcripts/ — continuing anyway")
+        except Exception as transcript_err:
+            print(f"⚠️  [Transcript] Error saving: {transcript_err}")
+        
+        # Phase 4: Save SLIM entry to memory.json (summary + reference only)
+        print("💾 [Drive Upload] Saving slim audio interaction to memory...")
         audio_interaction = {
             "timestamp": datetime.utcnow().isoformat() + "Z",
             "type": "audio",
@@ -1394,26 +1443,28 @@ def process_audio_in_background(
             "web_content_link": audio_metadata.get('web_content_link', ''),
             "web_view_link": audio_metadata.get('web_view_link', ''),
             "filename": audio_metadata.get('filename', ''),
-            "transcript": transcript_json,
+            "summary": summary_text,
             "speakers": speaker_names,
+            "segment_count": len(segments),
+            "transcript_file_id": transcript_file_id,  # Pointer to Transcripts/ file
             "message_id": message_id,
             "from_number": from_number
         }
         
-        # Include expert analysis for RAG queries
+        # Include expert analysis SUMMARY (not full raw_analysis)
         if expert_analysis_result and expert_analysis_result.get('success'):
             audio_interaction["expert_analysis"] = {
                 "persona": expert_analysis_result.get("persona"),
                 "persona_keys": expert_analysis_result.get("persona_keys"),
                 "context": expert_analysis_result.get("context"),
                 "speakers": expert_analysis_result.get("speakers"),
-                "raw_analysis": expert_analysis_result.get("raw_analysis"),
+                "raw_analysis": expert_analysis_result.get("raw_analysis", "")[:1000],  # Truncated
                 "timestamp": expert_analysis_result.get("timestamp")
             }
-            print(f"📊 Including expert analysis in memory (persona: {expert_analysis_result.get('persona')})")
+            print(f"📊 Including expert analysis summary in memory (persona: {expert_analysis_result.get('persona')})")
         
         drive_memory_service.update_memory(audio_interaction)
-        print("✅ Saved audio interaction to memory")
+        print("✅ Saved slim audio interaction to memory")
         
         # UPDATE WORKING MEMORY for Zero Latency RAG
         # This enables text queries to access the conversation that just ended IMMEDIATELY
@@ -1428,6 +1479,24 @@ def process_audio_in_background(
             identified_speakers=_voice_map_cache.copy(),
             expert_analysis=expert_analysis_result if expert_analysis_result and expert_analysis_result.get('success') else None
         )
+        
+        # Phase 3: Inject Working Memory into Conversation Engine
+        # So user can immediately ask "what did we talk about?" after a recording
+        try:
+            expert_snippet = ""
+            if expert_analysis_result and expert_analysis_result.get('success'):
+                expert_snippet = expert_analysis_result.get("raw_analysis", "")[:500]
+            
+            conversation_engine.inject_session_context(
+                phone=from_number,
+                summary=summary_text,
+                speakers=speaker_names,
+                segments=segments,
+                expert_analysis=expert_snippet
+            )
+            print("💾 [ConvEngine] Working memory injected for next chat interaction")
+        except Exception as wm_err:
+            print(f"⚠️  [ConvEngine] Working memory injection failed: {wm_err}")
         
         # Step 7.5: PROACTIVE FACT IDENTIFICATION
         # Scan transcript for new facts about known people and ask user for confirmation
