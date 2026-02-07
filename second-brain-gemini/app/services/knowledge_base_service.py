@@ -230,7 +230,7 @@ def _vision_analyze_pdf(raw_bytes: bytes, file_id: str = "", file_name: str = ""
             print(f"   ⚠️ [Vision] No API key, skipping vision analysis")
             return ""
         
-        from app.services.model_discovery import configure_genai, MODEL_MAPPING
+        from app.services.model_discovery import configure_genai, MODEL_MAPPING  # noqa
         configure_genai(api_key)
         
         # Save PDF to temp file
@@ -260,8 +260,8 @@ def _vision_analyze_pdf(raw_bytes: bytes, file_id: str = "", file_name: str = ""
                     return ""
                 time.sleep(2)
             
-            # ── Model selection: use MODEL_MAPPING static aliases ──
-            model_name = MODEL_MAPPING["pro"]   # "models/gemini-1.5-pro"
+            # ── Model selection: use MODEL_MAPPING static aliases (no models/ prefix) ──
+            model_name = MODEL_MAPPING["pro"]   # "gemini-1.5-pro"
             print(f"   👁️ [Vision] Using MODEL_MAPPING['pro']: {model_name}")
             model = genai.GenerativeModel(model_name)
             

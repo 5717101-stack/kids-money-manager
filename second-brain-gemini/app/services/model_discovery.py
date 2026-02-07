@@ -7,19 +7,21 @@ Instead of hardcoding model names that may 404, this module:
 3. Provides get_best_model() to find the best match for a preferred name
 4. Logs the exact available models for debugging
 5. Provides MODEL_MAPPING with static aliases (pro/flash → exact model strings)
-6. Provides configure_genai() to force the stable v1 endpoint
+6. Provides configure_genai() to force stable REST transport (no v1beta)
+7. Provides startup_connection_test() to verify actual API connectivity
 
 Usage:
-    from app.services.model_discovery import get_best_model, get_available_models, MODEL_MAPPING, configure_genai
+    from app.services.model_discovery import MODEL_MAPPING, configure_genai, discover_models
     
-    configure_genai(api_key)            # Force stable v1 endpoint
-    model_name = get_best_model("gemini-1.5-pro")  # Returns actual available model
-    model = genai.GenerativeModel(model_name)
+    configure_genai(api_key)            # Force stable REST transport
+    discover_models()                    # Discover + log available models
+    model = genai.GenerativeModel(MODEL_MAPPING["pro"])
 """
 
 import logging
 import os
-from typing import List, Optional, Dict, Any
+import time
+from typing import List, Optional, Dict, Any, Tuple
 from threading import Lock
 
 import google.generativeai as genai
@@ -29,9 +31,11 @@ logger = logging.getLogger(__name__)
 # ═══════════════════════════════════════════════════════════════════════
 # STATIC MODEL MAPPING — Single source of truth for model strings
 # ═══════════════════════════════════════════════════════════════════════
+# NOTE: No "models/" prefix — the SDK adds it automatically.
+# Using bare names avoids v1/v1beta path conflicts.
 MODEL_MAPPING = {
-    "pro": "models/gemini-1.5-pro",
-    "flash": "models/gemini-1.5-flash",
+    "pro": "gemini-1.5-pro",
+    "flash": "gemini-1.5-flash",
 }
 
 
@@ -41,16 +45,16 @@ def resolve_model(alias: str) -> str:
 
 
 # ═══════════════════════════════════════════════════════════════════════
-# GLOBAL API CONFIGURATION — Force stable v1 endpoint
+# GLOBAL API CONFIGURATION — Force stable REST transport (no v1beta)
 # ═══════════════════════════════════════════════════════════════════════
 _configured = False
 
 
 def configure_genai(api_key: str = None):
     """
-    Configure the Google Generative AI client with the stable v1 endpoint.
-    Uses v1 instead of v1beta to avoid 404s on Pro models.
+    Configure the Google Generative AI client with stable REST transport.
     
+    Uses transport='rest' to avoid gRPC/v1beta issues that cause 404s.
     Safe to call multiple times — only configures once.
     """
     global _configured
@@ -66,10 +70,10 @@ def configure_genai(api_key: str = None):
     
     genai.configure(
         api_key=api_key,
-        client_options={"api_endpoint": "generativelanguage.googleapis.com"},
+        transport="rest",
     )
     _configured = True
-    print("✅ [Model Discovery] genai configured with stable v1 endpoint")
+    print("✅ [Model Discovery] genai configured with REST transport (stable, no v1beta)")
 
 
 # ── Cache (populated once on first call) ──
@@ -154,6 +158,43 @@ def discover_models(force: bool = False) -> List[str]:
             _available_models = []
             _model_details = []
             return []
+
+
+def startup_connection_test():
+    """
+    Perform a real generate_content() call at startup to verify connectivity.
+    Tests both Pro and Flash models and logs the result.
+    
+    Call this AFTER configure_genai() and discover_models().
+    """
+    print("\n🧪 ══════════════════════════════════════════════")
+    print("🧪  CONNECTION TEST (actual generate_content call)")
+    print("🧪 ══════════════════════════════════════════════")
+    
+    test_prompt = "Say 'OK' in one word."
+    gen_config = {"temperature": 0.0, "max_output_tokens": 10}
+    
+    for alias, model_name in MODEL_MAPPING.items():
+        try:
+            start = time.time()
+            model = genai.GenerativeModel(model_name)
+            response = model.generate_content(
+                test_prompt,
+                generation_config=gen_config,
+                request_options={"timeout": 15},
+            )
+            elapsed_ms = int((time.time() - start) * 1000)
+            reply = ""
+            try:
+                reply = response.text.strip()[:20] if response.text else "(empty)"
+            except (ValueError, AttributeError):
+                reply = "(blocked)"
+            print(f"   ✅ CONNECTION TEST: {alias.upper()} model [{model_name}] → {elapsed_ms}ms — reply: \"{reply}\"")
+        except Exception as e:
+            err_str = str(e)[:120]
+            print(f"   ❌ CONNECTION TEST: {alias.upper()} model [{model_name}] → FAILED: {err_str}")
+    
+    print("🧪 ══════════════════════════════════════════════\n")
 
 
 def get_available_models() -> List[str]:

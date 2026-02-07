@@ -5,8 +5,8 @@ python-multipart==0.0.12
 pydantic==2.10.0
 pydantic-settings==2.6.1
 
-# Google Gemini AI
-google-generativeai>=0.8.0
+# Google Gemini AI — pinned to stable release (avoid v1beta 404s)
+google-generativeai==0.8.3
 
 # Environment Management
 python-dotenv==1.0.0

@@ -107,13 +107,16 @@ class GeminiService:
             self.is_configured = False
             return
         
-        # Configure genai with stable v1 endpoint (avoids v1beta 404s)
-        from app.services.model_discovery import configure_genai, discover_models, get_best_model
+        # Configure genai with stable REST transport (avoids v1beta 404s)
+        from app.services.model_discovery import configure_genai, discover_models, get_best_model, startup_connection_test
         configure_genai(settings.google_api_key)
         self.is_configured = True
         
         # Dynamic model discovery — find what's actually available
         discover_models()  # Logs all available models on startup
+        
+        # Run real connection test at startup
+        startup_connection_test()
         
         # Find best available model (prefer pro for main service)
         preferred = getattr(settings, 'gemini_model', 'gemini-2.5-pro')
@@ -746,10 +749,10 @@ STEP 4 — RESPONSE FORMATTING (פורמט תשובה עם מחלקה):
                 {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_NONE"},
             ]
             
-            # ── Use MODEL_MAPPING static aliases for KB queries ──
+            # ── Use MODEL_MAPPING static aliases (no models/ prefix) ──
             from app.services.model_discovery import MODEL_MAPPING
             
-            kb_model_name = MODEL_MAPPING["pro"]   # "models/gemini-1.5-pro"
+            kb_model_name = MODEL_MAPPING["pro"]   # "gemini-1.5-pro"
             kb_model = genai.GenerativeModel(kb_model_name)
             print(f"📚 [KB Query] Using MODEL_MAPPING['pro']: {kb_model_name}")
             
@@ -771,7 +774,7 @@ STEP 4 — RESPONSE FORMATTING (פורמט תשובה עם מחלקה):
                 err_str = str(gen_err)
                 if "404" in err_str or "not found" in err_str.lower():
                     # Pro failed on hierarchy query → immediate Flash fallback
-                    fallback_name = MODEL_MAPPING["flash"]   # "models/gemini-1.5-flash"
+                    fallback_name = MODEL_MAPPING["flash"]   # "gemini-1.5-flash"
                     print(f"⚠️ [KB Query] Pro failed on hierarchy, falling back to Flash for query: {user_query[:60]}")
                     print(f"⚠️ [KB Query] Pro 404 → retrying with {fallback_name}")
                     kb_model = genai.GenerativeModel(fallback_name)
