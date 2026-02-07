@@ -648,31 +648,43 @@ Summary: {summary}
 **שאלת המשתמש:** {user_query}
 
 ═══════════════════════════════════════════════════════════════════════════════
-STEP 1 — SEMANTIC IDENTITY RESOLVER (זיהוי זהויות סמנטי):
+🔴 MANDATORY STEP 0 — HEBREW NAME RESOLUTION (חובה לפני כל שלב אחר):
 ═══════════════════════════════════════════════════════════════════════════════
-אם השאלה מזכירה שם:
+אם שם כלשהו בשאלה הוא בעברית, חלקי, או כינוי — חובה לפתור אותו ראשית:
 
-A) בצע PHONETIC MATCHING (התאמה פונטית):
-   • "יובל" → חפש גם "Yuval", "Yuval Leikin", "יובל לייקין"
-   • "שי" → חפש גם "Shey", "Shey Heven", "שי הון"
-   • "ערן" → חפש גם "Eran"
+1. חפש בנתוני "Name Mappings" ו-"aliases" בשני המקורות בו-זמנית:
+   • org chart 1.pdf (Organizational Graph)
+   • family_tree.json (Family data)
+2. בצע PHONETIC MATCHING (התאמה פונטית):
+   • "יובל" → "Yuval Laikin"
+   • "שי" → "Shey Heven"
+   • "ערן" → "Eran"
    עברית ואנגלית הם שני ייצוגים של אותו אדם!
-
-B) בצע CONTEXTUAL MATCHING (התאמה הקשרית):
-   • אם יש "Name Mappings" בנתונים — השתמש בהם
-   • אם יש "aliases" — כל כינוי מפנה לאותו אדם
-   • אם שם מופיע גם בארגון וגם במשפחה — זה אותו אדם
-
-C) בצע FUZZY MATCHING (התאמה גמישה):
-   • שם חלקי: "יובל" מתאים ל-"יובל לייקין"
+3. בצע FUZZY MATCHING (התאמה גמישה):
+   • שם חלקי: "יובל" מתאים ל-"Yuval Laikin"
    • תפקיד חלקי: "מנהל" מתאים ל-"Manager, Accounting"
-   • אל תדרוש התאמה מדויקת של תווים
+4. ❌ אסור לענות על שום שאלה לפני שהשם פוענח לשם המלא באנגלית!
+
+═══════════════════════════════════════════════════════════════════════════════
+🔴 MANDATORY STEP 1 — DUAL-SOURCE SEARCH (חיפוש בשני מקורות בו-זמנית):
+═══════════════════════════════════════════════════════════════════════════════
+לכל שאלה — חייב לחפש בשני המקורות האלה בו-זמנית:
+
+מקור 1: org chart 1.pdf (Organizational Graph)
+  → מכיל: היררכיה ארגונית, תפקידים, מחלקות, קווי דיווח
+  → שדות: nodes, edges, hierarchy_tree, direct_reports, reports_to_name
+
+מקור 2: family_tree.json (Family Data)
+  → מכיל: יחסים משפחתיים, הקשרים אישיים, כינויים
+  → שדות: people, members, family, aliases, nicknames
+
+אל תסתמך על מקור אחד בלבד — שלב מידע משניהם לתשובה אחת מאוחדת!
 
 ═══════════════════════════════════════════════════════════════════════════════
 STEP 2 — RECURSIVE GRAPH SEARCH (חיפוש גרפי רקורסיבי):
 ═══════════════════════════════════════════════════════════════════════════════
 כשנשאל "מי מדווח ל-X":
-1. מצא את X בגרף (באמצעות Step 1)
+1. מצא את X בגרף (באמצעות השם המלא מ-Step 0)
 2. חפש את כל ה-nodes שמצביעים עליו:
    • בשדה "reports_to_name" / "reports_to"
    • בשדה "direct_reports" של X
@@ -694,8 +706,8 @@ STEP 2 — RECURSIVE GRAPH SEARCH (חיפוש גרפי רקורסיבי):
 STEP 3 — CROSS-CONTEXT RESOLUTION (זיהוי חוצה הקשרים):
 ═══════════════════════════════════════════════════════════════════════════════
 אדם יכול להופיע בשני הקשרים:
-• "work" — תפקיד ארגוני, צוות, מנהל
-• "family" — יחס משפחתי, תפקיד בבית
+• "work" (org chart 1.pdf) — תפקיד ארגוני, צוות, מנהל
+• "family" (family_tree.json) — יחס משפחתי, תפקיד בבית
 אם אדם מופיע בשניהם — שלב את כל המידע לתשובה אחת.
 
 ═══════════════════════════════════════════════════════════════════════════════
@@ -726,14 +738,19 @@ STEP 4 — DIRECT ANSWER MODE (תשובה ישירה):
                 {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_NONE"},
             ]
             
-            # ── Dedicated model for org queries (via dynamic discovery) ──
-            from app.services.model_discovery import get_best_model, PRIMARY_KB_MODEL
+            # ── FORCE gemini-1.5-pro for KB/org queries ──
+            # Pro is mandatory for accurate organizational hierarchy queries.
+            FORCED_KB_MODEL = "models/gemini-1.5-pro"
+            kb_model_name = FORCED_KB_MODEL
+            print(f"📚 [KB Query] FORCED model: {kb_model_name}")
             
-            kb_model_name = PRIMARY_KB_MODEL if PRIMARY_KB_MODEL else get_best_model("gemini-1.5-pro", category="pro")
-            if not kb_model_name:
-                kb_model_name = get_best_model("gemini-1.5-flash", category="flash") or "gemini-1.5-flash"
-            
-            kb_model = genai.GenerativeModel(kb_model_name)
+            try:
+                kb_model = genai.GenerativeModel(kb_model_name)
+            except Exception as init_err:
+                print(f"⚠️ [KB Query] Failed to init {kb_model_name}: {init_err}")
+                print(f"⚠️ [KB Query] Falling back to gemini-1.5-flash — accuracy may suffer!")
+                kb_model_name = "models/gemini-1.5-flash"
+                kb_model = genai.GenerativeModel(kb_model_name)
             print(f"📚 [KB Query] Using model: {kb_model_name}")
             
             response = kb_model.generate_content(

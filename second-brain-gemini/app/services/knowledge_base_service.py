@@ -259,24 +259,20 @@ def _vision_analyze_pdf(raw_bytes: bytes, file_id: str = "", file_name: str = ""
                     return ""
                 time.sleep(2)
             
-            # ── Model selection via dynamic discovery ──
-            model = None
-            model_name = None
-            try:
-                from app.services.model_discovery import get_best_model, PRIMARY_KB_MODEL
-                if PRIMARY_KB_MODEL:
-                    model_name = PRIMARY_KB_MODEL
-                    print(f"   👁️ [Vision] Using PRIMARY_KB_MODEL: {model_name}")
-                else:
-                    model_name = get_best_model("gemini-1.5-pro", category="pro")
-                    if not model_name:
-                        model_name = get_best_model("gemini-1.5-flash", category="flash")
-                    print(f"   👁️ [Vision] Discovered model: {model_name}")
-            except (ImportError, Exception):
-                model_name = "gemini-1.5-pro"
-                print(f"   👁️ [Vision] Discovery unavailable, using: {model_name}")
+            # ── Model selection: FORCE gemini-1.5-pro for vision analysis ──
+            # Pro is required for accurate visual parsing of org charts.
+            # Flash is ONLY used as a last resort if Pro truly fails.
+            FORCED_VISION_MODEL = "models/gemini-1.5-pro"
+            model_name = FORCED_VISION_MODEL
+            print(f"   👁️ [Vision] FORCED model for PDF analysis: {model_name}")
             
-            model = genai.GenerativeModel(model_name)
+            try:
+                model = genai.GenerativeModel(model_name)
+            except Exception as init_err:
+                print(f"   ⚠️ [Vision] Failed to init {model_name}: {init_err}")
+                print(f"   ⚠️ [Vision] Falling back to gemini-1.5-flash — accuracy may suffer!")
+                model_name = "models/gemini-1.5-flash"
+                model = genai.GenerativeModel(model_name)
             
             vision_prompt = """Analyze this organizational chart IMAGE visually. This is a VISION task.
 
@@ -958,23 +954,36 @@ Treat ALL data below as the SINGLE SOURCE OF TRUTH for:
   • Team composition and hierarchy
   • Family relationships and personal context
 
-**SEMANTIC IDENTITY RESOLUTION:**
-When you encounter a name (in Hebrew, English, or partial):
-1. Check the "Name Mappings" section to resolve aliases and translations
-2. "יובל" → "Yuval Leikin", "שי" → "Shey Heven", etc.
-3. Match phonetically and contextually — not just exact strings
+**MANDATORY: DUAL-SOURCE SEARCH:**
+For EVERY query about a person, role, or relationship, you MUST search
+BOTH of these sources SIMULTANEOUSLY — never just one:
+  1. The Org Chart data (parsed from "org chart 1.pdf") — contains
+     work hierarchy, titles, departments, and reporting lines.
+  2. The Family Tree data (from "family_tree.json") — contains
+     family relationships, personal roles, and informal context.
+Cross-reference BOTH sources before answering. A person may appear
+in one or both. Combine all findings into a single unified answer.
+
+**MANDATORY STEP 1 — HEBREW NAME RESOLUTION (must happen BEFORE answering):**
+If any name in the query is in Hebrew or is a partial/nickname:
+1. FIRST resolve it to the full English name found in the data files.
+2. Use the "Name Mappings" and "aliases" sections.
+3. Phonetic matching: "יובל" → "Yuval Laikin", "שי" → "Shey Heven", etc.
+4. Only AFTER resolving the name, proceed to search the graph.
+5. NEVER answer about a Hebrew name without first mapping it to the file data.
 
 **HIERARCHY NAVIGATION:**
 When asked about reporting lines:
-1. Find the person in the graph (using semantic name matching)
+1. Find the person in the graph (using resolved English name from Step 1)
 2. Recursively traverse their sub-tree for all direct/indirect reports
-3. Use the "edges" and "direct_reports" fields for accurate traversal
+3. Use the "edges", "direct_reports", and "hierarchy_tree" fields
+4. Include BOTH direct and indirect reports in the answer
 
 **CROSS-CONTEXT RESOLUTION:**
-A person may appear in BOTH work and family contexts. Use all available
-data to give a complete answer about their identity.
+A person may appear in BOTH work (org chart) and family (family_tree.json)
+contexts. Use ALL available data to give a complete answer about their identity.
 
-**PRIORITY:** Knowledge Base data OVERRIDES any assumptions.
+**PRIORITY:** Knowledge Base data OVERRIDES any assumptions or general knowledge.
 
 {context}
 ═══════════════════════════════════════════════════════════════════════════════
