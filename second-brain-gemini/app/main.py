@@ -632,7 +632,15 @@ async def startup_event():
             memory = drive_memory_service.get_memory()
             user_profile = memory.get("user_profile", {})
             if user_profile:
+                # Debug: Print full profile (excluding chat_history) so we can verify data
+                import json as startup_json
+                profile_preview = {
+                    k: v for k, v in user_profile.items()
+                    if k != "chat_history"
+                }
                 print(f"👤 [Profile] Loaded user profile: {list(user_profile.keys())}")
+                print(f"👤 [Profile] Full content (excl. chat_history):")
+                print(startup_json.dumps(profile_preview, ensure_ascii=False, indent=2)[:2000])
             else:
                 print("ℹ️  [Profile] No user profile found in memory")
         except Exception as profile_err:

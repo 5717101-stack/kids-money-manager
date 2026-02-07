@@ -678,42 +678,39 @@ class ConversationEngine:
             print(f"❌ [ConvEngine] Init failed: {e}")
 
     def _build_profile_block(self) -> str:
-        """Build the user profile context block for the system instruction."""
+        """Build the user profile context block for the system instruction.
+        
+        Dumps the ENTIRE profile as structured JSON so Gemini can see ALL fields,
+        including children names, spouse, family details, voice_map, etc.
+        Nothing is skipped except chat_history (too large).
+        """
         if not self._user_profile:
             return ""
 
-        lines = ["══════════════════════════════════════════════════════",
-                 "פרופיל אישי של המשתמש (הבעלים של המערכת):",
-                 "══════════════════════════════════════════════════════"]
+        # Create a filtered copy — exclude chat_history (too large for context)
+        profile_for_prompt = {
+            k: v for k, v in self._user_profile.items()
+            if k != "chat_history" and v  # skip empty values
+        }
 
-        # Format profile data nicely
-        name = self._user_profile.get("name", "")
-        if name:
-            lines.append(f"שם: {name}")
+        if not profile_for_prompt:
+            return ""
 
-        children = self._user_profile.get("children", [])
-        if children:
-            if isinstance(children, list):
-                children_str = ", ".join(str(c) for c in children)
-            else:
-                children_str = str(children)
-            lines.append(f"ילדים: {children_str}")
+        profile_json = json.dumps(profile_for_prompt, ensure_ascii=False, indent=2)
 
-        # Include all other profile fields dynamically
-        skip_keys = {"name", "children", "chat_history"}
-        for key, value in self._user_profile.items():
-            if key in skip_keys or not value:
-                continue
-            if isinstance(value, (dict, list)):
-                lines.append(f"{key}: {json.dumps(value, ensure_ascii=False)}")
-            else:
-                lines.append(f"{key}: {value}")
-
-        lines.append("══════════════════════════════════════════════════════")
-        lines.append("🔴 כשהמשתמש שואל 'מה שמות הילדים שלי?' או שאלות אישיות אחרות — ענה מהפרופיל הזה!")
-        lines.append("")
-
-        return "\n".join(lines)
+        block = f"""══════════════════════════════════════════════════════
+פרופיל אישי של המשתמש (הבעלים של המערכת):
+══════════════════════════════════════════════════════
+{profile_json}
+══════════════════════════════════════════════════════
+🔴 חשוב מאוד: כל מה שמופיע למעלה הוא מידע אישי על המשתמש.
+כשהוא שואל 'מה שמות הילדים שלי?', 'איך קוראים לאשתי?', או כל שאלה אישית —
+ענה אך ורק מהנתונים למעלה. אם שם ילד, בן/בת זוג, או כל פרט אחר מופיע כאן — ציין אותו.
+"""
+        
+        print(f"📋 [Profile Block] Built profile: {len(profile_json)} chars, keys: {list(profile_for_prompt.keys())}")
+        
+        return block
 
     def inject_session_context(self, phone: str, summary: str, speakers: list,
                                 segments: list = None, expert_analysis: str = ""):
