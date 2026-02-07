@@ -264,10 +264,10 @@ class ExpertAnalysisService:
         self.model_name = None
         
         if self.api_key:
-            from app.services.model_discovery import configure_genai, get_best_model
+            from app.services.model_discovery import configure_genai, get_best_model, MODEL_MAPPING
             configure_genai(self.api_key)
             
-            model_name = get_best_model("gemini-2.5-pro", category="general")
+            model_name = get_best_model(MODEL_MAPPING["pro"], category="general")
             if model_name:
                 self.model = genai.GenerativeModel(model_name)
                 self.model_name = model_name

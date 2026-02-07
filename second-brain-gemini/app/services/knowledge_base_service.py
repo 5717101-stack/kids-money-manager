@@ -178,7 +178,7 @@ def _extract_pdf_with_vision(raw_bytes: bytes, file_id: str = "", file_name: str
     
     Strategy:
     - Cache hit → return cached vision graph (NO text extraction)
-    - Cache miss → run vision analysis with gemini-1.5-pro
+    - Cache miss → run vision analysis with MODEL_MAPPING["pro"]
     - If vision fails → fallback to text extraction
     
     The vision-parsed graph is the SOURCE OF TRUTH for org structure.
@@ -220,7 +220,7 @@ def _vision_analyze_pdf(raw_bytes: bytes, file_id: str = "", file_name: str = ""
     Upload PDF to Gemini 1.5 Pro (FORCED) and use VISION to analyze the
     visual layout of the organizational chart.
     
-    Uses gemini-1.5-pro for accurate vision. Falls back to gemini-1.5-flash
+    Uses MODEL_MAPPING["pro"] for accurate vision. Falls back to MODEL_MAPPING["flash"]
     with a warning if Pro is unavailable.
     
     Returns structured JSON graph. Cached for 24 hours.

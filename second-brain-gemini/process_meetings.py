@@ -252,18 +252,10 @@ class GeminiService:
         if not api_key:
             raise ValueError("GOOGLE_API_KEY not set in environment variables")
         
-        from app.services.model_discovery import configure_genai
+        from app.services.model_discovery import configure_genai, MODEL_MAPPING
         configure_genai(api_key)
-        # Use gemini-2.5-pro (available model) or gemini-1.5-pro as fallback
-        model_name = os.environ.get('GEMINI_MODEL', 'gemini-2.5-pro')
-        # Map old/legacy model names
-        # Normalize legacy model names to stable strings
-        legacy_map = {
-            'gemini-1.5-pro-latest': 'gemini-1.5-pro',
-            'gemini-1.5-flash-latest': 'gemini-1.5-flash',
-        }
-        if model_name in legacy_map:
-            model_name = legacy_map[model_name]
+        # Use central MODEL_MAPPING (configurable via GEMINI_PRO_MODEL env var)
+        model_name = MODEL_MAPPING["pro"]
         self.model = genai.GenerativeModel(model_name)
         logger.info(f"✅ Gemini service initialized with model: {model_name}")
     

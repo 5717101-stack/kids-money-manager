@@ -1,21 +1,30 @@
 """
 Model Discovery Service — Dynamic Gemini Model Selection
 
-Instead of hardcoding model names that may 404, this module:
-1. Calls genai.list_models() at startup to discover what's actually available
-2. Caches the result so it only runs once per process
-3. Provides get_best_model() to find the best match for a preferred name
-4. Logs the exact available models for debugging
-5. Provides MODEL_MAPPING with static aliases (pro/flash → exact model strings)
-6. Provides configure_genai() to force stable REST transport (no v1beta)
-7. Provides startup_connection_test() to verify actual API connectivity
+╔══════════════════════════════════════════════════════════════════╗
+║  SINGLE SOURCE OF TRUTH FOR ALL MODEL NAMES                     ║
+║                                                                  ║
+║  To change models, ONLY edit MODEL_MAPPING below                ║
+║  (or set GEMINI_PRO_MODEL / GEMINI_FLASH_MODEL in .env)         ║
+║                                                                  ║
+║  NO other file should contain hardcoded model name strings!      ║
+╚══════════════════════════════════════════════════════════════════╝
 
-Usage:
-    from app.services.model_discovery import MODEL_MAPPING, configure_genai, discover_models
+This module provides:
+1. MODEL_MAPPING — central dict: {"pro": "...", "flash": "..."}
+2. resolve_model(alias) — converts "pro"/"flash" to actual model string
+3. configure_genai() — sets up SDK transport
+4. discover_models() — lists available models from the API
+5. get_best_model() — finds best match from discovered models
+6. gemini_v1_generate() — direct HTTP calls bypassing SDK
+7. startup_connection_test() — verifies API connectivity at boot
+
+Usage (in ANY service):
+    from app.services.model_discovery import MODEL_MAPPING, resolve_model
     
-    configure_genai(api_key)            # Force stable REST transport
-    discover_models()                    # Discover + log available models
     model = genai.GenerativeModel(MODEL_MAPPING["pro"])
+    # or
+    model_name = resolve_model("flash")
 """
 
 import json
@@ -30,18 +39,33 @@ import google.generativeai as genai
 logger = logging.getLogger(__name__)
 
 # ═══════════════════════════════════════════════════════════════════════
-# STATIC MODEL MAPPING — Single source of truth for model strings
+# SINGLE SOURCE OF TRUTH — Model names
 # ═══════════════════════════════════════════════════════════════════════
+# Defaults here. Override via env vars without touching code:
+#   GEMINI_PRO_MODEL=gemini-2.5-pro-preview-06-05
+#   GEMINI_FLASH_MODEL=gemini-2.0-flash
+#
 # NOTE: No "models/" prefix — the SDK adds it automatically.
-# Using latest stable model names that are available on v1beta endpoint.
+_DEFAULT_PRO = "gemini-2.5-pro"
+_DEFAULT_FLASH = "gemini-2.0-flash"
+
 MODEL_MAPPING = {
-    "pro": "gemini-2.5-pro",
-    "flash": "gemini-2.0-flash",
+    "pro":   os.environ.get("GEMINI_PRO_MODEL",   _DEFAULT_PRO),
+    "flash": os.environ.get("GEMINI_FLASH_MODEL", _DEFAULT_FLASH),
 }
+
+# Log on import so it's visible in every startup
+print(f"🤖 [Model Mapping] pro  = {MODEL_MAPPING['pro']}"
+      f"{' (env override)' if os.environ.get('GEMINI_PRO_MODEL') else ''}")
+print(f"🤖 [Model Mapping] flash = {MODEL_MAPPING['flash']}"
+      f"{' (env override)' if os.environ.get('GEMINI_FLASH_MODEL') else ''}")
 
 
 def resolve_model(alias: str) -> str:
-    """Resolve a model alias ('pro', 'flash') to the exact API model string."""
+    """Resolve a model alias ('pro', 'flash') to the exact API model string.
+    
+    Returns the alias itself if not found in MODEL_MAPPING (pass-through).
+    """
     return MODEL_MAPPING.get(alias, alias)
 
 
@@ -401,12 +425,12 @@ def get_best_model(
 
 def get_best_pro_model() -> Optional[str]:
     """Shorthand: get the best available Pro model for KB/vision tasks."""
-    return get_best_model("gemini-2.5-pro", category="pro")
+    return get_best_model(MODEL_MAPPING["pro"], category="pro")
 
 
 def get_best_flash_model() -> Optional[str]:
     """Shorthand: get the best available Flash model for audit/lightweight tasks."""
-    return get_best_model("gemini-2.0-flash", category="flash")
+    return get_best_model(MODEL_MAPPING["flash"], category="flash")
 
 
 def get_model_status_report() -> Dict[str, Any]:

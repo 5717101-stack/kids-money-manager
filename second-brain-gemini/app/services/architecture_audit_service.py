@@ -50,11 +50,11 @@ class ArchitectureAuditService:
         self.model_name = None
         
         if self.api_key:
-            from app.services.model_discovery import configure_genai, get_best_model
+            from app.services.model_discovery import configure_genai, get_best_model, MODEL_MAPPING
             configure_genai(self.api_key)
             
             # For audit tasks prefer Flash models (lightweight, less safety restrictions)
-            model_name = get_best_model("gemini-2.0-flash", category="flash")
+            model_name = get_best_model(MODEL_MAPPING["flash"], category="flash")
             if model_name:
                 self.model = genai.GenerativeModel(model_name)
                 self.model_name = model_name
@@ -276,20 +276,17 @@ class ArchitectureAuditService:
         # Test the key model categories with actual pings
         models_to_test = {}
         
-        # Find best Pro model
-        best_pro = get_best_model("gemini-2.5-pro", category="pro")
+        from app.services.model_discovery import MODEL_MAPPING as _MM
+        
+        # Find best Pro model (using central MODEL_MAPPING)
+        best_pro = get_best_model(_MM["pro"], category="pro")
         if best_pro:
             models_to_test["Pro"] = best_pro
         
-        # Find best Flash model
-        best_flash = get_best_model("gemini-2.0-flash", category="flash")
+        # Find best Flash model (using central MODEL_MAPPING)
+        best_flash = get_best_model(_MM["flash"], category="flash")
         if best_flash and best_flash != best_pro:
             models_to_test["Flash"] = best_flash
-        
-        # Also try gemini-2.5-pro if available (main model)
-        best_25_pro = get_best_model("gemini-2.5-pro", category="general")
-        if best_25_pro and best_25_pro not in models_to_test.values():
-            models_to_test["2.5-Pro"] = best_25_pro
         
         model_results = {}
         primary_kb_model = None

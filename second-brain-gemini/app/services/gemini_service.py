@@ -119,7 +119,8 @@ class GeminiService:
         startup_connection_test()
         
         # Find best available model (prefer pro for main service)
-        preferred = getattr(settings, 'gemini_model', 'gemini-2.5-pro')
+        from app.services.model_discovery import MODEL_MAPPING
+        preferred = MODEL_MAPPING["pro"]
         model_name = get_best_model(preferred, category="general")
         if not model_name:
             model_name = preferred  # Last resort — try as-is
