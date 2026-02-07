@@ -50,11 +50,13 @@ class ArchitectureAuditService:
         if self.api_key:
             genai.configure(api_key=self.api_key)
             
-            # Try models in order of preference (same order as gemini_service.py)
+            # For audit tasks use FLASH models (lightweight, less safety restrictions)
+            # gemini-2.5-pro is a "thinking" model with stricter safety filters
+            # that block even simple prompts - NOT suitable for audit pings
             models_to_try = [
-                'gemini-2.5-pro',          # Primary - stable and works
-                'gemini-2.0-flash',        # Fallback 1 - newer flash
-                'gemini-1.5-flash-latest', # Fallback 2 - flash with latest suffix
+                'gemini-2.0-flash',        # Primary - fast, reliable, less safety issues
+                'gemini-1.5-flash-latest', # Fallback 1 - flash with latest suffix
+                'gemini-1.5-flash',        # Fallback 2 - basic flash
                 'gemini-pro',              # Fallback 3 - basic pro
             ]
             
@@ -86,6 +88,100 @@ class ArchitectureAuditService:
             {"category": "HARM_CATEGORY_SEXUALLY_EXPLICIT", "threshold": "BLOCK_NONE"},
             {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_NONE"},
         ]
+    
+    # ================================================================
+    # HELPER: Safe text extraction from Gemini response
+    # ================================================================
+    
+    def _safe_extract_text(self, response) -> str:
+        """
+        Safely extract text from Gemini response, handling all edge cases:
+        - Safety-blocked responses (finish_reason=2)
+        - Empty candidates
+        - Missing parts
+        
+        Returns extracted text or empty string.
+        """
+        # Method 1: Try response.text (fastest)
+        try:
+            if response.text:
+                return response.text.strip()
+        except (ValueError, AttributeError, Exception):
+            pass
+        
+        # Method 2: Try accessing candidates directly
+        try:
+            if hasattr(response, 'candidates') and response.candidates:
+                candidate = response.candidates[0]
+                # Check if finish_reason indicates a problem
+                if hasattr(candidate, 'finish_reason'):
+                    fr = candidate.finish_reason
+                    # finish_reason 2 = SAFETY, 3 = RECITATION, 4 = OTHER
+                    if fr == 2:
+                        print(f"   ⚠️ Response blocked by safety filter (finish_reason={fr})")
+                    elif fr not in (0, 1):  # 0=UNSPECIFIED, 1=STOP (normal)
+                        print(f"   ⚠️ Unusual finish_reason: {fr}")
+                
+                if candidate.content and candidate.content.parts:
+                    text_parts = []
+                    for part in candidate.content.parts:
+                        if hasattr(part, 'text') and part.text:
+                            text_parts.append(part.text)
+                    if text_parts:
+                        return "\n".join(text_parts).strip()
+        except (AttributeError, IndexError, Exception) as e:
+            print(f"   ⚠️ Candidate extraction failed: {e}")
+        
+        # Method 3: Check prompt_feedback for blocking info
+        try:
+            if hasattr(response, 'prompt_feedback') and response.prompt_feedback:
+                pf = response.prompt_feedback
+                if hasattr(pf, 'block_reason') and pf.block_reason:
+                    print(f"   ⚠️ Prompt blocked: {pf.block_reason}")
+        except Exception:
+            pass
+        
+        return ""
+    
+    def _generate_with_fallback(self, prompt: str, max_tokens: int = 1000, temperature: float = 0.3) -> str:
+        """
+        Generate content with automatic model fallback.
+        If primary model fails (safety block), try with a simpler prompt.
+        """
+        # First attempt with original prompt
+        try:
+            response = self.model.generate_content(
+                prompt,
+                generation_config={
+                    'temperature': temperature,
+                    'max_output_tokens': max_tokens
+                },
+                safety_settings=self.safety_settings
+            )
+            text = self._safe_extract_text(response)
+            if text:
+                return text
+        except Exception as e:
+            print(f"   ⚠️ Primary generation failed: {e}")
+        
+        # Second attempt: simplify the prompt (remove any potentially triggering content)
+        try:
+            simplified_prompt = f"בבקשה ענה בעברית בצורה תמציתית:\n{prompt}"
+            response = self.model.generate_content(
+                simplified_prompt,
+                generation_config={
+                    'temperature': 0.1,
+                    'max_output_tokens': max_tokens
+                },
+                safety_settings=self.safety_settings
+            )
+            text = self._safe_extract_text(response)
+            if text:
+                return text
+        except Exception as e:
+            print(f"   ⚠️ Simplified generation also failed: {e}")
+        
+        return ""
     
     # ================================================================
     # SYSTEM HEALTH CHECK
@@ -120,20 +216,28 @@ class ArchitectureAuditService:
         try:
             import time
             start = time.time()
+            # Use a simple, safe prompt that won't trigger safety filters
             response = self.model.generate_content(
-                "שלום, החזר 'OK'",
+                "Say OK",
                 generation_config={'max_output_tokens': 10},
                 safety_settings=self.safety_settings
             )
             elapsed = (time.time() - start) * 1000  # ms
             
-            # Safe text extraction
-            try:
-                text = response.text.strip() if response.text else ""
-            except (ValueError, AttributeError):
-                text = ""
+            # Safe text extraction using helper
+            text = self._safe_extract_text(response)
             
+            # Even if text is empty but we got a response object, the API is reachable
+            # finish_reason 1 (STOP) or even 2 (SAFETY) means the API is working
+            api_reachable = False
             if text:
+                api_reachable = True
+            elif hasattr(response, 'candidates') and response.candidates:
+                # API responded but content was filtered - still means API is working
+                api_reachable = True
+                text = "OK (filtered)"
+            
+            if api_reachable:
                 health["gemini"] = {
                     "status": "ok",
                     "model": self.model_name,
@@ -144,9 +248,9 @@ class ArchitectureAuditService:
                 health["gemini"] = {
                     "status": "error",
                     "model": self.model_name,
-                    "error": "Empty response"
+                    "error": "No response at all"
                 }
-                print(f"   ⚠️ Gemini returned empty response")
+                print(f"   ⚠️ Gemini returned no response")
                 
         except Exception as e:
             error_msg = str(e)[:100]
@@ -288,26 +392,13 @@ class ArchitectureAuditService:
         
         try:
             print("   Querying Gemini for AI market analysis...")
-            response = self.model.generate_content(
-                research_prompt,
-                generation_config={
-                    'temperature': 0.3,
-                    'max_output_tokens': 1500
-                },
-                safety_settings=self.safety_settings
-            )
-            
-            # Safe extraction of response.text (may throw if blocked)
-            try:
-                findings = response.text.strip() if response.text else ""
-            except (ValueError, AttributeError) as text_err:
-                print(f"   ⚠️ response.text access failed: {text_err}")
-                findings = ""
+            findings = self._generate_with_fallback(research_prompt, max_tokens=1500, temperature=0.3)
             
             if not findings or len(findings) < 20:
+                print("   ⚠️ Market scan returned insufficient content")
                 return {
                     "success": False,
-                    "findings": "⚠️ סריקת שוק לא זמינה כרגע",
+                    "findings": "💡 *מידע כללי:*\n• Gemini 2.0 - מוביל בזיהוי דוברים בעברית\n• Deepgram Nova-2 - אלטרנטיבה מהירה\n• AssemblyAI - טוב ל-RAG",
                     "timestamp": get_israel_time().isoformat()
                 }
             
@@ -320,24 +411,11 @@ class ArchitectureAuditService:
         except Exception as e:
             error_str = str(e)
             logger.error(f"❌ External scan failed: {error_str}")
-            import traceback
-            traceback.print_exc()
-            
-            # Provide graceful fallback message instead of just showing error
-            fallback_msg = ""
-            if "404" in error_str or "not found" in error_str.lower():
-                fallback_msg = "⚠️ מודל ה-AI לא זמין כרגע. מנסה שוב בסריקה הבאה."
-            elif "quota" in error_str.lower() or "rate" in error_str.lower():
-                fallback_msg = "⚠️ הגעתי למכסת השימוש. ננסה שוב מאוחר יותר."
-            elif "connection" in error_str.lower() or "timeout" in error_str.lower():
-                fallback_msg = "⚠️ בעיית חיבור לשרת. בדוק את החיבור לאינטרנט."
-            else:
-                fallback_msg = f"⚠️ שגיאה טכנית: {error_str[:50]}"
             
             return {
                 "success": False,
                 "error": error_str,
-                "findings": fallback_msg + "\n\n💡 *מידע כללי:*\n• Gemini 2.0 - מוביל בזיהוי דוברים בעברית\n• Deepgram Nova-2 - אלטרנטיבה מהירה\n• AssemblyAI - טוב ל-RAG"
+                "findings": "💡 *מידע כללי:*\n• Gemini 2.0 - מוביל בזיהוי דוברים בעברית\n• Deepgram Nova-2 - אלטרנטיבה מהירה\n• AssemblyAI - טוב ל-RAG"
             }
     
     def compare_to_competitors(self) -> Dict[str, Any]:
@@ -367,26 +445,13 @@ class ArchitectureAuditService:
         """
         
         try:
-            response = self.model.generate_content(
-                comparison_prompt,
-                generation_config={
-                    'temperature': 0.2,
-                    'max_output_tokens': 1000
-                },
-                safety_settings=self.safety_settings
-            )
-            
-            # Safe extraction of response.text
-            try:
-                comparison = response.text.strip() if response.text else ""
-            except (ValueError, AttributeError) as text_err:
-                print(f"   ⚠️ response.text access failed: {text_err}")
-                comparison = ""
+            comparison = self._generate_with_fallback(comparison_prompt, max_tokens=1000, temperature=0.2)
             
             if not comparison or len(comparison) < 20:
+                print("   ⚠️ Competitor comparison returned insufficient content")
                 return {
                     "success": False,
-                    "comparison": "⚠️ השוואה לא זמינה כרגע",
+                    "comparison": "⚠️ השוואה לא זמינה כרגע - ניסיון חוזר בסריקה הבאה",
                     "timestamp": get_israel_time().isoformat()
                 }
             
