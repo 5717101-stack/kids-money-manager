@@ -477,9 +477,6 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Module-level dedup flag — atomic in Python (GIL), no race condition
-_deploy_notification_sent = False
-
 # Startup event: Pre-warm memory cache
 @app.on_event("startup")
 async def startup_event():
@@ -498,13 +495,42 @@ async def startup_event():
         is_production = os.environ.get('RENDER', '') == 'true'
         
         if is_production:
-            # ── DEDUP: Module-level flag prevents duplicate notifications ──
-            # Atomic in Python (GIL) — no race condition even if called concurrently
-            global _deploy_notification_sent
-            if _deploy_notification_sent:
-                print(f"🔇 Skipping duplicate deploy notification (v{current_version} — already sent in this process)")
-            else:
-                _deploy_notification_sent = True  # Mark BEFORE sending (prevents race)
+            print(f"🚀 Production deployment detected - Version {current_version}")
+            
+            # ══════════════════════════════════════════════════════════
+            # CROSS-PROCESS DEDUP via Google Drive
+            # Render triggers 2 separate deploys per push.
+            # Each deploy = new process, so module-level flags don't work.
+            # Drive memory is the ONLY shared state between deploys.
+            # ══════════════════════════════════════════════════════════
+            skip_notification = False
+            if drive_memory_service.is_configured:
+                try:
+                    memory = drive_memory_service.get_memory()
+                    last_notif = memory.get('last_deploy_notification', {})
+                    if last_notif.get('version') == current_version:
+                        last_ts = last_notif.get('timestamp', '')
+                        if last_ts:
+                            last_dt = datetime.fromisoformat(last_ts)
+                            age_sec = (datetime.utcnow() - last_dt).total_seconds()
+                            if age_sec < 300:  # 5 minutes
+                                print(f"🔇 Skipping duplicate deploy notification (v{current_version} already sent {age_sec:.0f}s ago)")
+                                skip_notification = True
+                except Exception as dedup_err:
+                    print(f"⚠️  Dedup check failed ({dedup_err}) — will send notification")
+            
+            if not skip_notification:
+                # ── Mark as sent in Drive BEFORE sending (prevents race) ──
+                if drive_memory_service.is_configured:
+                    try:
+                        memory = drive_memory_service.get_memory()
+                        memory['last_deploy_notification'] = {
+                            'version': current_version,
+                            'timestamp': datetime.utcnow().isoformat()
+                        }
+                        drive_memory_service.save_memory(memory)
+                    except Exception:
+                        pass
                 
                 # Get Israel time
                 from datetime import timezone, timedelta
@@ -532,12 +558,12 @@ async def startup_event():
                 if not changes_summary:
                     try:
                         if drive_memory_service.is_configured:
-                            memory = drive_memory_service.get_memory()
-                            last_task = memory.get('last_cursor_task', {})
+                            mem = drive_memory_service.get_memory()
+                            last_task = mem.get('last_cursor_task', {})
                             if last_task and last_task.get('prompt'):
                                 changes_summary = last_task['prompt'][:150]
-                                memory.pop('last_cursor_task', None)
-                                drive_memory_service.save_memory(memory)
+                                mem.pop('last_cursor_task', None)
+                                drive_memory_service.save_memory(mem)
                     except Exception:
                         pass
                 
