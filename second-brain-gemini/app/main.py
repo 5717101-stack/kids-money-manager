@@ -212,6 +212,76 @@ def mark_message_processed(message_id: str) -> None:
             print(f"✅ Marked message {message_id} as processed (total tracked: {len(processed_message_ids)})")
 
 
+def is_kb_query(message: str) -> bool:
+    """
+    Check if a message is a Knowledge Base / organizational query.
+    
+    These queries skip the standard audio-summary flow and get
+    a direct, fact-based answer from the Knowledge Base files.
+    
+    Examples (Hebrew):
+    - "מי מדווח ליובל?"
+    - "מה התפקיד של דנה?"
+    - "מי בצוות של עמית?"
+    - "מה המבנה הארגוני?"
+    - "מי המנהל של שי?"
+    - "ספר לי על התפקיד של..."
+    """
+    message_stripped = message.strip()
+    
+    # Hebrew prefix triggers (startswith)
+    hebrew_prefix_triggers = [
+        'מי מדווח ל',
+        'מה התפקיד של',
+        'מי בצוות של',
+        'מי עובד תחת',
+        'מי כפוף ל',
+        'למי מדווח',
+        'מי המנהל של',
+        'מי האחראי על',
+        'ספר לי על התפקיד',
+        'מה המבנה הארגוני',
+        'מה ההיררכיה',
+        'תראה לי את המבנה',
+        'מי אחראי על',
+    ]
+    
+    # Check prefix triggers
+    for trigger in hebrew_prefix_triggers:
+        if message_stripped.startswith(trigger):
+            return True
+    
+    # Hebrew keyword combinations (must contain at least one keyword from each group)
+    org_keywords = ['מדווח', 'כפוף', 'היררכיה', 'ארגוני', 'מבנה ארגוני', 'דרג', 'תפקיד']
+    question_words = ['מי', 'מה', 'איפה', 'כמה', 'האם']
+    
+    has_org = any(kw in message_stripped for kw in org_keywords)
+    has_question = any(kw in message_stripped for kw in question_words)
+    
+    if has_org and has_question:
+        return True
+    
+    # English triggers
+    english_triggers = [
+        'who reports to',
+        'what is the role of',
+        'who is on the team',
+        'who works under',
+        'who manages',
+        'org chart',
+        'org structure',
+        'reporting line',
+        'what team is',
+    ]
+    
+    message_lower = message_stripped.lower()
+    for trigger in english_triggers:
+        if trigger in message_lower:
+            return True
+    
+    return False
+
+
 def is_history_query(message: str) -> bool:
     """
     Check if a message is asking about past conversations/history.
@@ -2314,6 +2384,74 @@ async def webhook(request: Request, background_tasks: BackgroundTasks):
                                                 )
                                         
                                         print(f"🛑 AUDIT INTERCEPTOR COMPLETE - Returning immediately")
+                                        print(f"{'='*60}\n")
+                                        continue
+                                    
+                                    # ================================================================
+                                    # KNOWLEDGE BASE QUERY INTERCEPTOR
+                                    # Triggers: "מי מדווח ל...", "מה התפקיד של...", etc.
+                                    # Skips audio-summary flow → direct fact-based answer from KB
+                                    # ================================================================
+                                    if is_kb_query(message_body_text):
+                                        print(f"\n{'='*60}")
+                                        print(f"📚 KNOWLEDGE BASE QUERY INTERCEPTOR ACTIVATED")
+                                        print(f"{'='*60}")
+                                        print(f"   Query: {message_body_text}")
+                                        
+                                        try:
+                                            from app.services.knowledge_base_service import get_kb_query_context
+                                            
+                                            kb_context = get_kb_query_context()
+                                            
+                                            if not kb_context:
+                                                # KB is empty or not configured
+                                                if whatsapp_provider:
+                                                    whatsapp_provider.send_whatsapp(
+                                                        message="⚠️ בסיס הידע לא מוגדר או ריק.\nודא ש-CONTEXT_FOLDER_ID מוגדר ושיש קבצים בתיקיית Second_Brain_Context ב-Google Drive.",
+                                                        to=f"+{from_number}"
+                                                    )
+                                                print(f"   ⚠️ KB context is empty - cannot answer")
+                                            else:
+                                                print(f"   📚 KB context loaded: {len(kb_context)} chars")
+                                                
+                                                # Use Gemini to answer directly from KB
+                                                kb_answer = gemini_service.answer_kb_query(
+                                                    user_query=message_body_text,
+                                                    kb_context=kb_context
+                                                )
+                                                
+                                                # Prepend a header to indicate this is a KB answer
+                                                formatted_answer = f"📚 *תשובה מבסיס הידע:*\n\n{kb_answer}"
+                                                
+                                                if whatsapp_provider:
+                                                    whatsapp_provider.send_whatsapp(
+                                                        message=formatted_answer,
+                                                        to=f"+{from_number}"
+                                                    )
+                                                    print(f"   ✅ KB answer sent ({len(formatted_answer)} chars)")
+                                                
+                                                # Save interaction to memory
+                                                new_interaction = {
+                                                    "user_message": message_body_text,
+                                                    "ai_response": formatted_answer,
+                                                    "timestamp": datetime.utcnow().isoformat() + "Z",
+                                                    "message_id": message_id,
+                                                    "from_number": from_number,
+                                                    "type": "kb_query"
+                                                }
+                                                drive_memory_service.update_memory(new_interaction, background_tasks=background_tasks)
+                                        
+                                        except Exception as kb_error:
+                                            print(f"   ❌ KB Query error: {kb_error}")
+                                            import traceback
+                                            traceback.print_exc()
+                                            if whatsapp_provider:
+                                                whatsapp_provider.send_whatsapp(
+                                                    message=f"❌ שגיאה בשאילתת בסיס הידע: {str(kb_error)[:100]}",
+                                                    to=f"+{from_number}"
+                                                )
+                                        
+                                        print(f"🛑 KB QUERY INTERCEPTOR COMPLETE - Returning immediately")
                                         print(f"{'='*60}\n")
                                         continue
                                     

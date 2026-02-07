@@ -463,6 +463,12 @@ Summary: {summary}
             
             print(f"📚 Recent transcripts injected ({len(recent_transcripts)} files)")
         
+        # Inject Knowledge Base context into regular chat as well
+        kb_block = get_kb_context()
+        if kb_block:
+            system_instruction += "\n" + kb_block
+            print(f"📚 Knowledge Base context injected into chat ({len(kb_block)} chars)")
+        
         # Add enhanced system prompt
         contents.append(system_instruction)
         
@@ -596,6 +602,86 @@ Summary: {summary}
         except Exception as e:
             print(f"❌ Error generating history answer: {e}")
             return f"מצטער, לא הצלחתי לעבד את השאלה. נסה שוב מאוחר יותר."
+    
+    def answer_kb_query(
+        self,
+        user_query: str,
+        kb_context: str,
+        user_profile: Dict[str, Any] = None
+    ) -> str:
+        """
+        Answer a direct Knowledge Base query (organizational questions).
+        
+        Skips the standard audio-summary flow and provides a fact-based answer
+        directly from the Knowledge Base files (org chart, identity context, etc.)
+        
+        Triggers:
+        - "מי מדווח ל..." (Who reports to...)
+        - "מה התפקיד של..." (What is the role of...)
+        - "מי בצוות של..." (Who is on the team of...)
+        - Other organizational/identity questions
+        
+        Args:
+            user_query: The user's organizational question
+            kb_context: Raw Knowledge Base content from get_kb_query_context()
+            user_profile: Optional user profile for personalization
+            
+        Returns:
+            Fact-based answer from the Knowledge Base
+        """
+        if not self.is_configured or self.model is None:
+            return "שגיאה: שירות Gemini לא מוגדר. אנא בדוק את הגדרות ה-API."
+        
+        if not kb_context:
+            return "⚠️ בסיס הידע לא מוגדר או ריק. ודא ש-CONTEXT_FOLDER_ID מוגדר ושיש קבצים בתיקיית Second_Brain_Context ב-Google Drive."
+        
+        prompt = f"""אתה עוזר ארגוני מומחה עם גישה לבסיס הידע הרשמי של המשתמש.
+
+═══════════════════════════════════════════════════════════════════════════════
+בסיס הידע הארגוני (מקור האמת היחיד):
+═══════════════════════════════════════════════════════════════════════════════
+{kb_context}
+═══════════════════════════════════════════════════════════════════════════════
+
+**שאלת המשתמש:** {user_query}
+
+**הוראות:**
+1. ענה אך ורק על סמך בסיס הידע שלמעלה — זה מקור האמת היחיד.
+2. אם השאלה עוסקת בשרשרת דיווח (מי מדווח למי):
+   - חפש שדות כמו "subordinates", "team", "reports_to", "manager", "direct_reports", "role"
+   - נווט בעץ ההיררכיה — אם מישהו הוא מנהל, פרט את כל מי שתחתיו (ישירים ועקיפים)
+3. אם השאלה עוסקת בתפקיד — ציין את התפקיד המדויק כפי שמופיע במסמכים.
+4. אם המידע לא נמצא בבסיס הידע — אמור זאת בבירור: "המידע לא נמצא בבסיס הידע."
+5. היה מדויק, תמציתי, ועניני.
+6. ענה בעברית.
+7. אל תמציא מידע. אם אתה לא בטוח — אמור זאת.
+
+תשובה:"""
+        
+        print(f"📚 [KB Query] Answering organizational question: {user_query[:60]}...")
+        print(f"📚 [KB Query] Context size: {len(kb_context)} chars")
+        
+        try:
+            response = self.model.generate_content(
+                prompt,
+                generation_config={
+                    'temperature': 0.1,  # Low temperature for factual accuracy
+                    'max_output_tokens': 1024
+                },
+                request_options={'timeout': 60}
+            )
+            
+            answer = response.text.strip() if response.text else ""
+            
+            if not answer:
+                return "⚠️ לא הצלחתי לייצר תשובה. נסה לנסח את השאלה אחרת."
+            
+            print(f"✅ [KB Query] Answer generated: {len(answer)} chars")
+            return answer
+            
+        except Exception as e:
+            print(f"❌ [KB Query] Error: {e}")
+            return f"שגיאה בעיבוד השאלה: {str(e)[:100]}"
     
     def analyze_day(
         self,

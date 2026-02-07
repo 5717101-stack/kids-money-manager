@@ -351,19 +351,46 @@ def get_system_instruction_block() -> str:
     
     return f"""
 ═══════════════════════════════════════════════════════════════════════════════
-USER'S PERSONAL KNOWLEDGE BASE (Live from Google Drive)
+ORGANIZATIONAL SOURCE OF TRUTH — Knowledge Base (Live from Google Drive)
 ═══════════════════════════════════════════════════════════════════════════════
-You are an AI assistant with access to the user's live Knowledge Base from
-Google Drive. Use the provided organizational chart, family roles, and
-personal documents to ground your analysis. If a name in the transcript
-matches a role in the context, prioritize that role's perspective.
 
-Reference the roles, relationships, and identities found below to provide
-100% accurate analysis.
+**CRITICAL INSTRUCTION:**
+The following documents are the user's AUTHORITATIVE Knowledge Base.
+Treat ALL data below — especially identity_context.json, org charts, and
+personal context files — as the SINGLE SOURCE OF TRUTH for:
+  • Organizational structure (who reports to whom)
+  • Roles and titles
+  • Team composition and hierarchy
+  • Family relationships and personal context
+
+**HIERARCHY NAVIGATION RULES:**
+When asked about reporting lines, teams, or organizational questions:
+1. Look for fields such as "subordinates", "team", "reports_to",
+   "manager", "direct_reports", "children" (in org context), "role".
+2. Navigate the hierarchy tree: if a person is listed as a Manager,
+   list everyone in their sub-branch (direct and indirect reports).
+3. If a name in a transcript matches a name in these documents,
+   ALWAYS use the role/title from the Knowledge Base.
+
+**PRIORITY:** Knowledge Base data OVERRIDES any assumptions or general
+knowledge. If there is a conflict between transcript content and the
+Knowledge Base, the Knowledge Base wins.
 
 {context}
 ═══════════════════════════════════════════════════════════════════════════════
 """
+
+
+def get_kb_query_context() -> str:
+    """
+    Returns the raw Knowledge Base content for direct fact-based queries.
+    Used by the KB Query Interceptor to answer organizational questions
+    without going through the full audio/transcript flow.
+    
+    Returns:
+        Raw context string from all KB files, or empty string if unavailable.
+    """
+    return load_context() or ""
 
 
 def get_status() -> Dict[str, Any]:
