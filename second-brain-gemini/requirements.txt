@@ -33,5 +33,9 @@ google-auth-httplib2==0.2.0
 pydub==0.25.1
 webrtcvad==2.0.10
 
+# PDF parsing (robust, preserves layout/hierarchy)
+PyMuPDF==1.24.3
+pdfplumber==0.11.4
+
 # Scheduling for cron jobs (weekly architecture audit)
 apscheduler==3.10.4

@@ -612,14 +612,14 @@ Summary: {summary}
         """
         Answer a direct Knowledge Base query (organizational questions).
         
+        Uses SEMANTIC SEARCH via Gemini — not exact word matching.
         Skips the standard audio-summary flow and provides a fact-based answer
         directly from the Knowledge Base files (org chart, identity context, etc.)
         
-        Triggers:
-        - "מי מדווח ל..." (Who reports to...)
-        - "מה התפקיד של..." (What is the role of...)
-        - "מי בצוות של..." (Who is on the team of...)
-        - Other organizational/identity questions
+        Direct Answer Mode:
+        - If about people/roles → direct answer: "ליובל לייקין (Manager) מדווחים: שי, ליה, אורית"
+        - NEVER says "לא נמצא" if there is ANY partial match
+        - Only says "לא נמצא" if the person/topic is truly absent from all documents
         
         Args:
             user_query: The user's organizational question
@@ -635,26 +635,48 @@ Summary: {summary}
         if not kb_context:
             return "⚠️ בסיס הידע לא מוגדר או ריק. ודא ש-CONTEXT_FOLDER_ID מוגדר ושיש קבצים בתיקיית Second_Brain_Context ב-Google Drive."
         
-        prompt = f"""אתה עוזר ארגוני מומחה עם גישה לבסיס הידע הרשמי של המשתמש.
+        prompt = f"""אתה מומחה ארגוני עם גישה מלאה לבסיס הידע של המשתמש.
 
 ═══════════════════════════════════════════════════════════════════════════════
-בסיס הידע הארגוני (מקור האמת היחיד):
+בסיס הידע הארגוני — מקור האמת היחיד:
 ═══════════════════════════════════════════════════════════════════════════════
 {kb_context}
 ═══════════════════════════════════════════════════════════════════════════════
 
 **שאלת המשתמש:** {user_query}
 
-**הוראות:**
-1. ענה אך ורק על סמך בסיס הידע שלמעלה — זה מקור האמת היחיד.
-2. אם השאלה עוסקת בשרשרת דיווח (מי מדווח למי):
-   - חפש שדות כמו "subordinates", "team", "reports_to", "manager", "direct_reports", "role"
-   - נווט בעץ ההיררכיה — אם מישהו הוא מנהל, פרט את כל מי שתחתיו (ישירים ועקיפים)
-3. אם השאלה עוסקת בתפקיד — ציין את התפקיד המדויק כפי שמופיע במסמכים.
-4. אם המידע לא נמצא בבסיס הידע — אמור זאת בבירור: "המידע לא נמצא בבסיס הידע."
-5. היה מדויק, תמציתי, ועניני.
-6. ענה בעברית.
-7. אל תמציא מידע. אם אתה לא בטוח — אמור זאת.
+═══════════════════════════════════════════════════════════════════════════════
+הוראות חיפוש סמנטי (SEMANTIC SEARCH):
+═══════════════════════════════════════════════════════════════════════════════
+
+שלב 1 — סריקה מלאה:
+סרוק את כל בסיס הידע שלמעלה — כל קובץ JSON, כל טקסט PDF, כל מסמך.
+אל תחפש רק התאמה מדויקת של מילים — חפש משמעות.
+
+שלב 2 — זיהוי אנשים:
+אם השאלה מזכירה שם (גם חלקי!) — חפש את האדם הזה בכל המסמכים.
+דוגמא: "יובל" → חפש "יובל לייקין", "Yuval Leikin", "Yuval", "יובל" בכל השדות.
+חפש גם בשדות: name, role, manager, reports_to, subordinates, team, direct_reports.
+
+שלב 3 — ניווט היררכיה:
+אם השאלה שואלת "מי מדווח ל..." → חפש את האדם, ואז פרט את כל מי שמופיע תחתיו
+(בשדות subordinates, direct_reports, team, או כל מי שה-reports_to שלו הוא האדם הזה).
+אם השאלה שואלת "מה התפקיד של..." → ציין את ה-role, department, team.
+אם השאלה שואלת "מי המנהל של..." → מצא את ה-reports_to או manager.
+
+שלב 4 — מצב תשובה ישירה (DIRECT ANSWER):
+תן תשובה ישירה, עניינית, עם שמות ותפקידים מדויקים.
+דוגמאות לפורמט תשובה:
+• "ליובל לייקין (Manager, Accounting) — מדווחים אליו: שי הון, ליה כהן, אורית יוספי"
+• "דנה כהן — תפקיד: VP R&D, מדווחת ל: אבי לוי (CEO)"
+• "הצוות של עמית: יוסי, דני, מיכל (3 אנשים)"
+
+שלב 5 — כללים קריטיים:
+• לעולם אל תגיד "המידע לא נמצא" אם יש התאמה חלקית כלשהי.
+• רק אם האדם/הנושא לא מופיע בשום מקום בשום מסמך — אמור: "לא מצאתי את [שם] בבסיס הידע. ייתכן שהמסמכים צריכים עדכון."
+• ענה בעברית.
+• אל תמציא מידע — תשתמש רק במה שבמסמכים.
+• אם יש ספק — ציין: "על פי בסיס הידע..." ותן את המידע הקרוב ביותר.
 
 תשובה:"""
         
@@ -662,16 +684,32 @@ Summary: {summary}
         print(f"📚 [KB Query] Context size: {len(kb_context)} chars")
         
         try:
+            # Use safety settings to prevent blocking
+            safety_settings = [
+                {"category": "HARM_CATEGORY_HARASSMENT", "threshold": "BLOCK_NONE"},
+                {"category": "HARM_CATEGORY_HATE_SPEECH", "threshold": "BLOCK_NONE"},
+                {"category": "HARM_CATEGORY_SEXUALLY_EXPLICIT", "threshold": "BLOCK_NONE"},
+                {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_NONE"},
+            ]
+            
             response = self.model.generate_content(
                 prompt,
                 generation_config={
                     'temperature': 0.1,  # Low temperature for factual accuracy
-                    'max_output_tokens': 1024
+                    'max_output_tokens': 1500
                 },
+                safety_settings=safety_settings,
                 request_options={'timeout': 60}
             )
             
-            answer = response.text.strip() if response.text else ""
+            answer = ""
+            try:
+                answer = response.text.strip() if response.text else ""
+            except (ValueError, AttributeError):
+                # Try direct extraction from candidates
+                if hasattr(response, 'candidates') and response.candidates:
+                    parts = response.candidates[0].content.parts
+                    answer = "".join(p.text for p in parts if hasattr(p, 'text')).strip()
             
             if not answer:
                 return "⚠️ לא הצלחתי לייצר תשובה. נסה לנסח את השאלה אחרת."
@@ -681,6 +719,8 @@ Summary: {summary}
             
         except Exception as e:
             print(f"❌ [KB Query] Error: {e}")
+            import traceback
+            traceback.print_exc()
             return f"שגיאה בעיבוד השאלה: {str(e)[:100]}"
     
     def analyze_day(
