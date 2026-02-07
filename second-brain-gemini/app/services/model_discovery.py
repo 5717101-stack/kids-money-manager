@@ -18,6 +18,7 @@ Usage:
     model = genai.GenerativeModel(MODEL_MAPPING["pro"])
 """
 
+import json
 import logging
 import os
 import time
@@ -162,39 +163,151 @@ def discover_models(force: bool = False) -> List[str]:
 
 def startup_connection_test():
     """
-    Perform a real generate_content() call at startup to verify connectivity.
-    Tests both Pro and Flash models and logs the result.
+    Perform a direct HTTP call at startup to verify connectivity.
+    Tests both Pro and Flash models via the v1 endpoint.
     
     Call this AFTER configure_genai() and discover_models().
     """
     print("\n🧪 ══════════════════════════════════════════════")
-    print("🧪  CONNECTION TEST (actual generate_content call)")
+    print("🧪  CONNECTION TEST (direct HTTP v1 endpoint)")
     print("🧪 ══════════════════════════════════════════════")
     
-    test_prompt = "Say 'OK' in one word."
-    gen_config = {"temperature": 0.0, "max_output_tokens": 10}
-    
     for alias, model_name in MODEL_MAPPING.items():
+        url = f"{GEMINI_V1_BASE_URL}/{model_name}:generateContent?key={_get_api_key()}"
+        print(f"   🔗 CONNECTION TEST: {alias.upper()} model [{model_name}] on {GEMINI_V1_BASE_URL}")
         try:
             start = time.time()
-            model = genai.GenerativeModel(model_name)
-            response = model.generate_content(
-                test_prompt,
-                generation_config=gen_config,
-                request_options={"timeout": 15},
-            )
+            result = gemini_v1_generate("Say 'OK' in one word.", model_name=model_name, max_output_tokens=10)
             elapsed_ms = int((time.time() - start) * 1000)
-            reply = ""
-            try:
-                reply = response.text.strip()[:20] if response.text else "(empty)"
-            except (ValueError, AttributeError):
-                reply = "(blocked)"
+            reply = result[:30] if result else "(empty)"
             print(f"   ✅ CONNECTION TEST: {alias.upper()} model [{model_name}] → {elapsed_ms}ms — reply: \"{reply}\"")
         except Exception as e:
-            err_str = str(e)[:120]
+            err_str = str(e)[:150]
             print(f"   ❌ CONNECTION TEST: {alias.upper()} model [{model_name}] → FAILED: {err_str}")
     
     print("🧪 ══════════════════════════════════════════════\n")
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# DIRECT HTTP v1 API — Bypass SDK's v1beta endpoint entirely
+# ═══════════════════════════════════════════════════════════════════════
+GEMINI_V1_BASE_URL = "https://generativelanguage.googleapis.com/v1/models"
+
+
+def _get_api_key() -> str:
+    """Get the API key from environment."""
+    return os.environ.get("GOOGLE_API_KEY", "")
+
+
+def gemini_v1_generate(
+    prompt: str,
+    model_name: str = None,
+    temperature: float = 0.1,
+    max_output_tokens: int = 1500,
+    is_kb_query: bool = False,
+    timeout: int = 90,
+) -> str:
+    """
+    Direct HTTP POST to Gemini v1 API — completely bypasses the SDK.
+    
+    URL: https://generativelanguage.googleapis.com/v1/models/{model}:generateContent?key=...
+    (Notice: v1 — NOT v1beta)
+    
+    Args:
+        prompt: The text prompt to send
+        model_name: Model name (e.g. "gemini-1.5-pro"). If None, auto-selects based on is_kb_query.
+        temperature: Sampling temperature (0.0-1.0)
+        max_output_tokens: Maximum response length
+        is_kb_query: If True, uses Pro model; otherwise Flash
+        timeout: Request timeout in seconds
+    
+    Returns:
+        The generated text response
+        
+    Raises:
+        Exception with full error details if the request fails
+    """
+    import requests as http_requests
+    
+    api_key = _get_api_key()
+    if not api_key:
+        raise ValueError("GOOGLE_API_KEY not set")
+    
+    # ── Manual model selection ──
+    if model_name is None:
+        model_name = MODEL_MAPPING["pro"] if is_kb_query else MODEL_MAPPING["flash"]
+    
+    url = f"{GEMINI_V1_BASE_URL}/{model_name}:generateContent?key={api_key}"
+    
+    # ── Payload (Gemini v1 format) ──
+    payload = {
+        "contents": [
+            {
+                "parts": [
+                    {"text": prompt}
+                ]
+            }
+        ],
+        "generationConfig": {
+            "temperature": temperature,
+            "maxOutputTokens": max_output_tokens,
+        },
+        "safetySettings": [
+            {"category": "HARM_CATEGORY_HARASSMENT", "threshold": "BLOCK_NONE"},
+            {"category": "HARM_CATEGORY_HATE_SPEECH", "threshold": "BLOCK_NONE"},
+            {"category": "HARM_CATEGORY_SEXUALLY_EXPLICIT", "threshold": "BLOCK_NONE"},
+            {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_NONE"},
+        ]
+    }
+    
+    headers = {"Content-Type": "application/json"}
+    
+    print(f"🌐 [Direct HTTP] POST {GEMINI_V1_BASE_URL}/{model_name}:generateContent")
+    
+    resp = http_requests.post(url, json=payload, headers=headers, timeout=timeout)
+    
+    # ── Strict error handling: print FULL response on failure ──
+    if resp.status_code != 200:
+        body = resp.text[:2000]
+        print(f"❌ [Direct HTTP] Status {resp.status_code} from {model_name}:")
+        print(f"❌ [Direct HTTP] FULL RESPONSE BODY:\n{body}")
+        
+        # If Pro failed, try Flash automatically
+        if model_name == MODEL_MAPPING["pro"]:
+            fallback = MODEL_MAPPING["flash"]
+            print(f"⚠️ [Direct HTTP] Pro failed ({resp.status_code}), falling back to Flash: {fallback}")
+            fallback_url = f"{GEMINI_V1_BASE_URL}/{fallback}:generateContent?key={api_key}"
+            resp = http_requests.post(fallback_url, json=payload, headers=headers, timeout=timeout)
+            model_name = fallback
+            if resp.status_code != 200:
+                body2 = resp.text[:2000]
+                print(f"❌ [Direct HTTP] Flash also failed! Status {resp.status_code}:")
+                print(f"❌ [Direct HTTP] FULL RESPONSE BODY:\n{body2}")
+                raise Exception(f"Both Pro and Flash failed. Last status: {resp.status_code}. Body: {body2[:500]}")
+        else:
+            raise Exception(f"Gemini v1 API error {resp.status_code}: {body[:500]}")
+    
+    # ── Parse response ──
+    data = resp.json()
+    
+    candidates = data.get("candidates", [])
+    if not candidates:
+        # Check for prompt feedback (blocked)
+        feedback = data.get("promptFeedback", {})
+        block_reason = feedback.get("blockReason", "")
+        if block_reason:
+            print(f"⚠️ [Direct HTTP] Prompt blocked: {block_reason}")
+            raise Exception(f"Prompt blocked by safety: {block_reason}")
+        print(f"⚠️ [Direct HTTP] No candidates in response: {json.dumps(data)[:500]}")
+        return ""
+    
+    # Extract text from first candidate
+    parts = candidates[0].get("content", {}).get("parts", [])
+    text_parts = [p.get("text", "") for p in parts if "text" in p]
+    result = "".join(text_parts).strip()
+    
+    print(f"✅ [Direct HTTP] {model_name} → {len(result)} chars")
+    return result
 
 
 def get_available_models() -> List[str]:

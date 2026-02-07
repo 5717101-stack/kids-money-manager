@@ -742,64 +742,24 @@ STEP 4 — RESPONSE FORMATTING (פורמט תשובה עם מחלקה):
         print(f"📚 [KB Query] Context: {len(kb_context)} chars")
         
         try:
-            safety_settings = [
-                {"category": "HARM_CATEGORY_HARASSMENT", "threshold": "BLOCK_NONE"},
-                {"category": "HARM_CATEGORY_HATE_SPEECH", "threshold": "BLOCK_NONE"},
-                {"category": "HARM_CATEGORY_SEXUALLY_EXPLICIT", "threshold": "BLOCK_NONE"},
-                {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_NONE"},
-            ]
+            # ── Direct HTTP to Gemini v1 API (bypasses SDK v1beta entirely) ──
+            from app.services.model_discovery import gemini_v1_generate, MODEL_MAPPING
             
-            # ── Use MODEL_MAPPING static aliases (no models/ prefix) ──
-            from app.services.model_discovery import MODEL_MAPPING
+            print(f"📚 [KB Query] Using DIRECT HTTP v1 with model: {MODEL_MAPPING['pro']}")
             
-            kb_model_name = MODEL_MAPPING["pro"]   # "gemini-1.5-pro"
-            kb_model = genai.GenerativeModel(kb_model_name)
-            print(f"📚 [KB Query] Using MODEL_MAPPING['pro']: {kb_model_name}")
-            
-            gen_config = {
-                'temperature': 0.1,
-                'max_output_tokens': 1500
-            }
-            
-            # ── generate_content with 404 graceful fallback to Flash ──
-            response = None
-            try:
-                response = kb_model.generate_content(
-                    prompt,
-                    generation_config=gen_config,
-                    safety_settings=safety_settings,
-                    request_options={'timeout': 90}
-                )
-            except Exception as gen_err:
-                err_str = str(gen_err)
-                if "404" in err_str or "not found" in err_str.lower():
-                    # Pro failed on hierarchy query → immediate Flash fallback
-                    fallback_name = MODEL_MAPPING["flash"]   # "gemini-1.5-flash"
-                    print(f"⚠️ [KB Query] Pro failed on hierarchy, falling back to Flash for query: {user_query[:60]}")
-                    print(f"⚠️ [KB Query] Pro 404 → retrying with {fallback_name}")
-                    kb_model = genai.GenerativeModel(fallback_name)
-                    kb_model_name = fallback_name
-                    response = kb_model.generate_content(
-                        prompt,
-                        generation_config=gen_config,
-                        safety_settings=safety_settings,
-                        request_options={'timeout': 90}
-                    )
-                else:
-                    raise
-            
-            answer = ""
-            try:
-                answer = response.text.strip() if response.text else ""
-            except (ValueError, AttributeError):
-                if hasattr(response, 'candidates') and response.candidates:
-                    parts = response.candidates[0].content.parts
-                    answer = "".join(p.text for p in parts if hasattr(p, 'text')).strip()
+            answer = gemini_v1_generate(
+                prompt=prompt,
+                model_name=MODEL_MAPPING["pro"],   # "gemini-1.5-pro" — auto-falls back to Flash on 404
+                temperature=0.1,
+                max_output_tokens=1500,
+                is_kb_query=True,
+                timeout=90,
+            )
             
             if not answer:
                 return "⚠️ לא הצלחתי לייצר תשובה. נסה לנסח את השאלה אחרת."
             
-            print(f"✅ [KB Query] Answer ({kb_model_name}): {len(answer)} chars")
+            print(f"✅ [KB Query] Answer: {len(answer)} chars")
             return answer
             
         except Exception as e:

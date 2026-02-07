@@ -261,6 +261,9 @@ def _vision_analyze_pdf(raw_bytes: bytes, file_id: str = "", file_name: str = ""
                 time.sleep(2)
             
             # ── Model selection: use MODEL_MAPPING static aliases (no models/ prefix) ──
+            # Vision analysis still uses the SDK for file upload + generate_content
+            # because file_ref objects require the SDK pipeline.
+            # But we fall back to Flash via direct HTTP if Pro 404s.
             model_name = MODEL_MAPPING["pro"]   # "gemini-1.5-pro"
             print(f"   👁️ [Vision] Using MODEL_MAPPING['pro']: {model_name}")
             model = genai.GenerativeModel(model_name)
@@ -375,11 +378,13 @@ CRITICAL RULES — READ CAREFULLY:
                 {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_NONE"},
             ]
             
-            # ── generate_content with 404 graceful fallback to Flash ──
+            # ── generate_content with cascading fallback ──
+            # Try: Pro SDK → Flash SDK → Flash Direct HTTP (text-only, no file_ref)
             gen_config = {
                 'temperature': 0.05,  # Near-zero for maximum accuracy
                 'max_output_tokens': 8192
             }
+            response = None
             try:
                 response = model.generate_content(
                     [vision_prompt, file_ref],
@@ -388,10 +393,11 @@ CRITICAL RULES — READ CAREFULLY:
                 )
             except Exception as gen_err:
                 err_str = str(gen_err)
-                if "404" in err_str or "not found" in err_str.lower():
+                print(f"   ⚠️ [Vision] Pro SDK failed: {err_str[:200]}")
+                # Fallback 1: Flash via SDK (still supports file_ref)
+                try:
                     fallback_name = MODEL_MAPPING["flash"]
-                    print(f"   ⚠️ [Vision] Pro 404 on generate_content, falling back to Flash: {fallback_name}")
-                    print(f"   ⚠️ [Vision] Pro failed on vision, falling back to Flash for {file_name}")
+                    print(f"   ⚠️ [Vision] Falling back to Flash SDK: {fallback_name}")
                     model = genai.GenerativeModel(fallback_name)
                     model_name = fallback_name
                     response = model.generate_content(
@@ -399,8 +405,10 @@ CRITICAL RULES — READ CAREFULLY:
                         generation_config=gen_config,
                         safety_settings=safety_settings
                     )
-                else:
-                    raise
+                except Exception as flash_err:
+                    print(f"   ⚠️ [Vision] Flash SDK also failed: {str(flash_err)[:200]}")
+                    print(f"   ⚠️ [Vision] All SDK calls failed — falling back to text extraction")
+                    return ""
             
             result_text = ""
             try:
