@@ -477,108 +477,103 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+async def _send_deploy_notification(version: str):
+    """
+    Send a single deployment notification via WhatsApp.
+    Uses a random delay + Drive lock to guarantee exactly ONE message,
+    even if Render starts multiple processes for the same deploy.
+    """
+    import asyncio
+    import random
+    
+    # Random delay (5–20s) so parallel processes don't hit Drive at the same instant
+    delay = random.uniform(5, 20)
+    print(f"⏳ Deploy notification scheduled (delay {delay:.0f}s)...")
+    await asyncio.sleep(delay)
+    
+    try:
+        # Check Drive — has this version already been notified?
+        if drive_memory_service.is_configured:
+            memory = drive_memory_service.get_memory()
+            if memory.get('_last_notified_version') == version:
+                print(f"🔇 v{version} already notified — skipping")
+                return
+            # Lock: write version BEFORE sending
+            memory['_last_notified_version'] = version
+            drive_memory_service.save_memory(memory)
+        
+        # Build the message
+        from datetime import timezone, timedelta
+        israel_time = datetime.now(timezone.utc) + timedelta(hours=2)
+        time_str = israel_time.strftime('%d/%m/%Y %H:%M')
+        
+        changes = ""
+        try:
+            import subprocess
+            r = subprocess.run(
+                ['git', 'log', '-1', '--pretty=%B'],
+                capture_output=True, text=True, timeout=5,
+                cwd=Path(__file__).parent.parent
+            )
+            if r.returncode == 0 and r.stdout.strip():
+                msg = r.stdout.strip()
+                changes = msg.split(' - ', 1)[1] if ' - ' in msg else msg
+                changes = changes[:150]
+        except Exception:
+            pass
+        
+        if not changes:
+            commit_file = Path(__file__).parent.parent / ".last_commit"
+            if commit_file.exists():
+                try:
+                    txt = commit_file.read_text().strip()
+                    if txt and txt != 'No commit message available':
+                        changes = txt[:150]
+                except Exception:
+                    pass
+        
+        if not changes:
+            changes = "עדכון מערכת"
+        
+        notification = (
+            f"🚀 *גרסה חדשה עלתה לפרודקשן!*\n\n"
+            f"📦 גרסה: *{version}*\n"
+            f"⏰ זמן: {time_str} (שעון ישראל)\n\n"
+            f"📝 *שינויים עיקריים:*\n{changes}\n\n"
+            f"✅ השרת פעיל ומוכן לעבודה!"
+        )
+        
+        from app.services.meta_whatsapp_service import meta_whatsapp_service
+        if meta_whatsapp_service.is_configured:
+            result = meta_whatsapp_service.send_whatsapp(notification)
+            if result.get('success'):
+                print(f"✅ Deploy notification sent (v{version})")
+            else:
+                print(f"⚠️  Deploy notification failed: {result.get('error')}")
+        else:
+            print("⚠️  Meta WhatsApp not configured")
+    except Exception as e:
+        print(f"⚠️  Deploy notification error: {e}")
+
+
 # Startup event: Pre-warm memory cache
 @app.on_event("startup")
 async def startup_event():
     """Pre-warm memory cache, start scheduler, and send deployment notification."""
     
     # ================================================================
-    # DEPLOYMENT NOTIFICATION: Send WhatsApp when server starts
-    # This is triggered when Render finishes deploying and restarts the service
+    # DEPLOYMENT NOTIFICATION (background task with dedup)
     # ================================================================
-    try:
-        # Read current version
-        version_file = Path(__file__).parent.parent / "VERSION"
-        current_version = version_file.read_text().strip() if version_file.exists() else "unknown"
-        
-        # Check if we should send notification (only in production)
-        is_production = os.environ.get('RENDER', '') == 'true'
-        
-        if is_production:
-            print(f"🚀 Production deployment detected - Version {current_version}")
-            
-            # Dedup is handled at the WhatsApp send level (meta_whatsapp_service)
-            # — identical messages within 2 min are automatically blocked.
-            
-            # Get Israel time
-            from datetime import timezone, timedelta
-            israel_time = datetime.now(timezone.utc) + timedelta(hours=2)
-            israel_time_str = israel_time.strftime('%d/%m/%Y %H:%M')
-            
-            # Get changes summary
-            changes_summary = ""
-            
-            try:
-                import subprocess
-                result = subprocess.run(
-                    ['git', 'log', '-1', '--pretty=%B'],
-                    capture_output=True, text=True, timeout=5,
-                    cwd=Path(__file__).parent.parent
-                )
-                if result.returncode == 0 and result.stdout.strip():
-                    git_msg = result.stdout.strip()
-                    if ' - ' in git_msg:
-                        git_msg = git_msg.split(' - ', 1)[1]
-                    changes_summary = git_msg[:150]
-            except Exception:
-                pass
-            
-            if not changes_summary:
-                try:
-                    if drive_memory_service.is_configured:
-                        mem = drive_memory_service.get_memory()
-                        last_task = mem.get('last_cursor_task', {})
-                        if last_task and last_task.get('prompt'):
-                            changes_summary = last_task['prompt'][:150]
-                            mem.pop('last_cursor_task', None)
-                            drive_memory_service.save_memory(mem)
-                except Exception:
-                    pass
-            
-            if not changes_summary:
-                commit_file = Path(__file__).parent.parent / ".last_commit"
-                if commit_file.exists():
-                    try:
-                        commit_msg = commit_file.read_text().strip()
-                        if commit_msg and commit_msg != 'No commit message available':
-                            changes_summary = commit_msg[:150]
-                    except Exception:
-                        pass
-            
-            if not changes_summary:
-                changes_summary = "עדכון מערכת"
-            
-            # Send notification (dedup at WhatsApp layer blocks duplicates)
-            from app.services.meta_whatsapp_service import meta_whatsapp_service
-            
-            notification_msg = f"""🚀 *גרסה חדשה עלתה לפרודקשן!*
-
-📦 גרסה: *{current_version}*
-⏰ זמן: {israel_time_str} (שעון ישראל)
-
-📝 *שינויים עיקריים:*
-{changes_summary}
-
-✅ השרת פעיל ומוכן לעבודה!"""
-            
-            if meta_whatsapp_service.is_configured:
-                result = meta_whatsapp_service.send_whatsapp(notification_msg, dedup=True)
-                if result.get('success'):
-                    if result.get('deduplicated'):
-                        print(f"🔇 Deployment notification deduplicated (v{current_version})")
-                    else:
-                        print(f"✅ Deployment notification sent via WhatsApp")
-                else:
-                    print(f"⚠️  Failed to send deployment notification: {result.get('error')}")
-            else:
-                print(f"⚠️  Meta WhatsApp not configured — deployment notification not sent")
-        else:
-            print(f"📍 Local development - Version {current_version} (no notification)")
-            
-    except Exception as e:
-        print(f"⚠️  Deployment notification error: {e}")
-        import traceback
-        traceback.print_exc()
+    version_file = Path(__file__).parent.parent / "VERSION"
+    current_version = version_file.read_text().strip() if version_file.exists() else "unknown"
+    is_production = os.environ.get('RENDER', '') == 'true'
+    
+    if is_production:
+        print(f"🚀 Production deployment detected — v{current_version}")
+        import asyncio
+        asyncio.create_task(_send_deploy_notification(current_version))
+    else:
+        print(f"📍 Local development — v{current_version}")
     
     # Pre-warm memory cache
     if drive_memory_service.is_configured:
