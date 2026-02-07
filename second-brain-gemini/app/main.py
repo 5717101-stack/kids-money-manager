@@ -580,8 +580,6 @@ async def startup_event():
                     print(f"⚠️  Failed to send deployment notification: {result.get('error')}")
             else:
                 print(f"⚠️  Meta WhatsApp not configured — deployment notification not sent")
-            else:
-                print("⚠️  No WhatsApp provider configured for deployment notification")
         else:
             print(f"📍 Local development - Version {current_version} (no notification)")
             
