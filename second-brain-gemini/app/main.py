@@ -1103,7 +1103,7 @@ def process_audio_in_background(
         
         if expert_summary and len(expert_summary.strip()) > 50:
             # Success - we have expert summary from combined prompt
-            from datetime import timezone
+            from datetime import timezone, timedelta
             israel_time = datetime.now(timezone.utc) + timedelta(hours=2)
             
             expert_analysis_result = {
