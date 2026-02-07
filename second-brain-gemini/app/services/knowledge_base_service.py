@@ -276,19 +276,46 @@ def _vision_analyze_pdf(raw_bytes: bytes, file_id: str = "", file_name: str = ""
             
             vision_prompt = """Analyze this organizational chart IMAGE visually. This is a VISION task.
 
-INSTRUCTIONS:
-1. Look at the VISUAL LAYOUT of the document — the boxes, names, titles, and connecting lines.
-2. Every box or text block represents a PERSON with a name and title.
-3. Every LINE connecting two boxes represents a REPORTING RELATIONSHIP (the person below reports to the person above).
-4. Map every person based on the PHYSICAL LINES connecting them — not assumptions.
+═══════════════════════════════════════════════════════════════════════
+PHASE 1 — STRICT LINE-FOLLOWING PROTOCOL (trace lines BEFORE assigning roles)
+═══════════════════════════════════════════════════════════════════════
+1. Identify every BOX in the image. Each box contains a person's NAME and TITLE.
+2. Trace every SOLID LINE connecting boxes:
+   • A VERTICAL line going DOWN from Box A to Box B means B reports to A.
+   • A HORIZONTAL branching line connecting multiple boxes at the same level
+     means those boxes are PEERS — they share the same manager above the branch.
+   • PEERS do NOT report to each other! They are equals.
+3. Example: If Asaf Peled's box has a line going down to a horizontal branch,
+   and that branch connects to Amber, Ofir, and Maylin — then all three report
+   to Asaf Peled. Amber does NOT manage Ofir or Maylin; they are peers.
+4. Only assign "manages" relationship when a DIRECT VERTICAL line descends
+   from one box to another. No assumptions based on proximity.
 
-EXAMPLE OF CORRECT OUTPUT:
-If you see a box labeled "Yuval Laikin - Manager, Accounting" with lines going down to 3 boxes 
-labeled "Shey Heven", "Lle Cohen", and "Ort Yosefi", the correct output is:
-- Yuval Laikin → title: "Manager, Accounting" → direct_reports: ["Shey Heven", "Lle Cohen", "Ort Yosefi"]
-NOT "CLO" or any other invented title. Read the EXACT text in the box.
+═══════════════════════════════════════════════════════════════════════
+PHASE 2 — TITLE ANCHOR RULE (read ONLY text inside each specific box)
+═══════════════════════════════════════════════════════════════════════
+1. For each person, read ONLY the text that is INSIDE their own box.
+2. Do NOT mix titles from adjacent or nearby boxes.
+   • WRONG: Giving Asaf Peled the title "Director, Market Success" (belongs to Itai Cohen's box)
+   • CORRECT: Asaf Peled → "VP Product & Support" (text inside HIS box only)
+3. If a box contains multiple lines of text, the NAME is usually the top line
+   and the TITLE is the line(s) below the name.
+4. Before finalizing each node: double-check that the title you assigned
+   actually appears INSIDE that person's visual box boundary.
 
+═══════════════════════════════════════════════════════════════════════
+PHASE 3 — PEER RECOGNITION RULE
+═══════════════════════════════════════════════════════════════════════
+People whose boxes connect to the SAME horizontal branch line are PEERS:
+• They share the same manager (the box ABOVE the branch).
+• They do NOT manage each other.
+• In direct_report_names of the manager above, list ALL peers equally.
+• In edges, each peer gets a separate edge from the manager, with relationship "manages".
+• None of the peers should have edges managing each other.
+
+═══════════════════════════════════════════════════════════════════════
 OUTPUT FORMAT (strict JSON):
+═══════════════════════════════════════════════════════════════════════
 {
   "organization_name": "Company name if visible",
   "analysis_method": "vision_graph",
@@ -299,12 +326,13 @@ OUTPUT FORMAT (strict JSON):
       "full_name": "Full Name exactly as written",
       "full_name_hebrew": "שם בעברית (if visible)",
       "full_name_english": "Name in English (if visible)",
-      "title": "EXACT title as written in the box — do NOT invent or abbreviate",
+      "title": "EXACT title as written INSIDE this person's box — NOT from adjacent boxes",
       "department": "Department if visible",
       "level": 0,
       "reports_to_id": null,
       "reports_to_name": null,
-      "direct_report_names": []
+      "direct_report_names": [],
+      "is_peer_with": []
     }
   ],
   "edges": [
@@ -331,16 +359,23 @@ OUTPUT FORMAT (strict JSON):
   }
 }
 
+═══════════════════════════════════════════════════════════════════════
 CRITICAL RULES — READ CAREFULLY:
-1. Read the EXACT title text inside each box. Do NOT abbreviate or invent titles.
-   "Manager, Accounting" must stay "Manager, Accounting" — NOT "CLO", NOT "Chief", NOT invented.
-2. Follow EVERY visual line/arrow. If a line goes from box A down to box B, then B reports to A.
-3. Count the direct reports for each manager by counting the lines going DOWN from their box.
-4. Include BOTH Hebrew AND English names when visible. Add transliterations to name_mappings.
-5. Level 0 = top of chart, Level 1 = direct reports to top, etc.
-6. Output ONLY valid JSON — no markdown, no explanation, no code blocks.
-7. Be EXHAUSTIVE — every missing person or wrong title is a critical failure.
-8. If a person has subordinates, list them ALL in "direct_report_names"."""
+═══════════════════════════════════════════════════════════════════════
+1. TITLE ANCHOR: Read the EXACT title text INSIDE each person's box.
+   Do NOT copy a title from an adjacent box. Verify visually.
+   "VP Product & Support" must stay "VP Product & Support" — NOT mixed with nearby titles.
+2. LINE-FOLLOWING: Only create "manages" edges where a SOLID LINE visually connects.
+   No line = no relationship. Proximity alone is NOT evidence of reporting.
+3. PEER DETECTION: Boxes branching from the same horizontal line are PEERS.
+   They report to the box ABOVE the branch — not to each other.
+4. Count direct reports by counting lines going DOWN from a box.
+5. Include BOTH Hebrew AND English names when visible. Add transliterations to name_mappings.
+6. Level 0 = top of chart, Level 1 = direct reports to top, etc.
+7. Output ONLY valid JSON — no markdown, no explanation, no code blocks.
+8. Be EXHAUSTIVE — every missing person or wrong title is a critical failure.
+9. If a person has subordinates, list them ALL in "direct_report_names".
+10. Fill "is_peer_with" with names of people who share the same branch line (same manager)."""
             
             safety_settings = [
                 {"category": "HARM_CATEGORY_HARASSMENT", "threshold": "BLOCK_NONE"},
