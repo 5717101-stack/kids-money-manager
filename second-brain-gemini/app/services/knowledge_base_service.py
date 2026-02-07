@@ -43,10 +43,12 @@ _cached_file_count: int = 0
 _cache_timestamp: float = 0
 _drive_connected: bool = False
 
-# ── Vision-parsed graph cache (24h) ──
+# ── Vision-parsed graph cache (24h, cleared on restart) ──
 # Key: file_id, Value: {"graph_json": str, "parsed_data": dict, "timestamp": float}
 _vision_graph_cache: Dict[str, Dict[str, Any]] = {}
 VISION_CACHE_TTL = 86400  # 24 hours
+# NOTE: Cache is empty on process start → first request always triggers fresh vision analysis
+# This ensures new deployments always get the latest parsing from the forced model
 
 # ── Unified Identity Graph (built from all sources) ──
 _identity_graph: Optional[Dict[str, Any]] = None
@@ -166,40 +168,36 @@ def _download_file_content(service, file_id: str, file_name: str, mime_type: str
 
 def _extract_pdf_with_vision(raw_bytes: bytes, file_id: str = "", file_name: str = "") -> str:
     """
-    Primary: Vision-based analysis using Gemini Pro.
+    Primary: Vision-based analysis using Gemini 1.5 Pro (forced model).
     The PDF is uploaded as a visual document and Gemini examines
     the layout, nodes, and connecting lines to build a graph.
     
-    Fallback: Text extraction (PyMuPDF → pdfplumber → PyPDF2).
+    Strategy:
+    - Cache hit → return cached vision graph (NO text extraction)
+    - Cache miss → run vision analysis with gemini-1.5-pro-latest
+    - If vision fails → fallback to text extraction
     
-    Returns the vision-parsed graph JSON + any extracted text.
+    The vision-parsed graph is the SOURCE OF TRUTH for org structure.
+    Text extraction is ONLY used as a last resort if vision fails entirely.
     """
-    # ── Step 1: Check vision cache ──
+    # ── Step 1: Check vision cache (permanent until restart or 24h) ──
     if file_id:
         cached = _get_cached_vision_graph(file_id)
         if cached:
-            print(f"   📋 [Vision] Using cached graph for {file_name}")
-            # Still try text extraction for supplementary data
-            text_fallback = _text_extract_pdf(raw_bytes)
-            if text_fallback:
-                return f"── Vision-Parsed Organizational Graph ──\n{cached}\n\n── Raw Text (supplementary) ──\n{text_fallback}"
-            return f"── Vision-Parsed Organizational Graph ──\n{cached}"
+            print(f"   📋 [Vision] Using cached vision graph for {file_name} (no re-extraction)")
+            return f"── Vision-Parsed Organizational Graph (Source of Truth) ──\n{cached}"
     
-    # ── Step 2: Vision analysis with Gemini Pro ──
+    # ── Step 2: Vision analysis with Gemini 1.5 Pro (forced) ──
     vision_result = _vision_analyze_pdf(raw_bytes, file_id, file_name)
     
-    # ── Step 3: Text extraction fallback ──
-    text_fallback = _text_extract_pdf(raw_bytes)
-    
-    # ── Combine results ──
-    parts = []
     if vision_result:
-        parts.append(f"── Vision-Parsed Organizational Graph ──\n{vision_result}")
-    if text_fallback:
-        parts.append(f"── Raw Text Extract ──\n{text_fallback}")
+        return f"── Vision-Parsed Organizational Graph (Source of Truth) ──\n{vision_result}"
     
-    if parts:
-        return "\n\n".join(parts)
+    # ── Step 3: Text extraction ONLY as last resort ──
+    print(f"   ⚠️ [Vision] Vision analysis failed, falling back to text extraction")
+    text_fallback = _text_extract_pdf(raw_bytes)
+    if text_fallback:
+        return f"── Text Extract (fallback — vision unavailable) ──\n{text_fallback}"
     
     return "[PDF — could not extract content via vision or text]"
 
@@ -215,16 +213,13 @@ def _get_cached_vision_graph(file_id: str) -> Optional[str]:
 
 def _vision_analyze_pdf(raw_bytes: bytes, file_id: str = "", file_name: str = "") -> str:
     """
-    Upload PDF to Gemini Pro and use VISION to analyze the visual layout.
+    Upload PDF to Gemini 1.5 Pro (FORCED) and use VISION to analyze the
+    visual layout of the organizational chart.
     
-    Instead of text extraction, this treats the PDF as an image/visual document
-    and identifies:
-    - Every person as a NODE in a graph
-    - Connecting lines as EDGES (reporting relationships)
-    - Titles, roles, departments from visual boxes
+    CRITICAL: This uses gemini-1.5-pro-latest — NOT Flash, NOT 2.5-pro.
+    Flash hallucinates roles. 2.5-pro may not be as good at vision.
     
-    Returns structured JSON with the full organizational graph.
-    Cached for 24 hours.
+    Returns structured JSON graph. Cached for 24 hours.
     """
     try:
         import google.generativeai as genai
@@ -264,50 +259,43 @@ def _vision_analyze_pdf(raw_bytes: bytes, file_id: str = "", file_name: str = ""
                     return ""
                 time.sleep(2)
             
-            # ── Vision Analysis Prompt ──
-            # Use gemini-2.5-pro for best vision understanding
-            models_to_try = ['gemini-2.5-pro', 'gemini-2.0-flash', 'gemini-1.5-pro']
-            model = None
-            model_name = None
+            # ── FORCED MODEL: gemini-1.5-pro-latest ──
+            # Do NOT use Flash (hallucinates roles) or 2.5-pro (may misread visuals)
+            model_name = "models/gemini-1.5-pro-latest"
+            print(f"   👁️ [Vision] FORCED model: {model_name}")
+            model = genai.GenerativeModel(model_name)
             
-            for mn in models_to_try:
-                try:
-                    model = genai.GenerativeModel(mn)
-                    model_name = mn
-                    break
-                except Exception:
-                    continue
-            
-            if not model:
-                print(f"   ❌ [Vision] No model available")
-                return ""
-            
-            print(f"   👁️ [Vision] Using model: {model_name}")
-            
-            vision_prompt = """You are an expert organizational analyst. Examine the VISUAL LAYOUT of this document carefully.
+            vision_prompt = """Analyze this organizational chart IMAGE visually. This is a VISION task.
 
-THIS IS A VISUAL ANALYSIS TASK — do NOT just extract text. Instead:
-1. Identify every PERSON shown as a NODE (box, circle, or text block)
-2. Trace every CONNECTING LINE between nodes to determine reporting relationships
-3. Determine the hierarchy levels from top to bottom based on visual position
-4. Read the text inside each node to get names and titles
+INSTRUCTIONS:
+1. Look at the VISUAL LAYOUT of the document — the boxes, names, titles, and connecting lines.
+2. Every box or text block represents a PERSON with a name and title.
+3. Every LINE connecting two boxes represents a REPORTING RELATIONSHIP (the person below reports to the person above).
+4. Map every person based on the PHYSICAL LINES connecting them — not assumptions.
 
-Output a structured JSON with this EXACT schema:
+EXAMPLE OF CORRECT OUTPUT:
+If you see a box labeled "Yuval Laikin - Manager, Accounting" with lines going down to 3 boxes 
+labeled "Shey Heven", "Lle Cohen", and "Ort Yosefi", the correct output is:
+- Yuval Laikin → title: "Manager, Accounting" → direct_reports: ["Shey Heven", "Lle Cohen", "Ort Yosefi"]
+NOT "CLO" or any other invented title. Read the EXACT text in the box.
 
+OUTPUT FORMAT (strict JSON):
 {
   "organization_name": "Company name if visible",
   "analysis_method": "vision_graph",
+  "total_people_found": <number>,
   "nodes": [
     {
       "id": 1,
-      "full_name": "Full Name (both Hebrew and English if available)",
-      "full_name_hebrew": "שם מלא בעברית",
-      "full_name_english": "Full Name in English",
-      "title": "Job Title",
-      "department": "Department",
+      "full_name": "Full Name exactly as written",
+      "full_name_hebrew": "שם בעברית (if visible)",
+      "full_name_english": "Name in English (if visible)",
+      "title": "EXACT title as written in the box — do NOT invent or abbreviate",
+      "department": "Department if visible",
       "level": 0,
       "reports_to_id": null,
-      "reports_to_name": null
+      "reports_to_name": null,
+      "direct_report_names": []
     }
   ],
   "edges": [
@@ -318,36 +306,32 @@ Output a structured JSON with this EXACT schema:
     }
   ],
   "hierarchy_tree": {
-    "root_name": {
-      "title": "CEO",
+    "Top Person Name": {
+      "title": "Their exact title",
       "direct_reports": {
-        "person_name": {
-          "title": "VP",
-          "direct_reports": {
-            "another_person": {
-              "title": "Manager",
-              "direct_reports": {}
-            }
-          }
+        "Person Name": {
+          "title": "Their exact title",
+          "direct_reports": {}
         }
       }
     }
   },
   "name_mappings": {
-    "hebrew_name": "english_name",
-    "nickname": "full_name"
+    "יובל לייקין": "Yuval Leikin",
+    "hebrew_name": "english_transliteration"
   }
 }
 
-CRITICAL RULES:
-- Extract EVERY person visible, even if partially obscured
-- Include BOTH Hebrew AND English names when available
-- Map Hebrew names to English transliterations in "name_mappings"
-- Follow every visual line/arrow to determine who reports to whom
-- Level 0 = top of hierarchy, Level 1 = direct reports to top, etc.
-- If a name appears in Hebrew (e.g., יובל לייקין), also include the English transliteration (Yuval Leikin)
-- Output ONLY valid JSON, no markdown code blocks, no explanatory text
-- Be EXHAUSTIVE — every missing person is a failure"""
+CRITICAL RULES — READ CAREFULLY:
+1. Read the EXACT title text inside each box. Do NOT abbreviate or invent titles.
+   "Manager, Accounting" must stay "Manager, Accounting" — NOT "CLO", NOT "Chief", NOT invented.
+2. Follow EVERY visual line/arrow. If a line goes from box A down to box B, then B reports to A.
+3. Count the direct reports for each manager by counting the lines going DOWN from their box.
+4. Include BOTH Hebrew AND English names when visible. Add transliterations to name_mappings.
+5. Level 0 = top of chart, Level 1 = direct reports to top, etc.
+6. Output ONLY valid JSON — no markdown, no explanation, no code blocks.
+7. Be EXHAUSTIVE — every missing person or wrong title is a critical failure.
+8. If a person has subordinates, list them ALL in "direct_report_names"."""
             
             safety_settings = [
                 {"category": "HARM_CATEGORY_HARASSMENT", "threshold": "BLOCK_NONE"},

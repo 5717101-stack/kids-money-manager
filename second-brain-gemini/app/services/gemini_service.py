@@ -719,7 +719,12 @@ STEP 4 — DIRECT ANSWER MODE (תשובה ישירה):
                 {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_NONE"},
             ]
             
-            response = self.model.generate_content(
+            # ── FORCED MODEL: gemini-1.5-pro-latest for org queries ──
+            # Do NOT use self.model (gemini-2.5-pro) — it hallucinates roles
+            kb_model = genai.GenerativeModel("models/gemini-1.5-pro-latest")
+            print(f"📚 [KB Query] Using FORCED model: models/gemini-1.5-pro-latest")
+            
+            response = kb_model.generate_content(
                 prompt,
                 generation_config={
                     'temperature': 0.1,
