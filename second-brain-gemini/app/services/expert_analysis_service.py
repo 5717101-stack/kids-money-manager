@@ -264,10 +264,8 @@ class ExpertAnalysisService:
         self.model_name = None
         
         if self.api_key:
-            genai.configure(api_key=self.api_key)
-            
-            # Use dynamic model discovery
-            from app.services.model_discovery import get_best_model
+            from app.services.model_discovery import configure_genai, get_best_model
+            configure_genai(self.api_key)
             
             model_name = get_best_model("gemini-2.5-pro", category="general")
             if model_name:

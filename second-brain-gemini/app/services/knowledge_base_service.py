@@ -230,7 +230,8 @@ def _vision_analyze_pdf(raw_bytes: bytes, file_id: str = "", file_name: str = ""
             print(f"   ⚠️ [Vision] No API key, skipping vision analysis")
             return ""
         
-        genai.configure(api_key=api_key)
+        from app.services.model_discovery import configure_genai, MODEL_MAPPING
+        configure_genai(api_key)
         
         # Save PDF to temp file
         with tempfile.NamedTemporaryFile(suffix='.pdf', delete=False) as tmp:
@@ -259,20 +260,10 @@ def _vision_analyze_pdf(raw_bytes: bytes, file_id: str = "", file_name: str = ""
                     return ""
                 time.sleep(2)
             
-            # ── Model selection: FORCE gemini-1.5-pro for vision analysis ──
-            # Pro is required for accurate visual parsing of org charts.
-            # Flash is ONLY used as a last resort if Pro truly fails.
-            FORCED_VISION_MODEL = "models/gemini-1.5-pro"
-            model_name = FORCED_VISION_MODEL
-            print(f"   👁️ [Vision] FORCED model for PDF analysis: {model_name}")
-            
-            try:
-                model = genai.GenerativeModel(model_name)
-            except Exception as init_err:
-                print(f"   ⚠️ [Vision] Failed to init {model_name}: {init_err}")
-                print(f"   ⚠️ [Vision] Falling back to gemini-1.5-flash — accuracy may suffer!")
-                model_name = "models/gemini-1.5-flash"
-                model = genai.GenerativeModel(model_name)
+            # ── Model selection: use MODEL_MAPPING static aliases ──
+            model_name = MODEL_MAPPING["pro"]   # "models/gemini-1.5-pro"
+            print(f"   👁️ [Vision] Using MODEL_MAPPING['pro']: {model_name}")
+            model = genai.GenerativeModel(model_name)
             
             vision_prompt = """Analyze this organizational chart IMAGE visually. This is a VISION task.
 
@@ -384,14 +375,32 @@ CRITICAL RULES — READ CAREFULLY:
                 {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_NONE"},
             ]
             
-            response = model.generate_content(
-                [vision_prompt, file_ref],
-                generation_config={
-                    'temperature': 0.05,  # Near-zero for maximum accuracy
-                    'max_output_tokens': 8192
-                },
-                safety_settings=safety_settings
-            )
+            # ── generate_content with 404 graceful fallback to Flash ──
+            gen_config = {
+                'temperature': 0.05,  # Near-zero for maximum accuracy
+                'max_output_tokens': 8192
+            }
+            try:
+                response = model.generate_content(
+                    [vision_prompt, file_ref],
+                    generation_config=gen_config,
+                    safety_settings=safety_settings
+                )
+            except Exception as gen_err:
+                err_str = str(gen_err)
+                if "404" in err_str or "not found" in err_str.lower():
+                    fallback_name = MODEL_MAPPING["flash"]
+                    print(f"   ⚠️ [Vision] Pro 404 on generate_content, falling back to Flash: {fallback_name}")
+                    print(f"   ⚠️ [Vision] Pro failed on vision, falling back to Flash for {file_name}")
+                    model = genai.GenerativeModel(fallback_name)
+                    model_name = fallback_name
+                    response = model.generate_content(
+                        [vision_prompt, file_ref],
+                        generation_config=gen_config,
+                        safety_settings=safety_settings
+                    )
+                else:
+                    raise
             
             result_text = ""
             try:

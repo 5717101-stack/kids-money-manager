@@ -107,11 +107,12 @@ class GeminiService:
             self.is_configured = False
             return
         
-        genai.configure(api_key=settings.google_api_key)
+        # Configure genai with stable v1 endpoint (avoids v1beta 404s)
+        from app.services.model_discovery import configure_genai, discover_models, get_best_model
+        configure_genai(settings.google_api_key)
         self.is_configured = True
         
         # Dynamic model discovery — find what's actually available
-        from app.services.model_discovery import discover_models, get_best_model
         discover_models()  # Logs all available models on startup
         
         # Find best available model (prefer pro for main service)
@@ -745,30 +746,44 @@ STEP 4 — RESPONSE FORMATTING (פורמט תשובה עם מחלקה):
                 {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_NONE"},
             ]
             
-            # ── FORCE gemini-1.5-pro for KB/org queries ──
-            # Pro is mandatory for accurate organizational hierarchy queries.
-            FORCED_KB_MODEL = "models/gemini-1.5-pro"
-            kb_model_name = FORCED_KB_MODEL
-            print(f"📚 [KB Query] FORCED model: {kb_model_name}")
+            # ── Use MODEL_MAPPING static aliases for KB queries ──
+            from app.services.model_discovery import MODEL_MAPPING
             
+            kb_model_name = MODEL_MAPPING["pro"]   # "models/gemini-1.5-pro"
+            kb_model = genai.GenerativeModel(kb_model_name)
+            print(f"📚 [KB Query] Using MODEL_MAPPING['pro']: {kb_model_name}")
+            
+            gen_config = {
+                'temperature': 0.1,
+                'max_output_tokens': 1500
+            }
+            
+            # ── generate_content with 404 graceful fallback to Flash ──
+            response = None
             try:
-                kb_model = genai.GenerativeModel(kb_model_name)
-            except Exception as init_err:
-                print(f"⚠️ [KB Query] Failed to init {kb_model_name}: {init_err}")
-                print(f"⚠️ [KB Query] Falling back to gemini-1.5-flash — accuracy may suffer!")
-                kb_model_name = "models/gemini-1.5-flash"
-                kb_model = genai.GenerativeModel(kb_model_name)
-            print(f"📚 [KB Query] Using model: {kb_model_name}")
-            
-            response = kb_model.generate_content(
-                prompt,
-                generation_config={
-                    'temperature': 0.1,
-                    'max_output_tokens': 1500
-                },
-                safety_settings=safety_settings,
-                request_options={'timeout': 90}
-            )
+                response = kb_model.generate_content(
+                    prompt,
+                    generation_config=gen_config,
+                    safety_settings=safety_settings,
+                    request_options={'timeout': 90}
+                )
+            except Exception as gen_err:
+                err_str = str(gen_err)
+                if "404" in err_str or "not found" in err_str.lower():
+                    # Pro failed on hierarchy query → immediate Flash fallback
+                    fallback_name = MODEL_MAPPING["flash"]   # "models/gemini-1.5-flash"
+                    print(f"⚠️ [KB Query] Pro failed on hierarchy, falling back to Flash for query: {user_query[:60]}")
+                    print(f"⚠️ [KB Query] Pro 404 → retrying with {fallback_name}")
+                    kb_model = genai.GenerativeModel(fallback_name)
+                    kb_model_name = fallback_name
+                    response = kb_model.generate_content(
+                        prompt,
+                        generation_config=gen_config,
+                        safety_settings=safety_settings,
+                        request_options={'timeout': 90}
+                    )
+                else:
+                    raise
             
             answer = ""
             try:
@@ -781,7 +796,7 @@ STEP 4 — RESPONSE FORMATTING (פורמט תשובה עם מחלקה):
             if not answer:
                 return "⚠️ לא הצלחתי לייצר תשובה. נסה לנסח את השאלה אחרת."
             
-            print(f"✅ [KB Query] Answer: {len(answer)} chars")
+            print(f"✅ [KB Query] Answer ({kb_model_name}): {len(answer)} chars")
             return answer
             
         except Exception as e:

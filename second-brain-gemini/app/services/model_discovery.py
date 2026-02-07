@@ -6,21 +6,71 @@ Instead of hardcoding model names that may 404, this module:
 2. Caches the result so it only runs once per process
 3. Provides get_best_model() to find the best match for a preferred name
 4. Logs the exact available models for debugging
+5. Provides MODEL_MAPPING with static aliases (pro/flash → exact model strings)
+6. Provides configure_genai() to force the stable v1 endpoint
 
 Usage:
-    from app.services.model_discovery import get_best_model, get_available_models
+    from app.services.model_discovery import get_best_model, get_available_models, MODEL_MAPPING, configure_genai
     
+    configure_genai(api_key)            # Force stable v1 endpoint
     model_name = get_best_model("gemini-1.5-pro")  # Returns actual available model
     model = genai.GenerativeModel(model_name)
 """
 
 import logging
+import os
 from typing import List, Optional, Dict, Any
 from threading import Lock
 
 import google.generativeai as genai
 
 logger = logging.getLogger(__name__)
+
+# ═══════════════════════════════════════════════════════════════════════
+# STATIC MODEL MAPPING — Single source of truth for model strings
+# ═══════════════════════════════════════════════════════════════════════
+MODEL_MAPPING = {
+    "pro": "models/gemini-1.5-pro",
+    "flash": "models/gemini-1.5-flash",
+}
+
+
+def resolve_model(alias: str) -> str:
+    """Resolve a model alias ('pro', 'flash') to the exact API model string."""
+    return MODEL_MAPPING.get(alias, alias)
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# GLOBAL API CONFIGURATION — Force stable v1 endpoint
+# ═══════════════════════════════════════════════════════════════════════
+_configured = False
+
+
+def configure_genai(api_key: str = None):
+    """
+    Configure the Google Generative AI client with the stable v1 endpoint.
+    Uses v1 instead of v1beta to avoid 404s on Pro models.
+    
+    Safe to call multiple times — only configures once.
+    """
+    global _configured
+    if _configured:
+        return
+    
+    if not api_key:
+        api_key = os.environ.get("GOOGLE_API_KEY", "")
+    
+    if not api_key:
+        print("⚠️ [Model Discovery] No API key for configure_genai()")
+        return
+    
+    genai.configure(
+        api_key=api_key,
+        client_options={"api_endpoint": "generativelanguage.googleapis.com"},
+    )
+    _configured = True
+    print("✅ [Model Discovery] genai configured with stable v1 endpoint")
+
 
 # ── Cache (populated once on first call) ──
 _discovery_lock = Lock()

@@ -50,10 +50,8 @@ class ArchitectureAuditService:
         self.model_name = None
         
         if self.api_key:
-            genai.configure(api_key=self.api_key)
-            
-            # Use dynamic model discovery (finds what's actually available)
-            from app.services.model_discovery import get_best_model
+            from app.services.model_discovery import configure_genai, get_best_model
+            configure_genai(self.api_key)
             
             # For audit tasks prefer Flash models (lightweight, less safety restrictions)
             model_name = get_best_model("gemini-2.0-flash", category="flash")
