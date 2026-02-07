@@ -1173,6 +1173,121 @@ def process_audio_in_background(
             tmp_path = tmp_file.name
             temp_files_to_cleanup.append(tmp_path)
         
+        # ============================================================
+        # 🎯 SMART VOICE ROUTER
+        # Short voice notes (≤30s) = voice COMMANDS → Conversation Engine
+        #   (save_fact, KB queries, search_person, etc.)
+        # Long recordings (>30s) = meetings → Full Analysis Pipeline
+        #   (diarization, expert analysis, speaker ID, VAD, etc.)
+        # ============================================================
+        VOICE_COMMAND_THRESHOLD_SEC = 30
+        
+        try:
+            from pydub import AudioSegment as RouteCheckSegment
+            voice_check = RouteCheckSegment.from_file(tmp_path)
+            duration_sec = len(voice_check) / 1000.0
+            print(f"⏱️  [Voice Router] Audio duration: {duration_sec:.1f}s (threshold: {VOICE_COMMAND_THRESHOLD_SEC}s)")
+            
+            if duration_sec <= VOICE_COMMAND_THRESHOLD_SEC:
+                print(f"💬 [Voice Router] SHORT voice note ({duration_sec:.1f}s) → Conversation Engine")
+                print(f"   Skipping: diarization, expert analysis, speaker ID, VAD")
+                
+                # ── Quick transcription with Gemini Flash ──
+                try:
+                    from app.services.model_discovery import MODEL_MAPPING, configure_genai as md_configure
+                    import google.generativeai as genai_voice
+                    import time as route_time
+                    
+                    md_configure(settings.google_api_key)
+                    flash_model = genai_voice.GenerativeModel(MODEL_MAPPING["flash"])
+                    
+                    # Upload audio for transcription
+                    print(f"   📤 Uploading for quick transcription (Flash)...")
+                    file_ref = genai_voice.upload_file(
+                        path=tmp_path,
+                        display_name=f"voice_cmd_{message_id}.ogg",
+                        mime_type="audio/ogg"
+                    )
+                    
+                    # Wait for file to be ready
+                    max_upload_wait = 30
+                    wait_start = route_time.time()
+                    while route_time.time() - wait_start < max_upload_wait:
+                        file_ref = genai_voice.get_file(file_ref.name)
+                        state = file_ref.state.name if hasattr(file_ref.state, 'name') else str(file_ref.state)
+                        if state == "ACTIVE":
+                            break
+                        elif state == "FAILED":
+                            raise Exception(f"Gemini file processing failed: {file_ref.name}")
+                        route_time.sleep(1)
+                    
+                    # Simple STT prompt — no diarization, no analysis, just the text
+                    transcription_response = flash_model.generate_content([
+                        file_ref,
+                        "תמלל את ההקלטה הקולית הזאת. "
+                        "החזר אך ורק את הטקסט שנאמר, בשפה המקורית. "
+                        "אל תוסיף כותרות, תיאורים, שמות דוברים או הערות. רק הטקסט עצמו."
+                    ])
+                    
+                    transcribed_text = ""
+                    if transcription_response and transcription_response.text:
+                        transcribed_text = transcription_response.text.strip()
+                    
+                    print(f"   📝 Transcription: \"{transcribed_text[:200]}{'...' if len(transcribed_text) > 200 else ''}\"")
+                    
+                    # Cleanup uploaded Gemini file
+                    try:
+                        genai_voice.delete_file(file_ref.name)
+                    except Exception:
+                        pass
+                    
+                    if not transcribed_text:
+                        print(f"   ⚠️  Empty transcription — falling through to full pipeline")
+                        # Fall through to full pipeline below
+                    else:
+                        # ── Route to Conversation Engine (same as text messages) ──
+                        print(f"   🧠 Routing to Conversation Engine...")
+                        
+                        ai_response = conversation_engine.process_message(
+                            phone=from_number,
+                            message=transcribed_text
+                        )
+                        
+                        print(f"   🤖 Response: {ai_response[:200]}{'...' if len(ai_response) > 200 else ''}")
+                        
+                        # Send response via WhatsApp
+                        if whatsapp_provider and ai_response:
+                            reply_result = whatsapp_provider.send_whatsapp(
+                                message=ai_response,
+                                to=f"+{from_number}"
+                            )
+                            if reply_result.get('success'):
+                                print(f"   ✅ [Voice Router] Response sent successfully")
+                            else:
+                                print(f"   ⚠️  [Voice Router] Send failed: {reply_result.get('error')}")
+                        
+                        print(f"\n{'='*60}")
+                        print(f"✅ [Voice Router] Short voice note processed via Conversation Engine — DONE")
+                        print(f"{'='*60}\n")
+                        return  # SKIP full meeting pipeline
+                    
+                except Exception as transcription_err:
+                    print(f"   ❌ [Voice Router] Quick transcription failed: {transcription_err}")
+                    traceback.print_exc()
+                    print(f"   ↩️  Falling through to full audio pipeline as fallback...")
+                    # Fall through to full pipeline
+            else:
+                print(f"📊 [Voice Router] LONG recording ({duration_sec:.1f}s > {VOICE_COMMAND_THRESHOLD_SEC}s) → Full Analysis Pipeline")
+        
+        except ImportError:
+            print(f"⚠️  [Voice Router] pydub not available — using full pipeline for all audio")
+        except Exception as router_err:
+            print(f"⚠️  [Voice Router] Duration check failed: {router_err} — using full pipeline")
+        
+        # ============================================================
+        # FULL MEETING ANALYSIS PIPELINE (for recordings >30s)
+        # ============================================================
+        
         # Step 5: Retrieve voice signatures (memory optimized)
         known_speaker_names = []
         if drive_memory_service.is_configured and settings.enable_multimodal_voice:
