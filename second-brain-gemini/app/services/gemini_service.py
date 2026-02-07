@@ -1071,10 +1071,51 @@ Summary: {summary}
                 except Exception as fix_error:
                     print(f"⚠️  Failed to fix JSON: {fix_error}")
                 
-                # Fallback: cannot create valid segments without proper JSON
-                # Return empty segments list instead of invalid 0-second segment
-                print("⚠️  Could not parse JSON - cannot create segments without valid timestamps")
-                print("   Returning empty segments list - speaker identification will be skipped")
+                # Fallback: Try to extract expert_summary from raw text even if JSON failed
+                # This handles cases where the expert_summary contains characters that break JSON
+                print("🔍 Attempting to extract expert_summary from raw text...")
+                expert_summary = ""
+                
+                # Try to find expert_summary content using regex
+                # Look for common patterns like "🧠 הכובע שנבחר" which starts the expert section
+                import re
+                
+                # Pattern 1: Look for expert_summary field in broken JSON
+                expert_match = re.search(r'"expert_summary"\s*:\s*"(.*?)"(?:\s*}|,\s*")', text, re.DOTALL)
+                if expert_match:
+                    expert_summary = expert_match.group(1)
+                    # Unescape JSON escapes
+                    expert_summary = expert_summary.replace('\\n', '\n').replace('\\"', '"')
+                    print(f"   ✅ Extracted expert_summary via JSON field: {len(expert_summary)} chars")
+                
+                # Pattern 2: Look for Hebrew expert format directly
+                if not expert_summary:
+                    # Find the expert section by looking for the emoji header
+                    expert_start = text.find('🧠 הכובע שנבחר')
+                    if expert_start == -1:
+                        expert_start = text.find('🧠 הכובע')
+                    
+                    if expert_start > 0:
+                        # Find end - usually before the closing JSON brace or end of text
+                        expert_end = text.find('"}', expert_start)
+                        if expert_end == -1:
+                            expert_end = len(text)
+                        
+                        expert_summary = text[expert_start:expert_end]
+                        # Clean up JSON artifacts
+                        expert_summary = expert_summary.replace('\\n', '\n').replace('\\"', '"')
+                        print(f"   ✅ Extracted expert_summary via emoji marker: {len(expert_summary)} chars")
+                
+                if expert_summary and len(expert_summary) > 50:
+                    print(f"   📝 Expert preview: {expert_summary[:100]}...")
+                    return {
+                        "segments": [],
+                        "expert_summary": expert_summary
+                    }
+                
+                # No expert summary found
+                print("⚠️  Could not parse JSON or extract expert_summary")
+                print("   Returning empty result - speaker identification will be skipped")
                 return {
                     "segments": []
                 }
