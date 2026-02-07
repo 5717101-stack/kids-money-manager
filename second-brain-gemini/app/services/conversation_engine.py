@@ -105,38 +105,41 @@ _TOOL_DECLARATIONS = [
     ),
 
     genai.protos.FunctionDeclaration(
-        name="update_org_structure",
+        name="save_fact",
         description=(
-            "Add or update information about a person in the organizational structure. "
-            "Use this when the user says things like 'Add a new employee named X to Y's team', "
-            "'Update X's salary to Y', 'X was promoted to Y', etc. "
-            "IMPORTANT: Always confirm the change with the user before calling this."
+            "Save a new fact about a person to the Knowledge Base. "
+            "Works for BOTH work-related facts (title, salary, manager, rating) AND "
+            "personal/family facts (spouse, children, parent, sibling, nickname, birthday). "
+            "Examples of when to use: "
+            "'Chen's partner is Oded' → person_name='Chen', field='spouse', value='Oded'. "
+            "'Yuval got promoted to VP' → person_name='Yuval Laikin', field='title', value='VP'. "
+            "'Shay has a new baby named Noa' → person_name='Shay Hovan', field='children', value='Noa'. "
+            "'David's salary is 200K' → person_name='David Kotin', field='salary', value='200000'. "
+            "IMPORTANT: First use search_person to resolve the Hebrew name to the canonical English name, "
+            "then call save_fact with the English name. "
+            "After saving, confirm to the user what was saved."
         ),
         parameters=genai.protos.Schema(
             type=genai.protos.Type.OBJECT,
             properties={
                 "person_name": genai.protos.Schema(
                     type=genai.protos.Type.STRING,
-                    description="The person's full name"
-                ),
-                "action": genai.protos.Schema(
-                    type=genai.protos.Type.STRING,
-                    description=(
-                        "Action to perform: 'add_report' (add person under a manager), "
-                        "'update_field' (update salary, title, etc.), "
-                        "'remove' (remove person from org)"
-                    )
+                    description="The person's canonical English full name (from search_person results)"
                 ),
                 "field": genai.protos.Schema(
                     type=genai.protos.Type.STRING,
-                    description="Field to update (e.g. 'salary', 'title', 'reports_to', 'rating')"
+                    description=(
+                        "The field to save. "
+                        "Work fields: 'title', 'salary', 'reports_to', 'department', 'rating', 'individual_factor', 'bonus', 'level', 'start_date'. "
+                        "Family/personal fields: 'spouse', 'children', 'parent', 'sibling', 'family_role', 'nickname', 'birthday', 'notes'."
+                    )
                 ),
                 "value": genai.protos.Schema(
                     type=genai.protos.Type.STRING,
-                    description="New value for the field"
+                    description="The value to save (name, number, date, or text)"
                 ),
             },
-            required=["person_name", "action"]
+            required=["person_name", "field", "value"]
         )
     ),
 
@@ -168,10 +171,9 @@ def _execute_tool(function_name: str, args: Dict[str, Any]) -> str:
         elif function_name == "get_reports":
             return _tool_get_reports(args.get("manager_name", ""))
 
-        elif function_name == "update_org_structure":
-            return _tool_update_org(
+        elif function_name == "save_fact":
+            return _tool_save_fact(
                 person_name=args.get("person_name", ""),
-                action=args.get("action", ""),
                 field=args.get("field", ""),
                 value=args.get("value", ""),
             )
@@ -300,55 +302,45 @@ def _tool_get_reports(manager_name: str) -> str:
     }, ensure_ascii=False, default=str)
 
 
-def _tool_update_org(person_name: str, action: str, field: str = "", value: str = "") -> str:
-    """Update organizational structure (add employee, update field, etc.)."""
+def _tool_save_fact(person_name: str, field: str, value: str) -> str:
+    """Save a fact about a person (work or family) to the Knowledge Base."""
+    if not person_name or not field or not value:
+        return json.dumps({"error": "person_name, field, and value are all required"}, ensure_ascii=False)
+
     try:
-        from app.services.context_writer_service import context_writer
+        from app.services.context_writer_service import context_writer, ExtractedFact
 
-        if action == "add_report":
-            # Adding a new person under a manager
-            manager = field or value  # field used for manager name
-            update_data = {
-                "name": person_name,
-                "reports_to": manager,
-            }
-            if value and field != value:
-                update_data["title"] = value
+        fact = ExtractedFact(
+            person_name=person_name,
+            field=field,
+            old_value=None,
+            new_value=value,
+            source_quote="User direct input via chat",
+            confidence="high",
+        )
 
-            success, errors = context_writer.apply_facts([{
-                "file": "org_structure.json",
-                "person": person_name,
-                "field": "reports_to",
-                "value": manager,
-                "description": f"Adding {person_name} under {manager}"
-            }])
+        success, errors = context_writer.apply_facts([fact])
+
+        if success > 0:
+            # Also refresh the conversation engine's system instruction
+            # so the next query already has the updated data
+            try:
+                conversation_engine.refresh_system_instruction()
+            except Exception:
+                pass
 
             return json.dumps({
-                "success": success > 0,
-                "message": f"Added {person_name} to {manager}'s team." if success else f"Failed: {errors}",
-                "action": "add_report"
-            }, ensure_ascii=False)
-
-        elif action == "update_field":
-            if not field or not value:
-                return json.dumps({"error": "Both 'field' and 'value' are required for update_field"}, ensure_ascii=False)
-
-            success, errors = context_writer.apply_facts([{
-                "file": "org_structure.json",
+                "success": True,
+                "message": f"Saved: {person_name}'s {field} = {value}",
                 "person": person_name,
                 "field": field,
                 "value": value,
-                "description": f"Updating {person_name}'s {field} to {value}"
-            }])
-
-            return json.dumps({
-                "success": success > 0,
-                "message": f"Updated {person_name}'s {field} to {value}." if success else f"Failed: {errors}",
-                "action": "update_field"
             }, ensure_ascii=False)
-
         else:
-            return json.dumps({"error": f"Unsupported action: {action}"}, ensure_ascii=False)
+            return json.dumps({
+                "success": False,
+                "message": f"Failed to save: {'; '.join(errors)}",
+            }, ensure_ascii=False)
 
     except Exception as e:
         return json.dumps({"error": str(e)}, ensure_ascii=False)
@@ -460,7 +452,11 @@ class ConversationEngine:
 כללי התנהגות:
 ══════════════════════════════════════════════════════
 1. לשאלות על אנשים, תפקידים, שכר, דירוגים, היררכיה — תמיד השתמש בכלי search_person או get_reports.
-2. אם המשתמש מבקש לעדכן מידע (הוספת עובד, שינוי תפקיד, עדכון שכר) — השתמש בכלי update_org_structure.
+2. אם המשתמש מבקש לעדכן או לשמור מידע — השתמש בכלי save_fact. זה עובד גם למידע ארגוני (שכר, תפקיד, מנהל) וגם למידע אישי/משפחתי (בן זוג, ילדים, כינוי).
+   דוגמאות:
+   - "לבן הזוג של חן קוראים עודד" → search_person("חן"), ואז save_fact(person_name="Chen ...", field="spouse", value="עודד")
+   - "היובל קיבל העלאה ל-60K" → save_fact(person_name="Yuval Laikin", field="salary", value="60000")
+   - "לשי יש ילד חדש שקוראים לו נועם" → save_fact(person_name="Shay Hovan", field="children", value="נועם")
 3. לשאלות כלליות על הארגון (כמה עובדים, מחלקות) — השתמש בכלי list_org_stats.
 4. לשיחה רגילה (שאלות כלליות, הודעות אישיות) — ענה ישירות בלי כלים.
 5. כינויי גוף: אם המשתמש אומר "שלו", "שלה", "הוא", "היא" — הסתכל בהיסטוריית השיחה ותבין למי הוא מתכוון. אל תשאל אלא אם באמת אי אפשר לדעת.
@@ -490,8 +486,17 @@ class ConversationEngine:
 ══════════════════════════════════════════════════════
 • search_person(name) → חיפוש אדם לפי שם (עברית/אנגלית, מלא/חלקי)
 • get_reports(manager_name) → כל הכפופים למנהל (ישירים + עקיפים)
-• update_org_structure(person_name, action, field, value) → עדכון מבנה ארגוני
+• save_fact(person_name, field, value) → שמירת עובדה (עבודה או משפחה) לבסיס הידע
 • list_org_stats() → סטטיסטיקות כלליות על הארגון
+
+══════════════════════════════════════════════════════
+זרימת עדכון מידע — save_fact:
+══════════════════════════════════════════════════════
+כשהמשתמש אומר עובדה חדשה (כמו "לבן הזוג של חן קוראים עודד"):
+1. תחילה, קרא ל-search_person כדי לזהות את השם המלא באנגלית
+2. אחר כך, קרא ל-save_fact עם השם המלא, השדה, והערך
+3. אשר למשתמש: "שמרתי ✅ — בן הזוג של חן הוא עודד"
+4. מעכשיו, כשישאלו "איך קוראים לבן הזוג של חן?" — תדע לענות "עודד"
 
 {kb_block}"""
 
