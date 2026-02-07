@@ -1,5 +1,10 @@
 name: 🌐 Deploy to Render
 
+# Render auto-deploys via its own GitHub webhook.
+# This workflow only creates a git tag and logs a summary.
+# The WhatsApp deployment notification is handled by startup_event()
+# inside app/main.py — fired once when the server actually starts.
+
 on:
   push:
     branches:
@@ -23,82 +28,14 @@ jobs:
           echo "version=$VERSION" >> $GITHUB_OUTPUT
           echo "📌 Deploying version: $VERSION"
       
-      - name: 🚀 Trigger Render Deployment
-        if: env.RENDER_API_KEY != ''
-        env:
-          RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
-          RENDER_SERVICE_ID: ${{ secrets.RENDER_SERVICE_ID }}
-        run: |
-          if [ -z "$RENDER_API_KEY" ] || [ -z "$RENDER_SERVICE_ID" ]; then
-            echo "⚠️  Render API credentials not set. Skipping automatic deployment."
-            echo "💡 Render will auto-deploy from GitHub webhook instead."
-            exit 0
-          fi
-          
-          echo "🚀 Triggering Render deployment..."
-          curl -X POST "https://api.render.com/v1/services/$RENDER_SERVICE_ID/deploys" \
-            -H "Authorization: Bearer $RENDER_API_KEY" \
-            -H "Content-Type: application/json" \
-            || echo "⚠️  Render API call failed (this is OK if using webhook deployment)"
+      # NOTE: No Render API trigger here — Render auto-deploys from GitHub webhook.
+      # Triggering via API caused DOUBLE deploys and duplicate WhatsApp notifications.
       
       - name: 📊 Deployment Status
         run: |
           echo "## 🌐 Render Deployment" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "**Version:** ${{ steps.version.outputs.version }}" >> $GITHUB_STEP_SUMMARY
-          echo "**Status:** Triggered" >> $GITHUB_STEP_SUMMARY
+          echo "**Status:** Auto-deploy triggered via Render webhook" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "💡 Check your Render dashboard for deployment status" >> $GITHUB_STEP_SUMMARY
-      
-      - name: ⏳ Wait for Render to finish deployment
-        run: |
-          echo "⏳ Waiting 3 minutes for Render to complete deployment..."
-          sleep 180
-      
-      - name: 📱 Get commit message for changelog
-        id: commit
-        run: |
-          # Get commit message and escape for JSON
-          COMMIT_MSG=$(git log -1 --pretty=%B | head -5)
-          # Replace newlines with spaces and escape quotes
-          COMMIT_MSG_CLEAN=$(echo "$COMMIT_MSG" | tr '\n' ' ' | sed 's/"/\\"/g' | sed "s/'/\\'/g")
-          echo "message=$COMMIT_MSG_CLEAN" >> $GITHUB_OUTPUT
-          echo "📝 Commit message: $COMMIT_MSG_CLEAN"
-      
-      - name: 📲 Send WhatsApp Deployment Notification
-        env:
-          VERSION: ${{ steps.version.outputs.version }}
-          CHANGES: ${{ steps.commit.outputs.message }}
-        run: |
-          echo "📲 Sending deployment notification via WhatsApp..."
-          echo "   Version: $VERSION"
-          echo "   Changes: $CHANGES"
-          
-          # Build JSON payload
-          JSON_PAYLOAD=$(cat <<EOF
-          {
-            "version": "${VERSION}",
-            "changes": "${CHANGES}",
-            "status": "success"
-          }
-          EOF
-          )
-          
-          echo "   Payload: $JSON_PAYLOAD"
-          
-          # Send notification
-          RESPONSE=$(curl -s -w "\n%{http_code}" -X POST "https://second-brain-6q8c.onrender.com/notify-deployment" \
-            -H "Content-Type: application/json" \
-            -d "$JSON_PAYLOAD")
-          
-          HTTP_CODE=$(echo "$RESPONSE" | tail -n1)
-          BODY=$(echo "$RESPONSE" | sed '$d')
-          
-          echo "   Response Code: $HTTP_CODE"
-          echo "   Response Body: $BODY"
-          
-          if [ "$HTTP_CODE" = "200" ]; then
-            echo "✅ WhatsApp notification sent successfully!"
-          else
-            echo "⚠️  Failed to send WhatsApp notification (HTTP $HTTP_CODE)"
-          fi
+          echo "💡 WhatsApp notification will be sent by the server's startup_event()" >> $GITHUB_STEP_SUMMARY

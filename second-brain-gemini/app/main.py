@@ -1009,53 +1009,12 @@ async def notify_cursor_complete(request: Request):
 @app.post("/notify-deployment")
 async def notify_deployment(request: Request):
     """
-    Receive notification from Render/GitHub Actions that a deployment was successful.
-    Sends a WhatsApp message with the new version and changes.
-    
-    Expected JSON body:
-    {
-        "version": "3.1.0",
-        "changes": "Description of main changes",
-        "status": "success" | "failed"
-    }
+    DEPRECATED — kept for backward compatibility.
+    Deployment notifications are now handled by startup_event() only.
+    This prevents duplicate WhatsApp messages.
     """
-    try:
-        data = await request.json()
-        version = data.get('version', 'unknown')
-        changes = data.get('changes', 'לא צוינו שינויים')
-        status = data.get('status', 'success')
-        
-        print(f"📥 Deployment notification received:")
-        print(f"   Version: {version}")
-        print(f"   Status: {status}")
-        print(f"   Changes: {changes[:100]}...")
-        
-        # Construct the WhatsApp message
-        if status == 'success':
-            message = f"🚀 גרסה חדשה שוחררה!\n\n📦 גרסה: {version}\n\n📝 שינויים עיקריים:\n{changes}"
-        else:
-            message = f"❌ שחרור גרסה נכשל\n\n📦 גרסה: {version}\n\n⚠️ סיבה: {changes}"
-        
-        # Send via Meta WhatsApp
-        from app.services.meta_whatsapp_service import meta_whatsapp_service
-        
-        if meta_whatsapp_service.is_configured:
-            result = meta_whatsapp_service.send_whatsapp(message)
-        else:
-            result = {"success": False, "error": "No WhatsApp provider configured"}
-        
-        if result.get('success'):
-            print(f"✅ Deployment notification sent via WhatsApp")
-            return {"status": "ok", "message": "Notification sent"}
-        else:
-            print(f"⚠️  Failed to send deployment notification: {result.get('error')}")
-            return {"status": "warning", "message": "Deployment succeeded but notification failed"}
-            
-    except Exception as e:
-        print(f"❌ Error in notify-deployment: {e}")
-        import traceback
-        traceback.print_exc()
-        return {"status": "error", "message": str(e)}
+    print("ℹ️  /notify-deployment called but ignored — using startup_event() instead")
+    return {"status": "ok", "message": "Handled by startup_event()"}
 
 
 @app.get("/whatsapp")
