@@ -162,7 +162,7 @@ class MetaWhatsAppService:
             print(f"❌ Failed to refresh Meta WhatsApp token: {e}")
             return None
     
-    def send_whatsapp(self, message: str, to: Optional[str] = None) -> Dict[str, Any]:
+    def send_whatsapp(self, message: str, to: Optional[str] = None, dedup: bool = False) -> Dict[str, Any]:
         """
         Send a WhatsApp message via Meta WhatsApp Cloud API.
         
@@ -170,6 +170,7 @@ class MetaWhatsAppService:
             message: The message to send
             to: Recipient phone number in E.164 format (e.g., +972XXXXXXXXX)
                 If not provided, will need to be configured separately
+            dedup: If True, block identical messages within 2 minutes
             
         Returns:
             Dictionary with success status and details
@@ -194,19 +195,20 @@ class MetaWhatsAppService:
         if recipient.startswith("whatsapp:"):
             recipient = recipient.replace("whatsapp:", "")
         
-        # ── DEDUP: Block identical messages within 2 minutes ──
-        msg_hash = hashlib.md5(f"{recipient}:{message}".encode()).hexdigest()
-        now = time.time()
-        # Clean old entries
-        MetaWhatsAppService._recent_messages = {
-            h: t for h, t in MetaWhatsAppService._recent_messages.items()
-            if now - t < MetaWhatsAppService.DEDUP_WINDOW_SEC
-        }
-        if msg_hash in MetaWhatsAppService._recent_messages:
-            age = now - MetaWhatsAppService._recent_messages[msg_hash]
-            print(f"🔇 [DEDUP] Blocked duplicate message (same content sent {age:.0f}s ago)")
-            return {"success": True, "message": "Duplicate blocked", "deduplicated": True}
-        MetaWhatsAppService._recent_messages[msg_hash] = now
+        # ── DEDUP: Block identical messages within 2 minutes (opt-in) ──
+        if dedup:
+            msg_hash = hashlib.md5(f"{recipient}:{message}".encode()).hexdigest()
+            now = time.time()
+            # Clean old entries
+            MetaWhatsAppService._recent_messages = {
+                h: t for h, t in MetaWhatsAppService._recent_messages.items()
+                if now - t < MetaWhatsAppService.DEDUP_WINDOW_SEC
+            }
+            if msg_hash in MetaWhatsAppService._recent_messages:
+                age = now - MetaWhatsAppService._recent_messages[msg_hash]
+                print(f"🔇 [DEDUP] Blocked duplicate message (same content sent {age:.0f}s ago)")
+                return {"success": True, "message": "Duplicate blocked", "deduplicated": True}
+            MetaWhatsAppService._recent_messages[msg_hash] = now
         
         try:
             url = f"{self.BASE_URL}/{self.phone_number_id}/messages"

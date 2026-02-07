@@ -562,7 +562,7 @@ async def startup_event():
 ✅ השרת פעיל ומוכן לעבודה!"""
             
             if meta_whatsapp_service.is_configured:
-                result = meta_whatsapp_service.send_whatsapp(notification_msg)
+                result = meta_whatsapp_service.send_whatsapp(notification_msg, dedup=True)
                 if result.get('success'):
                     if result.get('deduplicated'):
                         print(f"🔇 Deployment notification deduplicated (v{current_version})")
