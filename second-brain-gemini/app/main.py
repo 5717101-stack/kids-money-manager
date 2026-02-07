@@ -497,93 +497,61 @@ async def startup_event():
         if is_production:
             print(f"🚀 Production deployment detected - Version {current_version}")
             
-            # ══════════════════════════════════════════════════════════
-            # CROSS-PROCESS DEDUP via Google Drive
-            # Render triggers 2 separate deploys per push.
-            # Each deploy = new process, so module-level flags don't work.
-            # Drive memory is the ONLY shared state between deploys.
-            # ══════════════════════════════════════════════════════════
-            skip_notification = False
-            if drive_memory_service.is_configured:
-                try:
-                    memory = drive_memory_service.get_memory()
-                    last_notif = memory.get('last_deploy_notification', {})
-                    if last_notif.get('version') == current_version:
-                        last_ts = last_notif.get('timestamp', '')
-                        if last_ts:
-                            last_dt = datetime.fromisoformat(last_ts)
-                            age_sec = (datetime.utcnow() - last_dt).total_seconds()
-                            if age_sec < 300:  # 5 minutes
-                                print(f"🔇 Skipping duplicate deploy notification (v{current_version} already sent {age_sec:.0f}s ago)")
-                                skip_notification = True
-                except Exception as dedup_err:
-                    print(f"⚠️  Dedup check failed ({dedup_err}) — will send notification")
+            # Dedup is handled at the WhatsApp send level (meta_whatsapp_service)
+            # — identical messages within 2 min are automatically blocked.
             
-            if not skip_notification:
-                # ── Mark as sent in Drive BEFORE sending (prevents race) ──
-                if drive_memory_service.is_configured:
-                    try:
-                        memory = drive_memory_service.get_memory()
-                        memory['last_deploy_notification'] = {
-                            'version': current_version,
-                            'timestamp': datetime.utcnow().isoformat()
-                        }
-                        drive_memory_service.save_memory(memory)
-                    except Exception:
-                        pass
-                
-                # Get Israel time
-                from datetime import timezone, timedelta
-                israel_time = datetime.now(timezone.utc) + timedelta(hours=2)
-                israel_time_str = israel_time.strftime('%d/%m/%Y %H:%M')
-                
-                # Get changes summary
-                changes_summary = ""
-                
+            # Get Israel time
+            from datetime import timezone, timedelta
+            israel_time = datetime.now(timezone.utc) + timedelta(hours=2)
+            israel_time_str = israel_time.strftime('%d/%m/%Y %H:%M')
+            
+            # Get changes summary
+            changes_summary = ""
+            
+            try:
+                import subprocess
+                result = subprocess.run(
+                    ['git', 'log', '-1', '--pretty=%B'],
+                    capture_output=True, text=True, timeout=5,
+                    cwd=Path(__file__).parent.parent
+                )
+                if result.returncode == 0 and result.stdout.strip():
+                    git_msg = result.stdout.strip()
+                    if ' - ' in git_msg:
+                        git_msg = git_msg.split(' - ', 1)[1]
+                    changes_summary = git_msg[:150]
+            except Exception:
+                pass
+            
+            if not changes_summary:
                 try:
-                    import subprocess
-                    result = subprocess.run(
-                        ['git', 'log', '-1', '--pretty=%B'],
-                        capture_output=True, text=True, timeout=5,
-                        cwd=Path(__file__).parent.parent
-                    )
-                    if result.returncode == 0 and result.stdout.strip():
-                        git_msg = result.stdout.strip()
-                        if ' - ' in git_msg:
-                            git_msg = git_msg.split(' - ', 1)[1]
-                        changes_summary = git_msg[:150]
+                    if drive_memory_service.is_configured:
+                        mem = drive_memory_service.get_memory()
+                        last_task = mem.get('last_cursor_task', {})
+                        if last_task and last_task.get('prompt'):
+                            changes_summary = last_task['prompt'][:150]
+                            mem.pop('last_cursor_task', None)
+                            drive_memory_service.save_memory(mem)
                 except Exception:
                     pass
-                
-                if not changes_summary:
+            
+            if not changes_summary:
+                commit_file = Path(__file__).parent.parent / ".last_commit"
+                if commit_file.exists():
                     try:
-                        if drive_memory_service.is_configured:
-                            mem = drive_memory_service.get_memory()
-                            last_task = mem.get('last_cursor_task', {})
-                            if last_task and last_task.get('prompt'):
-                                changes_summary = last_task['prompt'][:150]
-                                mem.pop('last_cursor_task', None)
-                                drive_memory_service.save_memory(mem)
+                        commit_msg = commit_file.read_text().strip()
+                        if commit_msg and commit_msg != 'No commit message available':
+                            changes_summary = commit_msg[:150]
                     except Exception:
                         pass
-                
-                if not changes_summary:
-                    commit_file = Path(__file__).parent.parent / ".last_commit"
-                    if commit_file.exists():
-                        try:
-                            commit_msg = commit_file.read_text().strip()
-                            if commit_msg and commit_msg != 'No commit message available':
-                                changes_summary = commit_msg[:150]
-                        except Exception:
-                            pass
-                
-                if not changes_summary:
-                    changes_summary = "עדכון מערכת"
-                
-                # Send notification
-                from app.services.meta_whatsapp_service import meta_whatsapp_service
-                
-                notification_msg = f"""🚀 *גרסה חדשה עלתה לפרודקשן!*
+            
+            if not changes_summary:
+                changes_summary = "עדכון מערכת"
+            
+            # Send notification (dedup at WhatsApp layer blocks duplicates)
+            from app.services.meta_whatsapp_service import meta_whatsapp_service
+            
+            notification_msg = f"""🚀 *גרסה חדשה עלתה לפרודקשן!*
 
 📦 גרסה: *{current_version}*
 ⏰ זמן: {israel_time_str} (שעון ישראל)
@@ -592,15 +560,18 @@ async def startup_event():
 {changes_summary}
 
 ✅ השרת פעיל ומוכן לעבודה!"""
-                
-                if meta_whatsapp_service.is_configured:
-                    result = meta_whatsapp_service.send_whatsapp(notification_msg)
-                    if result.get('success'):
-                        print(f"✅ Deployment notification sent via WhatsApp")
+            
+            if meta_whatsapp_service.is_configured:
+                result = meta_whatsapp_service.send_whatsapp(notification_msg)
+                if result.get('success'):
+                    if result.get('deduplicated'):
+                        print(f"🔇 Deployment notification deduplicated (v{current_version})")
                     else:
-                        print(f"⚠️  Failed to send deployment notification: {result.get('error')}")
+                        print(f"✅ Deployment notification sent via WhatsApp")
                 else:
-                    print(f"⚠️  Meta WhatsApp not configured — deployment notification not sent")
+                    print(f"⚠️  Failed to send deployment notification: {result.get('error')}")
+            else:
+                print(f"⚠️  Meta WhatsApp not configured — deployment notification not sent")
         else:
             print(f"📍 Local development - Version {current_version} (no notification)")
             

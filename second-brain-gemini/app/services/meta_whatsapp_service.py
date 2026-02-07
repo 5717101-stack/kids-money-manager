@@ -3,6 +3,8 @@ Meta WhatsApp Cloud API service for sending WhatsApp messages.
 """
 
 from typing import Optional, Dict, Any, TYPE_CHECKING
+import hashlib
+import time
 import requests
 import os
 from app.core.config import settings
@@ -16,6 +18,10 @@ class MetaWhatsAppService:
     """Service for sending WhatsApp messages via Meta WhatsApp Cloud API."""
     
     BASE_URL = "https://graph.facebook.com/v18.0"
+    
+    # ── Message dedup: prevent identical messages within 2 minutes ──
+    DEDUP_WINDOW_SEC = 120
+    _recent_messages: Dict[str, float] = {}  # hash → timestamp
     
     def __init__(self):
         """Initialize Meta WhatsApp service."""
@@ -187,6 +193,20 @@ class MetaWhatsAppService:
         # Ensure phone number is in E.164 format (remove whatsapp: prefix if present)
         if recipient.startswith("whatsapp:"):
             recipient = recipient.replace("whatsapp:", "")
+        
+        # ── DEDUP: Block identical messages within 2 minutes ──
+        msg_hash = hashlib.md5(f"{recipient}:{message}".encode()).hexdigest()
+        now = time.time()
+        # Clean old entries
+        MetaWhatsAppService._recent_messages = {
+            h: t for h, t in MetaWhatsAppService._recent_messages.items()
+            if now - t < MetaWhatsAppService.DEDUP_WINDOW_SEC
+        }
+        if msg_hash in MetaWhatsAppService._recent_messages:
+            age = now - MetaWhatsAppService._recent_messages[msg_hash]
+            print(f"🔇 [DEDUP] Blocked duplicate message (same content sent {age:.0f}s ago)")
+            return {"success": True, "message": "Duplicate blocked", "deduplicated": True}
+        MetaWhatsAppService._recent_messages[msg_hash] = now
         
         try:
             url = f"{self.BASE_URL}/{self.phone_number_id}/messages"
