@@ -719,10 +719,14 @@ STEP 4 — DIRECT ANSWER MODE (תשובה ישירה):
                 {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_NONE"},
             ]
             
-            # ── FORCED MODEL: gemini-1.5-pro-latest for org queries ──
+            # ── Dedicated model for org queries: gemini-1.5-pro ──
             # Do NOT use self.model (gemini-2.5-pro) — it hallucinates roles
-            kb_model = genai.GenerativeModel("models/gemini-1.5-pro-latest")
-            print(f"📚 [KB Query] Using FORCED model: models/gemini-1.5-pro-latest")
+            try:
+                kb_model = genai.GenerativeModel("gemini-1.5-pro")
+                print(f"📚 [KB Query] Using model: gemini-1.5-pro")
+            except Exception as model_err:
+                print(f"📚 [KB Query] ⚠️ WARNING: Pro model failed ({model_err}), using Flash. Results may be inaccurate.")
+                kb_model = genai.GenerativeModel("gemini-1.5-flash")
             
             response = kb_model.generate_content(
                 prompt,

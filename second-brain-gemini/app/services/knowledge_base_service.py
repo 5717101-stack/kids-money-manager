@@ -174,7 +174,7 @@ def _extract_pdf_with_vision(raw_bytes: bytes, file_id: str = "", file_name: str
     
     Strategy:
     - Cache hit → return cached vision graph (NO text extraction)
-    - Cache miss → run vision analysis with gemini-1.5-pro-latest
+    - Cache miss → run vision analysis with gemini-1.5-pro
     - If vision fails → fallback to text extraction
     
     The vision-parsed graph is the SOURCE OF TRUTH for org structure.
@@ -216,8 +216,8 @@ def _vision_analyze_pdf(raw_bytes: bytes, file_id: str = "", file_name: str = ""
     Upload PDF to Gemini 1.5 Pro (FORCED) and use VISION to analyze the
     visual layout of the organizational chart.
     
-    CRITICAL: This uses gemini-1.5-pro-latest — NOT Flash, NOT 2.5-pro.
-    Flash hallucinates roles. 2.5-pro may not be as good at vision.
+    Uses gemini-1.5-pro for accurate vision. Falls back to gemini-1.5-flash
+    with a warning if Pro is unavailable.
     
     Returns structured JSON graph. Cached for 24 hours.
     """
@@ -259,11 +259,18 @@ def _vision_analyze_pdf(raw_bytes: bytes, file_id: str = "", file_name: str = ""
                     return ""
                 time.sleep(2)
             
-            # ── FORCED MODEL: gemini-1.5-pro-latest ──
-            # Do NOT use Flash (hallucinates roles) or 2.5-pro (may misread visuals)
-            model_name = "models/gemini-1.5-pro-latest"
-            print(f"   👁️ [Vision] FORCED model: {model_name}")
-            model = genai.GenerativeModel(model_name)
+            # ── Model: gemini-1.5-pro with flash fallback ──
+            model = None
+            model_name = None
+            try:
+                model = genai.GenerativeModel("gemini-1.5-pro")
+                model_name = "gemini-1.5-pro"
+            except Exception as model_err:
+                print(f"   ⚠️ [Vision] WARNING: Pro model failed ({model_err}), using Flash. Results may be inaccurate.")
+                logger.warning(f"[Vision] WARNING: gemini-1.5-pro failed, falling back to gemini-1.5-flash. Results may be inaccurate.")
+                model = genai.GenerativeModel("gemini-1.5-flash")
+                model_name = "gemini-1.5-flash"
+            print(f"   👁️ [Vision] Using model: {model_name}")
             
             vision_prompt = """Analyze this organizational chart IMAGE visually. This is a VISION task.
 
