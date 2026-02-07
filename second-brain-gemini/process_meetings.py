@@ -1,570 +1,375 @@
 #!/usr/bin/env python3
 """
-Background process to process meeting recordings from Google Drive.
+Inbox Poller — Process new audio files from Google Drive inbox.
 
-This script:
-1. Checks Google Drive folder for new audio files
-2. Downloads and processes them with Gemini 1.5 Pro
-3. Sends summary via Twilio SMS
-4. Moves processed files to Archive folder
+This module is called by the APScheduler cron inside main.py every 5 minutes.
+When a new audio file appears in the DRIVE_INBOX_ID folder, it goes through
+the EXACT same pipeline as a WhatsApp audio message >30s:
+
+  1. Download from Drive
+  2. Combined Diarization + Expert Analysis (Gemini — single call)
+  3. Speaker Identification (VAD + WhatsApp clips)
+  4. Save transcript to Transcripts/ folder
+  5. Save summary to memory.json
+  6. Inject working memory into Conversation Engine
+  7. Send summary via WhatsApp (Meta)
+  8. Move file to archive
+
+Usage (called from main.py scheduler):
+    from process_meetings import check_inbox_and_process
+    check_inbox_and_process()
 """
 
 import os
+import io
 import sys
-import tempfile
+import json
 import time
 import logging
+import tempfile
 from pathlib import Path
+from datetime import datetime, timezone, timedelta
 from typing import Optional, List, Dict, Any
-import json
 
-# Google Drive API
-from google.oauth2 import service_account
-from googleapiclient.discovery import build
-from googleapiclient.http import MediaIoBaseDownload
-from googleapiclient.errors import HttpError
-
-# Google Gemini AI
-import google.generativeai as genai
-
-# Twilio
-from twilio.rest import Client as TwilioClient
-from twilio.base.exceptions import TwilioRestException
-
-# Configure logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    handlers=[
-        logging.StreamHandler(sys.stdout),
-        logging.FileHandler('process_meetings.log')
-    ]
-)
 logger = logging.getLogger(__name__)
 
-# System Instruction for Gemini - Multi-Agent System
-SYSTEM_INSTRUCTION = """You are an expert AI assistant with access to multiple expert personas. Listen to the attached audio meeting and generate a Hebrew summary using a sophisticated Multi-Agent System.
-
-Step 1: CONTEXT & SPEAKER IDENTIFICATION
-
-First, identify the speakers. Specifically look for:
-- Itzik (Me)
-- Eran (Husband/Partner)
-
-Then, classify the conversation context:
-
-If the conversation is between Itzik and Eran about their relationship, feelings, or shared life -> Flag as COUPLE_DYNAMICS (unless they explicitly talk about kids only).
-
-If the conversation is about raising children/home logistics -> Flag as PARENTING.
-
-If the conversation is about team culture/leadership/mentoring -> Flag as LEADERSHIP.
-
-If the conversation is about business strategy, product decisions, or roadmap -> Flag as STRATEGY.
-
-Step 2: SELECT THE EXPERT PERSONA
-
-Based on the flag, adopt a specific mental framework for the analysis:
-
-RELATIONSHIP (Esther Perel Mode):
-- Trigger: Discussions between Itzik & Eran about their relationship, feelings, or shared life.
-- Focus: Emotional intelligence, balance between security and freedom, listening to the "unsaid", reconciling desire with domestic life.
-- Tone: Empathetic, insightful, deep.
-
-STRATEGY (McKinsey + Tech Innovation Mode):
-- Trigger: Business decisions, product roadmap, tech strategy.
-- Focus: "MECE" (Mutually Exclusive, Collectively Exhaustive) structure, data-driven insights, scalability, combined with Agile/Lean Startup thinking (MVP, iteration, speed).
-- Tone: Sharp, professional, action-oriented, cutting through the noise.
-
-LEADERSHIP (Simon Sinek Mode):
-- Trigger: Team management, hiring, mentoring, culture.
-- Focus: "Start with Why", The Infinite Game, creating a Circle of Safety, leaders eat last.
-- Tone: Inspiring, human-centric, visionary.
-
-PARENTING (Adler Institute Mode):
-- Trigger: Kids, education, home rules.
-- Focus: Encouragement, natural consequences, cooperation, avoiding power struggles.
-- Tone: Supportive, practical, educational.
-
-Step 3: GENERATE THE HEBREW OUTPUT
-
-Structure the response strictly as follows (add relevant emojis):
-
-🧠 הכובע שנבחר: [Name of the Expert/Mode used - e.g., "אסתר פרל (יחסים)", "מקינזי + Tech Innovation (אסטרטגיה)", "סיימון סינק (מנהיגות)", "מכון אדלר (הורות)"]
-
-📌 נושא השיחה: [Concise Subject - 3-5 words]
-
-🕵️ הסאב-טקסט (ניתוח עומק): [2-3 sentences analyzing NOT just what was said, but the underlying dynamics/principles based on the chosen expert persona. Go deep into what's really happening beneath the surface.]
-
-💡 תובנה מרכזית (The Insight): [The single most valuable takeaway using the expert's specific terminology and framework. This should be the "aha moment" that the expert would highlight.]
-
-⚖️ מדד הבהירות / טיב היחסים: 
-[If Strategy: Rate clarity of decision 1-10 with brief explanation]
-[If Relationship: Rate quality of communication 1-10 with brief explanation]
-[If Leadership: Rate effectiveness of leadership approach 1-10 with brief explanation]
-[If Parenting: Rate quality of parenting approach 1-10 with brief explanation]
-
-✅ אקשן אייטמס (תכלס):
-[Task 1 - specific and actionable]
-[Task 2 - specific and actionable]
-(Or "אין משימות להמשך" if no action items)
-
-❓ שאלה למחשבה (Reflection): [One provocative/hard question that the expert would ask Itzik to help him grow. This should challenge assumptions and encourage deeper thinking.]
-
-CRITICAL: The entire output must be in Hebrew. Use the expert's specific terminology and framework throughout. Be insightful, not just descriptive.
-"""
+# Audio MIME types we support
+AUDIO_MIME_TYPES = {
+    'audio/mpeg', 'audio/mp3', 'audio/wav', 'audio/wave',
+    'audio/x-wav', 'audio/m4a', 'audio/x-m4a', 'audio/aac',
+    'audio/ogg', 'audio/flac', 'audio/mp4', 'audio/x-m4a',
+    'video/mp4',  # Some recordings save as video/mp4
+}
 
 
-class GoogleDriveService:
-    """Service for interacting with Google Drive."""
-    
-    def __init__(self):
-        """Initialize Google Drive service with service account credentials."""
-        # Get credentials from environment variables
-        service_account_info = {
-            "type": "service_account",
-            "project_id": os.environ.get("GOOGLE_PROJECT_ID"),
-            "private_key_id": os.environ.get("GOOGLE_PRIVATE_KEY_ID"),
-            "private_key": os.environ.get("GOOGLE_PRIVATE_KEY", "").replace("\\n", "\n"),
-            "client_email": os.environ.get("GOOGLE_CLIENT_EMAIL"),
-            "client_id": os.environ.get("GOOGLE_CLIENT_ID"),
-            "auth_uri": "https://accounts.google.com/o/oauth2/auth",
-            "token_uri": "https://oauth2.googleapis.com/token",
-            "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
-            "client_x509_cert_url": os.environ.get("GOOGLE_CLIENT_X509_CERT_URL", "")
-        }
-        
-        if not all([
-            service_account_info["private_key"],
-            service_account_info["client_email"],
-            service_account_info["project_id"]
-        ]):
-            raise ValueError(
-                "Missing Google Drive credentials. Required: "
-                "GOOGLE_PRIVATE_KEY, GOOGLE_CLIENT_EMAIL, GOOGLE_PROJECT_ID"
-            )
-        
-        credentials = service_account.Credentials.from_service_account_info(
-            service_account_info,
-            scopes=['https://www.googleapis.com/auth/drive']
-        )
-        
-        self.service = build('drive', 'v3', credentials=credentials)
-        logger.info("✅ Google Drive service initialized")
-    
-    def list_files_in_folder(self, folder_id: str) -> List[Dict[str, Any]]:
-        """
-        List all files in a Google Drive folder.
-        
-        Args:
-            folder_id: Google Drive folder ID
-            
-        Returns:
-            List of file metadata dictionaries
-        """
-        try:
-            query = f"'{folder_id}' in parents and trashed=false"
-            results = self.service.files().list(
-                q=query,
-                fields="files(id, name, mimeType, size, createdTime)"
-            ).execute()
-            
-            files = results.get('files', [])
-            logger.info(f"📁 Found {len(files)} files in folder {folder_id}")
-            return files
-            
-        except HttpError as e:
-            logger.error(f"❌ Error listing files in folder: {e}")
-            raise
-    
-    def download_file(self, file_id: str, file_name: str, output_path: Path) -> Path:
-        """
-        Download a file from Google Drive.
-        
-        Args:
-            file_id: Google Drive file ID
-            file_name: Name of the file
-            output_path: Path to save the file
-            
-        Returns:
-            Path to downloaded file
-        """
-        try:
-            request = self.service.files().get_media(fileId=file_id)
-            
-            with open(output_path, 'wb') as f:
-                downloader = MediaIoBaseDownload(f, request)
-                done = False
-                while not done:
-                    status, done = downloader.next_chunk()
-                    if status:
-                        logger.info(f"⏬ Download progress: {int(status.progress() * 100)}%")
-            
-            logger.info(f"✅ Downloaded: {file_name} -> {output_path}")
-            return output_path
-            
-        except HttpError as e:
-            logger.error(f"❌ Error downloading file {file_id}: {e}")
-            raise
-    
-    def move_file_to_folder(self, file_id: str, source_folder_id: str, target_folder_id: str) -> bool:
-        """
-        Move a file from one folder to another.
-        
-        Args:
-            file_id: Google Drive file ID
-            source_folder_id: Source folder ID (to remove from)
-            target_folder_id: Target folder ID (to add to)
-            
-        Returns:
-            True if successful
-        """
-        try:
-            # Get current parents
-            file = self.service.files().get(
-                fileId=file_id,
-                fields='parents'
-            ).execute()
-            
-            previous_parents = ",".join(file.get('parents', []))
-            
-            # Move file: remove from source, add to target
-            self.service.files().update(
-                fileId=file_id,
-                addParents=target_folder_id,
-                removeParents=previous_parents,
-                fields='id, parents'
-            ).execute()
-            
-            logger.info(f"✅ Moved file {file_id} to archive folder")
-            return True
-            
-        except HttpError as e:
-            logger.error(f"❌ Error moving file {file_id}: {e}")
-            return False
-
-
-class GeminiService:
-    """Service for processing audio with Gemini 1.5 Pro."""
-    
-    def __init__(self):
-        """Initialize Gemini service."""
-        api_key = os.environ.get("GOOGLE_API_KEY")
-        if not api_key:
-            raise ValueError("GOOGLE_API_KEY not set in environment variables")
-        
-        from app.services.model_discovery import configure_genai, MODEL_MAPPING
-        configure_genai(api_key)
-        # Use central MODEL_MAPPING (configurable via GEMINI_PRO_MODEL env var)
-        model_name = MODEL_MAPPING["pro"]
-        self.model = genai.GenerativeModel(model_name)
-        logger.info(f"✅ Gemini service initialized with model: {model_name}")
-    
-    def process_audio(self, audio_path: Path) -> str:
-        """
-        Process audio file with Gemini and generate summary.
-        
-        Args:
-            audio_path: Path to audio file
-            
-        Returns:
-            Generated summary text
-        """
-        try:
-            logger.info(f"📤 Uploading audio file: {audio_path.name}")
-            
-            # Determine MIME type from file extension
-            mime_type_map = {
-                '.mp3': 'audio/mpeg',
-                '.wav': 'audio/wav',
-                '.wave': 'audio/wav',
-                '.m4a': 'audio/mp4',
-                '.aac': 'audio/aac',
-                '.ogg': 'audio/ogg',
-                '.flac': 'audio/flac',
-                '.mp4': 'audio/mp4',  # Some MP4 files are audio-only
-            }
-            
-            # Get file extension (handle files without extension)
-            file_ext = audio_path.suffix.lower()
-            if not file_ext:
-                # Try to get extension from filename
-                file_name_lower = audio_path.name.lower()
-                for ext in mime_type_map.keys():
-                    if file_name_lower.endswith(ext):
-                        file_ext = ext
-                        break
-            
-            mime_type = mime_type_map.get(file_ext, 'audio/mpeg')  # Default to MP3
-            
-            logger.info(f"📋 File: {audio_path.name}")
-            logger.info(f"📋 Extension: {file_ext or 'none'}")
-            logger.info(f"📋 MIME type: {mime_type}")
-            
-            # Upload file to Gemini with explicit MIME type
-            file_ref = genai.upload_file(
-                path=str(audio_path),
-                display_name=audio_path.name,
-                mime_type=mime_type
-            )
-            
-            # Wait for file to be processed
-            logger.info("⏳ Waiting for file processing...")
-            max_wait = 300  # 5 minutes
-            start_time = time.time()
-            
-            while time.time() - start_time < max_wait:
-                file_ref = genai.get_file(file_ref.name)
-                state = file_ref.state.name if hasattr(file_ref.state, 'name') else str(file_ref.state)
-                
-                if state == "ACTIVE":
-                    logger.info("✅ File processing complete")
-                    break
-                elif state == "FAILED":
-                    raise ValueError(f"File processing failed: {file_ref.name}")
-                
-                time.sleep(2)
-            else:
-                raise TimeoutError("File processing timeout")
-            
-            # Generate content
-            logger.info("🤖 Generating summary with Gemini...")
-            contents = [
-                SYSTEM_INSTRUCTION,
-                file_ref
-            ]
-            
-            response = self.model.generate_content(
-                contents,
-                generation_config={
-                    'temperature': 0.7,
-                    'top_p': 0.95,
-                    'top_k': 40,
-                },
-                request_options={'timeout': 600}  # 10 minutes
-            )
-            
-            summary = response.text
-            logger.info(f"✅ Generated summary ({len(summary)} characters)")
-            
-            # Clean up uploaded file
-            try:
-                genai.delete_file(file_ref.name)
-                logger.info("🗑️  Deleted uploaded file from Gemini")
-            except Exception as e:
-                logger.warning(f"⚠️  Could not delete file from Gemini: {e}")
-            
-            return summary
-            
-        except Exception as e:
-            logger.error(f"❌ Error processing audio: {e}")
-            raise
-
-
-class TwilioService:
-    """Service for sending SMS via Twilio."""
-    
-    def __init__(self):
-        """Initialize Twilio service."""
-        account_sid = os.environ.get("TWILIO_ACCOUNT_SID")
-        auth_token = os.environ.get("TWILIO_AUTH_TOKEN")
-        
-        if not account_sid or not auth_token:
-            raise ValueError("TWILIO_ACCOUNT_SID and TWILIO_AUTH_TOKEN must be set")
-        
-        self.client = TwilioClient(account_sid, auth_token)
-        logger.info("✅ Twilio service initialized")
-    
-    def send_sms(self, message: str, to: str) -> bool:
-        """
-        Send SMS message.
-        
-        Args:
-            message: Message text
-            to: Recipient phone number (format: +972XXXXXXXXX)
-            
-        Returns:
-            True if successful
-        """
-        try:
-            from_number = os.environ.get("TWILIO_SMS_FROM")
-            if not from_number:
-                raise ValueError("TWILIO_SMS_FROM not set")
-            
-            # Limit message length to 1500 characters
-            if len(message) > 1500:
-                message = message[:1500] + "... (הודעה קוצרה)"
-            
-            logger.info(f"📱 Sending SMS to {to}...")
-            
-            sms = self.client.messages.create(
-                body=message,
-                from_=from_number,
-                to=to
-            )
-            
-            logger.info(f"✅ SMS sent successfully (SID: {sms.sid})")
-            return True
-            
-        except TwilioRestException as e:
-            logger.error(f"❌ Twilio error: {e}")
-            return False
-        except Exception as e:
-            logger.error(f"❌ Error sending SMS: {e}")
-            return False
-
-
-def process_meeting_file(
-    drive_service: GoogleDriveService,
-    gemini_service: GeminiService,
-    twilio_service: TwilioService,
-    file_metadata: Dict[str, Any],
-    inbox_folder_id: str,
-    archive_folder_id: str,
-    phone_number: str
-) -> bool:
+def check_inbox_and_process():
     """
-    Process a single meeting file.
+    Main entry point — called by APScheduler every 5 minutes.
     
-    Args:
-        drive_service: Google Drive service instance
-        gemini_service: Gemini service instance
-        twilio_service: Twilio service instance
-        file_metadata: File metadata from Google Drive
-        inbox_folder_id: Source folder ID
-        archive_folder_id: Archive folder ID
-        phone_number: Phone number to send SMS to
-        
-    Returns:
-        True if processing was successful
+    Checks DRIVE_INBOX_ID for new audio files and processes each one
+    through the full audio pipeline (same as WhatsApp >30s flow).
     """
-    file_id = file_metadata['id']
-    file_name = file_metadata['name']
-    mime_type = file_metadata.get('mimeType', '')
+    inbox_folder_id = os.environ.get("DRIVE_INBOX_ID", "")
+    archive_folder_id = os.environ.get("DRIVE_ARCHIVE_ID", "")
     
-    # Check if file is audio
-    audio_mime_types = [
-        'audio/mpeg', 'audio/mp3', 'audio/wav', 'audio/wave',
-        'audio/x-wav', 'audio/m4a', 'audio/x-m4a', 'audio/aac'
-    ]
-    
-    if mime_type not in audio_mime_types:
-        logger.warning(f"⚠️  Skipping non-audio file: {file_name} (type: {mime_type})")
-        return False
-    
-    temp_file = None
+    if not inbox_folder_id:
+        return  # Not configured — skip silently
     
     try:
-        # Create temporary file with original extension
-        temp_dir = Path(tempfile.gettempdir())
-        # Preserve file extension for MIME type detection
-        file_ext = Path(file_name).suffix or '.mp3'  # Default to .mp3 if no extension
-        temp_file = temp_dir / f"meeting_{file_id}_{int(time.time())}{file_ext}"
+        from app.services.drive_memory_service import DriveMemoryService
         
-        # Download file
-        logger.info(f"📥 Processing: {file_name}")
-        drive_service.download_file(file_id, file_name, temp_file)
-        
-        # Process with Gemini
-        summary = gemini_service.process_audio(temp_file)
-        
-        # Send SMS
-        sms_sent = twilio_service.send_sms(summary, phone_number)
-        if not sms_sent:
-            logger.warning(f"⚠️  SMS not sent, but continuing...")
-        
-        # Move to archive
-        moved = drive_service.move_file_to_folder(
-            file_id,
-            inbox_folder_id,
-            archive_folder_id
-        )
-        
-        if moved:
-            logger.info(f"✅ Successfully processed: {file_name}")
-            return True
-        else:
-            logger.error(f"❌ Failed to move file to archive: {file_name}")
-            return False
-            
-    except Exception as e:
-        logger.error(f"❌ Error processing file {file_name}: {e}")
-        import traceback
-        traceback.print_exc()
-        return False
-        
-    finally:
-        # Clean up temporary file
-        if temp_file and temp_file.exists():
-            try:
-                temp_file.unlink()
-                logger.info(f"🗑️  Deleted temp file: {temp_file}")
-            except Exception as e:
-                logger.warning(f"⚠️  Could not delete temp file: {e}")
-
-
-def main():
-    """Main function to process meeting recordings."""
-    logger.info("🚀 Starting meeting processing job...")
-    
-    # Get environment variables
-    inbox_folder_id = os.environ.get("DRIVE_INBOX_ID")
-    archive_folder_id = os.environ.get("DRIVE_ARCHIVE_ID")
-    phone_number = os.environ.get("MY_PHONE_NUMBER")
-    
-    if not all([inbox_folder_id, archive_folder_id, phone_number]):
-        logger.error(
-            "❌ Missing required environment variables: "
-            "DRIVE_INBOX_ID, DRIVE_ARCHIVE_ID, MY_PHONE_NUMBER"
-        )
-        sys.exit(1)
-    
-    try:
-        # Initialize services
-        drive_service = GoogleDriveService()
-        gemini_service = GeminiService()
-        twilio_service = TwilioService()
-        
-        # List files in inbox
-        files = drive_service.list_files_in_folder(inbox_folder_id)
-        
-        if not files:
-            logger.info("📭 No files to process")
+        drive_service = DriveMemoryService()
+        if not drive_service.is_configured or not drive_service.service:
+            logger.warning("⚠️  [InboxPoller] Drive service not configured — skipping")
             return
         
-        # Process each file
-        success_count = 0
-        error_count = 0
+        drive_service._refresh_credentials_if_needed()
         
-        for file_metadata in files:
+        # List files in inbox folder
+        query = f"'{inbox_folder_id}' in parents and trashed = false"
+        results = drive_service.service.files().list(
+            q=query,
+            fields="files(id, name, mimeType, size, createdTime)",
+            orderBy="createdTime asc"  # Process oldest first
+        ).execute()
+        
+        files = results.get('files', [])
+        
+        if not files:
+            return  # Empty inbox — normal
+        
+        # Filter to audio files only
+        audio_files = [f for f in files if f.get('mimeType', '') in AUDIO_MIME_TYPES]
+        
+        if not audio_files:
+            logger.info(f"📭 [InboxPoller] Found {len(files)} file(s) in inbox, but none are audio")
+            return
+        
+        logger.info(f"📥 [InboxPoller] Found {len(audio_files)} audio file(s) to process")
+        
+        for file_meta in audio_files:
             try:
-                success = process_meeting_file(
-                    drive_service,
-                    gemini_service,
-                    twilio_service,
-                    file_metadata,
-                    inbox_folder_id,
-                    archive_folder_id,
-                    phone_number
+                _process_inbox_file(
+                    drive_service=drive_service,
+                    file_meta=file_meta,
+                    inbox_folder_id=inbox_folder_id,
+                    archive_folder_id=archive_folder_id,
                 )
-                
-                if success:
-                    success_count += 1
-                else:
-                    error_count += 1
-                    
-            except Exception as e:
-                logger.error(f"❌ Failed to process file {file_metadata.get('name', 'unknown')}: {e}")
-                error_count += 1
+            except Exception as file_err:
+                logger.error(f"❌ [InboxPoller] Error processing {file_meta.get('name')}: {file_err}")
+                import traceback
+                traceback.print_exc()
                 continue
-        
-        logger.info(f"✅ Processing complete: {success_count} succeeded, {error_count} failed")
-        
+    
     except Exception as e:
-        logger.error(f"❌ Fatal error in main: {e}")
+        logger.error(f"❌ [InboxPoller] Fatal error: {e}")
         import traceback
         traceback.print_exc()
-        sys.exit(1)
 
 
+def _process_inbox_file(
+    drive_service,
+    file_meta: Dict[str, Any],
+    inbox_folder_id: str,
+    archive_folder_id: str,
+):
+    """
+    Process a single audio file from the inbox through the full pipeline.
+    
+    This replicates the process_audio_in_background() flow from main.py
+    but reads from Drive instead of WhatsApp media API.
+    """
+    file_id = file_meta['id']
+    file_name = file_meta.get('name', 'unknown')
+    mime_type = file_meta.get('mimeType', 'audio/mpeg')
+    
+    print(f"\n{'='*60}")
+    print(f"📥 [InboxPoller] Processing: {file_name}")
+    print(f"   File ID: {file_id}")
+    print(f"   MIME: {mime_type}")
+    print(f"{'='*60}\n")
+    
+    temp_files = []
+    
+    try:
+        # ── Step 1: Download audio from Drive ──
+        from googleapiclient.http import MediaIoBaseDownload
+        
+        request = drive_service.service.files().get_media(fileId=file_id)
+        audio_buffer = io.BytesIO()
+        downloader = MediaIoBaseDownload(audio_buffer, request)
+        
+        done = False
+        while not done:
+            status, done = downloader.next_chunk()
+        
+        audio_buffer.seek(0)
+        audio_bytes = audio_buffer.read()
+        print(f"✅ Downloaded: {len(audio_bytes)} bytes")
+        
+        # ── Step 2: Save to temp file ──
+        file_ext = Path(file_name).suffix or '.ogg'
+        with tempfile.NamedTemporaryFile(delete=False, suffix=file_ext) as tmp:
+            tmp.write(audio_bytes)
+            tmp_path = tmp.name
+            temp_files.append(tmp_path)
+        
+        # ── Step 3: Retrieve voice signatures for speaker ID ──
+        from app.services.gemini_service import gemini_service as gs
+        from app.core.config import settings
+        
+        reference_voices = []
+        if drive_service.is_configured and settings.enable_multimodal_voice:
+            try:
+                max_sigs = settings.max_voice_signatures
+                print(f"🎤 Retrieving voice signatures (max: {max_sigs})...")
+                reference_voices = drive_service.get_voice_signatures(max_signatures=max_sigs)
+                if reference_voices:
+                    print(f"✅ Retrieved {len(reference_voices)} voice signature(s)")
+            except Exception as e:
+                print(f"⚠️  Error retrieving voice signatures: {e}")
+        
+        # ── Step 4: Combined Diarization + Expert Analysis (single Gemini call) ──
+        # This is the same call as process_audio_in_background in main.py
+        audio_metadata = {
+            "file_id": file_id,
+            "filename": file_name,
+        }
+        
+        print("🤖 [Combined Analysis] Processing audio with Gemini...")
+        result = gs.analyze_day(
+            audio_paths=[tmp_path],
+            audio_file_metadata=[audio_metadata],
+            reference_voices=reference_voices
+        )
+        
+        print("✅ [Combined Analysis] Gemini analysis complete")
+        
+        # Extract transcript, segments, and expert summary
+        transcript_json = result.get('transcript', {})
+        segments = transcript_json.get('segments', [])
+        summary_text = result.get('summary', '')
+        expert_summary = result.get('expert_summary', '')
+        
+        print(f"📊 Segments: {len(segments)}, Expert: {len(expert_summary)} chars")
+        
+        if segments:
+            unique_speakers = set(seg.get('speaker', 'Unknown') for seg in segments)
+            print(f"   Unique speakers: {unique_speakers}")
+        
+        # ── Step 5: Build expert analysis result ──
+        expert_analysis_result = None
+        
+        if expert_summary and len(expert_summary.strip()) > 50:
+            israel_time = datetime.now(timezone.utc) + timedelta(hours=2)
+            expert_analysis_result = {
+                "success": True,
+                "raw_analysis": expert_summary,
+                "source": "combined",
+                "timestamp": israel_time.isoformat(),
+                "timestamp_display": israel_time.strftime('%d/%m/%Y %H:%M')
+            }
+            print(f"✅ Expert analysis ready: {len(expert_summary)} chars")
+        else:
+            print("⚠️  No expert summary — using basic summary")
+        
+        # ── Step 6: Extract speaker names ──
+        speaker_names = set()
+        for seg in segments:
+            speaker = seg.get('speaker', '')
+            if speaker and not speaker.lower().startswith('speaker '):
+                speaker_names.add(speaker)
+        speaker_names = list(speaker_names)
+        
+        # ── Step 7: Save transcript to Transcripts/ folder ──
+        transcript_file_id = None
+        try:
+            transcript_save_data = {
+                "timestamp": datetime.utcnow().isoformat() + "Z",
+                "source": "drive_inbox",
+                "original_filename": file_name,
+                "segments": segments,
+                "summary": summary_text,
+                "speakers": speaker_names,
+                "audio_file_id": file_id,
+                "duration_segments": len(segments),
+            }
+            if expert_analysis_result and expert_analysis_result.get('success'):
+                transcript_save_data["expert_analysis"] = expert_analysis_result.get("raw_analysis", "")
+                transcript_save_data["persona"] = expert_analysis_result.get("persona", "")
+            
+            transcript_file_id = drive_service.save_transcript(
+                transcript_data=transcript_save_data,
+                speakers=speaker_names
+            )
+            if transcript_file_id:
+                print(f"📄 Transcript saved (ID: {transcript_file_id})")
+        except Exception as ts_err:
+            print(f"⚠️  Transcript save failed: {ts_err}")
+        
+        # ── Step 8: Save slim entry to memory.json ──
+        audio_interaction = {
+            "timestamp": datetime.utcnow().isoformat() + "Z",
+            "type": "audio",
+            "source": "drive_inbox",
+            "file_id": file_id,
+            "filename": file_name,
+            "summary": summary_text,
+            "speakers": speaker_names,
+            "segment_count": len(segments),
+            "transcript_file_id": transcript_file_id,
+        }
+        if expert_analysis_result and expert_analysis_result.get('success'):
+            audio_interaction["expert_analysis"] = {
+                "persona": expert_analysis_result.get("persona"),
+                "raw_analysis": expert_analysis_result.get("raw_analysis", "")[:1000],
+                "timestamp": expert_analysis_result.get("timestamp"),
+            }
+        
+        drive_service.update_memory(audio_interaction)
+        print("✅ Saved to memory.json")
+        
+        # ── Step 9: Inject Working Memory into Conversation Engine ──
+        try:
+            from app.services.conversation_engine import conversation_engine
+            
+            phone = os.environ.get("MY_PHONE_NUMBER", "")
+            if phone:
+                phone = phone.lstrip("+")
+                
+                expert_snippet = ""
+                if expert_analysis_result and expert_analysis_result.get('success'):
+                    expert_snippet = expert_analysis_result.get("raw_analysis", "")[:500]
+                
+                conversation_engine.inject_session_context(
+                    phone=phone,
+                    summary=summary_text,
+                    speakers=speaker_names,
+                    segments=segments,
+                    expert_analysis=expert_snippet,
+                )
+                print("💾 Working memory injected into Conversation Engine")
+        except Exception as wm_err:
+            print(f"⚠️  Working memory injection failed: {wm_err}")
+        
+        # ── Step 10: Send summary via WhatsApp (Meta) ──
+        try:
+            from app.services.whatsapp_provider import WhatsAppProviderFactory
+            
+            wp = WhatsAppProviderFactory.create_provider(fallback=False)
+            phone = os.environ.get("MY_PHONE_NUMBER", "")
+            
+            if wp and phone:
+                summary_msg = f"📥 *הקלטה חדשה מתיקיית Inbox:*\n"
+                summary_msg += f"📁 {file_name}\n\n"
+                
+                if expert_analysis_result and expert_analysis_result.get('success'):
+                    raw = expert_analysis_result.get("raw_analysis", "")
+                    if raw:
+                        summary_msg += raw
+                    else:
+                        summary_msg += summary_text
+                else:
+                    summary_msg += summary_text
+                
+                if len(summary_msg) > 4000:
+                    summary_msg = summary_msg[:3950] + "\n\n... (הודעה קוצרה)"
+                
+                send_result = wp.send_whatsapp(
+                    message=summary_msg,
+                    to=f"+{phone.lstrip('+')}"
+                )
+                
+                if send_result.get('success'):
+                    print(f"📤 Summary sent via WhatsApp ({len(summary_msg)} chars)")
+                else:
+                    print(f"⚠️  WhatsApp send failed: {send_result.get('error')}")
+            else:
+                print("⚠️  No WhatsApp provider or phone number — summary not sent")
+        except Exception as wa_err:
+            print(f"⚠️  WhatsApp send failed: {wa_err}")
+        
+        # ── Step 11: Move to archive ──
+        if archive_folder_id:
+            try:
+                file_info = drive_service.service.files().get(
+                    fileId=file_id, fields='parents'
+                ).execute()
+                previous_parents = ",".join(file_info.get('parents', []))
+                
+                drive_service.service.files().update(
+                    fileId=file_id,
+                    addParents=archive_folder_id,
+                    removeParents=previous_parents,
+                    fields='id, parents'
+                ).execute()
+                
+                print(f"📦 Moved to archive folder")
+            except Exception as move_err:
+                print(f"⚠️  Failed to move to archive: {move_err}")
+        else:
+            print("ℹ️  No DRIVE_ARCHIVE_ID configured — file stays in inbox")
+        
+        print(f"\n✅ [InboxPoller] Successfully processed: {file_name}")
+        print(f"{'='*60}\n")
+        
+    finally:
+        # Clean up temp files
+        for f in temp_files:
+            try:
+                if os.path.exists(f):
+                    os.unlink(f)
+            except:
+                pass
+
+
+# Legacy entry point — kept for backward compatibility with external cron jobs
 if __name__ == "__main__":
-    main()
+    logging.basicConfig(
+        level=logging.INFO,
+        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+        handlers=[logging.StreamHandler(sys.stdout)]
+    )
+    print("🚀 Starting inbox processing (standalone mode)...")
+    check_inbox_and_process()
+    print("✅ Done.")

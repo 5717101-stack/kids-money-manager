@@ -24,16 +24,7 @@ class Settings(BaseSettings):
     gemini_model: str = "gemini-2.5-pro"  # NOTE: Actual model selection goes through MODEL_MAPPING in model_discovery.py
     
     # WhatsApp Provider Selection
-    whatsapp_provider: str = "twilio"  # Options: 'twilio' or 'meta'
-    
-    # Twilio Settings (for WhatsApp/SMS)
-    twilio_account_sid: Optional[str] = None
-    twilio_auth_token: Optional[str] = None
-    twilio_whatsapp_from: Optional[str] = None  # Format: whatsapp:+14155238886
-    twilio_whatsapp_to: Optional[str] = None    # Format: whatsapp:+972XXXXXXXXX
-    twilio_sms_from: Optional[str] = None       # Format: +14155238886 (regular phone number)
-    twilio_sms_to: Optional[str] = None         # Format: +972XXXXXXXXX (regular phone number)
-    enable_sms: bool = False                     # Enable/disable SMS sending (default: False)
+    whatsapp_provider: str = "meta"  # Meta Cloud API
     
     # Meta WhatsApp Cloud API Settings
     whatsapp_cloud_api_token: Optional[str] = None  # Meta WhatsApp API access token
@@ -67,12 +58,9 @@ settings = Settings()
 print(f"\n{'='*60}")
 print(f"📱 WhatsApp Provider Configuration")
 print(f"{'='*60}")
-print(f"Configured provider: {settings.whatsapp_provider}")
-print(f"Twilio configured: {bool(settings.twilio_account_sid and settings.twilio_auth_token)}")
+print(f"Provider: Meta Cloud API")
 print(f"Meta configured: {bool(settings.whatsapp_cloud_api_token and settings.whatsapp_phone_number_id)}")
-if settings.whatsapp_provider.lower() == 'meta':
-    print(f"Meta config details:")
-    print(f"  - WHATSAPP_CLOUD_API_TOKEN: {'✅' if settings.whatsapp_cloud_api_token else '❌'}")
-    print(f"  - WHATSAPP_PHONE_NUMBER_ID: {'✅' if settings.whatsapp_phone_number_id else '❌'}")
-    print(f"  - WHATSAPP_VERIFY_TOKEN: {'✅' if settings.whatsapp_verify_token else '❌'}")
+print(f"  - WHATSAPP_CLOUD_API_TOKEN: {'✅' if settings.whatsapp_cloud_api_token else '❌'}")
+print(f"  - WHATSAPP_PHONE_NUMBER_ID: {'✅' if settings.whatsapp_phone_number_id else '❌'}")
+print(f"  - WHATSAPP_VERIFY_TOKEN: {'✅' if settings.whatsapp_verify_token else '❌'}")
 print(f"{'='*60}\n")

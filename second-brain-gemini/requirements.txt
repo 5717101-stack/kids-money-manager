@@ -18,9 +18,6 @@ python-dateutil==2.8.2
 reportlab==4.0.7
 python-bidi==0.4.2
 
-# Twilio for WhatsApp/SMS
-twilio==9.3.0
-
 # HTTP requests for Meta WhatsApp Cloud API
 requests>=2.31.0
 

@@ -1,6 +1,6 @@
 """
 WhatsApp Provider Interface and Factory
-Supports multiple WhatsApp providers (Twilio, Meta Cloud API)
+Uses Meta Cloud API as the sole WhatsApp provider.
 """
 
 from abc import ABC, abstractmethod
@@ -67,20 +67,17 @@ class WhatsAppProviderFactory:
         Create a WhatsApp provider instance based on configuration.
         
         Args:
-            provider_name: Optional provider name override. If None, uses settings.whatsapp_provider
-            fallback: If True, try to fallback to 'twilio' if requested provider is not configured
+            provider_name: Optional provider name override. Defaults to 'meta'.
+            fallback: Unused (kept for backward compatibility).
             
         Returns:
-            WhatsAppProvider instance or None if provider not found/configured
+            WhatsAppProvider instance or None if not configured
         """
         if provider_name is None:
-            provider_name = settings.whatsapp_provider.lower()
+            provider_name = 'meta'
         
-        print(f"🔍 Attempting to create WhatsApp provider: '{provider_name}'")
-        print(f"   Config value: '{settings.whatsapp_provider}'")
-        print(f"   Available providers: {list(cls._providers.keys())}")
+        print(f"🔍 Creating WhatsApp provider: '{provider_name}'")
         
-        # Debug: Check Meta configuration if requested
         if provider_name == 'meta':
             print(f"   Meta config check:")
             print(f"      WHATSAPP_CLOUD_API_TOKEN: {'✅ Set' if settings.whatsapp_cloud_api_token else '❌ Missing'}")
@@ -100,30 +97,12 @@ class WhatsAppProviderFactory:
                 return instance
             else:
                 print(f"⚠️  WhatsApp provider '{provider_name}' is not properly configured")
-                print(f"   Please check your environment variables for {provider_name.upper()}")
-                
-                # Only fallback if explicitly requested provider is not available AND fallback is enabled
-                # But don't fallback silently - log it clearly
-                if fallback and provider_name != 'twilio' and 'twilio' in cls._providers:
-                    twilio_instance = cls._providers['twilio']()
-                    if twilio_instance.is_configured():
-                        print(f"⚠️  WARNING: Falling back to 'twilio' provider because '{provider_name}' is not configured")
-                        print(f"   To use '{provider_name}', please configure the required environment variables")
-                        return twilio_instance
-                    else:
-                        print(f"⚠️  Cannot fallback to 'twilio' - it's also not configured")
-                
+                print(f"   Please check your environment variables for META WhatsApp")
                 return None
         except Exception as e:
             print(f"❌ Failed to initialize WhatsApp provider '{provider_name}': {e}")
             import traceback
             traceback.print_exc()
-            
-            # Fallback to Twilio on error
-            if fallback and provider_name != 'twilio' and 'twilio' in cls._providers:
-                print(f"🔄 Attempting fallback to 'twilio' provider after error...")
-                return cls.create_provider('twilio', fallback=False)
-            
             return None
     
     @classmethod
@@ -132,28 +111,18 @@ class WhatsAppProviderFactory:
         return list(cls._providers.keys())
 
 
-# Import providers to register them
+# Register Meta provider
 def register_providers():
-    """Register all available WhatsApp providers."""
-    # Lazy imports to avoid circular dependencies
-    try:
-        from app.services.twilio_service import TwilioService
-        WhatsAppProviderFactory.register_provider('twilio', TwilioService)
-        print("✅ Registered Twilio provider")
-    except ImportError as e:
-        print(f"⚠️  Failed to register Twilio provider: {e}")
-    
-    # Register Meta provider
+    """Register available WhatsApp providers."""
     try:
         from app.services.meta_whatsapp_service import MetaWhatsAppService
         WhatsAppProviderFactory.register_provider('meta', MetaWhatsAppService)
-        print("✅ Registered Meta provider")
+        print("✅ Registered Meta WhatsApp provider")
     except ImportError as e:
         print(f"⚠️  Failed to register Meta provider: {e}")
 
 
-# Auto-register providers when module is imported
-# Use lazy registration to avoid circular imports
+# Auto-register on import
 try:
     register_providers()
 except Exception as e:

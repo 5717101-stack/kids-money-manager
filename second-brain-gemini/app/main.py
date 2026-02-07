@@ -21,7 +21,6 @@ from threading import Lock
 from app.core.config import settings
 from app.services.gemini_service import gemini_service
 from app.services.pdf_service import pdf_service
-from app.services.twilio_service import twilio_service  # Keep for SMS and message formatting
 from app.services.whatsapp_provider import WhatsAppProviderFactory
 from app.services.drive_memory_service import DriveMemoryService
 from app.services.conversation_engine import conversation_engine
@@ -579,12 +578,8 @@ async def startup_event():
                     print(f"✅ Deployment notification sent via WhatsApp")
                 else:
                     print(f"⚠️  Failed to send deployment notification: {result.get('error')}")
-            elif twilio_service.is_configured:
-                result = twilio_service.send_whatsapp(notification_msg)
-                if result.get('success'):
-                    print(f"✅ Deployment notification sent via Twilio")
-                else:
-                    print(f"⚠️  Failed to send deployment notification: {result.get('error')}")
+            else:
+                print(f"⚠️  Meta WhatsApp not configured — deployment notification not sent")
             else:
                 print("⚠️  No WhatsApp provider configured for deployment notification")
         else:
@@ -656,16 +651,16 @@ async def startup_event():
         import traceback
         traceback.print_exc()
     
-    # Start the APScheduler for weekly architecture audit
+    # Start the APScheduler for cron jobs
     try:
         from apscheduler.schedulers.asyncio import AsyncIOScheduler
         from apscheduler.triggers.cron import CronTrigger
+        from apscheduler.triggers.interval import IntervalTrigger
         from app.services.architecture_audit_service import architecture_audit_service
-        from app.services.meta_whatsapp_service import meta_whatsapp_service
         
         def run_scheduled_audit():
             """Run the weekly architecture audit and send report via WhatsApp."""
-            print("⏰ SCHEDULED AUDIT TRIGGERED (Friday 08:00 AM)")
+            print("⏰ SCHEDULED AUDIT TRIGGERED (Friday 13:00)")
             try:
                 result = architecture_audit_service.run_weekly_architecture_audit(
                     drive_service=drive_memory_service
@@ -674,13 +669,9 @@ async def startup_event():
                 if result.get('success'):
                     report = result.get('report', 'לא נוצר דו"ח')
                     
-                    # Send via WhatsApp
-                    if meta_whatsapp_service.is_configured:
-                        meta_whatsapp_service.send_whatsapp(report)
+                    if whatsapp_provider:
+                        whatsapp_provider.send_whatsapp(report)
                         print("✅ Scheduled audit report sent via WhatsApp")
-                    elif twilio_service.is_configured:
-                        twilio_service.send_whatsapp(report)
-                        print("✅ Scheduled audit report sent via Twilio")
                     else:
                         print("⚠️  No WhatsApp provider configured for scheduled report")
                 else:
@@ -691,10 +682,17 @@ async def startup_event():
                 import traceback
                 traceback.print_exc()
         
+        def run_inbox_poller():
+            """Check Drive inbox for new audio files and process them."""
+            try:
+                from process_meetings import check_inbox_and_process
+                check_inbox_and_process()
+            except Exception as e:
+                print(f"❌ [InboxPoller] Error: {e}")
+        
         scheduler = AsyncIOScheduler()
         
-        # Schedule for every Friday at 13:00 (1 PM) Israel time (UTC+2/+3)
-        # Using UTC: Friday 11:00 (summer) or 10:00 (winter) - using 11:00 as middle ground
+        # Job 1: Weekly Architecture Audit — Friday 13:00 Israel time
         scheduler.add_job(
             run_scheduled_audit,
             CronTrigger(day_of_week='fri', hour=11, minute=0),  # 11:00 UTC = 13:00 Israel
@@ -703,8 +701,24 @@ async def startup_event():
             replace_existing=True
         )
         
+        # Job 2: Inbox Poller — every 5 minutes
+        # Checks DRIVE_INBOX_ID for new audio files and processes them
+        # through the full pipeline (diarization, expert analysis, speaker ID, etc.)
+        inbox_folder_id = os.environ.get("DRIVE_INBOX_ID", "")
+        if inbox_folder_id:
+            scheduler.add_job(
+                run_inbox_poller,
+                IntervalTrigger(minutes=5),
+                id='inbox_poller',
+                name='Drive Inbox Poller (every 5 min)',
+                replace_existing=True
+            )
+            print(f"📥 Inbox Poller enabled: checking folder every 5 minutes")
+        else:
+            print(f"ℹ️  Inbox Poller disabled: DRIVE_INBOX_ID not configured")
+        
         scheduler.start()
-        print("📅 Scheduler started: Weekly Architecture Audit (Friday 13:00 / 1 PM)")
+        print("📅 Scheduler started: Weekly Audit (Fri 13:00) + Inbox Poller (5 min)")
         
     except Exception as e:
         print(f"⚠️  Failed to start scheduler: {e}")
@@ -833,7 +847,7 @@ async def get_whatsapp_provider_status():
         "active_provider": whatsapp_provider.get_provider_name() if whatsapp_provider else None,
         "available_providers": WhatsAppProviderFactory.get_available_providers(),
         "meta_configured": bool(settings.whatsapp_cloud_api_token and settings.whatsapp_phone_number_id),
-        "twilio_configured": bool(settings.twilio_account_sid and settings.twilio_auth_token),
+        "twilio_configured": False,  # Twilio removed — Meta only
         "meta_config": {
             "has_token": bool(settings.whatsapp_cloud_api_token),
             "has_phone_id": bool(settings.whatsapp_phone_number_id),
@@ -865,7 +879,7 @@ async def test_whatsapp(request: Request):
         print(f"🔍 Provider type: {type(whatsapp_provider).__name__ if whatsapp_provider else 'None'}")
         print(f"{'='*60}\n")
         
-        # Use WhatsApp provider (Twilio or Meta based on config)
+        # Use WhatsApp provider (Meta Cloud API)
         if not whatsapp_provider:
             raise HTTPException(
                 status_code=500,
@@ -913,40 +927,6 @@ async def test_whatsapp(request: Request):
         )
 
 
-@app.post("/test-sms")
-async def test_sms(request: Request):
-    """
-    Send a test SMS message.
-    
-    Expects JSON body with optional 'message' field.
-    """
-    try:
-        data = await request.json()
-        message = data.get('message', 'testing')
-        
-        print(f"📱 Test SMS request received: {message}")
-        
-        result = twilio_service.send_sms(message)
-        
-        if result.get('success'):
-            return JSONResponse(content=result)
-        else:
-            raise HTTPException(
-                status_code=500,
-                detail=result.get('error', 'Failed to send SMS message')
-            )
-    except HTTPException:
-        raise
-    except Exception as e:
-        print(f"❌ Error in test-sms endpoint: {e}")
-        import traceback
-        traceback.print_exc()
-        raise HTTPException(
-            status_code=500,
-            detail=f"Error sending test SMS: {str(e)}"
-        )
-
-
 @app.post("/notify-cursor-started")
 async def notify_cursor_started(request: Request):
     """
@@ -990,13 +970,11 @@ async def notify_cursor_started(request: Request):
             # Message 2: Cursor started working (RTL-friendly text)
             message = "🛠️ הוא על זה"
         
-        # Send via Meta WhatsApp (primary) or Twilio (fallback)
+        # Send via Meta WhatsApp
         from app.services.meta_whatsapp_service import meta_whatsapp_service
         
         if meta_whatsapp_service.is_configured:
             result = meta_whatsapp_service.send_whatsapp(message)
-        elif twilio_service.is_configured:
-            result = twilio_service.send_whatsapp(message)
         else:
             result = {"success": False, "error": "No WhatsApp provider configured"}
         
@@ -1052,13 +1030,11 @@ async def notify_deployment(request: Request):
         else:
             message = f"❌ שחרור גרסה נכשל\n\n📦 גרסה: {version}\n\n⚠️ סיבה: {changes}"
         
-        # Send via Meta WhatsApp (primary) or Twilio (fallback)
+        # Send via Meta WhatsApp
         from app.services.meta_whatsapp_service import meta_whatsapp_service
         
         if meta_whatsapp_service.is_configured:
             result = meta_whatsapp_service.send_whatsapp(message)
-        elif twilio_service.is_configured:
-            result = twilio_service.send_whatsapp(message)
         else:
             result = {"success": False, "error": "No WhatsApp provider configured"}
         
@@ -2849,188 +2825,15 @@ async def webhook(request: Request, background_tasks: BackgroundTasks):
 
 
 @app.post("/whatsapp")
-async def whatsapp_webhook(request: Request, background_tasks: BackgroundTasks):
+async def whatsapp_webhook_legacy(request: Request):
     """
-    Handle incoming WhatsApp messages and webhooks.
-    Supports both Twilio (form data) and Meta (JSON) webhooks.
+    Legacy Twilio webhook — DEPRECATED.
+    
+    All WhatsApp traffic now goes through /webhook (Meta Cloud API).
+    This endpoint returns 200 OK for any stray requests.
     """
-    try:
-        content_type = request.headers.get("content-type", "")
-        
-        # Check if it's Meta WhatsApp webhook (JSON)
-        if "application/json" in content_type:
-            data = await request.json()
-            
-            # Meta webhook structure
-            if "entry" in data:
-                print(f"\n{'='*60}")
-                print(f"📱 Meta WhatsApp Webhook Received")
-                print(f"{'='*60}")
-                
-                for entry in data.get("entry", []):
-                    changes = entry.get("changes", [])
-                    for change in changes:
-                        value = change.get("value", {})
-                        
-                        # Message status updates
-                        if "statuses" in value:
-                            statuses = value.get("statuses", [])
-                            for status in statuses:
-                                message_id = status.get("id")
-                                status_type = status.get("status")
-                                recipient = status.get("recipient_id")
-                                
-                                print(f"📊 Message Status Update:")
-                                print(f"   Message ID: {message_id}")
-                                print(f"   Status: {status_type}")
-                                print(f"   Recipient: {recipient}")
-                                
-                                if status_type == "failed":
-                                    error = status.get("errors", [{}])[0]
-                                    error_code = error.get("code")
-                                    error_title = error.get("title")
-                                    print(f"   ❌ Error: {error_title} (Code: {error_code})")
-                                
-                                if status_type == "delivered":
-                                    print(f"   ✅ Message delivered!")
-                                
-                                if status_type == "read":
-                                    print(f"   ✅ Message read!")
-                        
-                        # Incoming messages
-                        if "messages" in value:
-                            messages = value.get("messages", [])
-                            for message in messages:
-                                from_number = message.get("from")
-                                message_body = message.get("text", {}).get("body", "")
-                                message_id = message.get("id")
-                                
-                                print(f"📨 Incoming Message:")
-                                print(f"   From: {from_number}")
-                                print(f"   Message: {message_body}")
-                                print(f"   Message ID: {message_id}")
-                                
-                                # IDEMPOTENCY CHECK: Prevent duplicate processing due to webhook retries
-                                if is_message_processed(message_id):
-                                    print(f"⚠️  Duplicate message received (ID: {message_id}). Ignoring.")
-                                    continue  # Skip processing, but return 200 OK to WhatsApp
-                                
-                                # Mark message as processed BEFORE processing (prevents race conditions)
-                                mark_message_processed(message_id)
-                                
-                                # TODO: Add auto-reply here if needed
-                                # You can send a response using whatsapp_provider.send_whatsapp()
-                
-                print(f"{'='*60}\n")
-                return JSONResponse(content={"status": "ok"})
-        
-        # Twilio webhook (form data)
-        form_data = await request.form()
-        sender_number = form_data.get('From', '')
-        message_body = form_data.get('Body', '')
-        # Twilio uses MessageSid as the unique message ID
-        message_id = form_data.get('MessageSid', '') or form_data.get('MessageId', '')
-        
-        print(f"\n{'='*50}")
-        print(f"📱 Incoming WhatsApp Message (Twilio)")
-        print(f"{'='*50}")
-        print(f"From: {sender_number}")
-        print(f"Message: {message_body}")
-        print(f"Message ID: {message_id}")
-        print(f"{'='*50}\n")
-        
-        # IDEMPOTENCY CHECK: Prevent duplicate processing due to webhook retries
-        if message_id and is_message_processed(message_id):
-            print(f"⚠️  Duplicate message received (ID: {message_id}). Ignoring.")
-            # Return 200 OK to Twilio to acknowledge receipt
-            from twilio.twiml.messaging_response import MessagingResponse
-            response = MessagingResponse()
-            return Response(content=str(response), media_type='text/xml')
-        
-        # Mark message as processed BEFORE processing (prevents race conditions)
-        if message_id:
-            mark_message_processed(message_id)
-        
-        # Process message with memory (if message body exists)
-        if message_body and drive_memory_service.is_configured:
-            try:
-                # CRITICAL: Get memory at the very start to trigger cache refresh check
-                # This ensures we detect manual edits before processing the message
-                memory = drive_memory_service.get_memory()
-                chat_history = memory.get('chat_history', [])
-                user_profile = memory.get('user_profile', {})
-                
-                print(f"💾 Retrieved memory: {len(chat_history)} previous interactions")
-                if user_profile:
-                    print(f"👤 User profile loaded: {list(user_profile.keys())}")
-                
-                # Get session context and recent transcripts for RAG
-                session_context = get_last_session_context()
-                
-                recent_transcripts = []
-                search_keywords = ['מה', 'איך', 'מתי', 'למה', 'מי', 'החלטנו', 'דיברנו', 'אמר']
-                if any(keyword in message_body for keyword in search_keywords):
-                    try:
-                        recent_transcripts = drive_memory_service.get_recent_transcripts(limit=2)
-                        print(f"📚 Loaded {len(recent_transcripts)} recent transcripts for RAG")
-                    except Exception as e:
-                        print(f"⚠️  Failed to load recent transcripts: {e}")
-                
-                # Generate AI response with context, user profile, and RAG context
-                ai_response = gemini_service.chat_with_memory(
-                    user_message=message_body,
-                    chat_history=chat_history,
-                    user_profile=user_profile,
-                    current_session=session_context,
-                    recent_transcripts=recent_transcripts
-                )
-                
-                print(f"🤖 Generated AI response: {ai_response[:100]}...")
-                
-                # Save interaction to memory (cache updated immediately, Drive sync in background)
-                new_interaction = {
-                    "user_message": message_body,
-                    "ai_response": ai_response,
-                    "timestamp": datetime.utcnow().isoformat() + "Z",
-                    "from_number": sender_number
-                }
-                
-                # Update cache immediately, sync to Drive in background
-                success = drive_memory_service.update_memory(new_interaction, background_tasks=background_tasks)
-                if success:
-                    print(f"✅ Saved interaction to memory cache (Drive sync in background)")
-                else:
-                    print(f"⚠️  Failed to save interaction to memory")
-                
-                # Return TwiML response with AI reply
-                from twilio.twiml.messaging_response import MessagingResponse
-                response = MessagingResponse()
-                response.message(ai_response)
-                return Response(content=str(response), media_type='text/xml')
-            except Exception as e:
-                print(f"⚠️  Error processing message with AI: {e}")
-                import traceback
-                traceback.print_exc()
-        
-        # Fallback: Return simple acknowledgment
-        from twilio.twiml.messaging_response import MessagingResponse
-        response = MessagingResponse()
-        response.message('Message received and saved to memory.')
-        return Response(content=str(response), media_type='text/xml')
-        
-    except Exception as e:
-        print(f"❌ Error processing WhatsApp webhook: {str(e)}")
-        import traceback
-        traceback.print_exc()
-        
-        # Try to return appropriate response
-        try:
-            from twilio.twiml.messaging_response import MessagingResponse
-            response = MessagingResponse()
-            response.message('Sorry, an error occurred while processing your message.')
-            return Response(content=str(response), media_type='text/xml')
-        except:
-            return JSONResponse(content={"status": "error", "message": str(e)}, status_code=500)
+    print("⚠️  /whatsapp POST received — this is a deprecated endpoint. Use /webhook instead.")
+    return JSONResponse(content={"status": "deprecated", "message": "Use /webhook endpoint instead"})
 
 
 @app.post("/generate-pdf")
@@ -3332,47 +3135,34 @@ async def analyze_day(
                     formatted_message += expert_analysis_service.format_for_whatsapp(expert_analysis_result)
                     print("📊 Using Expert Analysis format for WhatsApp")
                 else:
-                    # Fallback: Format the summary message (using TwilioService formatter)
-                    formatted_message = twilio_service.format_summary_message(result)
+                    # Fallback: basic summary
+                    summary = result.get('summary', '')
+                    formatted_message = f"📊 סיכום:\n{summary}" if summary else "✅ ההקלטה נשמרה."
                     print("📊 Using basic format for WhatsApp (no expert analysis available)")
                 
                 results = {
                     "whatsapp": None,
-                    "sms": None
                 }
                 
-                # Send WhatsApp via configured provider (Twilio or Meta)
+                # Send WhatsApp via Meta
                 if whatsapp_provider:
                     try:
-                        # Get recipient - for Meta we need it, for Twilio it's optional
-                        whatsapp_recipient = None
-                        if whatsapp_provider.get_provider_name() == 'meta':
-                            whatsapp_recipient = settings.whatsapp_to
-                            if not whatsapp_recipient:
-                                print(f"⚠️  WHATSAPP_TO not set - required for Meta provider")
-                                results["whatsapp"] = {
-                                    "success": False,
-                                    "error": "WHATSAPP_TO not configured",
-                                    "message": "Meta WhatsApp requires WHATSAPP_TO environment variable"
-                                }
-                            else:
-                                print(f"📱 Sending WhatsApp via Meta to {whatsapp_recipient}")
-                                whatsapp_result = whatsapp_provider.send_whatsapp(formatted_message, whatsapp_recipient)
-                                results["whatsapp"] = whatsapp_result
-                                if whatsapp_result.get('success'):
-                                    print(f"✅ Summary sent to WhatsApp successfully via {whatsapp_provider.get_provider_name()}")
-                                else:
-                                    print(f"⚠️  Failed to send WhatsApp: {whatsapp_result.get('error', 'Unknown error')}")
-                                    print(f"   Full error details: {whatsapp_result}")
+                        whatsapp_recipient = settings.whatsapp_to
+                        if not whatsapp_recipient:
+                            print(f"⚠️  WHATSAPP_TO not set")
+                            results["whatsapp"] = {
+                                "success": False,
+                                "error": "WHATSAPP_TO not configured",
+                            }
                         else:
-                            # Twilio provider
-                            print(f"📱 Sending WhatsApp via Twilio")
+                            print(f"📱 Sending WhatsApp via Meta to {whatsapp_recipient}")
                             whatsapp_result = whatsapp_provider.send_whatsapp(formatted_message, whatsapp_recipient)
                             results["whatsapp"] = whatsapp_result
                             if whatsapp_result.get('success'):
-                                print(f"✅ Summary sent to WhatsApp successfully via {whatsapp_provider.get_provider_name()}")
+                                print(f"✅ Summary sent to WhatsApp successfully")
                             else:
                                 print(f"⚠️  Failed to send WhatsApp: {whatsapp_result.get('error', 'Unknown error')}")
+                                print(f"   Full error details: {whatsapp_result}")
                     except Exception as whatsapp_error:
                         print(f"⚠️  Error sending WhatsApp: {whatsapp_error}")
                         import traceback
@@ -3389,23 +3179,6 @@ async def analyze_day(
                         "error": "WhatsApp provider not configured",
                         "message": "Please configure WhatsApp provider in environment variables"
                     }
-                
-                # Send SMS via Twilio (SMS is only supported by Twilio)
-                # Only send SMS if explicitly enabled
-                if settings.enable_sms and twilio_service.is_configured_flag and settings.twilio_sms_from:
-                    try:
-                        sms_result = twilio_service.send_sms(formatted_message)
-                        results["sms"] = sms_result
-                        if sms_result.get('success'):
-                            print(f"✅ Summary sent to SMS successfully")
-                        else:
-                            print(f"⚠️  Failed to send SMS: {sms_result.get('error', 'Unknown error')}")
-                    except Exception as sms_error:
-                        print(f"⚠️  Error sending SMS: {sms_error}")
-                else:
-                    if not settings.enable_sms:
-                        print(f"ℹ️  SMS sending is disabled (ENABLE_SMS=false)")
-                    results["sms"] = {"success": False, "message": "SMS sending is disabled"}
                 
             except Exception as messaging_error:
                 print(f"⚠️  Error sending messages (non-fatal): {messaging_error}")
