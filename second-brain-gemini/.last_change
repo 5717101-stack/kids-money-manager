@@ -1,2 +1,5 @@
 @Codebase
-We are implementing a 'Smart Identity Resolver' to handle name ambiguity with minimal user...
+We need to add a 'Writer' capability to the Second Brain.
+
+### 1. JSON Update Function
+- C...

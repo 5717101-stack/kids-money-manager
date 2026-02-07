@@ -1295,6 +1295,31 @@ def process_audio_in_background(
             expert_analysis=expert_analysis_result if expert_analysis_result and expert_analysis_result.get('success') else None
         )
         
+        # Step 7.5: PROACTIVE FACT IDENTIFICATION
+        # Scan transcript for new facts about known people and ask user for confirmation
+        try:
+            from app.services.context_writer_service import context_writer
+            
+            print("🧠 [FactID] Scanning transcript for new facts...")
+            new_facts = context_writer.identify_facts(summary_text, segments)
+            
+            if new_facts:
+                confirmation_msg = context_writer.format_fact_confirmation(new_facts)
+                if confirmation_msg and whatsapp_provider:
+                    send_result = whatsapp_provider.send_whatsapp(
+                        message=confirmation_msg,
+                        to=f"+{from_number}"
+                    )
+                    msg_id = send_result.get("message_id", "")
+                    context_writer.store_pending(from_number, new_facts, msg_id)
+                    print(f"   ✅ [FactID] Sent {len(new_facts)} fact(s) for confirmation")
+            else:
+                print("   ℹ️ [FactID] No new facts detected")
+        except Exception as fact_err:
+            print(f"   ⚠️ [FactID] Error: {fact_err}")
+            import traceback
+            traceback.print_exc()
+        
         # Step 8: Detect unknown speakers and send "Who is this?" messages
         # This triggers the voice imprinting flow
         unknown_speakers_processed = []
@@ -2497,6 +2522,42 @@ async def webhook(request: Request, background_tasks: BackgroundTasks):
                                         print(f"🛑 IDENTITY RESOLVER COMPLETE")
                                         print(f"{'='*60}\n")
                                         continue
+                                    
+                                    # ================================================================
+                                    # CONTEXT WRITER: Fact Confirmation Handler
+                                    # If user replies "כן"/"לא"/digits after a fact-confirmation msg,
+                                    # apply or reject the pending facts.
+                                    # ================================================================
+                                    from app.services.context_writer_service import context_writer
+                                    
+                                    if context_writer.has_pending(from_number):
+                                        confirmation_result = context_writer.try_confirm_facts(from_number, message_body_text)
+                                        if confirmation_result is not None:
+                                            print(f"\n{'='*60}")
+                                            print(f"🧠 CONTEXT WRITER: Fact confirmation received")
+                                            print(f"{'='*60}")
+                                            
+                                            confirmed = confirmation_result.confirmed_facts
+                                            rejected = confirmation_result.rejected_facts
+                                            
+                                            if confirmed:
+                                                success_count, errors = context_writer.apply_facts(confirmed)
+                                                reply = f"✅ עודכנו {success_count} עובדות בבסיס הידע."
+                                                if errors:
+                                                    reply += f"\n⚠️ {len(errors)} שגיאות: {'; '.join(errors[:3])}"
+                                            else:
+                                                reply = "👍 בוטל — לא עודכן דבר."
+                                            
+                                            if whatsapp_provider:
+                                                whatsapp_provider.send_whatsapp(
+                                                    message=reply,
+                                                    to=f"+{from_number}"
+                                                )
+                                            
+                                            print(f"   Confirmed: {len(confirmed)}, Rejected: {len(rejected)}")
+                                            print(f"🛑 CONTEXT WRITER COMPLETE")
+                                            print(f"{'='*60}\n")
+                                            continue
                                     
                                     # ================================================================
                                     # KNOWLEDGE BASE QUERY INTERCEPTOR
