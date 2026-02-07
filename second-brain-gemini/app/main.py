@@ -1208,33 +1208,48 @@ def process_audio_in_background(
             print(f"✅ Loaded audio for slicing: {len(audio_segment)}ms")
             
             # ============================================================
-            # PUREST SEGMENTS: Use Gemini's isolated segments for clean signatures
+            # ALGORITHMIC ISOLATION FINDER
+            # Instead of trusting Gemini's purest_segments blindly,
+            # we verify isolation by checking ALL segments for overlaps.
+            # Goal: Find 5 seconds where the unknown speaker talks ALONE.
             # ============================================================
-            # Gemini now provides "purest_segments" for unknown speakers - these are
-            # isolated segments with ZERO overlap from other speakers
-            purest_segments = result.get('purest_segments', [])
-            print(f"🎯 Purest segments: {len(purest_segments)}")
             
-            # Build map of speaker -> purest segment
-            speaker_purest = {}  # {speaker_id: purest_segment_data}
-            for ps in purest_segments:
-                speaker = ps.get('speaker', '')
-                if speaker:
-                    speaker_purest[speaker] = ps
+            TARGET_DURATION_MS = 5000  # Target: 5 seconds of clear speech
+            MIN_SLICE_MS = 3000       # Absolute minimum: 3 seconds
+            MAX_SLICE_MS = 12000      # Maximum: 12 seconds
+            PAD_BEFORE_MS = 400       # Padding before speech
+            PAD_AFTER_MS = 300        # Padding after speech
+            FADE_MS = 50              # Fade in/out
+            OVERLAP_MARGIN_MS = 500   # Margin for overlap detection (0.5s grace)
             
-            # ============================================================
-            # FALLBACK: If no purest_segments, use longest segment from transcript
-            # ============================================================
-            speaker_best_segments = {}  # {speaker_id: best_segment}
+            # Step A: Classify all segments by speaker
+            all_segments_by_speaker = {}  # {speaker_id: [segments]}
+            unknown_speakers = set()
             
             for segment in segments:
                 speaker = segment.get('speaker', '')
                 if not speaker:
                     continue
                 
-                speaker_lower = speaker.lower()
+                start = segment.get('start', 0)
+                end = segment.get('end', 0)
+                if not isinstance(start, (int, float)) or not isinstance(end, (int, float)):
+                    continue
+                if end <= start:
+                    continue
                 
-                # Check if this is an unknown speaker (needs identification)
+                if speaker not in all_segments_by_speaker:
+                    all_segments_by_speaker[speaker] = []
+                all_segments_by_speaker[speaker].append({
+                    'speaker': speaker,
+                    'start': start,
+                    'end': end,
+                    'start_ms': int(start * 1000),
+                    'end_ms': int(end * 1000),
+                    'text': segment.get('text', '')
+                })
+                
+                speaker_lower = speaker.lower()
                 is_unknown = (
                     speaker_lower.startswith('speaker ') or
                     speaker.startswith('דובר ') or
@@ -1242,85 +1257,188 @@ def process_audio_in_background(
                     speaker_lower == 'speaker'
                 )
                 
-                # Skip if not unknown (already identified by Gemini)
-                if not is_unknown:
-                    print(f"✅ Skipping identified speaker: {speaker}")
-                    continue
+                if is_unknown and speaker_lower not in self_names:
+                    unknown_speakers.add(speaker)
+            
+            print(f"📊 All speakers: {list(all_segments_by_speaker.keys())}")
+            print(f"📊 Unknown speakers needing ID: {list(unknown_speakers)}")
+            
+            if not unknown_speakers and summary_text:
+                print("⚠️  No unknown speakers detected - all identified or skipped.")
+            
+            # Step B: For each unknown speaker, find their MOST ISOLATED segment
+            def find_isolated_segment(target_speaker, all_segs, gemini_purest=None):
+                """
+                Find the best isolated segment for a speaker.
                 
-                # SELF-IDENTIFICATION SKIP: Don't ask "who is this?" for self
-                if speaker_lower in self_names:
-                    print(f"🔇 Skipping self-speaker: {speaker}")
-                    continue
+                Priority:
+                1. Algorithmically verified isolated segments (no overlap with others)
+                2. Gemini's purest_segments (if they pass overlap check)
+                3. Segment with least overlap
+                4. Longest segment (last resort)
                 
-                # Calculate segment duration
-                start = segment.get('start', 0)
-                end = segment.get('end', 0)
-                duration = end - start
+                Returns: (segment_dict, quality_label)
+                """
+                target_segs = all_segs.get(target_speaker, [])
+                if not target_segs:
+                    return None, 'none'
                 
-                # Keep the longest segment for this speaker (fallback only)
-                if speaker not in speaker_best_segments:
-                    speaker_best_segments[speaker] = segment
+                # Get all OTHER speakers' segments for overlap checking
+                other_segs = []
+                for spk, segs in all_segs.items():
+                    if spk != target_speaker:
+                        other_segs.extend(segs)
+                
+                def calc_overlap_ms(seg):
+                    """Calculate total overlap (ms) with other speakers."""
+                    s_start = seg['start_ms']
+                    s_end = seg['end_ms']
+                    total_overlap = 0
+                    for other in other_segs:
+                        o_start = other['start_ms'] - OVERLAP_MARGIN_MS
+                        o_end = other['end_ms'] + OVERLAP_MARGIN_MS
+                        # Calculate intersection
+                        overlap_start = max(s_start, o_start)
+                        overlap_end = min(s_end, o_end)
+                        if overlap_end > overlap_start:
+                            total_overlap += (overlap_end - overlap_start)
+                    return total_overlap
+                
+                # Score each segment: (overlap_ms, distance_from_target_duration, index)
+                scored = []
+                for i, seg in enumerate(target_segs):
+                    duration_ms = seg['end_ms'] - seg['start_ms']
+                    if duration_ms < 500:  # Skip very short segments (< 0.5s)
+                        continue
+                    overlap = calc_overlap_ms(seg)
+                    # Prefer segments closest to TARGET_DURATION_MS (5s)
+                    duration_score = abs(duration_ms - TARGET_DURATION_MS)
+                    scored.append((overlap, duration_score, -duration_ms, i, seg))
+                
+                if not scored:
+                    return target_segs[0], 'last_resort'
+                
+                # Sort: least overlap first, then closest to 5s, then longest
+                scored.sort(key=lambda x: (x[0], x[1], x[2]))
+                
+                best = scored[0]
+                overlap_ms = best[0]
+                seg = best[4]
+                duration = seg['end_ms'] - seg['start_ms']
+                
+                if overlap_ms == 0:
+                    quality = 'isolated'
+                    print(f"   ✅ Found ISOLATED segment: {seg['start']:.1f}s-{seg['end']:.1f}s ({duration}ms, zero overlap)")
+                elif overlap_ms < 500:
+                    quality = 'near_isolated'
+                    print(f"   🟡 Near-isolated segment: {seg['start']:.1f}s-{seg['end']:.1f}s ({duration}ms, {overlap_ms}ms overlap)")
                 else:
-                    existing_duration = speaker_best_segments[speaker].get('end', 0) - speaker_best_segments[speaker].get('start', 0)
-                    if duration > existing_duration:
-                        speaker_best_segments[speaker] = segment
+                    quality = 'partial_overlap'
+                    print(f"   🟠 Best available: {seg['start']:.1f}s-{seg['end']:.1f}s ({duration}ms, {overlap_ms}ms overlap)")
+                
+                # If best segment is too short, try MERGING consecutive segments
+                if duration < MIN_SLICE_MS:
+                    merged = try_merge_consecutive(target_speaker, target_segs, other_segs)
+                    if merged and (merged['end_ms'] - merged['start_ms']) > duration:
+                        print(f"   🔗 Merged consecutive segments: {merged['start']:.1f}s-{merged['end']:.1f}s ({merged['end_ms']-merged['start_ms']}ms)")
+                        return merged, 'merged'
+                
+                return seg, quality
             
-            print(f"📊 Unique unknown speakers to identify: {list(speaker_best_segments.keys())}")
+            def try_merge_consecutive(target_speaker, target_segs, other_segs):
+                """
+                Try to merge consecutive segments from the same speaker
+                to create a longer clip. Only merge if the gap between them
+                has no other speaker.
+                """
+                if len(target_segs) < 2:
+                    return None
+                
+                # Sort by start time
+                sorted_segs = sorted(target_segs, key=lambda s: s['start_ms'])
+                
+                best_merged = None
+                best_duration = 0
+                
+                for i in range(len(sorted_segs) - 1):
+                    # Try merging segment i with segment i+1
+                    merged_start = sorted_segs[i]['start_ms']
+                    merged_end = sorted_segs[i + 1]['end_ms']
+                    gap_start = sorted_segs[i]['end_ms']
+                    gap_end = sorted_segs[i + 1]['start_ms']
+                    
+                    # Check if gap is reasonable (< 2 seconds)
+                    gap_ms = gap_end - gap_start
+                    if gap_ms > 2000 or gap_ms < 0:
+                        continue
+                    
+                    # Check if any other speaker talks in the gap
+                    gap_clean = True
+                    for other in other_segs:
+                        o_start = other['start_ms']
+                        o_end = other['end_ms']
+                        # Check intersection with gap
+                        if o_start < gap_end and o_end > gap_start:
+                            gap_clean = False
+                            break
+                    
+                    if gap_clean:
+                        merged_duration = merged_end - merged_start
+                        if merged_duration > best_duration and merged_duration <= MAX_SLICE_MS:
+                            best_duration = merged_duration
+                            best_merged = {
+                                'speaker': target_speaker,
+                                'start': sorted_segs[i]['start'],
+                                'end': sorted_segs[i + 1]['end'],
+                                'start_ms': merged_start,
+                                'end_ms': merged_end,
+                                'text': sorted_segs[i]['text'] + ' ' + sorted_segs[i + 1]['text']
+                            }
+                
+                return best_merged
             
-            # ============================================================
-            # FALLBACK LOGIC: If no segments but summary exists, flag it
-            # ============================================================
-            if not speaker_best_segments and summary_text:
-                print("⚠️  FALLBACK: No unknown speakers detected, but summary exists.")
-                print("   This might indicate Gemini identified all speakers or missed diarization.")
+            # Step C: Also get Gemini's purest segments as a hint
+            purest_segments = result.get('purest_segments', [])
+            speaker_purest = {}
+            for ps in purest_segments:
+                speaker = ps.get('speaker', '')
+                if speaker:
+                    speaker_purest[speaker] = ps
             
-            # ============================================================
-            # PROCESS EACH UNKNOWN SPEAKER: Use purest segment or fallback
-            # Enhanced audio quality for clear speaker identification
-            # ============================================================
-            MIN_SLICE_MS = 3000   # Minimum 3 seconds for clean signature
-            MAX_SLICE_MS = 12000  # Maximum 12 seconds
-            PAD_BEFORE_MS = 500   # 500ms padding BEFORE speech (avoid clipping start)
-            PAD_AFTER_MS = 300    # 300ms padding AFTER speech (avoid clipping end)
-            FADE_MS = 50          # 50ms fade in/out for clean cuts
+            print(f"🎯 Gemini purest segments: {len(purest_segments)}")
             
-            for speaker in speaker_best_segments.keys():
+            # Step D: Process each unknown speaker
+            for speaker in unknown_speakers:
                 print(f"\n❓ Processing unknown speaker: {speaker}")
                 
-                # PRIORITY 1: Use purest segment if available
-                if speaker in speaker_purest:
-                    segment_data = speaker_purest[speaker]
-                    quality = segment_data.get('quality', 'unknown')
-                    notes = segment_data.get('notes', '')
-                    print(f"   🎯 Using PUREST segment (quality: {quality})")
-                    print(f"   📝 Notes: {notes}")
-                else:
-                    # FALLBACK: Use longest segment from transcript
-                    segment_data = speaker_best_segments[speaker]
-                    quality = 'fallback'
-                    print(f"   ⚠️  No purest segment found, using FALLBACK (longest segment)")
+                # Find the most isolated segment algorithmically
+                segment_data, quality = find_isolated_segment(
+                    speaker, all_segments_by_speaker, speaker_purest.get(speaker)
+                )
                 
-                # Get segment timestamps (Gemini returns seconds, pydub uses ms)
-                start_sec = segment_data.get('start', 0)
-                end_sec = segment_data.get('end', 0)
-                start_ms = int(start_sec * 1000)
-                end_ms = int(end_sec * 1000)
+                if not segment_data:
+                    print(f"   ⚠️  No valid segments found for {speaker} - SKIPPING")
+                    continue
                 
-                # Add padding BEFORE and AFTER to avoid clipping speech
-                # Gemini timestamps can be slightly off - padding ensures full utterance is captured
+                # Get segment timestamps
+                start_ms = segment_data.get('start_ms', int(segment_data.get('start', 0) * 1000))
+                end_ms = segment_data.get('end_ms', int(segment_data.get('end', 0) * 1000))
+                start_sec = segment_data.get('start', start_ms / 1000)
+                end_sec = segment_data.get('end', end_ms / 1000)
+                
+                # Add padding to avoid clipping speech
                 padded_start_ms = max(0, start_ms - PAD_BEFORE_MS)
                 padded_end_ms = min(len(audio_segment), end_ms + PAD_AFTER_MS)
                 
-                # Validate minimum duration (3 seconds for clean signature)
+                # Ensure we reach target duration (5s) if possible
                 duration_ms = padded_end_ms - padded_start_ms
-                if duration_ms < MIN_SLICE_MS:
-                    # Extend BOTH directions equally (center the speech)
-                    needed = MIN_SLICE_MS - duration_ms
+                if duration_ms < TARGET_DURATION_MS:
+                    needed = TARGET_DURATION_MS - duration_ms
                     extend_before = needed // 2
                     extend_after = needed - extend_before
                     padded_start_ms = max(0, padded_start_ms - extend_before)
                     padded_end_ms = min(len(audio_segment), padded_end_ms + extend_after)
-                    print(f"   ⚠️  Segment too short ({duration_ms}ms), extended to {padded_end_ms - padded_start_ms}ms")
+                    print(f"   📏 Extended to target: {padded_end_ms - padded_start_ms}ms (target: {TARGET_DURATION_MS}ms)")
                 
                 # Cap at maximum
                 if (padded_end_ms - padded_start_ms) > MAX_SLICE_MS:
@@ -1328,37 +1446,35 @@ def process_audio_in_background(
                 
                 # Final bounds check
                 if padded_start_ms >= padded_end_ms:
-                    print(f"   ⚠️  Invalid segment bounds: {padded_start_ms}ms - {padded_end_ms}ms - SKIPPING")
+                    print(f"   ⚠️  Invalid bounds after padding - SKIPPING")
                     continue
                 
-                # Slice audio with padding
+                # Slice audio
                 audio_slice = audio_segment[padded_start_ms:padded_end_ms]
                 
                 # Apply audio enhancements for clarity
                 try:
-                    # 1. Normalize volume to -16 dBFS (standard broadcast level)
+                    # 1. Normalize volume to -16 dBFS
                     target_dbfs = -16.0
                     current_dbfs = audio_slice.dBFS
-                    if current_dbfs < -50:
-                        print(f"   ⚠️  Audio very quiet ({current_dbfs:.1f} dBFS), boosting...")
                     if current_dbfs != float('-inf'):
                         gain = target_dbfs - current_dbfs
-                        # Limit gain to avoid amplifying noise too much
-                        gain = min(gain, 20.0)
+                        gain = min(gain, 20.0)  # Cap to avoid noise amplification
                         audio_slice = audio_slice.apply_gain(gain)
-                        print(f"   🔊 Normalized: {current_dbfs:.1f} → {target_dbfs:.1f} dBFS (gain: {gain:+.1f})")
                     
-                    # 2. Apply fade in/out for clean cuts (no jarring pops/clicks)
+                    # 2. Fade in/out for clean cuts
                     audio_slice = audio_slice.fade_in(FADE_MS).fade_out(FADE_MS)
                 except Exception as enhance_err:
-                    print(f"   ⚠️  Audio enhancement failed (continuing with raw): {enhance_err}")
+                    print(f"   ⚠️  Enhancement failed: {enhance_err}")
                 
-                # VERIFICATION LOG: Confirm isolated segment
-                print(f"   ✂️  ISOLATED SEGMENT for {speaker}:")
+                # Log final clip details
+                final_duration = len(audio_slice)
+                print(f"   ✂️  FINAL CLIP for {speaker}:")
                 print(f"      Original: {start_sec:.1f}s - {end_sec:.1f}s")
-                print(f"      Padded:   {padded_start_ms/1000:.1f}s - {padded_end_ms/1000:.1f}s ({len(audio_slice)}ms)")
-                print(f"      Quality: {quality}")
-                print(f"      Volume: {audio_slice.dBFS:.1f} dBFS")
+                print(f"      Padded:   {padded_start_ms/1000:.1f}s - {padded_end_ms/1000:.1f}s ({final_duration}ms)")
+                print(f"      Quality:  {quality}")
+                print(f"      Volume:   {audio_slice.dBFS:.1f} dBFS")
+                print(f"      Text:     {segment_data.get('text', '')[:60]}...")
                 
                 # Export to temp file - try OGG first (native WhatsApp format),
                 # fall back to high-quality MP3 if OGG/Opus codec not available

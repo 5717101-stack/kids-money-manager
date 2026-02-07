@@ -164,17 +164,30 @@ FORENSIC_ANALYST_PROMPT = """You are a FORENSIC AUDIO ANALYST performing speaker
 - Each unique speaker ID (e.g., "Unknown Speaker 2") must appear at least once in segments
 - If you identified 3 voices, you must have 3 different speaker IDs in the output
 
-**🎯 PUREST SEGMENTS (CRITICAL for Voice Signature Creation):**
-For each UNKNOWN speaker (e.g., "Unknown Speaker 2", "Speaker B"), you MUST provide one "purest_segment":
+**🎯 PUREST SEGMENTS (CRITICAL - THIS IS THE MOST IMPORTANT PART):**
+For each UNKNOWN speaker, you MUST provide the BEST "purest_segment" for voice identification:
 
-1. **ISOLATED**: The segment must contain ONLY that speaker's voice - no interruptions, no background voices, no overlapping speech
-2. **MINIMUM 3 SECONDS**: The segment must be at least 3 seconds of continuous speech
-3. **CLEAN AUDIO**: No coughing, laughing, or other noise - just clear speech
-4. **QUALITY FIELD**: Set to "isolated" if truly clean, or "partial_overlap" if some noise exists
+⚠️ **THE #1 RULE**: Find a moment where the unknown speaker talks ALONE for at least 5 SECONDS.
+No other voice should be audible during this segment - not even faintly in the background.
 
-Example purest_segments:
-- ✅ Good: {"speaker": "Unknown Speaker 2", "start": 45.2, "end": 52.1, "quality": "isolated", "notes": "Clear monologue section"}
-- ❌ Bad: Segment where another speaker interrupts or talks over
+**Requirements:**
+1. **COMPLETELY ISOLATED**: ONLY that speaker's voice - zero interruptions, zero background voices, zero overlap
+2. **MINIMUM 5 SECONDS**: Find at least 5 seconds of continuous solo speech (3 seconds absolute minimum)
+3. **CLEAN AUDIO**: No coughing, laughing, mumbling - just clear, natural speech
+4. **ACCURATE TIMESTAMPS**: The start and end times must be PRECISE - we will cut the audio at these exact points
+5. **QUALITY FIELD**: "isolated" = truly clean solo speech, "partial_overlap" = some noise exists
+
+**How to find purest segments:**
+- Look for monologue moments (one person explaining something at length)
+- Look for answers to questions (the person responding without interruption)
+- Avoid: greetings, short responses ("yes", "no"), overlapping discussion
+
+**Examples:**
+- ✅ GOOD: {"speaker": "Speaker 2", "start": 45.0, "end": 52.0, "quality": "isolated", "notes": "Speaker 2 explains their idea without interruption"}
+- ✅ GOOD: {"speaker": "Unknown Speaker 1", "start": 120.5, "end": 127.0, "quality": "isolated", "notes": "Solo speech during story"}
+- ❌ BAD: A segment shorter than 3 seconds
+- ❌ BAD: A segment where another speaker says something in the middle
+- ❌ BAD: A segment right at the start/end of a conversation (usually noisy)
 
 **CRITICAL:** Output ONLY valid JSON. No markdown code blocks, no text before/after.
 """
@@ -270,5 +283,6 @@ OUTPUT FORMAT - JSON with both diarization AND expert summary
 2. The "expert_summary" field must be a complete Hebrew analysis using the expert persona
 3. Keep expert_summary under 1200 characters for WhatsApp compatibility
 4. Segments must have accurate timestamps
-5. Purest_segments are REQUIRED for unknown speakers (for voice signature creation)
+5. **purest_segments are THE MOST IMPORTANT PART** - for each unknown speaker, find 5+ seconds where they speak ALONE with NO other voice. The timestamps must be precise - we cut audio at exactly these points.
+6. Look for monologue moments, answers to questions, or story-telling sections for purest_segments
 """
