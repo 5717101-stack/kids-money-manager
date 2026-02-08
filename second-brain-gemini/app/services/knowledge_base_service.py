@@ -628,9 +628,9 @@ CRITICAL RULES:
                     
                     # Cache the result
                     if file_id:
-                        _vision_cache[file_id] = {
+                        _vision_graph_cache[file_id] = {
                             'timestamp': time.time(),
-                            'graph': result
+                            'graph_json': result
                         }
                     
                     return f"── Vision-Analyzed Image: {file_name} ──\n{result}"
