@@ -477,103 +477,16 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-async def _send_deploy_notification(version: str):
-    """
-    Send a single deployment notification via WhatsApp.
-    Uses a random delay + Drive lock to guarantee exactly ONE message,
-    even if Render starts multiple processes for the same deploy.
-    """
-    import asyncio
-    import random
-    
-    # Random delay (5–20s) so parallel processes don't hit Drive at the same instant
-    delay = random.uniform(5, 20)
-    print(f"⏳ Deploy notification scheduled (delay {delay:.0f}s)...")
-    await asyncio.sleep(delay)
-    
-    try:
-        # Check Drive — has this version already been notified?
-        if drive_memory_service.is_configured:
-            memory = drive_memory_service.get_memory()
-            if memory.get('_last_notified_version') == version:
-                print(f"🔇 v{version} already notified — skipping")
-                return
-            # Lock: write version BEFORE sending
-            memory['_last_notified_version'] = version
-            drive_memory_service.save_memory(memory)
-        
-        # Build the message
-        from datetime import timezone, timedelta
-        israel_time = datetime.now(timezone.utc) + timedelta(hours=2)
-        time_str = israel_time.strftime('%d/%m/%Y %H:%M')
-        
-        changes = ""
-        try:
-            import subprocess
-            r = subprocess.run(
-                ['git', 'log', '-1', '--pretty=%B'],
-                capture_output=True, text=True, timeout=5,
-                cwd=Path(__file__).parent.parent
-            )
-            if r.returncode == 0 and r.stdout.strip():
-                msg = r.stdout.strip()
-                changes = msg.split(' - ', 1)[1] if ' - ' in msg else msg
-                changes = changes[:150]
-        except Exception:
-            pass
-        
-        if not changes:
-            commit_file = Path(__file__).parent.parent / ".last_commit"
-            if commit_file.exists():
-                try:
-                    txt = commit_file.read_text().strip()
-                    if txt and txt != 'No commit message available':
-                        changes = txt[:150]
-                except Exception:
-                    pass
-        
-        if not changes:
-            changes = "עדכון מערכת"
-        
-        notification = (
-            f"🚀 *גרסה חדשה עלתה לפרודקשן!*\n\n"
-            f"📦 גרסה: *{version}*\n"
-            f"⏰ זמן: {time_str} (שעון ישראל)\n\n"
-            f"📝 *שינויים עיקריים:*\n{changes}\n\n"
-            f"✅ השרת פעיל ומוכן לעבודה!"
-        )
-        
-        from app.services.meta_whatsapp_service import meta_whatsapp_service
-        if meta_whatsapp_service.is_configured:
-            result = meta_whatsapp_service.send_whatsapp(notification)
-            if result.get('success'):
-                print(f"✅ Deploy notification sent (v{version})")
-            else:
-                print(f"⚠️  Deploy notification failed: {result.get('error')}")
-        else:
-            print("⚠️  Meta WhatsApp not configured")
-    except Exception as e:
-        print(f"⚠️  Deploy notification error: {e}")
-
-
 # Startup event: Pre-warm memory cache
 @app.on_event("startup")
 async def startup_event():
     """Pre-warm memory cache, start scheduler, and send deployment notification."""
     
-    # ================================================================
-    # DEPLOYMENT NOTIFICATION (background task with dedup)
-    # ================================================================
+    # Read version
     version_file = Path(__file__).parent.parent / "VERSION"
     current_version = version_file.read_text().strip() if version_file.exists() else "unknown"
     is_production = os.environ.get('RENDER', '') == 'true'
-    
-    if is_production:
-        print(f"🚀 Production deployment detected — v{current_version}")
-        import asyncio
-        asyncio.create_task(_send_deploy_notification(current_version))
-    else:
-        print(f"📍 Local development — v{current_version}")
+    print(f"{'🚀 Production' if is_production else '📍 Local'} — v{current_version}")
     
     # Pre-warm memory cache
     if drive_memory_service.is_configured:
@@ -717,6 +630,83 @@ async def startup_event():
         print(f"⚠️  Failed to start scheduler: {e}")
         import traceback
         traceback.print_exc()
+    
+    # ================================================================
+    # DEPLOYMENT NOTIFICATION — simple, inline, with Drive lock
+    # ================================================================
+    if is_production:
+        try:
+            import asyncio
+            import random
+            
+            # Small random wait to separate parallel processes
+            wait = random.uniform(3, 10)
+            print(f"⏳ Deploy notification — waiting {wait:.0f}s before checking lock...")
+            await asyncio.sleep(wait)
+            
+            # Drive lock: check if this version was already notified
+            already_sent = False
+            if drive_memory_service.is_configured:
+                mem = drive_memory_service.get_memory()
+                if mem.get('_last_notified_version') == current_version:
+                    already_sent = True
+                    print(f"🔇 v{current_version} already notified — skipping")
+            
+            if not already_sent:
+                # Write lock first
+                if drive_memory_service.is_configured:
+                    mem = drive_memory_service.get_memory()
+                    mem['_last_notified_version'] = current_version
+                    drive_memory_service.save_memory(mem)
+                
+                # Build message
+                from datetime import timezone, timedelta
+                israel_time = datetime.now(timezone.utc) + timedelta(hours=2)
+                time_str = israel_time.strftime('%d/%m/%Y %H:%M')
+                
+                changes = ""
+                try:
+                    import subprocess
+                    r = subprocess.run(
+                        ['git', 'log', '-1', '--pretty=%B'],
+                        capture_output=True, text=True, timeout=5,
+                        cwd=Path(__file__).parent.parent
+                    )
+                    if r.returncode == 0 and r.stdout.strip():
+                        msg = r.stdout.strip()
+                        changes = msg.split(' - ', 1)[1] if ' - ' in msg else msg
+                        changes = changes[:150]
+                except Exception:
+                    pass
+                if not changes:
+                    commit_file = Path(__file__).parent.parent / ".last_commit"
+                    if commit_file.exists():
+                        try:
+                            changes = commit_file.read_text().strip()[:150]
+                        except Exception:
+                            pass
+                if not changes:
+                    changes = "עדכון מערכת"
+                
+                notification = (
+                    f"🚀 *גרסה חדשה עלתה לפרודקשן!*\n\n"
+                    f"📦 גרסה: *{current_version}*\n"
+                    f"⏰ זמן: {time_str} (שעון ישראל)\n\n"
+                    f"📝 *שינויים עיקריים:*\n{changes}\n\n"
+                    f"✅ השרת פעיל ומוכן לעבודה!"
+                )
+                
+                from app.services.meta_whatsapp_service import meta_whatsapp_service
+                if meta_whatsapp_service.is_configured:
+                    result = meta_whatsapp_service.send_whatsapp(notification)
+                    if result.get('success'):
+                        print(f"✅ Deploy notification sent (v{current_version})")
+                    else:
+                        print(f"⚠️  Notification failed: {result.get('error')}")
+                else:
+                    print("⚠️  WhatsApp not configured — no notification")
+        except Exception as e:
+            print(f"⚠️  Deploy notification error: {e}")
 
 # Get the project root directory (parent of app/)
 _base_dir = Path(__file__).parent.parent.resolve()
