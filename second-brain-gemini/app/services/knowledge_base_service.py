@@ -155,6 +155,8 @@ def _download_file_content(service, file_id: str, file_name: str, mime_type: str
         elif mime_type in ('application/vnd.google-apps.document',
                            'application/vnd.google-apps.spreadsheet'):
             return raw_bytes.decode('utf-8', errors='replace')
+        elif mime_type.startswith('image/'):
+            return _extract_image_with_vision(raw_bytes, file_id, file_name, mime_type)
         else:
             try:
                 return raw_bytes.decode('utf-8')
@@ -482,6 +484,169 @@ CRITICAL RULES — READ CAREFULLY:
     except Exception as e:
         print(f"   ❌ [Vision] Error: {e}")
         logger.error(f"[KB] Vision analysis failed: {e}")
+        import traceback
+        traceback.print_exc()
+        return ""
+
+
+def _extract_image_with_vision(raw_bytes: bytes, file_id: str = "", file_name: str = "", mime_type: str = "image/jpeg") -> str:
+    """
+    Use Gemini Vision to analyze an image (screenshot, photo, chart, etc.)
+    and extract ALL text and structured data from it.
+    
+    This enables: schedule screenshots, receipts, diagrams, handwritten notes,
+    or any visual data sent via WhatsApp to be fully queryable.
+    
+    Results are cached for 24 hours by file_id.
+    """
+    # ── Check vision cache ──
+    if file_id:
+        cached = _get_cached_vision_graph(file_id)
+        if cached:
+            print(f"   📋 [Vision] Using cached image analysis for {file_name}")
+            return f"── Vision-Analyzed Image: {file_name} ──\n{cached}"
+    
+    try:
+        import google.generativeai as genai
+        import tempfile
+        
+        api_key = os.environ.get("GOOGLE_API_KEY")
+        if not api_key:
+            print(f"   ⚠️ [Vision] No API key, skipping image analysis")
+            return ""
+        
+        from app.services.model_discovery import configure_genai, MODEL_MAPPING
+        configure_genai(api_key)
+        
+        # Determine file extension from mime type
+        ext_map = {
+            "image/jpeg": ".jpg", "image/png": ".png",
+            "image/webp": ".webp", "image/gif": ".gif",
+        }
+        ext = ext_map.get(mime_type, ".jpg")
+        
+        # Save to temp file
+        with tempfile.NamedTemporaryFile(suffix=ext, delete=False) as tmp:
+            tmp.write(raw_bytes)
+            tmp_path = tmp.name
+        
+        try:
+            print(f"   👁️ [Vision] Uploading image for analysis: {file_name}")
+            file_ref = genai.upload_file(
+                path=tmp_path,
+                display_name=file_name or f"image{ext}",
+                mime_type=mime_type
+            )
+            
+            # Wait for processing
+            max_wait = 60
+            start = time.time()
+            while time.time() - start < max_wait:
+                file_ref = genai.get_file(file_ref.name)
+                state = file_ref.state.name if hasattr(file_ref.state, 'name') else str(file_ref.state)
+                if state == "ACTIVE":
+                    break
+                elif state == "FAILED":
+                    print(f"   ❌ [Vision] Image processing failed")
+                    return ""
+                time.sleep(2)
+            
+            model_name = MODEL_MAPPING["pro"]
+            print(f"   👁️ [Vision] Using MODEL_MAPPING['pro']: {model_name}")
+            model = genai.GenerativeModel(model_name)
+            
+            vision_prompt = f"""Analyze this image thoroughly and extract ALL information from it.
+
+The image file name is: "{file_name}"
+
+YOUR TASK:
+1. Read and transcribe ALL text visible in the image — every single word, number, header, label, cell.
+2. Preserve the structure: if it's a table/schedule, output it as a structured table. If it's a chart, describe every node. If it's a document, transcribe it fully.
+3. Identify WHO this data belongs to — look for names in the title, headers, or content.
+4. Identify WHAT TYPE of document this is (schedule, receipt, org chart, notes, etc.)
+5. Output in HEBREW if the content is in Hebrew.
+
+OUTPUT FORMAT:
+- Document type: [type]
+- Belongs to: [person name if identifiable]
+- Content: [Full structured extraction of all data]
+
+CRITICAL RULES:
+- Extract EVERY cell, row, column if it's a table
+- Do NOT summarize — give the COMPLETE data
+- Include day names, times, subject names, teacher names — everything visible
+- If there are colors or highlights, mention them
+- Output clean structured text that can be searched and queried later"""
+
+            safety_settings = [
+                {"category": "HARM_CATEGORY_HARASSMENT", "threshold": "BLOCK_NONE"},
+                {"category": "HARM_CATEGORY_HATE_SPEECH", "threshold": "BLOCK_NONE"},
+                {"category": "HARM_CATEGORY_SEXUALLY_EXPLICIT", "threshold": "BLOCK_NONE"},
+                {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_NONE"},
+            ]
+            
+            gen_config = {
+                'temperature': 0.1,
+                'max_output_tokens': 8192
+            }
+            
+            response = None
+            try:
+                response = model.generate_content(
+                    [vision_prompt, file_ref],
+                    generation_config=gen_config,
+                    safety_settings=safety_settings
+                )
+            except Exception as pro_err:
+                print(f"   ⚠️ [Vision] Pro failed for image: {pro_err}")
+                # Fallback to Flash
+                flash_model = genai.GenerativeModel(MODEL_MAPPING["flash"])
+                print(f"   🔄 [Vision] Falling back to Flash: {MODEL_MAPPING['flash']}")
+                try:
+                    response = flash_model.generate_content(
+                        [vision_prompt, file_ref],
+                        generation_config=gen_config,
+                        safety_settings=safety_settings
+                    )
+                except Exception as flash_err:
+                    print(f"   ❌ [Vision] Flash also failed: {flash_err}")
+            
+            if response:
+                # Extract text safely
+                text = ""
+                try:
+                    text = response.text
+                except (ValueError, AttributeError):
+                    if response.candidates:
+                        for part in response.candidates[0].content.parts:
+                            if hasattr(part, 'text'):
+                                text += part.text
+                
+                if text and text.strip():
+                    result = text.strip()
+                    print(f"   ✅ [Vision] Image analyzed: {len(result)} chars extracted from {file_name}")
+                    
+                    # Cache the result
+                    if file_id:
+                        _vision_cache[file_id] = {
+                            'timestamp': time.time(),
+                            'graph': result
+                        }
+                    
+                    return f"── Vision-Analyzed Image: {file_name} ──\n{result}"
+            
+            print(f"   ⚠️ [Vision] No content extracted from image")
+            return ""
+        
+        finally:
+            try:
+                os.unlink(tmp_path)
+            except Exception:
+                pass
+    
+    except Exception as e:
+        print(f"   ❌ [Vision] Image analysis error: {e}")
+        logger.error(f"[KB] Image vision analysis failed: {e}")
         import traceback
         traceback.print_exc()
         return ""

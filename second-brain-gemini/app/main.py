@@ -49,6 +49,10 @@ else:
 # Use deque with maxlen to automatically limit memory usage (keeps last 1000 message IDs)
 processed_message_ids = deque(maxlen=1000)
 
+# Media dedup: Track processed media IDs to prevent duplicate uploads
+# WhatsApp sometimes sends the same media_id in multiple webhook calls
+_processed_media_ids = deque(maxlen=500)
+
 # Voice Imprinting: Track pending speaker identifications
 # Key: message_id (wam_id), Value: dict with file_path and speaker_id
 # Example: {"wamid.xxx": {"file_path": "/tmp/audio.mp3", "speaker_id": "Speaker 2"}}
@@ -1379,6 +1383,13 @@ async def webhook(request: Request, background_tasks: BackgroundTasks):
                                         media_data = message.get(message_type, {})
                                         media_id = media_data.get("id")
                                         media_mime = media_data.get("mime_type", "application/octet-stream")
+                                        
+                                        # ── MEDIA DEDUP: prevent double-upload of same file ──
+                                        if media_id and media_id in _processed_media_ids:
+                                            print(f"⚠️  Media {media_id} already processed — skipping duplicate upload")
+                                            continue
+                                        if media_id:
+                                            _processed_media_ids.append(media_id)
                                         
                                         # Build filename
                                         if message_type == "document":
