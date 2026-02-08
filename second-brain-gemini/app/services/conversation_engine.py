@@ -182,6 +182,53 @@ _TOOL_DECLARATIONS = [
             required=["query"]
         )
     ),
+
+    genai.protos.FunctionDeclaration(
+        name="search_flights",
+        description=(
+            "Search for round-trip DIRECT flights from Tel Aviv (TLV) to a destination. "
+            "Use when the user asks about flights, travel, flying, or mentions a destination with travel intent. "
+            "Examples: 'בדוק טיסות לקפריסין', 'טיסות לרומא בפסח', 'יש משהו זול ליוון?', "
+            "'חפש טיסה לפראג בשבוע הבא', 'אפשר לטוס לברצלונה ב500 שקל?'. "
+            "IMPORTANT: When the user mentions a date in natural language (e.g. 'בפסח', 'בקיץ', 'בחנוכה', "
+            "'שבוע הבא', 'חודש הבא'), YOU must resolve it to specific dates before calling this tool. "
+            "Available destinations (use the Hebrew key): "
+            "קפריסין, פאפוס, לרנקה, יוון, אתונה, רודוס, כרתים, רומא, מילאנו, "
+            "ברצלונה, פראג, בודפשט, וינה, קרקוב, ורשה, איסטנבול, אנטליה, "
+            "תאילנד, לונדון, פריז, ברלין, אמסטרדם. "
+            "If the destination is not in the list, tell the user which destinations are available."
+        ),
+        parameters=genai.protos.Schema(
+            type=genai.protos.Type.OBJECT,
+            properties={
+                "destination": genai.protos.Schema(
+                    type=genai.protos.Type.STRING,
+                    description="Destination name in Hebrew (must be one of the available keys, e.g. 'קפריסין', 'רומא', 'פראג')"
+                ),
+                "max_price_eur": genai.protos.Schema(
+                    type=genai.protos.Type.NUMBER,
+                    description="Optional: Maximum price per person in EUR for the round-trip. If user says NIS/שקל, convert roughly (1 EUR ≈ 4 ILS)."
+                ),
+                "date_from": genai.protos.Schema(
+                    type=genai.protos.Type.STRING,
+                    description="Optional: Start of date range to search, format DD/MM/YYYY. Resolve natural language dates (e.g. 'פסח 2026' → '01/04/2026', 'שבוע הבא' → next Monday's date)."
+                ),
+                "date_to": genai.protos.Schema(
+                    type=genai.protos.Type.STRING,
+                    description="Optional: End of date range to search, format DD/MM/YYYY. (e.g. 'פסח 2026' → '09/04/2026')."
+                ),
+                "nights_from": genai.protos.Schema(
+                    type=genai.protos.Type.NUMBER,
+                    description="Optional: Minimum number of nights (default 2). If user says 'סוף שבוע' use 2, 'שבוע' use 5-7."
+                ),
+                "nights_to": genai.protos.Schema(
+                    type=genai.protos.Type.NUMBER,
+                    description="Optional: Maximum number of nights (default 7)."
+                ),
+            },
+            required=["destination"]
+        )
+    ),
 ]
 
 
@@ -212,6 +259,16 @@ def _execute_tool(function_name: str, args: Dict[str, Any]) -> str:
             return _tool_search_meetings(
                 query=args.get("query", ""),
                 speaker_name=args.get("speaker_name", ""),
+            )
+
+        elif function_name == "search_flights":
+            return _tool_search_flights(
+                destination=args.get("destination", ""),
+                max_price_eur=args.get("max_price_eur"),
+                date_from=args.get("date_from"),
+                date_to=args.get("date_to"),
+                nights_from=args.get("nights_from"),
+                nights_to=args.get("nights_to"),
             )
 
         else:
@@ -523,6 +580,72 @@ def _tool_search_meetings(query: str, speaker_name: str = "") -> str:
     }, ensure_ascii=False, default=str)
 
 
+def _tool_search_flights(
+    destination: str,
+    max_price_eur=None,
+    date_from: str = None,
+    date_to: str = None,
+    nights_from=None,
+    nights_to=None,
+) -> str:
+    """Search for round-trip direct flights using the flight search service."""
+    from app.services.flight_search_service import flight_search_service, DESTINATION_MAP
+
+    if not destination:
+        return json.dumps({"error": "No destination provided"}, ensure_ascii=False)
+
+    # Lazy re-configure if needed
+    if not flight_search_service.is_configured:
+        flight_search_service._configure()
+
+    if not flight_search_service.is_configured:
+        return json.dumps({
+            "error": "שירות חיפוש טיסות לא מוגדר. יש להגדיר מפתחות API (Amadeus, SerpAPI, או Kiwi).",
+        }, ensure_ascii=False)
+
+    # Build kwargs
+    kwargs = {"destination_key": destination}
+    if max_price_eur is not None:
+        kwargs["max_price_eur"] = int(max_price_eur)
+    if date_from:
+        kwargs["date_from"] = date_from
+    if date_to:
+        kwargs["date_to"] = date_to
+    if nights_from is not None:
+        kwargs["nights_from"] = int(nights_from)
+    if nights_to is not None:
+        kwargs["nights_to"] = int(nights_to)
+
+    print(f"  ✈️ [Tool] search_flights called: {kwargs}")
+
+    try:
+        results = flight_search_service.search_flights(**kwargs)
+
+        if not results.get("success") or not results.get("flights"):
+            error_msg = results.get("error", "")
+            return json.dumps({
+                "found": False,
+                "message": f"לא נמצאו טיסות ישירות ל{destination}. {error_msg}",
+                "available_destinations": list(DESTINATION_MAP.keys()),
+            }, ensure_ascii=False)
+
+        # Format results for display
+        formatted = flight_search_service.format_results(
+            results,
+            query_text=f"{'עד €' + str(kwargs.get('max_price_eur', '')) if kwargs.get('max_price_eur') else 'כל המחירים'}"
+        )
+
+        return json.dumps({
+            "found": True,
+            "total_flights": len(results["flights"]),
+            "formatted_message": formatted,
+        }, ensure_ascii=False)
+
+    except Exception as e:
+        logger.error(f"[search_flights] Error: {e}")
+        return json.dumps({"error": f"שגיאה בחיפוש טיסות: {str(e)}"}, ensure_ascii=False)
+
+
 # ═══════════════════════════════════════════════════════════════════════
 # CHAT SESSION MANAGEMENT — Per-user sessions with TTL
 # ═══════════════════════════════════════════════════════════════════════
@@ -639,6 +762,23 @@ class ConversationEngine:
 12. 📼 כשהמשתמש מבקש "הכנה לשיחה עם X", "על מה דיברנו עם X?", "מתי דיברתי עם X?" — השתמש בכלי search_meetings כדי למצוא שיחות קודמות.
    שלב את הנתונים מהפגישות עם המידע מבסיס הידע (search_person) כדי לתת הכנה מקיפה.
    דוגמה: "הכן אותי לשיחה עם יובל" → search_person("יובל") + search_meetings(query="יובל", speaker_name="Yuval") → שלב הכל לתשובה אחת.
+13. ✈️ חיפוש טיסות: כשהמשתמש מזכיר טיסות, נסיעות, חופשה ליעד, או שואל על מחירי טיסה — השתמש בכלי search_flights.
+   🔴 חשוב מאוד — תרגום תאריכים: אם המשתמש אומר תאריך בשפה טבעית, אתה חייב לתרגם אותו לתאריכים מדויקים לפני שקוראים לכלי:
+   - "פסח" (2026) → date_from="01/04/2026", date_to="09/04/2026"
+   - "סוכות" (2026) → date_from="02/10/2026", date_to="09/10/2026"
+   - "חנוכה" (2026) → date_from="25/12/2026", date_to="02/01/2027"
+   - "שבוע הבא" → date_from=תאריך יום ראשון הבא, date_to=תאריך שבת הבאה
+   - "חודש הבא" → date_from=1 בחודש הבא, date_to=סוף החודש הבא
+   - "בקיץ" → date_from="01/07/2026", date_to="31/08/2026"
+   - "סוף שבוע" → nights_from=2, nights_to=3
+   - "שבוע" → nights_from=5, nights_to=7
+   🔴 אם המשתמש מציין מחיר בשקלים, המר ליורו (1 EUR ≈ 4 ILS). לדוגמה: "500 שקל" → max_price_eur=125.
+   🔴 הצג את התוצאות כמו שמוחזרות מהכלי (formatted_message). אל תנסה לעצב מחדש.
+   דוגמאות:
+   - "טיסות לקפריסין בפסח" → search_flights(destination="קפריסין", date_from="01/04/2026", date_to="09/04/2026")
+   - "יש משהו זול ליוון?" → search_flights(destination="יוון")
+   - "בדוק טיסות לפראג עד 100 יורו" → search_flights(destination="פראג", max_price_eur=100)
+   - "טיסה לרומא לסוף שבוע בחודש הבא" → search_flights(destination="רומא", date_from="01/03/2026", date_to="31/03/2026", nights_from=2, nights_to=3)
 
 ══════════════════════════════════════════════════════
 כלים (Tools) — אל תקרא להם בשמם בפני המשתמש:
@@ -648,6 +788,7 @@ class ConversationEngine:
 • save_fact(person_name, field, value) → שמירת עובדה (עבודה או משפחה) לבסיס הידע
 • list_org_stats() → סטטיסטיקות כלליות על הארגון
 • search_meetings(query, speaker_name) → חיפוש בתמלולי פגישות קודמות
+• search_flights(destination, max_price_eur, date_from, date_to, nights_from, nights_to) → חיפוש טיסות ישירות הלוך-חזור מת״א
 
 ══════════════════════════════════════════════════════
 זרימת עדכון מידע — save_fact:
