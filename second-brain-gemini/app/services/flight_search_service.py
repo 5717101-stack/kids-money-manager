@@ -1,10 +1,13 @@
 """
 Flight Search Service — Travel Agent
 
-Supports multiple providers with automatic fallback:
-  1. SerpAPI Google Flights (primary — includes ALL low-cost carriers)
-  2. Amadeus Self-Service API (fallback)
+Hybrid cascade strategy for best data quality:
+  1. Amadeus (primary — returns BOTH legs with full times in a single response)
+  2. SerpAPI Google Flights (fallback — broader coverage, low-cost carriers)
   3. Kiwi.com Tequila API (fallback)
+
+Each provider is tried in order; if the first returns results, we use it.
+If it returns no results or errors, we cascade to the next.
 
 Searches for flights (direct only, including low-cost carriers like
 Wizz Air, Ryanair, easyJet, Pegasus, etc.) and formats results for WhatsApp.
@@ -16,8 +19,8 @@ Usage:
     message = flight_search_service.format_results(results)
 
 Environment:
-    SERPAPI_KEY — from https://serpapi.com (primary, Google Flights data)
-    AMADEUS_API_KEY + AMADEUS_API_SECRET — from https://developers.amadeus.com (fallback)
+    AMADEUS_API_KEY + AMADEUS_API_SECRET — from https://developers.amadeus.com (primary)
+    SERPAPI_KEY — from https://serpapi.com (fallback, Google Flights data)
     KIWI_API_KEY — from https://tequila.kiwi.com (fallback)
 """
 
@@ -86,34 +89,34 @@ class FlightSearchService:
 
     def _configure(self):
         """(Re)read credentials from env vars. Called at init and lazily on first use."""
-        # ── SerpAPI config (primary — Google Flights data, includes low-cost) ──
-        self.serpapi_key = os.environ.get("SERPAPI_KEY", "")
-        self.serpapi_configured = bool(self.serpapi_key)
-
-        # ── Amadeus config (fallback) ──
+        # ── Amadeus config (PRIMARY — returns complete round-trip data) ──
         self.amadeus_key = os.environ.get("AMADEUS_API_KEY", "")
         self.amadeus_secret = os.environ.get("AMADEUS_API_SECRET", "")
         self.amadeus_configured = bool(self.amadeus_key and self.amadeus_secret)
+
+        # ── SerpAPI config (fallback — Google Flights, broader low-cost coverage) ──
+        self.serpapi_key = os.environ.get("SERPAPI_KEY", "")
+        self.serpapi_configured = bool(self.serpapi_key)
 
         # ── Kiwi config (fallback) ──
         self.kiwi_key = os.environ.get("KIWI_API_KEY", "")
         self.kiwi_configured = bool(self.kiwi_key)
 
-        # ── Overall status — priority: SerpAPI > Amadeus > Kiwi ──
-        self.is_configured = self.serpapi_configured or self.amadeus_configured or self.kiwi_configured
-        self.provider = "none"
+        # ── Overall status ──
+        self.is_configured = self.amadeus_configured or self.serpapi_configured or self.kiwi_configured
 
+        providers = []
+        if self.amadeus_configured:
+            providers.append("Amadeus (primary)")
         if self.serpapi_configured:
-            self.provider = "serpapi"
-            print("✅ Flight Search Service configured (SerpAPI — Google Flights, includes low-cost)")
-        elif self.amadeus_configured:
-            self.provider = "amadeus"
-            print("✅ Flight Search Service configured (Amadeus Self-Service API)")
-        elif self.kiwi_configured:
-            self.provider = "kiwi"
-            print("✅ Flight Search Service configured (Kiwi Tequila API)")
+            providers.append("SerpAPI/Google Flights (fallback)")
+        if self.kiwi_configured:
+            providers.append("Kiwi (fallback)")
+
+        if providers:
+            print(f"✅ Flight Search Service: {', '.join(providers)}")
         else:
-            print("ℹ️  Flight Search Service not configured (set SERPAPI_KEY, AMADEUS_API_KEY+SECRET, or KIWI_API_KEY)")
+            print("ℹ️  Flight Search Service not configured (set AMADEUS_API_KEY+SECRET, SERPAPI_KEY, or KIWI_API_KEY)")
 
     # ═══════════════════════════════════════════════════════════════════
     # SERPAPI SEARCH (primary — Google Flights data, includes low-cost)
@@ -231,9 +234,64 @@ class FlightSearchService:
 
         final_flights = unique_flights[:limit]
 
-        # Clean up internal tokens from output
+        # ── Step 2: Fetch return flight details using departure_token ──
+        # SerpAPI Google Flights requires a 2nd call to get return leg info.
+        # CRITICAL: Only pass engine + departure_token + api_key. Extra params cause 400.
         for flight in final_flights:
-            flight.pop("_departure_token", None)
+            dep_token = flight.pop("_departure_token", None)
+            if not dep_token:
+                continue
+
+            # Skip if we already have return times (from same-response parsing)
+            if flight.get("return_depart_time") and flight["return_depart_time"] != "—":
+                continue
+
+            try:
+                print(f"  🔄 Fetching return details for €{flight['price_eur']} {flight['depart_date']}...")
+
+                # MINIMAL params only — departure_token encodes the full context
+                ret_resp = requests.get(
+                    "https://serpapi.com/search",
+                    params={
+                        "engine": "google_flights",
+                        "departure_token": dep_token,
+                        "api_key": self.serpapi_key,
+                    },
+                    timeout=20,
+                )
+                api_calls += 1
+
+                if ret_resp.status_code == 200:
+                    ret_data = ret_resp.json()
+
+                    if "error" in ret_data:
+                        print(f"    ⚠️  Return API error: {ret_data['error'][:100]}")
+                        continue
+
+                    # The response contains return flight options
+                    ret_options = ret_data.get("best_flights", []) + ret_data.get("other_flights", [])
+                    if ret_options:
+                        best_return = ret_options[0]
+                        ret_flights = best_return.get("flights", [])
+                        if ret_flights:
+                            ret_seg = ret_flights[0]
+                            ret_dep = ret_seg.get("departure_airport", {})
+                            ret_arr = ret_seg.get("arrival_airport", {})
+                            ret_duration = best_return.get("total_duration", 0)
+
+                            flight["return_date"] = _format_serpapi_datetime(ret_dep.get("time", ""))
+                            flight["return_depart_time"] = _format_serpapi_time(ret_dep.get("time", ""))
+                            flight["return_arrive_time"] = _format_serpapi_time(ret_arr.get("time", ""))
+                            flight["duration_return"] = _format_duration(ret_duration * 60) if ret_duration else "?"
+                            print(f"    ✅ Return: {flight['return_date']} "
+                                  f"({flight['return_depart_time']}→{flight['return_arrive_time']})")
+                    else:
+                        print(f"    ⚠️  No return flights in response")
+                else:
+                    print(f"    ⚠️  Return details HTTP {ret_resp.status_code}: {ret_resp.text[:150]}")
+
+            except Exception as ret_err:
+                print(f"    ⚠️  Return details error: {ret_err}")
 
         print(f"✅ SerpAPI (Google Flights): found {len(final_flights)} unique flights "
               f"(from {len(all_flights)} total, {api_calls} API calls)")
@@ -415,15 +473,16 @@ class FlightSearchService:
     ) -> Dict[str, Any]:
         """
         Search for round-trip direct flights.
-        Automatically uses the configured provider (Amadeus or Kiwi).
+        Uses HYBRID CASCADE: Amadeus → SerpAPI → Kiwi.
+        Amadeus is preferred because it returns complete round-trip data
+        (both legs with full timestamps) in a single API response.
         """
         # Lazy re-check: if not configured at init, try again (env vars may have been added)
-        if not self.is_configured:
-            self._configure()
+        self._configure()
         if not self.is_configured:
             return {
                 "success": False, "flights": [],
-                "error": "שירות חיפוש טיסות לא מוגדר. הגדר SERPAPI_KEY, AMADEUS_API_KEY+SECRET, או KIWI_API_KEY."
+                "error": "שירות חיפוש טיסות לא מוגדר. הגדר AMADEUS_API_KEY+SECRET, SERPAPI_KEY, או KIWI_API_KEY."
             }
 
         # Resolve destination
@@ -434,15 +493,34 @@ class FlightSearchService:
                 "error": f"לא מכיר את היעד '{destination_key}'. יעדים זמינים: {', '.join(DESTINATION_MAP.keys())}",
             }
 
-        if self.provider == "serpapi":
-            return self._search_serpapi(dest_info, max_price_eur, date_from, date_to,
-                                        nights_from, nights_to, adults, limit)
-        elif self.provider == "amadeus":
-            return self._search_amadeus(dest_info, max_price_eur, date_from, date_to,
-                                        nights_from, nights_to, adults, limit)
-        else:
+        # ── CASCADE: Try providers in order of data quality ──
+
+        # 1. Amadeus (BEST: returns both legs with full times in one response)
+        if self.amadeus_configured:
+            print(f"  🔍 Trying Amadeus (primary — complete round-trip data)...")
+            result = self._search_amadeus(dest_info, max_price_eur, date_from, date_to,
+                                          nights_from, nights_to, adults, limit)
+            if result.get("success") and result.get("flights"):
+                print(f"  ✅ Amadeus returned {len(result['flights'])} flights with full return details")
+                return result
+            print(f"  ℹ️  Amadeus returned no results, cascading to next provider...")
+
+        # 2. SerpAPI / Google Flights (GOOD: broad coverage, but return times need 2nd call)
+        if self.serpapi_configured:
+            print(f"  🔍 Trying SerpAPI/Google Flights (fallback — includes low-cost)...")
+            result = self._search_serpapi(dest_info, max_price_eur, date_from, date_to,
+                                          nights_from, nights_to, adults, limit)
+            if result.get("success") and result.get("flights"):
+                return result
+            print(f"  ℹ️  SerpAPI returned no results, cascading to next provider...")
+
+        # 3. Kiwi (FALLBACK: when available)
+        if self.kiwi_configured:
+            print(f"  🔍 Trying Kiwi (last fallback)...")
             return self._search_kiwi(dest_info, max_price_eur, date_from, date_to,
                                      return_from, return_to, nights_from, nights_to, adults, limit)
+
+        return {"success": False, "flights": [], "error": "No flight providers returned results."}
 
     # ═══════════════════════════════════════════════════════════════════
     # AMADEUS SEARCH
