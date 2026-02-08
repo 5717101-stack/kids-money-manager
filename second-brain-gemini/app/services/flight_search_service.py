@@ -2,11 +2,12 @@
 Flight Search Service — Travel Agent
 
 Supports multiple providers with automatic fallback:
-  1. Amadeus Self-Service API (free tier: 2,000 calls/month)
-  2. Kiwi.com Tequila API (free tier)
+  1. SerpAPI Google Flights (primary — includes ALL low-cost carriers)
+  2. Amadeus Self-Service API (fallback)
+  3. Kiwi.com Tequila API (fallback)
 
-Searches for flights (direct only, including low-cost carriers)
-and formats results for WhatsApp.
+Searches for flights (direct only, including low-cost carriers like
+Wizz Air, Ryanair, easyJet, Pegasus, etc.) and formats results for WhatsApp.
 
 Usage:
     from app.services.flight_search_service import flight_search_service
@@ -15,7 +16,8 @@ Usage:
     message = flight_search_service.format_results(results)
 
 Environment:
-    AMADEUS_API_KEY + AMADEUS_API_SECRET — from https://developers.amadeus.com
+    SERPAPI_KEY — from https://serpapi.com (primary, Google Flights data)
+    AMADEUS_API_KEY + AMADEUS_API_SECRET — from https://developers.amadeus.com (fallback)
     KIWI_API_KEY — from https://tequila.kiwi.com (fallback)
 """
 
@@ -75,7 +77,7 @@ AIRLINE_NAMES = {
 
 
 class FlightSearchService:
-    """Search flights using Amadeus or Kiwi API (auto-detect)."""
+    """Search flights using SerpAPI (Google Flights), Amadeus, or Kiwi (auto-detect)."""
 
     def __init__(self):
         self._amadeus_token = None
@@ -84,7 +86,11 @@ class FlightSearchService:
 
     def _configure(self):
         """(Re)read credentials from env vars. Called at init and lazily on first use."""
-        # ── Amadeus config ──
+        # ── SerpAPI config (primary — Google Flights data, includes low-cost) ──
+        self.serpapi_key = os.environ.get("SERPAPI_KEY", "")
+        self.serpapi_configured = bool(self.serpapi_key)
+
+        # ── Amadeus config (fallback) ──
         self.amadeus_key = os.environ.get("AMADEUS_API_KEY", "")
         self.amadeus_secret = os.environ.get("AMADEUS_API_SECRET", "")
         self.amadeus_configured = bool(self.amadeus_key and self.amadeus_secret)
@@ -93,18 +99,217 @@ class FlightSearchService:
         self.kiwi_key = os.environ.get("KIWI_API_KEY", "")
         self.kiwi_configured = bool(self.kiwi_key)
 
-        # ── Overall status ──
-        self.is_configured = self.amadeus_configured or self.kiwi_configured
+        # ── Overall status — priority: SerpAPI > Amadeus > Kiwi ──
+        self.is_configured = self.serpapi_configured or self.amadeus_configured or self.kiwi_configured
         self.provider = "none"
 
-        if self.amadeus_configured:
+        if self.serpapi_configured:
+            self.provider = "serpapi"
+            print("✅ Flight Search Service configured (SerpAPI — Google Flights, includes low-cost)")
+        elif self.amadeus_configured:
             self.provider = "amadeus"
             print("✅ Flight Search Service configured (Amadeus Self-Service API)")
         elif self.kiwi_configured:
             self.provider = "kiwi"
             print("✅ Flight Search Service configured (Kiwi Tequila API)")
         else:
-            print("ℹ️  Flight Search Service not configured (set AMADEUS_API_KEY+AMADEUS_API_SECRET or KIWI_API_KEY)")
+            print("ℹ️  Flight Search Service not configured (set SERPAPI_KEY, AMADEUS_API_KEY+SECRET, or KIWI_API_KEY)")
+
+    # ═══════════════════════════════════════════════════════════════════
+    # SERPAPI SEARCH (primary — Google Flights data, includes low-cost)
+    # ═══════════════════════════════════════════════════════════════════
+    def _search_serpapi(
+        self, dest_info, max_price_eur, date_from, date_to,
+        nights_from, nights_to, adults, limit
+    ) -> Dict[str, Any]:
+        """
+        Search flights via SerpAPI Google Flights API.
+        Includes ALL carriers (low-cost: Wizz Air, Ryanair, easyJet, etc.)
+        """
+        today = datetime.now()
+
+        # Parse date range
+        if date_from:
+            try:
+                start_date = datetime.strptime(date_from, "%d/%m/%Y")
+            except ValueError:
+                start_date = today + timedelta(days=1)
+        else:
+            start_date = today + timedelta(days=1)
+
+        if date_to:
+            try:
+                end_date = datetime.strptime(date_to, "%d/%m/%Y")
+            except ValueError:
+                end_date = today + timedelta(days=60)
+        else:
+            end_date = today + timedelta(days=60)
+
+        all_flights = []
+        api_calls = 0
+        max_api_calls = 8  # SerpAPI costs per call, be efficient
+
+        # Search every 4th day in the range
+        search_date = start_date
+        while search_date <= end_date and api_calls < max_api_calls:
+            for stay_nights in range(nights_from, min(nights_to + 1, nights_from + 3)):
+                if api_calls >= max_api_calls:
+                    break
+
+                return_date = search_date + timedelta(days=stay_nights)
+
+                params = {
+                    "engine": "google_flights",
+                    "departure_id": ORIGIN_AIRPORT,
+                    "arrival_id": dest_info["code"],
+                    "outbound_date": search_date.strftime("%Y-%m-%d"),
+                    "return_date": return_date.strftime("%Y-%m-%d"),
+                    "currency": "EUR",
+                    "hl": "he",
+                    "gl": "il",
+                    "type": "1",  # Round trip
+                    "stops": "1",  # Nonstop only
+                    "sort_by": "2",  # Sort by price
+                    "adults": adults,
+                    "api_key": self.serpapi_key,
+                }
+
+                if max_price_eur:
+                    params["max_price"] = max_price_eur
+
+                try:
+                    print(f"  ✈️  SerpAPI: {ORIGIN_AIRPORT}→{dest_info['code']} "
+                          f"{search_date.strftime('%d/%m')} ({stay_nights}n)")
+
+                    resp = requests.get(
+                        "https://serpapi.com/search",
+                        params=params, timeout=30,
+                    )
+                    api_calls += 1
+
+                    if resp.status_code == 200:
+                        data = resp.json()
+
+                        # Check for API errors
+                        if "error" in data:
+                            print(f"  ⚠️  SerpAPI error: {data['error']}")
+                            continue
+
+                        # Parse best_flights and other_flights
+                        for flight_group in data.get("best_flights", []):
+                            parsed = self._parse_serpapi_flight(flight_group, stay_nights)
+                            if parsed:
+                                all_flights.append(parsed)
+
+                        for flight_group in data.get("other_flights", []):
+                            parsed = self._parse_serpapi_flight(flight_group, stay_nights)
+                            if parsed:
+                                all_flights.append(parsed)
+                    elif resp.status_code == 429:
+                        print(f"  ⚠️  SerpAPI rate limit — stopping")
+                        break
+                    else:
+                        print(f"  ⚠️  SerpAPI {resp.status_code}: {resp.text[:200]}")
+
+                except requests.Timeout:
+                    print(f"  ⚠️  SerpAPI timeout for {search_date.strftime('%d/%m')}")
+                except Exception as e:
+                    print(f"  ⚠️  SerpAPI error: {e}")
+
+            search_date += timedelta(days=4)
+
+        # Sort by price and deduplicate
+        all_flights.sort(key=lambda x: x.get("price_eur", 9999))
+
+        seen = set()
+        unique_flights = []
+        for f in all_flights:
+            key = (f["price_eur"], f["depart_date"], f["return_date"], f["airline"])
+            if key not in seen:
+                seen.add(key)
+                unique_flights.append(f)
+
+        final_flights = unique_flights[:limit]
+
+        print(f"✅ SerpAPI (Google Flights): found {len(final_flights)} unique flights "
+              f"(from {len(all_flights)} total, {api_calls} API calls)")
+
+        return {
+            "success": True,
+            "flights": final_flights,
+            "destination": dest_info,
+            "total_results": len(unique_flights),
+            "provider": "Google Flights",
+        }
+
+    def _parse_serpapi_flight(self, flight_group: Dict, nights: int) -> Optional[Dict]:
+        """Parse a single SerpAPI Google Flights result into our standard format."""
+        try:
+            price = flight_group.get("price")
+            if not price:
+                return None
+
+            flights = flight_group.get("flights", [])
+            if not flights:
+                return None
+
+            # For nonstop, there's exactly 1 flight segment
+            # For connections, there are multiple — we take first/last
+            out_seg = flights[0]
+            total_duration = flight_group.get("total_duration", 0)
+
+            dep_airport = out_seg.get("departure_airport", {})
+            arr_airport = out_seg.get("arrival_airport", {})
+
+            dep_time_str = dep_airport.get("time", "")  # "2026-03-15 06:30"
+            arr_time_str = arr_airport.get("time", "")
+
+            # Extract airline name
+            airline = out_seg.get("airline", "")
+
+            # Build Google Flights link
+            dep_date_raw = dep_time_str[:10] if len(dep_time_str) >= 10 else ""
+            ret_date_raw = ""
+            # Calculate return date from departure + nights
+            if dep_date_raw:
+                try:
+                    dep_dt = datetime.strptime(dep_date_raw, "%Y-%m-%d")
+                    ret_dt = dep_dt + timedelta(days=nights)
+                    ret_date_raw = ret_dt.strftime("%Y-%m-%d")
+                except ValueError:
+                    pass
+
+            dest_code = arr_airport.get("id", "")
+            google_flights_link = (
+                f"https://www.google.com/travel/flights?"
+                f"q=flights+{ORIGIN_AIRPORT}+to+{dest_code}+"
+                f"on+{dep_date_raw}+return+{ret_date_raw}"
+            ) if dep_date_raw and ret_date_raw else ""
+
+            return {
+                "price_eur": int(price),
+                "airline": airline,
+                "deep_link": google_flights_link,
+                # Outbound
+                "depart_date": _format_serpapi_datetime(dep_time_str),
+                "depart_time": _format_serpapi_time(dep_time_str),
+                "arrive_time": _format_serpapi_time(arr_time_str),
+                "depart_airport": dep_airport.get("id", ORIGIN_AIRPORT),
+                "arrive_airport": dest_code,
+                # Return (estimated from nights)
+                "return_date": _format_serpapi_datetime(f"{ret_date_raw} 00:00") if ret_date_raw else "?",
+                "return_depart_time": "—",
+                "return_arrive_time": "—",
+                # Duration
+                "duration_outbound": _format_duration(total_duration * 60) if total_duration else "?",
+                "duration_return": "—",
+                "nights": nights,
+                # Extra: flight number if available
+                "flight_number": out_seg.get("flight_number", ""),
+            }
+        except Exception as e:
+            print(f"  ⚠️  SerpAPI parse error: {e}")
+            return None
 
     # ═══════════════════════════════════════════════════════════════════
     # AMADEUS AUTH — OAuth2 token management
@@ -174,7 +379,7 @@ class FlightSearchService:
         if not self.is_configured:
             return {
                 "success": False, "flights": [],
-                "error": "שירות חיפוש טיסות לא מוגדר. הגדר AMADEUS_API_KEY+AMADEUS_API_SECRET או KIWI_API_KEY."
+                "error": "שירות חיפוש טיסות לא מוגדר. הגדר SERPAPI_KEY, AMADEUS_API_KEY+SECRET, או KIWI_API_KEY."
             }
 
         # Resolve destination
@@ -185,7 +390,10 @@ class FlightSearchService:
                 "error": f"לא מכיר את היעד '{destination_key}'. יעדים זמינים: {', '.join(DESTINATION_MAP.keys())}",
             }
 
-        if self.provider == "amadeus":
+        if self.provider == "serpapi":
+            return self._search_serpapi(dest_info, max_price_eur, date_from, date_to,
+                                        nights_from, nights_to, adults, limit)
+        elif self.provider == "amadeus":
             return self._search_amadeus(dest_info, max_price_eur, date_from, date_to,
                                         nights_from, nights_to, adults, limit)
         else:
@@ -538,6 +746,29 @@ class FlightSearchService:
 # ═══════════════════════════════════════════════════════════════════════
 # HELPER FUNCTIONS
 # ═══════════════════════════════════════════════════════════════════════
+
+def _format_serpapi_datetime(time_str: str) -> str:
+    """'2026-03-15 06:30' → '15/03 (ראשון)'"""
+    if not time_str or len(time_str) < 10:
+        return "?"
+    try:
+        dt = datetime.strptime(time_str[:16], "%Y-%m-%d %H:%M")
+        day_names = ["שני", "שלישי", "רביעי", "חמישי", "שישי", "שבת", "ראשון"]
+        day_name = day_names[dt.weekday()]
+        return f"{dt.strftime('%d/%m')} ({day_name})"
+    except Exception:
+        return time_str[:10]
+
+
+def _format_serpapi_time(time_str: str) -> str:
+    """'2026-03-15 06:30' → '06:30'"""
+    if not time_str or len(time_str) < 16:
+        return "?"
+    try:
+        return time_str[11:16]
+    except Exception:
+        return "?"
+
 
 def _format_datetime(iso_str: str) -> str:
     """'2026-03-15T06:30:00.000Z' → '15/03 (ראשון)'"""

@@ -119,6 +119,10 @@ def get_last_session_context() -> dict:
 
 _processed_ids_lock = Lock()  # Thread-safe access to processed_message_ids
 
+# Audit lock: Prevent concurrent/duplicate architecture audit runs
+_audit_lock = Lock()
+_audit_running = False
+
 
 def update_voice_map(speaker_id: str, real_name: str) -> bool:
     """
@@ -1044,6 +1048,67 @@ async def whatsapp_webhook_verify(request: Request):
 
 
 # ============================================================================
+# BACKGROUND AUDIT PROCESSING FUNCTION
+# Runs architecture audit in background to avoid blocking the event loop
+# and preventing WhatsApp webhook retries (which cause duplicate messages)
+# ============================================================================
+
+def run_audit_in_background(from_number: str):
+    """
+    Run the architecture audit in the background.
+    Uses _audit_lock to prevent concurrent/duplicate audit runs.
+    """
+    global _audit_running
+    
+    with _audit_lock:
+        if _audit_running:
+            print(f"⚠️  Audit already running — skipping duplicate request")
+            return
+        _audit_running = True
+    
+    try:
+        from app.services.architecture_audit_service import architecture_audit_service
+        
+        print(f"\n{'='*60}")
+        print(f"🏗️ BACKGROUND AUDIT STARTED")
+        print(f"{'='*60}")
+        
+        audit_result = architecture_audit_service.run_weekly_architecture_audit(
+            drive_service=drive_memory_service
+        )
+        
+        if audit_result.get('success'):
+            report = audit_result.get('report', 'לא נוצר דו"ח')
+            
+            if whatsapp_provider:
+                whatsapp_provider.send_whatsapp(
+                    message=report,
+                    to=f"+{from_number}"
+                )
+            print(f"✅ Audit report sent ({len(report)} chars)")
+        else:
+            if whatsapp_provider:
+                whatsapp_provider.send_whatsapp(
+                    message=f"❌ בדיקת ארכיטקטורה נכשלה: {audit_result.get('error', 'Unknown error')}",
+                    to=f"+{from_number}"
+                )
+    except Exception as audit_error:
+        print(f"❌ Audit error: {audit_error}")
+        import traceback
+        traceback.print_exc()
+        if whatsapp_provider:
+            whatsapp_provider.send_whatsapp(
+                message=f"❌ שגיאה בבדיקה: {str(audit_error)[:100]}",
+                to=f"+{from_number}"
+            )
+    finally:
+        with _audit_lock:
+            _audit_running = False
+        print(f"🛑 BACKGROUND AUDIT COMPLETE")
+        print(f"{'='*60}\n")
+
+
+# ============================================================================
 # BACKGROUND AUDIO PROCESSING FUNCTION
 # This runs in the background to avoid 502 timeouts on WhatsApp webhooks
 # ============================================================================
@@ -1604,6 +1669,7 @@ async def webhook(request: Request, background_tasks: BackgroundTasks):
                                     # ================================================================
                                     # ARCHITECTURE AUDIT INTERCEPTOR: Weekly Stack Analysis
                                     # Trigger: "בדוק את הסטאק" - runs the same function as Friday cron
+                                    # Runs in BACKGROUND to prevent webhook timeout & duplicate msgs
                                     # ================================================================
                                     AUDIT_TRIGGER_PHRASES = ["בדוק את הסטאק", "סרוק את המערכת", "דוח ארכיטקטורה"]
                                     if any(phrase in message_body_text.strip() for phrase in AUDIT_TRIGGER_PHRASES):
@@ -1611,49 +1677,27 @@ async def webhook(request: Request, background_tasks: BackgroundTasks):
                                         print(f"🏗️ ARCHITECTURE AUDIT INTERCEPTOR ACTIVATED")
                                         print(f"{'='*60}")
                                         
-                                        try:
-                                            from app.services.architecture_audit_service import architecture_audit_service
-                                            
-                                            # Send "working on it" message
+                                        # Check if audit is already running (prevents duplicates)
+                                        with _audit_lock:
+                                            already_running = _audit_running
+                                        
+                                        if already_running:
+                                            print(f"⚠️  Audit already in progress — skipping duplicate trigger")
+                                        else:
+                                            # Send "working on it" message immediately
                                             if whatsapp_provider:
                                                 whatsapp_provider.send_whatsapp(
                                                     message="🏗️ מריץ בדיקת ארכיטקטורה... זה עשוי לקחת כדקה.",
                                                     to=f"+{from_number}"
                                                 )
                                             
-                                            # Run the audit
-                                            audit_result = architecture_audit_service.run_weekly_architecture_audit(
-                                                drive_service=drive_memory_service
+                                            # Queue audit in background — webhook returns 200 immediately
+                                            background_tasks.add_task(
+                                                run_audit_in_background,
+                                                from_number=from_number
                                             )
-                                            
-                                            if audit_result.get('success'):
-                                                report = audit_result.get('report', 'לא נוצר דו"ח')
-                                                
-                                                # Send the report via WhatsApp
-                                                if whatsapp_provider:
-                                                    whatsapp_provider.send_whatsapp(
-                                                        message=report,
-                                                        to=f"+{from_number}"
-                                                    )
-                                                print(f"✅ Audit report sent ({len(report)} chars)")
-                                            else:
-                                                if whatsapp_provider:
-                                                    whatsapp_provider.send_whatsapp(
-                                                        message=f"❌ בדיקת ארכיטקטורה נכשלה: {audit_result.get('error', 'Unknown error')}",
-                                                        to=f"+{from_number}"
-                                                    )
-                                                    
-                                        except Exception as audit_error:
-                                            print(f"❌ Audit error: {audit_error}")
-                                            import traceback
-                                            traceback.print_exc()
-                                            if whatsapp_provider:
-                                                whatsapp_provider.send_whatsapp(
-                                                    message=f"❌ שגיאה בבדיקה: {str(audit_error)[:100]}",
-                                                    to=f"+{from_number}"
-                                                )
+                                            print(f"📋 Audit queued for background execution")
                                         
-                                        print(f"🛑 AUDIT INTERCEPTOR COMPLETE - Returning immediately")
                                         print(f"{'='*60}\n")
                                         continue
                                     
