@@ -12,6 +12,7 @@ from typing import Optional, List
 import tempfile
 import os
 import io
+import time
 import requests
 from pathlib import Path
 from datetime import datetime
@@ -215,36 +216,76 @@ def get_voice_map() -> dict:
     
     return _voice_map_cache
 
-def is_message_processed(message_id: str) -> bool:
+def _try_acquire_message_lock(message_id: str) -> bool:
     """
-    Check if a message ID has already been processed.
+    Atomic file-based message dedup — works across processes AND webhook retries.
     
-    Args:
-        message_id: WhatsApp message ID (wam_id)
+    Uses os.O_CREAT | os.O_EXCL (kernel-level atomic operation):
+    - First caller: file created → returns True (process this message)
+    - Any subsequent caller: FileExistsError → returns False (skip duplicate)
+    
+    Lock files are stored in /tmp/ and cleaned up after 5 minutes.
     
     Returns:
-        True if message was already processed, False otherwise
+        True if this caller should process the message (lock acquired),
+        False if another call already acquired it (duplicate).
     """
+    if not message_id:
+        return True  # No message_id = can't dedup, process it
+    
+    # Clean up old lock files (older than 5 min) to prevent /tmp/ buildup
+    try:
+        import glob
+        now = time.time()
+        for lock_file in glob.glob("/tmp/.wa_msg_*.lock"):
+            try:
+                if now - os.path.getmtime(lock_file) > 300:  # 5 minutes
+                    os.unlink(lock_file)
+            except OSError:
+                pass
+    except Exception:
+        pass
+    
+    # Sanitize message_id for filesystem (remove special chars)
+    safe_id = message_id.replace("/", "_").replace(":", "_")[-60:]
+    lock_path = f"/tmp/.wa_msg_{safe_id}.lock"
+    
+    try:
+        fd = os.open(lock_path, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+        os.write(fd, f"{time.time()}\n".encode())
+        os.close(fd)
+        print(f"🔒 Message lock acquired: {message_id}")
+        return True  # We got the lock — process this message
+    except FileExistsError:
+        print(f"⚠️  Message already locked (duplicate): {message_id}")
+        return False  # Another handler already processing this
+    except OSError as e:
+        print(f"⚠️  Lock error (processing anyway): {e}")
+        return True  # On error, process to avoid dropping messages
+
+
+def is_message_processed(message_id: str) -> bool:
+    """Check if message was already processed (in-memory + file-based)."""
     if not message_id:
         return False
-    
+    # Check in-memory first (fast path)
     with _processed_ids_lock:
-        return message_id in processed_message_ids
+        if message_id in processed_message_ids:
+            return True
+    # Check file-based lock
+    safe_id = message_id.replace("/", "_").replace(":", "_")[-60:]
+    lock_path = f"/tmp/.wa_msg_{safe_id}.lock"
+    return os.path.exists(lock_path)
 
 def mark_message_processed(message_id: str) -> None:
-    """
-    Mark a message ID as processed.
-    
-    Args:
-        message_id: WhatsApp message ID (wam_id)
-    """
+    """Mark message as processed (in-memory + file-based)."""
     if not message_id:
         return
-    
     with _processed_ids_lock:
         if message_id not in processed_message_ids:
             processed_message_ids.append(message_id)
-            print(f"✅ Marked message {message_id} as processed (total tracked: {len(processed_message_ids)})")
+    # Also ensure file lock exists
+    _try_acquire_message_lock(message_id)
 
 
 def is_kb_query(message: str) -> bool:
@@ -1442,13 +1483,15 @@ async def webhook(request: Request, background_tasks: BackgroundTasks):
                                     # CRITICAL: STOP HERE. No chatting. No Gemini.
                                     continue
                                 
-                                # IDEMPOTENCY CHECK: Prevent duplicate processing due to webhook retries
-                                if is_message_processed(message_id):
-                                    print(f"⚠️  Duplicate message received (ID: {message_id}). Ignoring.")
+                                # IDEMPOTENCY CHECK: Atomic file-based + in-memory dedup
+                                # Prevents duplicates from: webhook retries, multi-process, race conditions
+                                if not _try_acquire_message_lock(message_id):
+                                    print(f"⚠️  Duplicate message (atomic lock exists): {message_id}. Ignoring.")
                                     continue  # Skip processing, but return 200 OK to WhatsApp
                                 
-                                # Mark message as processed BEFORE processing (prevents race conditions)
-                                mark_message_processed(message_id)
+                                # Also mark in-memory for fast subsequent checks
+                                with _processed_ids_lock:
+                                    processed_message_ids.append(message_id)
                                 
                                 # Handle audio messages - BACKGROUND PROCESSING to avoid 502 timeout
                                 if message_type == "audio":
@@ -1841,54 +1884,60 @@ async def webhook(request: Request, background_tasks: BackgroundTasks):
                                     # CONVERSATION ENGINE — LLM-First Architecture
                                     # NOTE: Flight search is now handled by Gemini's search_flights
                                     # tool inside the Conversation Engine (no separate interceptor).
-                                    # Replaces: regex intent detection, pronoun resolution,
-                                    #           entity extraction, KB query routing, regular chat.
-                                    # Gemini Chat Session handles ALL of it natively.
+                                    # Runs in BACKGROUND to return 200 immediately to WhatsApp
+                                    # (prevents retries that cause duplicate messages).
                                     # ================================================================
-                                    try:
-                                        # Single entry point — Gemini decides everything
-                                        ai_response = conversation_engine.process_message(
-                                            phone=from_number,
-                                            message=message_body_text
-                                        )
-                                        
-                                        print(f"🤖 Generated AI response: {ai_response[:100]}...")
-                                        
-                                        # Send AI response via WhatsApp
-                                        reply_result = whatsapp_provider.send_whatsapp(
-                                            message=ai_response,
-                                            to=f"+{from_number}"
-                                        )
-                                        
-                                        if reply_result.get('success'):
-                                            print(f"✅ AI response sent successfully")
-                                            
-                                            # Save interaction to memory
-                                            new_interaction = {
-                                                "user_message": message_body_text,
-                                                "ai_response": ai_response,
-                                                "timestamp": datetime.utcnow().isoformat() + "Z",
-                                                "message_id": message_id,
-                                                "from_number": from_number,
-                                                "type": "conversation_engine"
-                                            }
-                                            drive_memory_service.update_memory(new_interaction, background_tasks=background_tasks)
-                                        else:
-                                            print(f"⚠️  Failed to send AI response: {reply_result.get('error')}")
-                                    except Exception as reply_error:
-                                        print(f"⚠️  Error processing message with AI: {reply_error}")
-                                        import traceback
-                                        traceback.print_exc()
-                                        
-                                        # Fallback: Send simple acknowledgment
+                                    def _process_text_in_background(phone, text, msg_id):
+                                        """Background task: process text via Conversation Engine and send reply."""
                                         try:
-                                            fallback_message = "Message received and saved to memory."
-                                            whatsapp_provider.send_whatsapp(
-                                                message=fallback_message,
-                                                to=f"+{from_number}"
+                                            ai_response = conversation_engine.process_message(
+                                                phone=phone,
+                                                message=text
                                             )
-                                        except:
-                                            pass
+                                            
+                                            print(f"🤖 Generated AI response: {ai_response[:100]}...")
+                                            
+                                            # Send AI response via WhatsApp
+                                            reply_result = whatsapp_provider.send_whatsapp(
+                                                message=ai_response,
+                                                to=f"+{phone}"
+                                            )
+                                            
+                                            if reply_result.get('success'):
+                                                print(f"✅ AI response sent successfully")
+                                                
+                                                # Save interaction to memory
+                                                new_interaction = {
+                                                    "user_message": text,
+                                                    "ai_response": ai_response,
+                                                    "timestamp": datetime.utcnow().isoformat() + "Z",
+                                                    "message_id": msg_id,
+                                                    "from_number": phone,
+                                                    "type": "conversation_engine"
+                                                }
+                                                drive_memory_service.update_memory(new_interaction)
+                                            else:
+                                                print(f"⚠️  Failed to send AI response: {reply_result.get('error')}")
+                                        except Exception as reply_error:
+                                            print(f"⚠️  Error processing message with AI: {reply_error}")
+                                            import traceback
+                                            traceback.print_exc()
+                                            
+                                            try:
+                                                whatsapp_provider.send_whatsapp(
+                                                    message="⚠️ שגיאה בעיבוד ההודעה. נסה שוב.",
+                                                    to=f"+{phone}"
+                                                )
+                                            except:
+                                                pass
+                                    
+                                    # Queue for background processing — webhook returns 200 immediately
+                                    background_tasks.add_task(
+                                        _process_text_in_background,
+                                        from_number,
+                                        message_body_text,
+                                        message_id,
+                                    )
                         
                         # Handle message status updates
                         elif field == "messages" and "statuses" in value:
