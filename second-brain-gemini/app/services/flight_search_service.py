@@ -231,6 +231,54 @@ class FlightSearchService:
 
         final_flights = unique_flights[:limit]
 
+        # ── Step 2: Fetch return flight details for top results ──
+        # Uses departure_token to get the return leg info
+        for flight in final_flights:
+            dep_token = flight.pop("_departure_token", None)
+            if not dep_token:
+                continue
+
+            try:
+                print(f"  🔄 Fetching return details for €{flight['price_eur']} {flight['depart_date']}...")
+                ret_params = {
+                    "engine": "google_flights",
+                    "departure_token": dep_token,
+                    "currency": "EUR",
+                    "hl": "he",
+                    "gl": "il",
+                    "api_key": self.serpapi_key,
+                }
+                ret_resp = requests.get(
+                    "https://serpapi.com/search",
+                    params=ret_params, timeout=20,
+                )
+                api_calls += 1
+
+                if ret_resp.status_code == 200:
+                    ret_data = ret_resp.json()
+
+                    # Pick the best (cheapest/first) return flight
+                    ret_options = ret_data.get("best_flights", []) + ret_data.get("other_flights", [])
+                    if ret_options:
+                        best_return = ret_options[0]
+                        ret_flights = best_return.get("flights", [])
+                        if ret_flights:
+                            ret_seg = ret_flights[0]
+                            ret_dep = ret_seg.get("departure_airport", {})
+                            ret_arr = ret_seg.get("arrival_airport", {})
+                            ret_duration = best_return.get("total_duration", 0)
+
+                            flight["return_date"] = _format_serpapi_datetime(ret_dep.get("time", ""))
+                            flight["return_depart_time"] = _format_serpapi_time(ret_dep.get("time", ""))
+                            flight["return_arrive_time"] = _format_serpapi_time(ret_arr.get("time", ""))
+                            flight["duration_return"] = _format_duration(ret_duration * 60) if ret_duration else "?"
+                            print(f"    ✅ Return: {flight['return_date']} ({flight['return_depart_time']}→{flight['return_arrive_time']})")
+                else:
+                    print(f"  ⚠️  Return details failed: {ret_resp.status_code}")
+
+            except Exception as ret_err:
+                print(f"  ⚠️  Return details error: {ret_err}")
+
         print(f"✅ SerpAPI (Google Flights): found {len(final_flights)} unique flights "
               f"(from {len(all_flights)} total, {api_calls} API calls)")
 
@@ -296,7 +344,7 @@ class FlightSearchService:
                 "arrive_time": _format_serpapi_time(arr_time_str),
                 "depart_airport": dep_airport.get("id", ORIGIN_AIRPORT),
                 "arrive_airport": dest_code,
-                # Return (estimated from nights)
+                # Return (placeholder — filled by departure_token call)
                 "return_date": _format_serpapi_datetime(f"{ret_date_raw} 00:00") if ret_date_raw else "?",
                 "return_depart_time": "—",
                 "return_arrive_time": "—",
@@ -304,8 +352,10 @@ class FlightSearchService:
                 "duration_outbound": _format_duration(total_duration * 60) if total_duration else "?",
                 "duration_return": "—",
                 "nights": nights,
-                # Extra: flight number if available
+                # Extra
                 "flight_number": out_seg.get("flight_number", ""),
+                # Internal: used to fetch return details, removed before output
+                "_departure_token": flight_group.get("departure_token", ""),
             }
         except Exception as e:
             print(f"  ⚠️  SerpAPI parse error: {e}")
