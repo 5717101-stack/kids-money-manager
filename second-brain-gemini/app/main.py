@@ -630,8 +630,38 @@ async def startup_event():
         else:
             print(f"ℹ️  Inbox Poller disabled: DRIVE_INBOX_ID not configured")
         
+        # Job 3: Daily Flight Deals — 9:00 AM Israel time
+        # Searches Paphos flights under €50, sends WhatsApp if deals found
+        def run_daily_flight_deals():
+            """Search for cheap flights and notify via WhatsApp."""
+            print("✈️  DAILY FLIGHT DEALS CHECK (09:00 Israel)")
+            try:
+                from app.services.flight_search_service import flight_search_service
+                if not flight_search_service.is_configured:
+                    print("ℹ️  Flight search not configured (KIWI_API_KEY missing)")
+                    return
+                
+                message = flight_search_service.search_daily_deals()
+                if message and whatsapp_provider:
+                    whatsapp_provider.send_whatsapp(message)
+                    print("✅ Flight deals sent via WhatsApp")
+                elif not message:
+                    print("ℹ️  No deals found under €50 today")
+            except Exception as e:
+                print(f"❌ Flight deals error: {e}")
+                import traceback
+                traceback.print_exc()
+        
+        scheduler.add_job(
+            run_daily_flight_deals,
+            CronTrigger(hour=7, minute=0),  # 07:00 UTC = 09:00 Israel
+            id='daily_flight_deals',
+            name='Daily Flight Deals (09:00 Israel)',
+            replace_existing=True
+        )
+        
         scheduler.start()
-        print("📅 Scheduler started: Weekly Audit (Fri 13:00) + Inbox Poller (5 min)")
+        print("📅 Scheduler started: Weekly Audit (Fri 13:00) + Inbox Poller (5 min) + Flight Deals (Daily 09:00)")
         
     except Exception as e:
         print(f"⚠️  Failed to start scheduler: {e}")
@@ -1732,6 +1762,84 @@ async def webhook(request: Request, background_tasks: BackgroundTasks):
                                             
                                             print(f"   Confirmed: {len(confirmed)}, Rejected: {len(rejected)}")
                                             print(f"🛑 CONTEXT WRITER COMPLETE")
+                                            print(f"{'='*60}\n")
+                                            continue
+                                    
+                                    # ================================================================
+                                    # FLIGHT SEARCH INTERCEPTOR: Travel Agent
+                                    # Trigger: destination name (e.g., "קפריסין", "קפריסין 100")
+                                    # ================================================================
+                                    from app.services.flight_search_service import flight_search_service, DESTINATION_MAP
+                                    
+                                    if flight_search_service.is_configured:
+                                        msg_stripped = message_body_text.strip()
+                                        # Check if message matches a destination (with optional price)
+                                        flight_dest = None
+                                        flight_max_price = None
+                                        
+                                        for dest_key in DESTINATION_MAP:
+                                            # Match: "קפריסין" or "קפריסין 100" or "טיסות לקפריסין"
+                                            cleaned = msg_stripped.replace("טיסות ל", "").replace("טיסות", "").strip()
+                                            if cleaned == dest_key or cleaned.startswith(dest_key + " "):
+                                                flight_dest = dest_key
+                                                # Check for price after destination name
+                                                remainder = cleaned[len(dest_key):].strip()
+                                                if remainder.isdigit():
+                                                    flight_max_price = int(remainder)
+                                                break
+                                        
+                                        if flight_dest:
+                                            print(f"\n{'='*60}")
+                                            print(f"✈️  FLIGHT SEARCH INTERCEPTOR ACTIVATED")
+                                            print(f"   Destination: {flight_dest}, Max price: €{flight_max_price or 'unlimited'}")
+                                            print(f"{'='*60}")
+                                            
+                                            try:
+                                                # Send "searching" notification
+                                                if whatsapp_provider:
+                                                    whatsapp_provider.send_whatsapp(
+                                                        message=f"✈️ מחפש טיסות ישירות ל{flight_dest}... ⏳",
+                                                        to=f"+{from_number}"
+                                                    )
+                                                
+                                                results = flight_search_service.search_flights(
+                                                    destination_key=flight_dest,
+                                                    max_price_eur=flight_max_price,
+                                                )
+                                                
+                                                formatted = flight_search_service.format_results(
+                                                    results,
+                                                    query_text=f"{'עד €' + str(flight_max_price) if flight_max_price else 'כל המחירים'}"
+                                                )
+                                                
+                                                if whatsapp_provider:
+                                                    whatsapp_provider.send_whatsapp(
+                                                        message=formatted,
+                                                        to=f"+{from_number}"
+                                                    )
+                                                
+                                                # Save interaction
+                                                new_interaction = {
+                                                    "user_message": message_body_text,
+                                                    "ai_response": formatted[:500],
+                                                    "timestamp": datetime.utcnow().isoformat() + "Z",
+                                                    "message_id": message_id,
+                                                    "from_number": from_number,
+                                                    "type": "flight_search"
+                                                }
+                                                drive_memory_service.update_memory(new_interaction, background_tasks=background_tasks)
+                                                
+                                            except Exception as flight_err:
+                                                print(f"❌ Flight search error: {flight_err}")
+                                                import traceback
+                                                traceback.print_exc()
+                                                if whatsapp_provider:
+                                                    whatsapp_provider.send_whatsapp(
+                                                        message=f"❌ שגיאה בחיפוש טיסות: {str(flight_err)[:100]}",
+                                                        to=f"+{from_number}"
+                                                    )
+                                            
+                                            print(f"🛑 FLIGHT SEARCH COMPLETE")
                                             print(f"{'='*60}\n")
                                             continue
                                     
