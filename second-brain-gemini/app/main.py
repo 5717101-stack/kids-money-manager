@@ -635,54 +635,70 @@ async def startup_event():
         traceback.print_exc()
     
     # ================================================================
-    # DEPLOYMENT NOTIFICATION — send WhatsApp when server starts
+    # DEPLOYMENT NOTIFICATION — send once per version via Drive lock
     # ================================================================
     if is_production:
         try:
-            from datetime import timezone, timedelta
-            from app.services.meta_whatsapp_service import meta_whatsapp_service
-            
-            israel_time = datetime.now(timezone.utc) + timedelta(hours=2)
-            time_str = israel_time.strftime('%d/%m/%Y %H:%M')
-            
-            changes = ""
-            try:
-                import subprocess
-                r = subprocess.run(
-                    ['git', 'log', '-1', '--pretty=%B'],
-                    capture_output=True, text=True, timeout=5,
-                    cwd=Path(__file__).parent.parent
-                )
-                if r.returncode == 0 and r.stdout.strip():
-                    msg = r.stdout.strip()
-                    changes = msg.split(' - ', 1)[1] if ' - ' in msg else msg
-                    changes = changes[:150]
-            except Exception:
-                pass
-            if not changes:
-                commit_file = Path(__file__).parent.parent / ".last_commit"
-                if commit_file.exists():
+            # Drive lock — check if this version was already notified
+            if drive_memory_service.is_configured:
+                mem = drive_memory_service.get_memory()
+                if mem.get('_last_notified_version') == current_version:
+                    print(f"🔇 v{current_version} already notified — skipping")
+                else:
+                    # Lock BEFORE sending (write to Drive)
+                    mem['_last_notified_version'] = current_version
+                    drive_memory_service._upload_to_drive(mem)
+                    print(f"🔒 Lock written to Drive for v{current_version}")
+                    
+                    # Build and send
+                    from datetime import timezone, timedelta
+                    from app.services.meta_whatsapp_service import meta_whatsapp_service
+                    
+                    israel_time = datetime.now(timezone.utc) + timedelta(hours=2)
+                    time_str = israel_time.strftime('%d/%m/%Y %H:%M')
+                    
+                    changes = ""
                     try:
-                        changes = commit_file.read_text().strip()[:150]
+                        import subprocess
+                        r = subprocess.run(
+                            ['git', 'log', '-1', '--pretty=%B'],
+                            capture_output=True, text=True, timeout=5,
+                            cwd=Path(__file__).parent.parent
+                        )
+                        if r.returncode == 0 and r.stdout.strip():
+                            msg = r.stdout.strip()
+                            changes = msg.split(' - ', 1)[1] if ' - ' in msg else msg
+                            changes = changes[:150]
                     except Exception:
                         pass
-            if not changes:
-                changes = "עדכון מערכת"
-            
-            notification = (
-                f"🚀 *גרסה חדשה עלתה לפרודקשן!*\n\n"
-                f"📦 גרסה: *{current_version}*\n"
-                f"⏰ זמן: {time_str} (שעון ישראל)\n\n"
-                f"📝 *שינויים עיקריים:*\n{changes}\n\n"
-                f"✅ השרת פעיל ומוכן לעבודה!"
-            )
-            
-            print(f"📤 Sending deploy notification for v{current_version}...")
-            if meta_whatsapp_service.is_configured:
-                result = meta_whatsapp_service.send_whatsapp(notification)
-                print(f"📤 Result: {result}")
+                    if not changes:
+                        commit_file = Path(__file__).parent.parent / ".last_commit"
+                        if commit_file.exists():
+                            try:
+                                changes = commit_file.read_text().strip()[:150]
+                            except Exception:
+                                pass
+                    if not changes:
+                        changes = "עדכון מערכת"
+                    
+                    notification = (
+                        f"🚀 *גרסה חדשה עלתה לפרודקשן!*\n\n"
+                        f"📦 גרסה: *{current_version}*\n"
+                        f"⏰ זמן: {time_str} (שעון ישראל)\n\n"
+                        f"📝 *שינויים עיקריים:*\n{changes}\n\n"
+                        f"✅ השרת פעיל ומוכן לעבודה!"
+                    )
+                    
+                    if meta_whatsapp_service.is_configured:
+                        result = meta_whatsapp_service.send_whatsapp(notification)
+                        if result.get('success'):
+                            print(f"✅ Deploy notification sent (v{current_version})")
+                        else:
+                            print(f"⚠️  Send failed: {result.get('error')}")
+                    else:
+                        print("⚠️  WhatsApp not configured")
             else:
-                print("⚠️  meta_whatsapp_service not configured")
+                print("⚠️  Drive not configured — skipping notification")
         except Exception as e:
             print(f"⚠️  Deploy notification error: {e}")
             import traceback
