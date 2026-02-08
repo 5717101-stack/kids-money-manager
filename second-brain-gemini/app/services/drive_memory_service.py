@@ -946,6 +946,71 @@ class DriveMemoryService:
             'filename': filename
         }
     
+    def upload_to_context_folder(
+        self,
+        file_bytes: bytes,
+        filename: str,
+        mime_type: str
+    ) -> Optional[Dict[str, str]]:
+        """
+        Upload a file to the Second_Brain_Context folder in Google Drive.
+        This makes the file immediately available for Knowledge Base queries.
+        
+        Args:
+            file_bytes: Binary content of the file
+            filename: Display name for the file in Drive
+            mime_type: MIME type of the file (e.g., 'application/pdf', 'image/jpeg')
+        
+        Returns:
+            Dictionary with 'file_id', 'filename', and 'web_view_link', or None if upload failed
+        """
+        if not self.is_configured or not self.service:
+            logger.warning("⚠️  Drive Memory Service not configured. Cannot upload to context.")
+            return None
+        
+        self._refresh_credentials_if_needed()
+        
+        # Get the Second_Brain_Context folder ID
+        context_folder_id = os.environ.get("CONTEXT_FOLDER_ID")
+        if not context_folder_id:
+            logger.error("❌ CONTEXT_FOLDER_ID not set — cannot upload to context folder")
+            return None
+        
+        try:
+            print(f"📤 Uploading '{filename}' ({mime_type}) to Second_Brain_Context...")
+            
+            file_obj = io.BytesIO(file_bytes)
+            media = MediaIoBaseUpload(file_obj, mimetype=mime_type, resumable=True)
+            
+            file_metadata = {
+                'name': filename,
+                'parents': [context_folder_id]
+            }
+            
+            file = self.service.files().create(
+                body=file_metadata,
+                media_body=media,
+                fields='id,webViewLink'
+            ).execute()
+            
+            file_id = file.get('id')
+            web_view_link = file.get('webViewLink', '')
+            
+            print(f"✅ Context file uploaded: {filename} (ID: {file_id})")
+            logger.info(f"✅ Context file uploaded: {filename} (ID: {file_id})")
+            
+            return {
+                'file_id': file_id,
+                'filename': filename,
+                'web_view_link': web_view_link
+            }
+        except Exception as e:
+            logger.error(f"❌ Failed to upload to context folder: {e}")
+            print(f"❌ Failed to upload to context folder: {e}")
+            import traceback
+            traceback.print_exc()
+            return None
+
     def upload_voice_signature(self, file_path: str, person_name: str) -> Optional[str]:
         """
         Upload a voice signature (audio sample) to the Voice_Signatures folder in Drive.

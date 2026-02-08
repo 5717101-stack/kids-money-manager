@@ -1365,12 +1365,128 @@ async def webhook(request: Request, background_tasks: BackgroundTasks):
                                     # Return immediately - processing continues in background
                                     continue
                                 
-                                # NOTE: All audio processing moved to process_audio_in_background()
-                                # The orphaned code below was the old inline audio processing - REMOVED
-                                
-                                # LEGACY AUDIO CODE REMOVED - See process_audio_in_background()
-                                # All audio downloading, Gemini processing, and response sending
-                                # now happens in the background to avoid 502 timeouts
+                                # ================================================================
+                                # DOCUMENT / IMAGE → Knowledge Base Uploader
+                                # Saves PDFs, text files, screenshots to Second_Brain_Context
+                                # ================================================================
+                                elif message_type in ("document", "image"):
+                                    print(f"\n{'='*60}")
+                                    print(f"📎 DOCUMENT/IMAGE INTERCEPTOR ACTIVATED — type={message_type}")
+                                    print(f"{'='*60}")
+                                    
+                                    try:
+                                        # Extract media info
+                                        media_data = message.get(message_type, {})
+                                        media_id = media_data.get("id")
+                                        media_mime = media_data.get("mime_type", "application/octet-stream")
+                                        
+                                        # Build filename
+                                        if message_type == "document":
+                                            original_filename = media_data.get("filename", f"document_{message_id}")
+                                        else:
+                                            # Images don't carry a filename — build one from mime
+                                            ext_map = {
+                                                "image/jpeg": ".jpg", "image/png": ".png",
+                                                "image/webp": ".webp", "image/gif": ".gif",
+                                            }
+                                            ext = ext_map.get(media_mime, ".jpg")
+                                            original_filename = f"whatsapp_image_{message_id}{ext}"
+                                        
+                                        # Optional caption (user can name the file)
+                                        caption = ""
+                                        if message_type == "image":
+                                            caption = message.get("image", {}).get("caption", "")
+                                        elif message_type == "document":
+                                            caption = message.get("document", {}).get("caption", "")
+                                        
+                                        # If user sent a caption, use it as filename (preserve extension)
+                                        if caption and caption.strip():
+                                            import pathlib
+                                            original_ext = pathlib.Path(original_filename).suffix
+                                            # If caption already has an extension, use as-is; otherwise append original ext
+                                            if pathlib.Path(caption.strip()).suffix:
+                                                original_filename = caption.strip()
+                                            else:
+                                                original_filename = f"{caption.strip()}{original_ext}"
+                                        
+                                        if not media_id:
+                                            print("❌ No media ID found in message")
+                                            continue
+                                        
+                                        # Download file from WhatsApp API
+                                        from app.services.meta_whatsapp_service import meta_whatsapp_service
+                                        if not meta_whatsapp_service.is_configured:
+                                            print("❌ Meta WhatsApp service not configured")
+                                            continue
+                                        
+                                        access_token = meta_whatsapp_service.access_token
+                                        
+                                        # Step 1: Get download URL
+                                        media_url = f"https://graph.facebook.com/v18.0/{media_id}"
+                                        headers = {"Authorization": f"Bearer {access_token}"}
+                                        
+                                        media_response = requests.get(media_url, headers=headers, timeout=30)
+                                        if media_response.status_code != 200:
+                                            print(f"❌ Failed to get media URL: {media_response.status_code}")
+                                            _send_error_to_user(from_number, "שגיאה בהורדת הקובץ מווטסאפ")
+                                            continue
+                                        
+                                        download_url = media_response.json().get("url")
+                                        if not download_url:
+                                            print("❌ No download URL in response")
+                                            _send_error_to_user(from_number, "שגיאה בהורדת הקובץ")
+                                            continue
+                                        
+                                        # Step 2: Download actual file bytes
+                                        file_response = requests.get(download_url, headers=headers, timeout=120)
+                                        if file_response.status_code != 200:
+                                            print(f"❌ Failed to download file: {file_response.status_code}")
+                                            _send_error_to_user(from_number, "שגיאה בהורדת הקובץ")
+                                            continue
+                                        
+                                        file_bytes = file_response.content
+                                        print(f"✅ File downloaded: {len(file_bytes)} bytes — '{original_filename}' ({media_mime})")
+                                        
+                                        # Step 3: Upload to Second_Brain_Context on Drive
+                                        upload_result = drive_memory_service.upload_to_context_folder(
+                                            file_bytes=file_bytes,
+                                            filename=original_filename,
+                                            mime_type=media_mime
+                                        )
+                                        
+                                        if upload_result:
+                                            print(f"✅ File saved to Knowledge Base: {upload_result.get('file_id')}")
+                                            
+                                            # Step 4: Force KB cache reload so file is immediately queryable
+                                            try:
+                                                from app.services.knowledge_base_service import load_context
+                                                load_context(force_reload=True)
+                                                print("🔄 Knowledge Base cache refreshed")
+                                            except Exception as reload_err:
+                                                print(f"⚠️  KB cache reload failed (will reload on next query): {reload_err}")
+                                            
+                                            # Step 5: Confirm to user
+                                            if whatsapp_provider:
+                                                whatsapp_provider.send_whatsapp(
+                                                    message=f"📁 *הקובץ נשמר בבסיס הידע!*\n\n"
+                                                            f"📄 שם: {original_filename}\n"
+                                                            f"💾 גודל: {len(file_bytes) // 1024}KB\n\n"
+                                                            f"✅ מעכשיו אפשר לשאול עליו שאלות.",
+                                                    to=f"+{from_number}"
+                                                )
+                                        else:
+                                            print("❌ Failed to upload file to context folder")
+                                            _send_error_to_user(from_number, "שגיאה בשמירת הקובץ לבסיס הידע")
+                                    
+                                    except Exception as doc_error:
+                                        print(f"❌ Document/Image handler error: {doc_error}")
+                                        import traceback
+                                        traceback.print_exc()
+                                        _send_error_to_user(from_number, f"שגיאה בטיפול בקובץ: {str(doc_error)[:80]}")
+                                    
+                                    print(f"🛑 DOCUMENT/IMAGE INTERCEPTOR COMPLETE")
+                                    print(f"{'='*60}\n")
+                                    continue
                                 
                                 # Text message handling follows (elif block)
                                 # Process message with memory
