@@ -699,16 +699,33 @@ class FlightSearchService:
             lines.append(f"{'─' * 30}")
             lines.append(f"*{i}. €{f['price_eur']}* לאדם (הלוך-חזור)")
             lines.append(f"🛫 חברת תעופה: *{f['airline']}*")
+            
+            # Flight number (if available)
+            if f.get("flight_number"):
+                lines.append(f"✈️ טיסה: {f['flight_number']}")
+            
+            # Outbound flight
             lines.append(
                 f"📅 הלוך: {f['depart_date']} "
                 f"({f['depart_time']}→{f['arrive_time']}) "
                 f"⏱ {f['duration_outbound']}"
             )
-            lines.append(
-                f"📅 חזור: {f['return_date']} "
-                f"({f['return_depart_time']}→{f['return_arrive_time']}) "
-                f"⏱ {f['duration_return']}"
+            
+            # Return flight — show times only if available
+            has_return_times = (
+                f.get('return_depart_time') and f['return_depart_time'] != '—'
+                and f.get('return_arrive_time') and f['return_arrive_time'] != '—'
             )
+            has_return_duration = f.get('duration_return') and f['duration_return'] != '—'
+            
+            if has_return_times:
+                return_line = f"📅 חזור: {f['return_date']} ({f['return_depart_time']}→{f['return_arrive_time']})"
+                if has_return_duration:
+                    return_line += f" ⏱ {f['duration_return']}"
+                lines.append(return_line)
+            else:
+                lines.append(f"📅 חזור: {f['return_date']}")
+            
             lines.append(f"🌙 {f['nights']} לילות")
             if f.get("deep_link"):
                 lines.append(f"🔗 {f['deep_link']}")
