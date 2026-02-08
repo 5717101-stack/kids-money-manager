@@ -56,7 +56,34 @@ _processed_media_ids = deque(maxlen=500)
 # Voice Imprinting: Track pending speaker identifications
 # Key: message_id (wam_id), Value: dict with file_path and speaker_id
 # Example: {"wamid.xxx": {"file_path": "/tmp/audio.mp3", "speaker_id": "Speaker 2"}}
-pending_identifications = {}
+# PERSISTED to disk so it survives server restarts (Render redeploys, crashes, etc.)
+_PENDING_ID_FILE = Path(__file__).parent.parent / ".pending_identifications.json"
+
+def _load_pending_identifications() -> dict:
+    """Load pending identifications from disk."""
+    try:
+        if _PENDING_ID_FILE.exists():
+            import json
+            data = json.loads(_PENDING_ID_FILE.read_text(encoding='utf-8'))
+            if data:
+                print(f"📂 Loaded {len(data)} pending identifications from disk")
+            return data
+    except Exception as e:
+        print(f"⚠️  Failed to load pending identifications: {e}")
+    return {}
+
+def _save_pending_identifications():
+    """Save pending identifications to disk."""
+    try:
+        import json
+        _PENDING_ID_FILE.write_text(
+            json.dumps(pending_identifications, ensure_ascii=False, indent=2),
+            encoding='utf-8'
+        )
+    except Exception as e:
+        print(f"⚠️  Failed to save pending identifications: {e}")
+
+pending_identifications = _load_pending_identifications()
 
 # Voice Map: Persistent mapping of Speaker ID -> Real Name
 # This is stored in Drive Memory as part of user_profile
@@ -1329,6 +1356,7 @@ async def webhook(request: Request, background_tasks: BackgroundTasks):
                                     
                                     # Extract data from pending identification
                                     pending_data = pending_identifications.pop(replied_message_id)
+                                    _save_pending_identifications()  # Persist removal to disk
                                     
                                     # Support both old format (string) and new format (dict)
                                     if isinstance(pending_data, str):

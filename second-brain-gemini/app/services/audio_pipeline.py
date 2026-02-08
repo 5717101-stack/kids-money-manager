@@ -392,10 +392,11 @@ def process_audio_core(
         unknown_speakers_processed = []
         # Import pending_identifications from main module for voice imprinting
         try:
-            from app.main import pending_identifications, _voice_map_cache
+            from app.main import pending_identifications, _voice_map_cache, _save_pending_identifications
         except ImportError:
             pending_identifications = {}
             _voice_map_cache = {}
+            _save_pending_identifications = lambda: None
 
         # SELF-IDENTIFICATION SKIP
         self_names = {'itzik', 'itzhak', 'איציק', 'יצחק', 'speaker 1', 'speaker a', 'דובר 1'}
@@ -684,6 +685,7 @@ def process_audio_core(
                                 'file_path': slice_path,
                                 'speaker_id': speaker
                             }
+                            _save_pending_identifications()  # Persist to disk
                             print(f"   📝 Pending identification stored: {sent_msg_id} -> {speaker}")
                             unknown_speakers_processed.append(speaker)
                             if slice_path in slice_files_to_cleanup:
