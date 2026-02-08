@@ -1473,8 +1473,12 @@ async def webhook(request: Request, background_tasks: BackgroundTasks):
                                                 from app.services.knowledge_base_service import load_context
                                                 load_context(force_reload=True)
                                                 print("🔄 Knowledge Base cache refreshed")
+                                                
+                                                # Step 4b: Refresh Conversation Engine so it picks up the new data
+                                                conversation_engine.refresh_system_instruction()
+                                                print("🔄 Conversation Engine system instruction refreshed")
                                             except Exception as reload_err:
-                                                print(f"⚠️  KB cache reload failed (will reload on next query): {reload_err}")
+                                                print(f"⚠️  KB/CE reload failed (will reload on next query): {reload_err}")
                                             
                                             # Step 5: Confirm to user
                                             if whatsapp_provider:

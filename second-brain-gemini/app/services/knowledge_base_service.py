@@ -32,7 +32,7 @@ logger = logging.getLogger(__name__)
 
 # ── Configuration ──
 CACHE_TTL_SECONDS = 3600     # 1 hour cache for raw files
-MAX_CONTEXT_CHARS = 30000    # Generous limit for org-critical data
+MAX_CONTEXT_CHARS = 80000    # Gemini 2.5 Pro supports 1M+ tokens — 80K chars is safe
 LOCAL_KB_DIR = Path(__file__).parent.parent / "knowledge_base"
 
 # ── In-memory cache (thread-safe) ──
@@ -1257,7 +1257,7 @@ def get_identity_context_summary() -> str:
 
 
 def _smart_truncate(sections: List[str], max_chars: int) -> str:
-    """Prioritize JSON/org files, truncate others."""
+    """Prioritize JSON/org files, then images/vision, truncate others."""
     priority_high = []
     priority_medium = []
     priority_low = []
@@ -1266,7 +1266,9 @@ def _smart_truncate(sections: List[str], max_chars: int) -> str:
         header = section.split('\n')[0].lower()
         if any(kw in header for kw in ['.json', 'identity', 'org', 'graph', 'unified']):
             priority_high.append(section)
-        elif any(kw in header for kw in ['.txt', '.md', 'context', 'family']):
+        elif any(kw in header for kw in ['.txt', '.md', 'context', 'family',
+                                          'image', 'vision', 'מערכת', 'schedule',
+                                          '.jpg', '.png', '.webp', '.gif']):
             priority_medium.append(section)
         else:
             priority_low.append(section)
