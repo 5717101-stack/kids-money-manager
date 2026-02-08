@@ -1867,7 +1867,7 @@ async def webhook(request: Request, background_tasks: BackgroundTasks):
                                         print(f"\n{'='*60}")
                                         print(f"✈️  FLIGHT SEARCH INTERCEPTOR ACTIVATED")
                                         print(f"   Destination: {flight_dest}, Max price: €{flight_max_price or 'unlimited'}")
-                                        print(f"   Provider: {flight_search_service.provider}, Configured: {flight_search_service.is_configured}")
+                                        print(f"   Providers: Amadeus={flight_search_service.amadeus_configured}, SerpAPI={flight_search_service.serpapi_configured}, Kiwi={flight_search_service.kiwi_configured}")
                                         print(f"{'='*60}")
                                         
                                         try:
