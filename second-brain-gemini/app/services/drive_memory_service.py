@@ -977,6 +977,23 @@ class DriveMemoryService:
             return None
         
         try:
+            # ── DRIVE-LEVEL DEDUP: skip if file with same name already exists ──
+            try:
+                query = f"name = '{filename}' and '{context_folder_id}' in parents and trashed = false"
+                existing = self.service.files().list(
+                    q=query, fields="files(id, name)", pageSize=1
+                ).execute().get('files', [])
+                if existing:
+                    print(f"⚠️  File '{filename}' already exists in context folder (ID: {existing[0]['id']}) — skipping duplicate upload")
+                    return {
+                        'file_id': existing[0]['id'],
+                        'filename': filename,
+                        'web_view_link': '',
+                        'duplicate': True
+                    }
+            except Exception as dedup_err:
+                print(f"⚠️  Dedup check failed (uploading anyway): {dedup_err}")
+            
             print(f"📤 Uploading '{filename}' ({mime_type}) to Second_Brain_Context...")
             
             file_obj = io.BytesIO(file_bytes)

@@ -1466,6 +1466,11 @@ async def webhook(request: Request, background_tasks: BackgroundTasks):
                                         )
                                         
                                         if upload_result:
+                                            # If Drive-level dedup caught it, skip silently
+                                            if upload_result.get('duplicate'):
+                                                print(f"🔇 Duplicate file skipped — no notification sent")
+                                                continue
+                                            
                                             print(f"✅ File saved to Knowledge Base: {upload_result.get('file_id')}")
                                             
                                             # Step 4: Force KB cache reload so file is immediately queryable
