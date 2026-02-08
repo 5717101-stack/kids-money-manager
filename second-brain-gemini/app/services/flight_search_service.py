@@ -78,12 +78,16 @@ class FlightSearchService:
     """Search flights using Amadeus or Kiwi API (auto-detect)."""
 
     def __init__(self):
+        self._amadeus_token = None
+        self._amadeus_token_expiry = 0
+        self._configure()
+
+    def _configure(self):
+        """(Re)read credentials from env vars. Called at init and lazily on first use."""
         # ── Amadeus config ──
         self.amadeus_key = os.environ.get("AMADEUS_API_KEY", "")
         self.amadeus_secret = os.environ.get("AMADEUS_API_SECRET", "")
         self.amadeus_configured = bool(self.amadeus_key and self.amadeus_secret)
-        self._amadeus_token = None
-        self._amadeus_token_expiry = 0
 
         # ── Kiwi config (fallback) ──
         self.kiwi_key = os.environ.get("KIWI_API_KEY", "")
@@ -164,6 +168,9 @@ class FlightSearchService:
         Search for round-trip direct flights.
         Automatically uses the configured provider (Amadeus or Kiwi).
         """
+        # Lazy re-check: if not configured at init, try again (env vars may have been added)
+        if not self.is_configured:
+            self._configure()
         if not self.is_configured:
             return {
                 "success": False, "flights": [],

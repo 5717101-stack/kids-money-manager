@@ -1771,77 +1771,81 @@ async def webhook(request: Request, background_tasks: BackgroundTasks):
                                     # ================================================================
                                     from app.services.flight_search_service import flight_search_service, DESTINATION_MAP
                                     
-                                    if flight_search_service.is_configured:
-                                        msg_stripped = message_body_text.strip()
-                                        # Check if message matches a destination (with optional price)
-                                        flight_dest = None
-                                        flight_max_price = None
+                                    # Lazy re-check if not configured at startup
+                                    if not flight_search_service.is_configured:
+                                        flight_search_service._configure()
+                                    
+                                    # Always try to match — even if API is not configured, we log it
+                                    msg_stripped = message_body_text.strip()
+                                    flight_dest = None
+                                    flight_max_price = None
+                                    
+                                    for dest_key in DESTINATION_MAP:
+                                        # Match: "קפריסין" or "קפריסין 100" or "טיסות לקפריסין"
+                                        cleaned = msg_stripped.replace("טיסות ל", "").replace("טיסות", "").strip()
+                                        if cleaned == dest_key or cleaned.startswith(dest_key + " "):
+                                            flight_dest = dest_key
+                                            # Check for price after destination name
+                                            remainder = cleaned[len(dest_key):].strip()
+                                            if remainder.isdigit():
+                                                flight_max_price = int(remainder)
+                                            break
+                                    
+                                    if flight_dest:
+                                        print(f"\n{'='*60}")
+                                        print(f"✈️  FLIGHT SEARCH INTERCEPTOR ACTIVATED")
+                                        print(f"   Destination: {flight_dest}, Max price: €{flight_max_price or 'unlimited'}")
+                                        print(f"   Provider: {flight_search_service.provider}, Configured: {flight_search_service.is_configured}")
+                                        print(f"{'='*60}")
                                         
-                                        for dest_key in DESTINATION_MAP:
-                                            # Match: "קפריסין" or "קפריסין 100" or "טיסות לקפריסין"
-                                            cleaned = msg_stripped.replace("טיסות ל", "").replace("טיסות", "").strip()
-                                            if cleaned == dest_key or cleaned.startswith(dest_key + " "):
-                                                flight_dest = dest_key
-                                                # Check for price after destination name
-                                                remainder = cleaned[len(dest_key):].strip()
-                                                if remainder.isdigit():
-                                                    flight_max_price = int(remainder)
-                                                break
+                                        try:
+                                            # Send "searching" notification
+                                            if whatsapp_provider:
+                                                whatsapp_provider.send_whatsapp(
+                                                    message=f"✈️ מחפש טיסות ישירות ל{flight_dest}... ⏳",
+                                                    to=f"+{from_number}"
+                                                )
+                                            
+                                            results = flight_search_service.search_flights(
+                                                destination_key=flight_dest,
+                                                max_price_eur=flight_max_price,
+                                            )
+                                            
+                                            formatted = flight_search_service.format_results(
+                                                results,
+                                                query_text=f"{'עד €' + str(flight_max_price) if flight_max_price else 'כל המחירים'}"
+                                            )
+                                            
+                                            if whatsapp_provider:
+                                                whatsapp_provider.send_whatsapp(
+                                                    message=formatted,
+                                                    to=f"+{from_number}"
+                                                )
+                                            
+                                            # Save interaction
+                                            new_interaction = {
+                                                "user_message": message_body_text,
+                                                "ai_response": formatted[:500],
+                                                "timestamp": datetime.utcnow().isoformat() + "Z",
+                                                "message_id": message_id,
+                                                "from_number": from_number,
+                                                "type": "flight_search"
+                                            }
+                                            drive_memory_service.update_memory(new_interaction, background_tasks=background_tasks)
+                                            
+                                        except Exception as flight_err:
+                                            print(f"❌ Flight search error: {flight_err}")
+                                            import traceback
+                                            traceback.print_exc()
+                                            if whatsapp_provider:
+                                                whatsapp_provider.send_whatsapp(
+                                                    message=f"❌ שגיאה בחיפוש טיסות: {str(flight_err)[:100]}",
+                                                    to=f"+{from_number}"
+                                                )
                                         
-                                        if flight_dest:
-                                            print(f"\n{'='*60}")
-                                            print(f"✈️  FLIGHT SEARCH INTERCEPTOR ACTIVATED")
-                                            print(f"   Destination: {flight_dest}, Max price: €{flight_max_price or 'unlimited'}")
-                                            print(f"{'='*60}")
-                                            
-                                            try:
-                                                # Send "searching" notification
-                                                if whatsapp_provider:
-                                                    whatsapp_provider.send_whatsapp(
-                                                        message=f"✈️ מחפש טיסות ישירות ל{flight_dest}... ⏳",
-                                                        to=f"+{from_number}"
-                                                    )
-                                                
-                                                results = flight_search_service.search_flights(
-                                                    destination_key=flight_dest,
-                                                    max_price_eur=flight_max_price,
-                                                )
-                                                
-                                                formatted = flight_search_service.format_results(
-                                                    results,
-                                                    query_text=f"{'עד €' + str(flight_max_price) if flight_max_price else 'כל המחירים'}"
-                                                )
-                                                
-                                                if whatsapp_provider:
-                                                    whatsapp_provider.send_whatsapp(
-                                                        message=formatted,
-                                                        to=f"+{from_number}"
-                                                    )
-                                                
-                                                # Save interaction
-                                                new_interaction = {
-                                                    "user_message": message_body_text,
-                                                    "ai_response": formatted[:500],
-                                                    "timestamp": datetime.utcnow().isoformat() + "Z",
-                                                    "message_id": message_id,
-                                                    "from_number": from_number,
-                                                    "type": "flight_search"
-                                                }
-                                                drive_memory_service.update_memory(new_interaction, background_tasks=background_tasks)
-                                                
-                                            except Exception as flight_err:
-                                                print(f"❌ Flight search error: {flight_err}")
-                                                import traceback
-                                                traceback.print_exc()
-                                                if whatsapp_provider:
-                                                    whatsapp_provider.send_whatsapp(
-                                                        message=f"❌ שגיאה בחיפוש טיסות: {str(flight_err)[:100]}",
-                                                        to=f"+{from_number}"
-                                                    )
-                                            
-                                            print(f"🛑 FLIGHT SEARCH COMPLETE")
-                                            print(f"{'='*60}\n")
-                                            continue
+                                        print(f"🛑 FLIGHT SEARCH COMPLETE")
+                                        print(f"{'='*60}\n")
+                                        continue
                                     
                                     # ================================================================
                                     # CONVERSATION ENGINE — LLM-First Architecture
