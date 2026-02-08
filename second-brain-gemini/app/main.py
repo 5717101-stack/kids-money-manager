@@ -635,74 +635,74 @@ async def startup_event():
         traceback.print_exc()
     
     # ================================================================
-    # DEPLOYMENT NOTIFICATION — send once per version via Drive lock
+    # DEPLOYMENT NOTIFICATION
+    # Atomic file lock: os.O_CREAT|O_EXCL is kernel-level atomic.
+    # If 2 processes race, exactly ONE wins. Zero race condition.
     # ================================================================
     if is_production:
+        lock_path = f'/tmp/_deploy_notified_{current_version}'
+        got_lock = False
         try:
-            # Drive lock — check if this version was already notified
-            if drive_memory_service.is_configured:
-                mem = drive_memory_service.get_memory()
-                if mem.get('_last_notified_version') == current_version:
-                    print(f"🔇 v{current_version} already notified — skipping")
-                else:
-                    # Lock BEFORE sending (write to Drive)
-                    mem['_last_notified_version'] = current_version
-                    drive_memory_service._upload_to_drive(mem)
-                    print(f"🔒 Lock written to Drive for v{current_version}")
-                    
-                    # Build and send
-                    from datetime import timezone, timedelta
-                    from app.services.meta_whatsapp_service import meta_whatsapp_service
-                    
-                    israel_time = datetime.now(timezone.utc) + timedelta(hours=2)
-                    time_str = israel_time.strftime('%d/%m/%Y %H:%M')
-                    
-                    changes = ""
-                    try:
-                        import subprocess
-                        r = subprocess.run(
-                            ['git', 'log', '-1', '--pretty=%B'],
-                            capture_output=True, text=True, timeout=5,
-                            cwd=Path(__file__).parent.parent
-                        )
-                        if r.returncode == 0 and r.stdout.strip():
-                            msg = r.stdout.strip()
-                            changes = msg.split(' - ', 1)[1] if ' - ' in msg else msg
-                            changes = changes[:150]
-                    except Exception:
-                        pass
-                    if not changes:
-                        commit_file = Path(__file__).parent.parent / ".last_commit"
-                        if commit_file.exists():
-                            try:
-                                changes = commit_file.read_text().strip()[:150]
-                            except Exception:
-                                pass
-                    if not changes:
-                        changes = "עדכון מערכת"
-                    
-                    notification = (
-                        f"🚀 *גרסה חדשה עלתה לפרודקשן!*\n\n"
-                        f"📦 גרסה: *{current_version}*\n"
-                        f"⏰ זמן: {time_str} (שעון ישראל)\n\n"
-                        f"📝 *שינויים עיקריים:*\n{changes}\n\n"
-                        f"✅ השרת פעיל ומוכן לעבודה!"
+            fd = os.open(lock_path, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+            os.close(fd)
+            got_lock = True
+            print(f"🔒 Got deploy lock for v{current_version}")
+        except FileExistsError:
+            print(f"🔇 v{current_version} already notified — lock file exists")
+        except Exception as lock_err:
+            print(f"⚠️  Lock check failed ({lock_err}) — sending anyway")
+            got_lock = True
+        
+        if got_lock:
+            try:
+                from datetime import timezone, timedelta
+                from app.services.meta_whatsapp_service import meta_whatsapp_service
+                
+                israel_time = datetime.now(timezone.utc) + timedelta(hours=2)
+                time_str = israel_time.strftime('%d/%m/%Y %H:%M')
+                
+                changes = ""
+                try:
+                    import subprocess
+                    r = subprocess.run(
+                        ['git', 'log', '-1', '--pretty=%B'],
+                        capture_output=True, text=True, timeout=5,
+                        cwd=Path(__file__).parent.parent
                     )
-                    
-                    if meta_whatsapp_service.is_configured:
-                        result = meta_whatsapp_service.send_whatsapp(notification)
-                        if result.get('success'):
-                            print(f"✅ Deploy notification sent (v{current_version})")
-                        else:
-                            print(f"⚠️  Send failed: {result.get('error')}")
+                    if r.returncode == 0 and r.stdout.strip():
+                        msg = r.stdout.strip()
+                        changes = msg.split(' - ', 1)[1] if ' - ' in msg else msg
+                        changes = changes[:150]
+                except Exception:
+                    pass
+                if not changes:
+                    commit_file = Path(__file__).parent.parent / ".last_commit"
+                    if commit_file.exists():
+                        try:
+                            changes = commit_file.read_text().strip()[:150]
+                        except Exception:
+                            pass
+                if not changes:
+                    changes = "עדכון מערכת"
+                
+                notification = (
+                    f"🚀 *גרסה חדשה עלתה לפרודקשן!*\n\n"
+                    f"📦 גרסה: *{current_version}*\n"
+                    f"⏰ זמן: {time_str} (שעון ישראל)\n\n"
+                    f"📝 *שינויים עיקריים:*\n{changes}\n\n"
+                    f"✅ השרת פעיל ומוכן לעבודה!"
+                )
+                
+                if meta_whatsapp_service.is_configured:
+                    result = meta_whatsapp_service.send_whatsapp(notification)
+                    if result.get('success'):
+                        print(f"✅ Deploy notification sent (v{current_version})")
                     else:
-                        print("⚠️  WhatsApp not configured")
-            else:
-                print("⚠️  Drive not configured — skipping notification")
-        except Exception as e:
-            print(f"⚠️  Deploy notification error: {e}")
-            import traceback
-            traceback.print_exc()
+                        print(f"⚠️  Send failed: {result.get('error')}")
+            except Exception as e:
+                print(f"⚠️  Deploy notification error: {e}")
+                import traceback
+                traceback.print_exc()
 
 # Get the project root directory (parent of app/)
 _base_dir = Path(__file__).parent.parent.resolve()
