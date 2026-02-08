@@ -1,5 +1,9 @@
 """
-Flight Search Service — Travel Agent via Kiwi.com Tequila API
+Flight Search Service — Travel Agent
+
+Supports multiple providers with automatic fallback:
+  1. Amadeus Self-Service API (free tier: 2,000 calls/month)
+  2. Kiwi.com Tequila API (free tier)
 
 Searches for flights (direct only, including low-cost carriers)
 and formats results for WhatsApp.
@@ -11,11 +15,13 @@ Usage:
     message = flight_search_service.format_results(results)
 
 Environment:
-    KIWI_API_KEY — API key from https://tequila.kiwi.com
+    AMADEUS_API_KEY + AMADEUS_API_SECRET — from https://developers.amadeus.com
+    KIWI_API_KEY — from https://tequila.kiwi.com (fallback)
 """
 
 import os
 import logging
+import time
 from datetime import datetime, timedelta
 from typing import Optional, List, Dict, Any
 import requests
@@ -31,6 +37,8 @@ DESTINATION_MAP = {
     "לרנקה": {"code": "LCA", "name": "לרנקה, קפריסין", "country": "CY"},
     "יוון": {"code": "ATH", "name": "אתונה, יוון", "country": "GR"},
     "אתונה": {"code": "ATH", "name": "אתונה, יוון", "country": "GR"},
+    "רודוס": {"code": "RHO", "name": "רודוס, יוון", "country": "GR"},
+    "כרתים": {"code": "HER", "name": "כרתים, יוון", "country": "GR"},
     "רומא": {"code": "FCO", "name": "רומא, איטליה", "country": "IT"},
     "מילאנו": {"code": "MXP", "name": "מילאנו, איטליה", "country": "IT"},
     "ברצלונה": {"code": "BCN", "name": "ברצלונה, ספרד", "country": "ES"},
@@ -49,20 +57,96 @@ DESTINATION_MAP = {
 }
 
 ORIGIN_AIRPORT = "TLV"  # Tel Aviv Ben Gurion
-TEQUILA_API_URL = "https://api.tequila.kiwi.com/v2/search"
+
+# ═══════════════════════════════════════════════════════════════════════
+# AIRLINE CODE → NAME MAP (common airlines from TLV)
+# ═══════════════════════════════════════════════════════════════════════
+AIRLINE_NAMES = {
+    "LY": "El Al", "6H": "Israir", "IZ": "Arkia",
+    "W6": "Wizz Air", "FR": "Ryanair", "U2": "easyJet",
+    "W4": "Wizz Air Malta", "5O": "ASL Airlines",
+    "TK": "Turkish Airlines", "PC": "Pegasus",
+    "A3": "Aegean", "CY": "Cyprus Airways",
+    "LH": "Lufthansa", "AF": "Air France", "BA": "British Airways",
+    "AZ": "ITA Airways", "VY": "Vueling", "OS": "Austrian",
+    "LO": "LOT Polish", "OK": "Czech Airlines",
+    "RO": "TAROM", "BT": "airBaltic",
+}
 
 
 class FlightSearchService:
-    """Search flights using Kiwi.com Tequila API."""
+    """Search flights using Amadeus or Kiwi API (auto-detect)."""
 
     def __init__(self):
-        self.api_key = os.environ.get("KIWI_API_KEY", "")
-        self.is_configured = bool(self.api_key)
-        if self.is_configured:
+        # ── Amadeus config ──
+        self.amadeus_key = os.environ.get("AMADEUS_API_KEY", "")
+        self.amadeus_secret = os.environ.get("AMADEUS_API_SECRET", "")
+        self.amadeus_configured = bool(self.amadeus_key and self.amadeus_secret)
+        self._amadeus_token = None
+        self._amadeus_token_expiry = 0
+
+        # ── Kiwi config (fallback) ──
+        self.kiwi_key = os.environ.get("KIWI_API_KEY", "")
+        self.kiwi_configured = bool(self.kiwi_key)
+
+        # ── Overall status ──
+        self.is_configured = self.amadeus_configured or self.kiwi_configured
+        self.provider = "none"
+
+        if self.amadeus_configured:
+            self.provider = "amadeus"
+            print("✅ Flight Search Service configured (Amadeus Self-Service API)")
+        elif self.kiwi_configured:
+            self.provider = "kiwi"
             print("✅ Flight Search Service configured (Kiwi Tequila API)")
         else:
-            print("ℹ️  Flight Search Service not configured (KIWI_API_KEY not set)")
+            print("ℹ️  Flight Search Service not configured (set AMADEUS_API_KEY+AMADEUS_API_SECRET or KIWI_API_KEY)")
 
+    # ═══════════════════════════════════════════════════════════════════
+    # AMADEUS AUTH — OAuth2 token management
+    # ═══════════════════════════════════════════════════════════════════
+    def _get_amadeus_token(self) -> Optional[str]:
+        """Get or refresh Amadeus OAuth2 access token."""
+        if self._amadeus_token and time.time() < self._amadeus_token_expiry - 60:
+            return self._amadeus_token
+
+        try:
+            resp = requests.post(
+                "https://test.api.amadeus.com/v1/security/oauth2/token",
+                data={
+                    "grant_type": "client_credentials",
+                    "client_id": self.amadeus_key,
+                    "client_secret": self.amadeus_secret,
+                },
+                timeout=15,
+            )
+            if resp.status_code != 200:
+                print(f"❌ Amadeus auth failed: {resp.status_code} — {resp.text[:300]}")
+                return None
+
+            data = resp.json()
+            self._amadeus_token = data["access_token"]
+            self._amadeus_token_expiry = time.time() + data.get("expires_in", 1799)
+            print(f"🔑 Amadeus token refreshed (expires in {data.get('expires_in', '?')}s)")
+            return self._amadeus_token
+        except Exception as e:
+            print(f"❌ Amadeus auth error: {e}")
+            return None
+
+    # ═══════════════════════════════════════════════════════════════════
+    # RESOLVE DESTINATION
+    # ═══════════════════════════════════════════════════════════════════
+    def _resolve_destination(self, destination_key: str) -> Optional[Dict]:
+        """Resolve Hebrew destination name to airport info."""
+        dest_key = destination_key.strip()
+        for key, info in DESTINATION_MAP.items():
+            if key == dest_key or key in dest_key or dest_key in key:
+                return info
+        return None
+
+    # ═══════════════════════════════════════════════════════════════════
+    # UNIFIED SEARCH — routes to active provider
+    # ═══════════════════════════════════════════════════════════════════
     def search_flights(
         self,
         destination_key: str,
@@ -78,48 +162,218 @@ class FlightSearchService:
     ) -> Dict[str, Any]:
         """
         Search for round-trip direct flights.
-
-        Args:
-            destination_key: Hebrew destination name (e.g., "קפריסין")
-            max_price_eur: Maximum price per person in EUR (round-trip)
-            date_from: Search start date (DD/MM/YYYY). Default: tomorrow
-            date_to: Search end date (DD/MM/YYYY). Default: +60 days
-            return_from: Return date start. If None, uses nights_from/nights_to
-            return_to: Return date end
-            nights_from: Min nights at destination (default 2)
-            nights_to: Max nights at destination (default 7)
-            adults: Number of adults (default 1)
-            limit: Max results (default 5)
-
-        Returns:
-            Dict with 'success', 'flights', 'destination', 'error'
+        Automatically uses the configured provider (Amadeus or Kiwi).
         """
         if not self.is_configured:
-            return {"success": False, "flights": [], "error": "KIWI_API_KEY not configured"}
+            return {
+                "success": False, "flights": [],
+                "error": "שירות חיפוש טיסות לא מוגדר. הגדר AMADEUS_API_KEY+AMADEUS_API_SECRET או KIWI_API_KEY."
+            }
 
         # Resolve destination
-        dest_key = destination_key.strip().lower()
-        dest_info = None
-        for key, info in DESTINATION_MAP.items():
-            if key in dest_key or dest_key in key:
-                dest_info = info
-                break
-
+        dest_info = self._resolve_destination(destination_key)
         if not dest_info:
             return {
-                "success": False,
-                "flights": [],
+                "success": False, "flights": [],
                 "error": f"לא מכיר את היעד '{destination_key}'. יעדים זמינים: {', '.join(DESTINATION_MAP.keys())}",
             }
 
-        # Build date ranges
+        if self.provider == "amadeus":
+            return self._search_amadeus(dest_info, max_price_eur, date_from, date_to,
+                                        nights_from, nights_to, adults, limit)
+        else:
+            return self._search_kiwi(dest_info, max_price_eur, date_from, date_to,
+                                     return_from, return_to, nights_from, nights_to, adults, limit)
+
+    # ═══════════════════════════════════════════════════════════════════
+    # AMADEUS SEARCH
+    # ═══════════════════════════════════════════════════════════════════
+    def _search_amadeus(
+        self, dest_info, max_price_eur, date_from, date_to,
+        nights_from, nights_to, adults, limit
+    ) -> Dict[str, Any]:
+        """Search flights via Amadeus Flight Offers Search API."""
+        token = self._get_amadeus_token()
+        if not token:
+            return {"success": False, "flights": [], "error": "Amadeus authentication failed"}
+
+        today = datetime.now()
+        # Amadeus needs specific departure dates, so we search multiple dates
+        # and collect the cheapest results
+        if date_from:
+            try:
+                start_date = datetime.strptime(date_from, "%d/%m/%Y")
+            except ValueError:
+                start_date = today + timedelta(days=1)
+        else:
+            start_date = today + timedelta(days=1)
+
+        if date_to:
+            try:
+                end_date = datetime.strptime(date_to, "%d/%m/%Y")
+            except ValueError:
+                end_date = today + timedelta(days=60)
+        else:
+            end_date = today + timedelta(days=60)
+
+        headers = {
+            "Authorization": f"Bearer {token}",
+            "Accept": "application/json",
+        }
+
+        all_flights = []
+
+        # Search every 3rd day in the range to cover options efficiently
+        search_date = start_date
+        api_calls = 0
+        max_api_calls = 10  # Limit API calls per search
+
+        while search_date <= end_date and api_calls < max_api_calls:
+            for stay_nights in range(nights_from, min(nights_to + 1, nights_from + 3)):
+                return_date = search_date + timedelta(days=stay_nights)
+
+                params = {
+                    "originLocationCode": ORIGIN_AIRPORT,
+                    "destinationLocationCode": dest_info["code"],
+                    "departureDate": search_date.strftime("%Y-%m-%d"),
+                    "returnDate": return_date.strftime("%Y-%m-%d"),
+                    "adults": adults,
+                    "nonStop": "true",  # DIRECT FLIGHTS ONLY
+                    "currencyCode": "EUR",
+                    "max": 3,
+                }
+
+                if max_price_eur:
+                    params["maxPrice"] = max_price_eur
+
+                try:
+                    print(f"  ✈️  Amadeus: {ORIGIN_AIRPORT}→{dest_info['code']} "
+                          f"{search_date.strftime('%d/%m')} ({stay_nights}n)")
+
+                    resp = requests.get(
+                        "https://test.api.amadeus.com/v2/shopping/flight-offers",
+                        params=params, headers=headers, timeout=20,
+                    )
+                    api_calls += 1
+
+                    if resp.status_code == 200:
+                        data = resp.json()
+                        offers = data.get("data", [])
+                        dictionaries = data.get("dictionaries", {})
+                        carriers = dictionaries.get("carriers", {})
+
+                        for offer in offers:
+                            parsed = self._parse_amadeus_offer(offer, carriers, stay_nights)
+                            if parsed:
+                                all_flights.append(parsed)
+                    elif resp.status_code == 429:
+                        print(f"  ⚠️  Amadeus rate limit — pausing")
+                        time.sleep(1)
+                    else:
+                        print(f"  ⚠️  Amadeus {resp.status_code}: {resp.text[:200]}")
+
+                except requests.Timeout:
+                    print(f"  ⚠️  Amadeus timeout for {search_date.strftime('%d/%m')}")
+                except Exception as e:
+                    print(f"  ⚠️  Amadeus error: {e}")
+
+            search_date += timedelta(days=3)
+
+        # Sort by price and deduplicate
+        all_flights.sort(key=lambda x: x.get("price_eur", 9999))
+
+        # Remove near-duplicates (same price + same dates)
+        seen = set()
+        unique_flights = []
+        for f in all_flights:
+            key = (f["price_eur"], f["depart_date"], f["return_date"], f["airline"])
+            if key not in seen:
+                seen.add(key)
+                unique_flights.append(f)
+
+        final_flights = unique_flights[:limit]
+
+        print(f"✅ Amadeus: found {len(final_flights)} unique flights "
+              f"(from {len(all_flights)} total, {api_calls} API calls)")
+
+        return {
+            "success": True,
+            "flights": final_flights,
+            "destination": dest_info,
+            "total_results": len(unique_flights),
+            "provider": "Amadeus",
+        }
+
+    def _parse_amadeus_offer(self, offer: Dict, carriers: Dict, nights: int) -> Optional[Dict]:
+        """Parse a single Amadeus flight offer into our standard format."""
+        try:
+            price = float(offer.get("price", {}).get("grandTotal", 0))
+            itineraries = offer.get("itineraries", [])
+
+            if len(itineraries) < 2:
+                return None
+
+            # Outbound
+            out_segments = itineraries[0].get("segments", [])
+            ret_segments = itineraries[1].get("segments", [])
+
+            if not out_segments or not ret_segments:
+                return None
+
+            out_seg = out_segments[0]  # Direct flight = 1 segment
+            ret_seg = ret_segments[0]
+
+            # Resolve airline name
+            carrier_code = out_seg.get("carrierCode", "")
+            airline_name = carriers.get(carrier_code, AIRLINE_NAMES.get(carrier_code, carrier_code))
+
+            # Build Google Flights link
+            out_date = out_seg.get("departure", {}).get("at", "")[:10]
+            ret_date = ret_seg.get("departure", {}).get("at", "")[:10]
+            dest_code = out_seg.get("arrival", {}).get("iataCode", "")
+            google_flights_link = (
+                f"https://www.google.com/travel/flights?"
+                f"q=flights+{ORIGIN_AIRPORT}+to+{dest_code}+"
+                f"on+{out_date}+return+{ret_date}"
+            )
+
+            return {
+                "price_eur": int(price),
+                "airline": airline_name,
+                "deep_link": google_flights_link,
+                # Outbound
+                "depart_date": _format_datetime(out_seg.get("departure", {}).get("at", "")),
+                "depart_time": _format_time(out_seg.get("departure", {}).get("at", "")),
+                "arrive_time": _format_time(out_seg.get("arrival", {}).get("at", "")),
+                "depart_airport": out_seg.get("departure", {}).get("iataCode", ""),
+                "arrive_airport": out_seg.get("arrival", {}).get("iataCode", ""),
+                # Return
+                "return_date": _format_datetime(ret_seg.get("departure", {}).get("at", "")),
+                "return_depart_time": _format_time(ret_seg.get("departure", {}).get("at", "")),
+                "return_arrive_time": _format_time(ret_seg.get("arrival", {}).get("at", "")),
+                # Duration
+                "duration_outbound": _parse_iso_duration(itineraries[0].get("duration", "")),
+                "duration_return": _parse_iso_duration(itineraries[1].get("duration", "")),
+                "nights": nights,
+            }
+        except Exception as e:
+            print(f"  ⚠️  Parse error: {e}")
+            return None
+
+    # ═══════════════════════════════════════════════════════════════════
+    # KIWI SEARCH (fallback)
+    # ═══════════════════════════════════════════════════════════════════
+    def _search_kiwi(
+        self, dest_info, max_price_eur, date_from, date_to,
+        return_from, return_to, nights_from, nights_to, adults, limit
+    ) -> Dict[str, Any]:
+        """Search flights via Kiwi.com Tequila API."""
         today = datetime.now()
         if not date_from:
             date_from = (today + timedelta(days=1)).strftime("%d/%m/%Y")
         if not date_to:
             date_to = (today + timedelta(days=60)).strftime("%d/%m/%Y")
 
-        # API parameters
         params = {
             "fly_from": ORIGIN_AIRPORT,
             "fly_to": dest_info["code"],
@@ -128,7 +382,7 @@ class FlightSearchService:
             "flight_type": "round",
             "nights_in_dst_from": nights_from,
             "nights_in_dst_to": nights_to,
-            "max_stopovers": 0,  # DIRECT FLIGHTS ONLY
+            "max_stopovers": 0,
             "curr": "EUR",
             "sort": "price",
             "asc": 1,
@@ -136,10 +390,8 @@ class FlightSearchService:
             "limit": limit,
             "locale": "he",
         }
-
         if max_price_eur:
             params["price_to"] = max_price_eur
-
         if return_from:
             params["return_from"] = return_from
             params.pop("nights_in_dst_from", None)
@@ -147,51 +399,43 @@ class FlightSearchService:
         if return_to:
             params["return_to"] = return_to
 
-        headers = {
-            "apikey": self.api_key,
-            "Content-Type": "application/json",
-        }
+        headers = {"apikey": self.kiwi_key, "Content-Type": "application/json"}
 
         try:
-            print(f"✈️  Searching flights: {ORIGIN_AIRPORT} → {dest_info['code']} "
+            print(f"✈️  Kiwi: {ORIGIN_AIRPORT} → {dest_info['code']} "
                   f"(max €{max_price_eur or 'unlimited'}, {date_from}–{date_to})")
 
-            resp = requests.get(TEQUILA_API_URL, params=params, headers=headers, timeout=30)
-
+            resp = requests.get(
+                "https://api.tequila.kiwi.com/v2/search",
+                params=params, headers=headers, timeout=30,
+            )
             if resp.status_code != 200:
-                error_body = resp.text[:500]
-                print(f"❌ Kiwi API error {resp.status_code}: {error_body}")
-                return {"success": False, "flights": [], "error": f"API error: {resp.status_code}"}
+                print(f"❌ Kiwi API error {resp.status_code}: {resp.text[:500]}")
+                return {"success": False, "flights": [], "error": f"Kiwi API error: {resp.status_code}"}
 
             data = resp.json()
             flights = data.get("data", [])
-
-            print(f"✅ Found {len(flights)} flights (total available: {data.get('_results', 0)})")
+            print(f"✅ Kiwi: found {len(flights)} flights")
 
             parsed_flights = []
             for f in flights:
-                # Parse outbound and return legs
                 outbound_legs = [r for r in f.get("route", []) if r.get("return") == 0]
                 return_legs = [r for r in f.get("route", []) if r.get("return") == 1]
-
-                outbound_info = outbound_legs[0] if outbound_legs else {}
-                return_info = return_legs[0] if return_legs else {}
+                out = outbound_legs[0] if outbound_legs else {}
+                ret = return_legs[0] if return_legs else {}
 
                 parsed_flights.append({
                     "price_eur": f.get("price"),
                     "airline": ", ".join(f.get("airlines", [])),
                     "deep_link": f.get("deep_link", ""),
-                    # Outbound
-                    "depart_date": _format_datetime(outbound_info.get("local_departure", "")),
-                    "depart_time": _format_time(outbound_info.get("local_departure", "")),
-                    "arrive_time": _format_time(outbound_info.get("local_arrival", "")),
-                    "depart_airport": outbound_info.get("flyFrom", ""),
-                    "arrive_airport": outbound_info.get("flyTo", ""),
-                    # Return
-                    "return_date": _format_datetime(return_info.get("local_departure", "")),
-                    "return_depart_time": _format_time(return_info.get("local_departure", "")),
-                    "return_arrive_time": _format_time(return_info.get("local_arrival", "")),
-                    # Duration
+                    "depart_date": _format_datetime(out.get("local_departure", "")),
+                    "depart_time": _format_time(out.get("local_departure", "")),
+                    "arrive_time": _format_time(out.get("local_arrival", "")),
+                    "depart_airport": out.get("flyFrom", ""),
+                    "arrive_airport": out.get("flyTo", ""),
+                    "return_date": _format_datetime(ret.get("local_departure", "")),
+                    "return_depart_time": _format_time(ret.get("local_departure", "")),
+                    "return_arrive_time": _format_time(ret.get("local_arrival", "")),
                     "duration_outbound": _format_duration(f.get("duration", {}).get("departure", 0)),
                     "duration_return": _format_duration(f.get("duration", {}).get("return", 0)),
                     "nights": f.get("nightsInDest", "?"),
@@ -202,17 +446,18 @@ class FlightSearchService:
                 "flights": parsed_flights,
                 "destination": dest_info,
                 "total_results": data.get("_results", len(parsed_flights)),
+                "provider": "Kiwi",
             }
-
         except requests.Timeout:
             return {"success": False, "flights": [], "error": "Timeout — try again"}
         except Exception as e:
-            logger.error(f"Flight search error: {e}")
-            print(f"❌ Flight search error: {e}")
-            import traceback
-            traceback.print_exc()
+            logger.error(f"Kiwi search error: {e}")
+            print(f"❌ Kiwi search error: {e}")
             return {"success": False, "flights": [], "error": str(e)}
 
+    # ═══════════════════════════════════════════════════════════════════
+    # FORMAT RESULTS
+    # ═══════════════════════════════════════════════════════════════════
     def format_results(self, results: Dict[str, Any], query_text: str = "") -> str:
         """Format flight search results for WhatsApp."""
         if not results.get("success"):
@@ -221,6 +466,7 @@ class FlightSearchService:
         flights = results.get("flights", [])
         dest = results.get("destination", {})
         dest_name = dest.get("name", "?")
+        provider = results.get("provider", "")
 
         if not flights:
             return f"✈️ לא נמצאו טיסות ישירות ל{dest_name} בטווח המחיר המבוקש."
@@ -228,7 +474,11 @@ class FlightSearchService:
         lines = [f"✈️ *טיסות ישירות ל{dest_name}*"]
         if query_text:
             lines.append(f"🔍 _{query_text}_")
-        lines.append(f"📊 נמצאו {results.get('total_results', len(flights))} תוצאות\n")
+        lines.append(f"📊 נמצאו {results.get('total_results', len(flights))} תוצאות")
+        if provider:
+            lines.append(f"_מקור: {provider}_\n")
+        else:
+            lines.append("")
 
         for i, f in enumerate(flights, 1):
             lines.append(f"{'─' * 30}")
@@ -287,7 +537,8 @@ def _format_datetime(iso_str: str) -> str:
     if not iso_str:
         return "?"
     try:
-        dt = datetime.fromisoformat(iso_str.replace("Z", "+00:00"))
+        clean = iso_str.replace("Z", "+00:00") if "T" in iso_str else iso_str
+        dt = datetime.fromisoformat(clean)
         day_names = ["שני", "שלישי", "רביעי", "חמישי", "שישי", "שבת", "ראשון"]
         day_name = day_names[dt.weekday()]
         return f"{dt.strftime('%d/%m')} ({day_name})"
@@ -300,7 +551,8 @@ def _format_time(iso_str: str) -> str:
     if not iso_str:
         return "?"
     try:
-        dt = datetime.fromisoformat(iso_str.replace("Z", "+00:00"))
+        clean = iso_str.replace("Z", "+00:00") if "T" in iso_str else iso_str
+        dt = datetime.fromisoformat(clean)
         return dt.strftime("%H:%M")
     except Exception:
         return iso_str[11:16] if len(iso_str) >= 16 else iso_str
@@ -318,6 +570,30 @@ def _format_duration(seconds: int) -> str:
         return f"{hours}h"
     else:
         return f"{minutes}m"
+
+
+def _parse_iso_duration(iso_dur: str) -> str:
+    """ISO 8601 duration 'PT2H30M' → '2h 30m'"""
+    if not iso_dur:
+        return "?"
+    try:
+        dur = iso_dur.replace("PT", "")
+        hours = 0
+        minutes = 0
+        if "H" in dur:
+            h_part, dur = dur.split("H")
+            hours = int(h_part)
+        if "M" in dur:
+            m_part = dur.replace("M", "")
+            minutes = int(m_part) if m_part else 0
+        if hours and minutes:
+            return f"{hours}h {minutes}m"
+        elif hours:
+            return f"{hours}h"
+        else:
+            return f"{minutes}m"
+    except Exception:
+        return iso_dur
 
 
 # ═══════════════════════════════════════════════════════════════════════
