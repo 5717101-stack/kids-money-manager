@@ -957,8 +957,27 @@ class ConversationEngine:
 
             print(f"{'='*60}")
 
+            # ── Pronoun context injection ──
+            # If the user says "שלה", "שלו", etc. and we know who they were
+            # talking about, inject a context hint so Gemini resolves correctly
+            # even in function-calling mode.
+            enriched_message = message
+            try:
+                from app.services.identity_resolver_service import identity_resolver
+                if identity_resolver.has_pronouns(message):
+                    last_entity = identity_resolver.get_last_entity(phone)
+                    if last_entity:
+                        entity_name = last_entity.get("canonical_name", "")
+                        hebrew_name = last_entity.get("hebrew_name", "") or last_entity.get("name", "")
+                        display = hebrew_name or entity_name
+                        if entity_name:
+                            enriched_message = f"[הקשר: המשתמש מתייחס ל-{display} ({entity_name}) מההודעה הקודמת]\n{message}"
+                            print(f"   🎯 Pronoun context injected: {display} ({entity_name})")
+            except Exception as pr_err:
+                print(f"   ⚠️ Pronoun resolution failed: {pr_err}")
+
             # Send message to Gemini
-            response = chat.send_message(message)
+            response = chat.send_message(enriched_message)
 
             # Handle tool calls (iterative — Gemini may call multiple tools)
             round_count = 0
@@ -988,6 +1007,33 @@ class ConversationEngine:
 
                     result_str = _execute_tool(fn_name, fn_args)
                     print(f"      ← {result_str[:100]}{'...' if len(result_str) > 100 else ''}")
+
+                    # ── Track last-mentioned person for pronoun resolution ──
+                    if fn_name == "search_person":
+                        try:
+                            from app.services.identity_resolver_service import identity_resolver
+                            parsed = json.loads(result_str)
+                            results = parsed.get("results", [])
+                            if len(results) == 1:
+                                # Exact match — track this person
+                                person = results[0]
+                                identity_resolver.update_context(
+                                    phone=phone,
+                                    department=person.get("department", ""),
+                                    manager=person.get("reports_to", ""),
+                                    entity=person,
+                                )
+                                print(f"      🎯 Tracking entity: {person.get('canonical_name', '?')}")
+                            elif results:
+                                # Multiple results — track the first (most likely)
+                                person = results[0]
+                                identity_resolver.update_context(
+                                    phone=phone,
+                                    entity=person,
+                                )
+                                print(f"      🎯 Tracking entity (first of {len(results)}): {person.get('canonical_name', '?')}")
+                        except Exception:
+                            pass
 
                     tool_responses.append(
                         genai.protos.Part(
@@ -1098,16 +1144,104 @@ class ConversationEngine:
             }
 
     def refresh_system_instruction(self):
-        """Reload KB context into system instruction (e.g., after KB update)."""
-        # Preserve references before re-init
-        saved_profile = self._user_profile
-        saved_dms = self._drive_memory_service
-        saved_wm = self._working_memory
-        self._initialized = False
-        self._sessions.clear()
-        self.initialize(user_profile=saved_profile, drive_memory_service=saved_dms)
-        self._working_memory = saved_wm  # Restore working memory
-        print(f"🔄 [ConvEngine] System instruction refreshed, all sessions cleared")
+        """Reload KB context into system instruction (e.g., after KB update).
+        
+        IMPORTANT: Does NOT clear existing sessions. Active chat sessions
+        keep their history intact. New sessions will use the updated KB data.
+        Only the model template is rebuilt — existing ChatSession objects
+        continue working with their accumulated context.
+        """
+        from app.services.model_discovery import configure_genai, MODEL_MAPPING
+        from app.services.knowledge_base_service import get_system_instruction_block
+
+        api_key = os.environ.get("GOOGLE_API_KEY", "")
+        if not api_key:
+            return
+
+        configure_genai(api_key)
+
+        # Rebuild the system instruction with fresh KB data
+        kb_block = get_system_instruction_block()
+        profile_block = self._build_profile_block()
+
+        old_len = len(self._kb_system_instruction)
+
+        self._kb_system_instruction = f"""אתה עוזר ארגוני מקצועי בשם "Second Brain".
+אתה עונה בעברית אלא אם נשאלת באנגלית.
+יש לך גישה לכלים (functions) שמאפשרים לך לחפש, לעדכן ולהיזכר במידע.
+
+{profile_block}
+
+══════════════════════════════════════════════════════
+כללי התנהגות:
+══════════════════════════════════════════════════════
+1. לשאלות על אנשים, תפקידים, שכר, דירוגים, היררכיה — תמיד השתמש בכלי search_person או get_reports.
+2. אם המשתמש מבקש לעדכן או לשמור מידע — השתמש בכלי save_fact. זה עובד גם למידע ארגוני (שכר, תפקיד, מנהל) וגם למידע אישי/משפחתי (בן זוג, ילדים, כינוי).
+   דוגמאות:
+   - "לבן הזוג של חן קוראים עודד" → search_person("חן"), ואז save_fact(person_name="Chen ...", field="spouse", value="עודד")
+   - "היובל קיבל העלאה ל-60K" → save_fact(person_name="Yuval Laikin", field="salary", value="60000")
+   - "לשי יש ילד חדש שקוראים לו נועם" → save_fact(person_name="Shay Hovan", field="children", value="נועם")
+3. לשאלות כלליות על הארגון (כמה עובדים, מחלקות) — השתמש בכלי list_org_stats.
+4. לשיחה רגילה (שאלות כלליות, הודעות אישיות) — ענה ישירות בלי כלים.
+   🔴 חשוב: אם המשתמש שואל על עצמו (ילדים, משפחה, העדפות) — קודם בדוק את הפרופיל האישי למעלה לפני שעונה.
+5. כינויי גוף: אם המשתמש אומר "שלו", "שלה", "הוא", "היא" — הסתכל בהיסטוריית השיחה ותבין למי הוא מתכוון. אל תשאל אלא אם באמת אי אפשר לדעת.
+6. שמות בעברית: כשהמשתמש מזכיר שם בעברית, השתמש ב-search_person כדי למצוא את השם המלא באנגלית.
+7. 🔴 חיזוי חכם כשיש כמה תוצאות (SMART DISAMBIGUATION):
+   אם search_person מחזיר יותר מתוצאה אחת, אל תציג רשימה סתמית!
+   במקום זה, בצע ניתוח הקשרי:
+   א. בדוק מי מבין התוצאות קשור להקשר השיחה האחרונה:
+      - האם מישהו מהם מדווח למנהל שדיברנו עליו זה עתה?
+      - האם מישהו מהם באותה מחלקה שהוזכרה?
+      - האם מישהו מהם נזכר קודם בשיחה?
+   ב. אם יש מועמד מועדף לפי ההקשר — הנח שהמשתמש מתכוון אליו, הצג את הנתונים שלו, ואז הוסף בסוף:
+      "אם התכוונת ל-[שם2] שלח 2, ל-[שם3] שלח 3"
+   ג. רק אם אין שום הקשר שעוזר להבחין — הצג רשימה ממוספרת ושאל "למי התכוונת?".
+   דוגמה:
+      - המשתמש שאל על "יובל" (Yuval Laikin, מנהל), ואז שאל על "שי"
+      - search_person("שי") מחזיר 3 תוצאות: שי הובן (מדווח ליובל), שי פינקלשטיין, שי אמיר
+      - ← הנח ששי הובן הוא הכוונה (כי מדווח ליובל שדיברנו עליו), הצג את הנתונים שלו, ובסוף:
+        "אם התכוונת לשי פינקלשטיין שלח 2, לשי אמיר שלח 3"
+8. לעולם אל תמציא מידע. אם לא מצאת — אמור "לא מצאתי מידע על X בבסיס הידע".
+9. כשמציג מידע פיננסי (שכר, בונוס) — ציין את המספר המדויק, אל תעגל.
+10. כשמציג היררכיה — הבחן בין כפופים ישירים לעקיפים.
+11. אם המשתמש משיב ספרה בודדת (1-9), הבן שהוא בוחר מהרשימה האחרונה שהצגת. הצג את הנתונים של האדם שנבחר.
+12. 📼 כשהמשתמש מבקש "הכנה לשיחה עם X", "על מה דיברנו עם X?", "מתי דיברתי עם X?" — השתמש בכלי search_meetings כדי למצוא שיחות קודמות.
+   שלב את הנתונים מהפגישות עם המידע מבסיס הידע (search_person) כדי לתת הכנה מקיפה.
+   דוגמה: "הכן אותי לשיחה עם יובל" → search_person("יובל") + search_meetings(query="יובל", speaker_name="Yuval") → שלב הכל לתשובה אחת.
+
+══════════════════════════════════════════════════════
+כלים (Tools) — אל תקרא להם בשמם בפני המשתמש:
+══════════════════════════════════════════════════════
+• search_person(name) → חיפוש אדם לפי שם (עברית/אנגלית, מלא/חלקי)
+• get_reports(manager_name) → כל הכפופים למנהל (ישירים + עקיפים)
+• save_fact(person_name, field, value) → שמירת עובדה (עבודה או משפחה) לבסיס הידע
+• list_org_stats() → סטטיסטיקות כלליות על הארגון
+• search_meetings(query, speaker_name) → חיפוש בתמלולי פגישות קודמות
+
+══════════════════════════════════════════════════════
+זרימת עדכון מידע — save_fact:
+══════════════════════════════════════════════════════
+כשהמשתמש אומר עובדה חדשה (כמו "לבן הזוג של חן קוראים עודד"):
+1. תחילה, קרא ל-search_person כדי לזהות את השם המלא באנגלית
+2. אחר כך, קרא ל-save_fact עם השם המלא, השדה, והערך
+3. אשר למשתמש: "שמרתי ✅ — בן הזוג של חן הוא עודד"
+4. מעכשיו, כשישאלו "איך קוראים לבן הזוג של חן?" — תדע לענות "עודד"
+
+{kb_block}"""
+
+        # Rebuild the model with updated system instruction
+        tools = genai.protos.Tool(function_declarations=_TOOL_DECLARATIONS)
+        try:
+            self._model = genai.GenerativeModel(
+                model_name=self._model_name,
+                tools=[tools],
+                system_instruction=self._kb_system_instruction,
+            )
+            active_sessions = len(self._sessions)
+            print(f"🔄 [ConvEngine] System instruction refreshed ({old_len}→{len(self._kb_system_instruction)} chars)")
+            print(f"   ✅ {active_sessions} active sessions PRESERVED (not cleared)")
+        except Exception as e:
+            print(f"❌ [ConvEngine] Refresh failed: {e}")
 
 
 # ═══════════════════════════════════════════════════════════════════════
