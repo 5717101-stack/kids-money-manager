@@ -575,26 +575,50 @@ class FlightSearchService:
             price = float(offer.get("price", {}).get("grandTotal", 0))
             itineraries = offer.get("itineraries", [])
 
+            print(f"  📋 Amadeus offer: €{price}, {len(itineraries)} itineraries")
+
             if len(itineraries) < 2:
+                print(f"  ⚠️  Skipping: only {len(itineraries)} itinerary (need 2 for round-trip)")
                 return None
 
             # Outbound
             out_segments = itineraries[0].get("segments", [])
             ret_segments = itineraries[1].get("segments", [])
 
+            print(f"  📋 Outbound segments: {len(out_segments)}, Return segments: {len(ret_segments)}")
+
             if not out_segments or not ret_segments:
+                print(f"  ⚠️  Skipping: empty segments")
                 return None
 
             out_seg = out_segments[0]  # Direct flight = 1 segment
             ret_seg = ret_segments[0]
 
+            # Debug: print raw segment data
+            out_dep_at = out_seg.get("departure", {}).get("at", "")
+            out_arr_at = out_seg.get("arrival", {}).get("at", "")
+            ret_dep_at = ret_seg.get("departure", {}).get("at", "")
+            ret_arr_at = ret_seg.get("arrival", {}).get("at", "")
+            
+            print(f"  🛫 OUT: dep={out_dep_at} arr={out_arr_at}")
+            print(f"  🛬 RET: dep={ret_dep_at} arr={ret_arr_at}")
+            print(f"  ⏱  OUT dur={itineraries[0].get('duration', '?')} RET dur={itineraries[1].get('duration', '?')}")
+
             # Resolve airline name
             carrier_code = out_seg.get("carrierCode", "")
+            ret_carrier_code = ret_seg.get("carrierCode", "")
             airline_name = carriers.get(carrier_code, AIRLINE_NAMES.get(carrier_code, carrier_code))
+            ret_airline_name = carriers.get(ret_carrier_code, AIRLINE_NAMES.get(ret_carrier_code, ret_carrier_code))
+            
+            # Show both airlines if different
+            if ret_airline_name and ret_airline_name != airline_name:
+                combined_airline = f"{airline_name} / {ret_airline_name}"
+            else:
+                combined_airline = airline_name
 
             # Build Google Flights link
-            out_date = out_seg.get("departure", {}).get("at", "")[:10]
-            ret_date = ret_seg.get("departure", {}).get("at", "")[:10]
+            out_date = out_dep_at[:10] if len(out_dep_at) >= 10 else ""
+            ret_date = ret_dep_at[:10] if len(ret_dep_at) >= 10 else ""
             dest_code = out_seg.get("arrival", {}).get("iataCode", "")
             google_flights_link = (
                 f"https://www.google.com/travel/flights?"
@@ -604,18 +628,18 @@ class FlightSearchService:
 
             return {
                 "price_eur": int(price),
-                "airline": airline_name,
+                "airline": combined_airline,
                 "deep_link": google_flights_link,
                 # Outbound
-                "depart_date": _format_datetime(out_seg.get("departure", {}).get("at", "")),
-                "depart_time": _format_time(out_seg.get("departure", {}).get("at", "")),
-                "arrive_time": _format_time(out_seg.get("arrival", {}).get("at", "")),
+                "depart_date": _format_datetime(out_dep_at),
+                "depart_time": _format_time(out_dep_at),
+                "arrive_time": _format_time(out_arr_at),
                 "depart_airport": out_seg.get("departure", {}).get("iataCode", ""),
-                "arrive_airport": out_seg.get("arrival", {}).get("iataCode", ""),
+                "arrive_airport": dest_code,
                 # Return
-                "return_date": _format_datetime(ret_seg.get("departure", {}).get("at", "")),
-                "return_depart_time": _format_time(ret_seg.get("departure", {}).get("at", "")),
-                "return_arrive_time": _format_time(ret_seg.get("arrival", {}).get("at", "")),
+                "return_date": _format_datetime(ret_dep_at),
+                "return_depart_time": _format_time(ret_dep_at),
+                "return_arrive_time": _format_time(ret_arr_at),
                 # Duration
                 "duration_outbound": _parse_iso_duration(itineraries[0].get("duration", "")),
                 "duration_return": _parse_iso_duration(itineraries[1].get("duration", "")),
