@@ -4,6 +4,15 @@ Infographic Image Generator
 Generates a beautiful PNG infographic from NotebookLM analysis data.
 The image is designed for WhatsApp sharing — clean, modern, Hebrew RTL.
 
+RTL Strategy (v5.9.3):
+  On Linux (Render), Pillow's manylinux wheels bundle libraqm, which handles
+  bidirectional text natively via direction="rtl" + anchor="ra".
+  On macOS, raqm is usually absent, so we fall back to python-bidi's
+  get_display() for visual reordering + manual right-alignment.
+
+  CRITICAL: using get_display() WITH raqm causes double-reversal → LTR output.
+  The code auto-detects raqm at import time and picks the correct path.
+
 Font handling:
   1. System fonts (DejaVu Sans — supports Hebrew)
   2. Download Noto Sans Hebrew from Google Fonts (cached in /tmp)
@@ -22,22 +31,32 @@ logger = logging.getLogger(__name__)
 # Lazy imports — only load when generating
 _PIL_AVAILABLE = False
 _BIDI_AVAILABLE = False
+_HAS_RAQM = False  # True on Linux manylinux (Render), False on macOS
 
 
 def _ensure_imports():
-    """Lazy import PIL and bidi."""
-    global _PIL_AVAILABLE, _BIDI_AVAILABLE
+    """Lazy import PIL and bidi. Detect raqm for RTL strategy."""
+    global _PIL_AVAILABLE, _BIDI_AVAILABLE, _HAS_RAQM
     global Image, ImageDraw, ImageFont, get_display
 
     if _PIL_AVAILABLE:
         return True
 
     try:
-        from PIL import Image as _Image, ImageDraw as _ImageDraw, ImageFont as _ImageFont
+        from PIL import Image as _Image, ImageDraw as _ImageDraw, ImageFont as _ImageFont, features
         Image = _Image
         ImageDraw = _ImageDraw
         ImageFont = _ImageFont
         _PIL_AVAILABLE = True
+
+        # Detect raqm — determines RTL rendering strategy
+        _HAS_RAQM = bool(features.check_feature('raqm'))
+        if _HAS_RAQM:
+            logger.info("[Infographic] raqm available — using native direction='rtl' (NO get_display)")
+            print("📓 [Infographic] raqm detected → native RTL mode")
+        else:
+            logger.info("[Infographic] raqm NOT available — using python-bidi get_display() for RTL")
+            print("📓 [Infographic] no raqm → python-bidi fallback RTL mode")
     except ImportError:
         logger.error("[Infographic] Pillow not installed")
         return False
@@ -190,9 +209,15 @@ def _download_font():
 # ═══════════════════════════════════════════════════════════════════════
 
 def _bidi(text: str) -> str:
-    """Apply bidi algorithm for visual Hebrew rendering."""
+    """Apply bidi algorithm for visual Hebrew rendering.
+
+    When raqm IS available: returns text unchanged (raqm handles bidi natively).
+    When raqm is NOT available: uses python-bidi get_display() for visual reordering.
+    """
     if not text:
         return ""
+    if _HAS_RAQM:
+        return text  # raqm handles bidirectional text natively — do NOT reorder
     try:
         return get_display(text)
     except Exception:
@@ -200,7 +225,9 @@ def _bidi(text: str) -> str:
 
 
 def _wrap_text(text: str, font, max_width: int, draw) -> List[str]:
-    """Wrap text to fit within max_width pixels."""
+    """Wrap text to fit within max_width pixels.
+    Text stays in logical order — the caller handles visual rendering.
+    """
     if not text:
         return []
 
@@ -208,9 +235,12 @@ def _wrap_text(text: str, font, max_width: int, draw) -> List[str]:
     lines = []
     current_line = []
 
+    # Use direction="rtl" for measurement when raqm is available
+    extra_kwargs = {"direction": "rtl"} if _HAS_RAQM else {}
+
     for word in words:
         test = ' '.join(current_line + [word])
-        bbox = draw.textbbox((0, 0), test, font=font)
+        bbox = draw.textbbox((0, 0), test, font=font, **extra_kwargs)
         w = bbox[2] - bbox[0]
         if w <= max_width and current_line:
             current_line.append(word)
@@ -231,6 +261,10 @@ def _draw_text_rtl(draw, x_right: int, y: int, text: str, font, fill, max_width:
     Draw RTL text right-aligned at x_right, y.
     Returns the y coordinate after the last line.
     If max_width > 0, wraps text.
+
+    Dual-mode:
+      raqm present  → direction="rtl", anchor="ra" (right-ascender)
+      raqm absent   → get_display() + manual right-alignment
     """
     if not text:
         return y
@@ -243,11 +277,17 @@ def _draw_text_rtl(draw, x_right: int, y: int, text: str, font, fill, max_width:
     line_height = font.size + 6  # approximate line height
 
     for line in lines:
-        display_text = _bidi(line)
-        bbox = draw.textbbox((0, 0), display_text, font=font)
-        text_width = bbox[2] - bbox[0]
-        x = x_right - text_width
-        draw.text((x, y), display_text, font=font, fill=fill)
+        if _HAS_RAQM:
+            # Native RTL — Pillow + raqm handle bidi natively
+            draw.text((x_right, y), line, font=font, fill=fill,
+                      direction="rtl", anchor="ra")
+        else:
+            # Manual RTL — python-bidi reorders, we right-align manually
+            display_text = _bidi(line)
+            bbox = draw.textbbox((0, 0), display_text, font=font)
+            text_width = bbox[2] - bbox[0]
+            x = x_right - text_width
+            draw.text((x, y), display_text, font=font, fill=fill)
         y += line_height
 
     return y
@@ -278,12 +318,21 @@ def _draw_section_header(draw, y: int, x_right: int, text: str, color: str,
         fill=color_rgb
     )
 
-    # Draw header text
-    header_text = _bidi(f"{icon} {text}" if icon else text)
-    bbox = draw.textbbox((0, 0), header_text, font=font_bold)
-    text_width = bbox[2] - bbox[0]
-    draw.text((circle_x - circle_r - 10 - text_width, y), header_text,
-              font=font_bold, fill=color_rgb)
+    # Draw header text — right of the circle
+    header_text = f"{icon} {text}" if icon else text
+    text_anchor_x = circle_x - circle_r - 10  # left of the circle
+
+    if _HAS_RAQM:
+        # Native RTL — anchor="ra" means x is right edge of text
+        draw.text((text_anchor_x, y), header_text, font=font_bold,
+                  fill=color_rgb, direction="rtl", anchor="ra")
+    else:
+        # Manual RTL
+        display_text = _bidi(header_text)
+        bbox = draw.textbbox((0, 0), display_text, font=font_bold)
+        text_width = bbox[2] - bbox[0]
+        draw.text((text_anchor_x - text_width, y), display_text,
+                  font=font_bold, fill=color_rgb)
 
     return y + font_bold.size + 12
 
@@ -344,10 +393,15 @@ def generate_infographic(analysis: Dict[str, Any], output_path: str = None) -> O
 
         # Title
         title = "ניתוח מעמיק — Second Brain"
-        title_display = _bidi(title)
-        bbox = draw.textbbox((0, 0), title_display, font=font_title)
-        tx = W - PADDING - (bbox[2] - bbox[0])
-        draw.text((tx, 20), title_display, font=font_title, fill=_hex_to_rgb(COLORS["header_text"]))
+        if _HAS_RAQM:
+            draw.text((W - PADDING, 20), title, font=font_title,
+                      fill=_hex_to_rgb(COLORS["header_text"]),
+                      direction="rtl", anchor="ra")
+        else:
+            title_display = _bidi(title)
+            bbox = draw.textbbox((0, 0), title_display, font=font_title)
+            tx = W - PADDING - (bbox[2] - bbox[0])
+            draw.text((tx, 20), title_display, font=font_title, fill=_hex_to_rgb(COLORS["header_text"]))
 
         # Subtitle (date + speakers)
         meta = analysis.get("_metadata", {})
@@ -357,10 +411,14 @@ def generate_infographic(analysis: Dict[str, Any], output_path: str = None) -> O
         subtitle_parts = [s for s in [date_str, speakers_str] if s]
         subtitle = " | ".join(subtitle_parts) if subtitle_parts else ""
         if subtitle:
-            sub_display = _bidi(subtitle)
-            bbox_s = draw.textbbox((0, 0), sub_display, font=font_small)
-            sx = W - PADDING - (bbox_s[2] - bbox_s[0])
-            draw.text((sx, 55), sub_display, font=font_small, fill=(200, 200, 210))
+            if _HAS_RAQM:
+                draw.text((W - PADDING, 55), subtitle, font=font_small,
+                          fill=(200, 200, 210), direction="rtl", anchor="ra")
+            else:
+                sub_display = _bidi(subtitle)
+                bbox_s = draw.textbbox((0, 0), sub_display, font=font_small)
+                sx = W - PADDING - (bbox_s[2] - bbox_s[0])
+                draw.text((sx, 55), sub_display, font=font_small, fill=(200, 200, 210))
 
         y = header_h + SECTION_GAP
 
