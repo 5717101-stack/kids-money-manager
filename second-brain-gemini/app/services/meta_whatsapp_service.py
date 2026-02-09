@@ -576,5 +576,100 @@ class MetaWhatsAppService:
             }
 
 
+    def send_image(self, image_path: str, caption: str = "", to: Optional[str] = None) -> Dict[str, Any]:
+        """
+        Send an image file via WhatsApp using Meta WhatsApp Cloud API.
+        
+        Args:
+            image_path: Path to the image file (PNG, JPEG, etc.)
+            caption: Optional caption text
+            to: Recipient phone number
+            
+        Returns:
+            Dictionary with success status and details
+        """
+        if not self.is_configured_flag:
+            return {"success": False, "error": "Meta WhatsApp not configured"}
+        
+        recipient = to or settings.whatsapp_to
+        if not recipient:
+            return {"success": False, "error": "Recipient number required"}
+        
+        if recipient.startswith("whatsapp:"):
+            recipient = recipient.replace("whatsapp:", "")
+        
+        try:
+            if not os.path.exists(image_path):
+                return {"success": False, "error": f"Image file not found: {image_path}"}
+            
+            file_size = os.path.getsize(image_path)
+            print(f"🖼️ Uploading image: {image_path} ({file_size} bytes)")
+            
+            # Step 1: Upload media
+            upload_url = f"{self.BASE_URL}/{self.phone_number_id}/media"
+            headers = {"Authorization": f"Bearer {self.access_token}"}
+            
+            filename = os.path.basename(image_path)
+            mime_type = 'image/png' if filename.endswith('.png') else 'image/jpeg'
+            
+            with open(image_path, 'rb') as img_file:
+                files = {'file': (filename, img_file, mime_type)}
+                data = {'messaging_product': 'whatsapp', 'type': 'image'}
+                upload_response = requests.post(upload_url, headers=headers, files=files, data=data)
+            
+            if upload_response.status_code != 200:
+                print(f"❌ Image upload failed: {upload_response.status_code} {upload_response.text}")
+                return {"success": False, "error": f"Upload failed: HTTP {upload_response.status_code}"}
+            
+            media_id = upload_response.json().get('id')
+            if not media_id:
+                return {"success": False, "error": "No media ID in upload response"}
+            
+            print(f"✅ Image uploaded - Media ID: {media_id}")
+            
+            # Step 2: Send image message
+            message_url = f"{self.BASE_URL}/{self.phone_number_id}/messages"
+            message_headers = {
+                "Authorization": f"Bearer {self.access_token}",
+                "Content-Type": "application/json"
+            }
+            
+            payload = {
+                "messaging_product": "whatsapp",
+                "to": recipient,
+                "type": "image",
+                "image": {
+                    "id": media_id,
+                }
+            }
+            if caption:
+                payload["image"]["caption"] = caption[:1024]  # WhatsApp caption limit
+            
+            response = requests.post(message_url, json=payload, headers=message_headers)
+            
+            if response.status_code != 200:
+                print(f"❌ Image send failed: {response.status_code} {response.text}")
+                return {"success": False, "error": f"Send failed: HTTP {response.status_code}"}
+            
+            result_data = response.json()
+            message_id = result_data.get('messages', [{}])[0].get('id')
+            
+            print(f"✅ Image sent via WhatsApp! Message ID: {message_id}")
+            return {
+                "success": True,
+                "message_id": message_id,
+                "wam_id": message_id,
+                "media_id": media_id,
+                "status": "sent",
+                "message": "Image sent successfully via Meta API"
+            }
+            
+        except Exception as e:
+            print(f"❌ Error sending image via WhatsApp: {e}")
+            import traceback
+            traceback.print_exc()
+            return {"success": False, "error": str(e)}
+
+
 # Singleton instance
 meta_whatsapp_service = MetaWhatsAppService()

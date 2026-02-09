@@ -3,6 +3,7 @@ services:
     name: second-brain-gemini
     env: python
     buildCommand: |
+      apt-get update -qq && apt-get install -y -qq fonts-dejavu-core --no-install-recommends 2>/dev/null || true
       pip install --upgrade pip && pip install -r requirements.txt
       # Save last commit message for deployment notification
       git log -1 --pretty=%B > .last_commit 2>/dev/null || echo "No git info available" > .last_commit

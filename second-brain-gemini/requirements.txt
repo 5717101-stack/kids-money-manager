@@ -14,9 +14,10 @@ python-dotenv==1.0.0
 # Utilities
 python-dateutil==2.8.2
 
-# PDF Generation
+# PDF Generation & Image Infographics
 reportlab==4.0.7
 python-bidi==0.4.2
+Pillow>=10.0.0
 
 # HTTP requests for Meta WhatsApp Cloud API
 requests>=2.31.0

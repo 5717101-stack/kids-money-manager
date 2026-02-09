@@ -1075,16 +1075,42 @@ def process_audio_core(
                 )
 
                 if notebooklm_analysis and whatsapp_provider:
-                    infographic_msg = notebooklm_service.format_infographic(notebooklm_analysis)
-                    if infographic_msg:
-                        nb_result = whatsapp_provider.send_whatsapp(
-                            message=infographic_msg,
-                            to=f"+{from_number}"
-                        )
-                        if nb_result.get('success'):
-                            print("📓 [NotebookLM] Infographic sent via WhatsApp")
-                        else:
-                            print(f"⚠️ [NotebookLM] Failed to send infographic: {nb_result.get('error')}")
+                    # Try to generate a visual infographic image
+                    image_sent = False
+                    try:
+                        from app.services.infographic_generator import generate_infographic
+                        infographic_path = generate_infographic(notebooklm_analysis)
+                        if infographic_path and hasattr(whatsapp_provider, 'send_image'):
+                            img_result = whatsapp_provider.send_image(
+                                image_path=infographic_path,
+                                caption="📓 ניתוח מעמיק — Second Brain",
+                                to=f"+{from_number}"
+                            )
+                            if img_result.get('success'):
+                                print("🖼️ [NotebookLM] Infographic IMAGE sent via WhatsApp")
+                                image_sent = True
+                            else:
+                                print(f"⚠️ [NotebookLM] Image send failed: {img_result.get('error')}")
+                            # Cleanup temp file
+                            try:
+                                os.remove(infographic_path)
+                            except Exception:
+                                pass
+                    except Exception as img_err:
+                        print(f"⚠️ [NotebookLM] Image generation failed: {img_err}")
+
+                    # Fallback: send text infographic if image failed
+                    if not image_sent:
+                        infographic_msg = notebooklm_service.format_infographic(notebooklm_analysis)
+                        if infographic_msg:
+                            nb_result = whatsapp_provider.send_whatsapp(
+                                message=infographic_msg,
+                                to=f"+{from_number}"
+                            )
+                            if nb_result.get('success'):
+                                print("📓 [NotebookLM] Text infographic sent (fallback)")
+                            else:
+                                print(f"⚠️ [NotebookLM] Text fallback also failed: {nb_result.get('error')}")
             else:
                 print("ℹ️ [NotebookLM] Disabled — skipping deep analysis")
 

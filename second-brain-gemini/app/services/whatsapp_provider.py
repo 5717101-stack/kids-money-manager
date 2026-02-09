@@ -50,6 +50,23 @@ class WhatsAppProvider(ABC):
         """
         pass
 
+    def send_image(self, image_path: str, caption: str = "", to: Optional[str] = None) -> Dict[str, Any]:
+        """
+        Send an image file via WhatsApp.
+        
+        Args:
+            image_path: Path to the image file to send
+            caption: Optional caption/text message to send with the image
+            to: Recipient phone number (optional, uses default if not provided)
+            
+        Returns:
+            Dictionary with success status and details
+        """
+        # Default implementation: send caption as text (if provider doesn't support images)
+        if caption:
+            return self.send_whatsapp(caption, to)
+        return {"success": False, "error": "Image sending not supported by this provider"}
+
 
 class WhatsAppProviderFactory:
     """Factory for creating WhatsApp provider instances."""
