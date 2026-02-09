@@ -31,6 +31,11 @@ google-auth-httplib2==0.2.0
 pydub==0.25.1
 webrtcvad==2.0.10
 
+# Speaker Diarization & Voice Identification (pyannote.audio)
+# NOTE: torch CPU is installed separately in render.yaml buildCommand to save ~1.5GB disk
+pyannote.audio>=3.1.1
+numpy>=1.24.0
+
 # PDF parsing (robust, preserves layout/hierarchy)
 PyMuPDF==1.24.3
 pdfplumber==0.11.4

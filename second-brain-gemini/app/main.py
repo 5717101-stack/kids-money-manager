@@ -46,6 +46,26 @@ if drive_memory_service.is_configured:
 else:
     print(f"⚠️  Drive Memory Service not configured (DRIVE_MEMORY_FOLDER_ID not set)")
 
+# Initialize Speaker Identity Service (Speaker Identity Graph)
+try:
+    from app.services.speaker_identity_service import speaker_identity_service
+    speaker_identity_service.initialize(drive_memory_service)
+    stats = speaker_identity_service.get_stats()
+    print(f"🎤 Speaker Identity Service initialized: {stats['total_people']} people, "
+          f"{stats['total_voice_profiles']} voice profiles")
+except Exception as sig_init_err:
+    print(f"⚠️  Speaker Identity Service init failed (non-fatal): {sig_init_err}")
+
+# Check pyannote availability
+try:
+    from app.services.pyannote_service import is_available as _pyannote_check
+    if _pyannote_check():
+        print("🎤 pyannote speaker diarization: AVAILABLE")
+    else:
+        print("ℹ️  pyannote speaker diarization: NOT AVAILABLE (set HUGGINGFACE_TOKEN)")
+except ImportError:
+    print("ℹ️  pyannote speaker diarization: NOT INSTALLED")
+
 # Idempotency: Track processed WhatsApp message IDs to prevent duplicate processing
 # Use deque with maxlen to automatically limit memory usage (keeps last 1000 message IDs)
 processed_message_ids = deque(maxlen=1000)
@@ -1433,6 +1453,31 @@ async def webhook(request: Request, background_tasks: BackgroundTasks):
                                     # Step 1: Update Voice Map (Speaker ID -> Real Name)
                                     update_voice_map(speaker_id, person_name)
                                     print(f"✅ Voice map updated: {speaker_id} -> {person_name}")
+                                    
+                                    # Step 1.5: Save pyannote embedding to Speaker Identity Graph
+                                    embedding = pending_data.get('embedding') if isinstance(pending_data, dict) else None
+                                    if embedding:
+                                        try:
+                                            from app.services.speaker_identity_service import speaker_identity_service as _sig_svc
+                                            # Add or update person
+                                            person_id = _sig_svc.add_person(
+                                                canonical_name=person_name,
+                                                aliases=[person_name, speaker_id]
+                                            )
+                                            # Save voice embedding
+                                            _sig_svc.add_voice_profile(
+                                                person_id=person_id,
+                                                embedding=embedding,
+                                                source="user_identification",
+                                                quality=0.8
+                                            )
+                                            _sig_svc.save_if_dirty()
+                                            print(f"🧬 Voice embedding saved to Speaker Identity Graph: {person_id}")
+                                            print(f"   📊 Embedding: {len(embedding)} dimensions")
+                                        except Exception as sig_err:
+                                            print(f"⚠️  Failed to save embedding to SIG: {sig_err}")
+                                    else:
+                                        print(f"ℹ️  No pyannote embedding available (legacy identification)")
                                     
                                     # Step 2: Upload voice signature to Drive (if file exists)
                                     upload_success = False

@@ -41,9 +41,14 @@ class Settings(BaseSettings):
     # Knowledge Base (Personal Context from Google Drive)
     context_folder_id: Optional[str] = None          # Google Drive folder ID for Second_Brain_Context
     
-    # Voice Signature Settings (Memory Optimization)
+    # Voice Signature Settings (Legacy — Gemini multimodal approach)
     max_voice_signatures: int = 2  # Max signatures to download (0 = disable multimodal, reduces memory usage)
     enable_multimodal_voice: bool = True  # Enable multimodal voice comparison (set False on low-memory hosts)
+    
+    # pyannote Speaker Diarization & Identification
+    huggingface_token: Optional[str] = None  # HuggingFace token for pyannote gated models
+    pyannote_auto_threshold: float = 0.80  # Auto-identify speaker if cosine similarity >= this
+    pyannote_suggest_threshold: float = 0.65  # Suggest match if similarity >= this (but < auto)
     
     class Config:
         env_file = ".env"

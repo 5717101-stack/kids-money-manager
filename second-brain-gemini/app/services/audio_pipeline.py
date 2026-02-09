@@ -177,27 +177,135 @@ def process_audio_core(
         # FULL MEETING ANALYSIS PIPELINE (for recordings >30s)
         # ============================================================
 
-        # Step 1: Retrieve voice signatures
-        known_speaker_names = []
-        if drive_memory_service.is_configured and settings.enable_multimodal_voice:
-            try:
-                max_sigs = settings.max_voice_signatures
-                print(f"🎤 Retrieving voice signatures (max: {max_sigs})...")
-                reference_voices = drive_memory_service.get_voice_signatures(max_signatures=max_sigs)
-                known_speaker_names = [rv['name'].lower() for rv in reference_voices]
-                if reference_voices:
-                    print(f"✅ Retrieved {len(reference_voices)} voice signature(s)")
-            except Exception as e:
-                print(f"⚠️  Error retrieving voice signatures: {e}")
-                reference_voices = []
+        # ============================================================
+        # Step 1: pyannote DIARIZATION + SPEAKER IDENTIFICATION
+        # If available: pre-compute who speaks when + match to known voices
+        # If unavailable: fall back to Gemini-only mode (legacy)
+        # ============================================================
+        diarization_hints = None
+        pyannote_speaker_results = {}
+        pyannote_segments = []
 
-        # Step 2: Process with Gemini (COMBINED Diarization + Expert Analysis)
-        print("🤖 [Combined Analysis] Processing audio with Gemini...")
-        print(f"   Stage: COMBINED - Diarization + Expert Analysis in ONE call")
+        try:
+            from app.services.pyannote_service import is_available as pyannote_available, diarize, identify_speakers
+            from app.services.speaker_identity_service import speaker_identity_service
+
+            if pyannote_available():
+                print("🎤 [pyannote] Speaker diarization engine available")
+
+                # Step 1a: Run diarization
+                pyannote_segments = diarize(tmp_path, min_speakers=1, max_speakers=6)
+
+                if pyannote_segments:
+                    print(f"✅ [pyannote] Diarization: {len(pyannote_segments)} segments")
+
+                    # Step 1b: Get known voice centroids from Speaker Identity Graph
+                    known_centroids = speaker_identity_service.get_centroid_embeddings()
+                    print(f"   📊 Known voice centroids: {len(known_centroids)} people")
+
+                    # Step 1c: Identify speakers via embedding matching
+                    pyannote_speaker_results = identify_speakers(
+                        audio_path=tmp_path,
+                        known_centroids=known_centroids,
+                        diarization_segments=pyannote_segments,
+                        auto_threshold=settings.pyannote_auto_threshold,
+                        suggest_threshold=settings.pyannote_suggest_threshold,
+                    )
+
+                    if pyannote_speaker_results:
+                        # Build diarization hints for Gemini
+                        # Replace SPEAKER_XX labels with real names where identified
+                        speaker_name_map = {}
+                        speakers_info = {}
+                        for spk_label, info in pyannote_speaker_results.items():
+                            pid = info.get("person_id")
+                            if pid and info["status"] == "identified":
+                                real_name = speaker_identity_service.get_person_canonical_name(pid) or pid
+                                speaker_name_map[spk_label] = real_name
+                                speakers_info[spk_label] = {
+                                    "name": real_name,
+                                    "person_id": pid,
+                                    "confidence": info["confidence"]
+                                }
+                            elif pid and info["status"] == "suggested":
+                                real_name = speaker_identity_service.get_person_canonical_name(pid) or pid
+                                speaker_name_map[spk_label] = f"{real_name} (unconfirmed)"
+                                speakers_info[spk_label] = {
+                                    "name": f"{real_name} (unconfirmed)",
+                                    "person_id": pid,
+                                    "confidence": info["confidence"]
+                                }
+                            else:
+                                # Unknown — assign friendly label
+                                idx = list(pyannote_speaker_results.keys()).index(spk_label) + 1
+                                speaker_name_map[spk_label] = f"Unknown Speaker {idx}"
+                                speakers_info[spk_label] = {
+                                    "name": f"Unknown Speaker {idx}",
+                                    "person_id": None,
+                                    "confidence": 0
+                                }
+
+                        # Build named segments for Gemini
+                        named_segments = []
+                        for seg in pyannote_segments:
+                            named_seg = dict(seg)
+                            named_seg["speaker"] = speaker_name_map.get(
+                                seg["speaker"], seg["speaker"]
+                            )
+                            named_segments.append(named_seg)
+
+                        diarization_hints = {
+                            "segments": named_segments,
+                            "speakers": speakers_info
+                        }
+
+                        identified_count = sum(1 for s in speakers_info.values() if s.get("person_id"))
+                        print(f"✅ [pyannote] Speaker identification: "
+                              f"{identified_count}/{len(speakers_info)} identified")
+                    else:
+                        print("⚠️ [pyannote] Embedding extraction/matching failed — Gemini will diarize")
+                else:
+                    print("⚠️ [pyannote] Diarization returned no segments — Gemini will diarize")
+            else:
+                print("ℹ️ [pyannote] Not available (missing HUGGINGFACE_TOKEN or dependencies)")
+                print("   Falling back to Gemini-only diarization (legacy mode)")
+        except ImportError:
+            print("ℹ️ [pyannote] Not installed — using Gemini-only diarization")
+        except Exception as pya_err:
+            print(f"⚠️ [pyannote] Error (non-fatal, falling back to Gemini): {pya_err}")
+            traceback.print_exc()
+
+        # ============================================================
+        # Step 1-legacy: Retrieve voice signatures (only if pyannote is NOT handling ID)
+        # ============================================================
+        known_speaker_names = []
+        if diarization_hints is None:
+            # Legacy mode: Gemini does diarization with reference voice comparison
+            if drive_memory_service.is_configured and settings.enable_multimodal_voice:
+                try:
+                    max_sigs = settings.max_voice_signatures
+                    print(f"🎤 [Legacy] Retrieving voice signatures (max: {max_sigs})...")
+                    reference_voices = drive_memory_service.get_voice_signatures(max_signatures=max_sigs)
+                    known_speaker_names = [rv['name'].lower() for rv in reference_voices]
+                    if reference_voices:
+                        print(f"✅ Retrieved {len(reference_voices)} voice signature(s)")
+                except Exception as e:
+                    print(f"⚠️  Error retrieving voice signatures: {e}")
+                    reference_voices = []
+        else:
+            print("🎤 [pyannote] Skipping legacy voice signature download (pyannote handled it)")
+
+        # Step 2: Process with Gemini (transcription + expert analysis)
+        if diarization_hints:
+            print("🤖 [Gemini] Transcription + Expert Analysis (pyannote-assisted)")
+        else:
+            print("🤖 [Gemini] COMBINED Diarization + Expert Analysis (legacy)")
+
         result = gemini_service.analyze_day(
             audio_paths=[tmp_path],
             audio_file_metadata=[audio_metadata],
-            reference_voices=reference_voices
+            reference_voices=reference_voices,
+            diarization_hints=diarization_hints,
         )
 
         print("✅ [Combined Analysis] Gemini analysis complete")
@@ -271,6 +379,11 @@ def process_audio_core(
 
         # Save FULL transcript as separate file in Transcripts/
         transcript_file_id = None
+
+        # Extract topics and sentiment from pyannote-assisted Gemini output
+        topics = transcript_json.get('topics', [])
+        speaker_sentiment = transcript_json.get('speaker_sentiment', {})
+
         try:
             transcript_save_data = {
                 "timestamp": datetime.utcnow().isoformat() + "Z",
@@ -281,7 +394,20 @@ def process_audio_core(
                 "speakers": speaker_names,
                 "audio_file_id": audio_metadata.get('file_id', ''),
                 "duration_segments": len(segments),
+                "topics": topics,
+                "speaker_sentiment": speaker_sentiment,
+                "diarization_engine": "pyannote" if diarization_hints else "gemini",
             }
+
+            # Add person_id linkage if pyannote identified speakers
+            if pyannote_speaker_results:
+                person_ids = {}
+                for spk_label, info in pyannote_speaker_results.items():
+                    if info.get("person_id"):
+                        person_ids[spk_label] = info["person_id"]
+                if person_ids:
+                    transcript_save_data["person_ids"] = person_ids
+
             if expert_analysis_result and expert_analysis_result.get('success'):
                 transcript_save_data["expert_analysis"] = expert_analysis_result.get("raw_analysis", "")
                 transcript_save_data["persona"] = expert_analysis_result.get("persona", "")
@@ -327,6 +453,62 @@ def process_audio_core(
 
         drive_memory_service.update_memory(audio_interaction)
         print("✅ Saved slim audio interaction to memory")
+
+        # ============================================================
+        # Step 3.5: UPDATE SPEAKER IDENTITY GRAPH
+        # ============================================================
+        try:
+            from app.services.speaker_identity_service import speaker_identity_service
+            from datetime import timezone
+
+            if pyannote_speaker_results:
+                israel_date = (datetime.now(timezone.utc) + timedelta(hours=2)).strftime('%Y-%m-%d')
+
+                for spk_label, info in pyannote_speaker_results.items():
+                    person_id = info.get("person_id")
+                    if not person_id:
+                        continue
+
+                    # Add conversation entry for each identified speaker
+                    speaker_sentiment_data = speaker_sentiment.get(
+                        speaker_identity_service.get_person_canonical_name(person_id) or spk_label,
+                        {}
+                    )
+                    sentiment_score = speaker_sentiment_data.get("score") if isinstance(speaker_sentiment_data, dict) else None
+
+                    speaker_identity_service.add_conversation(
+                        person_id=person_id,
+                        date=israel_date,
+                        transcript_id=transcript_file_id,
+                        audio_file_id=audio_metadata.get('file_id', ''),
+                        topics=topics,
+                        sentiment=sentiment_score,
+                        summary=summary_text[:500] if summary_text else None
+                    )
+                    print(f"   📊 [SIG] Updated conversation index for {person_id}")
+
+                # Record voice mapping for this session
+                mapping_record = {}
+                for spk_label, info in pyannote_speaker_results.items():
+                    mapping_record[spk_label] = {
+                        "person_id": info.get("person_id"),
+                        "confidence": info.get("confidence", 0)
+                    }
+                speaker_identity_service.record_voice_mapping(
+                    date=israel_date,
+                    audio_file_id=audio_metadata.get('file_id', ''),
+                    mappings=mapping_record
+                )
+
+                # Save to Drive
+                speaker_identity_service.save_if_dirty()
+                print(f"✅ [SIG] Speaker Identity Graph updated and saved")
+
+        except ImportError:
+            pass  # SpeakerIdentityService not available
+        except Exception as sig_err:
+            print(f"⚠️ [SIG] Error updating Speaker Identity Graph (non-fatal): {sig_err}")
+            traceback.print_exc()
 
         # UPDATE WORKING MEMORY for Zero Latency RAG
         try:
@@ -388,6 +570,7 @@ def process_audio_core(
 
         # ============================================================
         # Step 5: Speaker Identification — WebRTC VAD SMART SLICING
+        # Enhanced: stores pyannote embeddings for unknown speakers
         # ============================================================
         unknown_speakers_processed = []
         # Import pending_identifications from main module for voice imprinting
@@ -402,6 +585,15 @@ def process_audio_core(
         self_names = {'itzik', 'itzhak', 'איציק', 'יצחק', 'speaker 1', 'speaker a', 'דובר 1'}
         for rv in reference_voices:
             self_names.add(rv['name'].lower())
+
+        # If pyannote identified speakers, update the voice map cache
+        if pyannote_speaker_results:
+            for spk_label, info in pyannote_speaker_results.items():
+                if info.get("person_id") and info["status"] == "identified":
+                    from app.services.speaker_identity_service import speaker_identity_service as _sig
+                    real_name = _sig.get_person_canonical_name(info["person_id"]) or info["person_id"]
+                    _voice_map_cache[spk_label.lower()] = real_name
+                    self_names.add(real_name.lower())
 
         print(f"🔇 Self-identification skip list: {self_names}")
 
@@ -681,10 +873,19 @@ def process_audio_core(
                     if audio_result.get('success'):
                         sent_msg_id = audio_result.get('caption_message_id') or audio_result.get('wam_id') or audio_result.get('message_id')
                         if sent_msg_id:
-                            pending_identifications[sent_msg_id] = {
+                            pending_data = {
                                 'file_path': slice_path,
                                 'speaker_id': speaker
                             }
+                            # Store pyannote embedding if available (for auto-enrollment on name response)
+                            for spk_label, info in pyannote_speaker_results.items():
+                                mapped_name = diarization_hints.get("speakers", {}).get(spk_label, {}).get("name", "") if diarization_hints else ""
+                                if (speaker in mapped_name or mapped_name in speaker) and info.get("embedding"):
+                                    pending_data['embedding'] = info['embedding']
+                                    print(f"   🧬 Embedding stored for auto-enrollment ({len(info['embedding'])} dims)")
+                                    break
+
+                            pending_identifications[sent_msg_id] = pending_data
                             _save_pending_identifications()  # Persist to disk
                             print(f"   📝 Pending identification stored: {sent_msg_id} -> {speaker}")
                             unknown_speakers_processed.append(speaker)
@@ -1132,6 +1333,11 @@ def process_audio_core(
             "summary": summary_text,
             "expert_analysis": expert_analysis_result,
             "notebooklm_analysis": notebooklm_analysis,
+            "diarization_engine": "pyannote" if diarization_hints else "gemini",
+            "pyannote_speakers": {
+                k: {"person_id": v.get("person_id"), "status": v.get("status"), "confidence": v.get("confidence")}
+                for k, v in pyannote_speaker_results.items()
+            } if pyannote_speaker_results else None,
         })
 
     except Exception as e:

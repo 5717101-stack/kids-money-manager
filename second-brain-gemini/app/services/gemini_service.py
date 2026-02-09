@@ -10,7 +10,9 @@ from pathlib import Path
 import google.generativeai as genai
 
 from app.core.config import settings
-from app.prompts import SYSTEM_PROMPT, AUDIO_ANALYSIS_PROMPT, AUDIO_ANALYSIS_PROMPT_BASE, FORENSIC_ANALYST_PROMPT, COMBINED_DIARIZATION_EXPERT_PROMPT
+from app.prompts import (SYSTEM_PROMPT, AUDIO_ANALYSIS_PROMPT, AUDIO_ANALYSIS_PROMPT_BASE,
+                         FORENSIC_ANALYST_PROMPT, COMBINED_DIARIZATION_EXPERT_PROMPT,
+                         PYANNOTE_ASSISTED_PROMPT)
 from app.services.knowledge_base_service import get_system_instruction_block as get_kb_context
 
 
@@ -791,7 +793,8 @@ STEP 5 — RESPONSE FORMATTING (פורמט תשובה):
         text_inputs: List[str] = None,
         chat_history: List[Dict[str, Any]] = None,
         audio_file_metadata: List[Dict[str, str]] = None,
-        reference_voices: List[Dict[str, str]] = None
+        reference_voices: List[Dict[str, str]] = None,
+        diarization_hints: Dict[str, Any] = None
     ) -> Dict[str, Any]:
         """
         Analyze a day's worth of inputs using Gemini 1.5 Pro.
@@ -831,17 +834,19 @@ STEP 5 — RESPONSE FORMATTING (פורמט תשובה):
             uploaded_files.append(file_ref)
         
         # Upload and wait for reference voice files (for speaker identification)
-        for ref_voice in reference_voices:
-            person_name = ref_voice.get('name', 'Unknown')
-            file_path = ref_voice.get('file_path')
-            if file_path and os.path.exists(file_path):
-                path = Path(file_path)
-                file_ref = self.upload_and_wait(file_path, display_name=f"Reference_Voice_{person_name}.mp3")
-                reference_voice_files.append({
-                    'file_ref': file_ref,
-                    'name': person_name
-                })
-                print(f"✅ Uploaded reference voice for '{person_name}'")
+        # Skip when pyannote provides diarization hints — no need for Gemini voice comparison
+        if not diarization_hints:
+            for ref_voice in reference_voices:
+                person_name = ref_voice.get('name', 'Unknown')
+                file_path = ref_voice.get('file_path')
+                if file_path and os.path.exists(file_path):
+                    path = Path(file_path)
+                    file_ref = self.upload_and_wait(file_path, display_name=f"Reference_Voice_{person_name}.mp3")
+                    reference_voice_files.append({
+                        'file_ref': file_ref,
+                        'name': person_name
+                    })
+                    print(f"✅ Uploaded reference voice for '{person_name}'")
         
         # Upload and wait for image files
         for image_path in image_paths:
@@ -855,44 +860,85 @@ STEP 5 — RESPONSE FORMATTING (פורמט תשובה):
         
         # Use appropriate prompt based on context
         if audio_paths:
-            # COMBINED DIARIZATION + EXPERT ANALYSIS in ONE call
-            # This is the same approach used by process_meetings.py which works reliably
-            print("🎙️ Using COMBINED Diarization + Expert Analysis prompt")
-            
-            # Start with the combined prompt + Knowledge Base context
-            prompt = COMBINED_DIARIZATION_EXPERT_PROMPT
-            
             # Inject personal knowledge base (cached in memory)
             kb_context = get_kb_context()
-            if kb_context:
-                prompt += "\n" + kb_context
-                print(f"   📚 Knowledge Base injected ({len(kb_context)} chars)")
-            
-            if reference_voice_files:
-                # Add reference voice information for speaker identification
-                print(f"   📊 Reference voices available: {[rv['name'] for rv in reference_voice_files]}")
-                
-                prompt += "\n\n" + "="*50 + "\n"
-                prompt += "**REFERENCE VOICE SAMPLES - ACOUSTIC FINGERPRINTS:**\n"
-                prompt += "="*50 + "\n\n"
-                prompt += "The following audio files are KNOWN voice samples.\n"
-                prompt += "Listen to each one carefully and memorize their acoustic characteristics.\n\n"
-                
-                for i, rv in enumerate(reference_voice_files, 1):
-                    prompt += f"📌 **Reference Audio {i}** = Voice of **{rv['name']}**\n"
-                    prompt += f"   (This audio clip belongs to {rv['name']} - use this to compare)\n\n"
-                
-                prompt += "\n" + "="*50 + "\n"
-                prompt += "**PRIMARY CONVERSATION TO ANALYZE:**\n"
-                prompt += "="*50 + "\n"
-                prompt += "The main audio file follows after all reference samples.\n"
-                prompt += "Compare EACH speaker in this conversation to the reference samples.\n"
-                prompt += "If voice matches reference with 90%+ confidence → use that name.\n"
-                prompt += "If NO match with 90%+ confidence → use 'Speaker X'.\n\n"
+
+            if diarization_hints:
+                # ════════════════════════════════════════════════════
+                # PYANNOTE-ASSISTED MODE: Diarization already done
+                # Gemini only transcribes + expert analysis
+                # ════════════════════════════════════════════════════
+                print("🎤 Using PYANNOTE-ASSISTED prompt (diarization pre-computed)")
+
+                # Build diarization info string for the prompt
+                diar_segments = diarization_hints.get("segments", [])
+                speaker_map = diarization_hints.get("speakers", {})
+
+                # Group segments by speaker for readable format
+                speaker_times = {}
+                for seg in diar_segments:
+                    spk = seg.get("speaker", "Unknown")
+                    if spk not in speaker_times:
+                        speaker_times[spk] = []
+                    speaker_times[spk].append(
+                        f"{seg['start']:.1f}s-{seg['end']:.1f}s"
+                    )
+
+                diar_info_lines = []
+                for spk, times in speaker_times.items():
+                    name = speaker_map.get(spk, {}).get("name", spk)
+                    confidence = speaker_map.get(spk, {}).get("confidence", 0)
+                    conf_str = f" ({confidence:.0%} confidence)" if confidence > 0 else ""
+                    diar_info_lines.append(
+                        f"- **{name}**{conf_str} speaks at: {', '.join(times)}"
+                    )
+                diar_info = "\n".join(diar_info_lines)
+
+                prompt = PYANNOTE_ASSISTED_PROMPT.replace("{diarization_info}", diar_info)
+
+                if kb_context:
+                    prompt += "\n" + kb_context
+                    print(f"   📚 Knowledge Base injected ({len(kb_context)} chars)")
+
+                print(f"   📊 Pre-computed speakers: {list(speaker_times.keys())}")
+                contents.append(prompt)
+
             else:
-                print("   📊 No reference voices - using speaker labels only")
-            
-            contents.append(prompt)
+                # ════════════════════════════════════════════════════
+                # LEGACY MODE: Gemini does diarization + expert analysis
+                # ════════════════════════════════════════════════════
+                print("🎙️ Using COMBINED Diarization + Expert Analysis prompt (legacy)")
+
+                prompt = COMBINED_DIARIZATION_EXPERT_PROMPT
+
+                if kb_context:
+                    prompt += "\n" + kb_context
+                    print(f"   📚 Knowledge Base injected ({len(kb_context)} chars)")
+
+                if reference_voice_files:
+                    print(f"   📊 Reference voices available: {[rv['name'] for rv in reference_voice_files]}")
+
+                    prompt += "\n\n" + "="*50 + "\n"
+                    prompt += "**REFERENCE VOICE SAMPLES - ACOUSTIC FINGERPRINTS:**\n"
+                    prompt += "="*50 + "\n\n"
+                    prompt += "The following audio files are KNOWN voice samples.\n"
+                    prompt += "Listen to each one carefully and memorize their acoustic characteristics.\n\n"
+
+                    for i, rv in enumerate(reference_voice_files, 1):
+                        prompt += f"📌 **Reference Audio {i}** = Voice of **{rv['name']}**\n"
+                        prompt += f"   (This audio clip belongs to {rv['name']} - use this to compare)\n\n"
+
+                    prompt += "\n" + "="*50 + "\n"
+                    prompt += "**PRIMARY CONVERSATION TO ANALYZE:**\n"
+                    prompt += "="*50 + "\n"
+                    prompt += "The main audio file follows after all reference samples.\n"
+                    prompt += "Compare EACH speaker in this conversation to the reference samples.\n"
+                    prompt += "If voice matches reference with 90%+ confidence → use that name.\n"
+                    prompt += "If NO match with 90%+ confidence → use 'Speaker X'.\n\n"
+                else:
+                    print("   📊 No reference voices - using speaker labels only")
+
+                contents.append(prompt)
         else:
             # Regular text/image analysis
             contents.append(SYSTEM_PROMPT)
