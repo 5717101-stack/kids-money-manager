@@ -720,9 +720,19 @@ class ConversationEngine:
         # Phase 1: Build user profile context block
         profile_block = self._build_profile_block()
 
+        # Dynamic date for accurate day-of-week awareness
+        from datetime import datetime as _dt
+        _now = _dt.now()
+        _day_names_he = ["שני", "שלישי", "רביעי", "חמישי", "שישי", "שבת", "ראשון"]
+        _today_he = _day_names_he[_now.weekday()]
+        _date_str = _now.strftime("%d/%m/%Y")
+
         self._kb_system_instruction = f"""אתה עוזר אישי וארגוני חכם בשם "Second Brain".
 אתה עונה בעברית אלא אם נשאלת באנגלית.
 יש לך גישה לכלים (functions) שמאפשרים לך לחפש אנשים ומידע ארגוני, לשמור עובדות, לחפש בפגישות קודמות, ולחפש טיסות.
+
+📅 התאריך של היום: {_date_str} (יום {_today_he}).
+🔴 כשהמשתמש אומר "היום" — הכוונה ליום {_today_he}, {_date_str}. השתמש בתאריך הזה בלבד.
 
 {profile_block}
 
@@ -957,11 +967,18 @@ class ConversationEngine:
 
             print(f"{'='*60}")
 
+            # Inject current date/time context into every message
+            # (system instruction date may be stale if server has been running for days)
+            from datetime import datetime as _dt_now
+            _now_msg = _dt_now.now()
+            _days_he = ["שני", "שלישי", "רביעי", "חמישי", "שישי", "שבת", "ראשון"]
+            _date_context = f"[📅 היום: {_days_he[_now_msg.weekday()]}, {_now_msg.strftime('%d/%m/%Y %H:%M')}]\n"
+            enriched_message = _date_context + message
+
             # ── Pronoun context injection ──
             # If the user says "שלה", "שלו", etc. and we know who they were
             # talking about, inject a context hint so Gemini resolves correctly
             # even in function-calling mode.
-            enriched_message = message
             try:
                 from app.services.identity_resolver_service import identity_resolver
                 if identity_resolver.has_pronouns(message):
@@ -971,7 +988,7 @@ class ConversationEngine:
                         hebrew_name = last_entity.get("hebrew_name", "") or last_entity.get("name", "")
                         display = hebrew_name or entity_name
                         if entity_name:
-                            enriched_message = f"[הקשר: המשתמש מתייחס ל-{display} ({entity_name}) מההודעה הקודמת]\n{message}"
+                            enriched_message = _date_context + f"[הקשר: המשתמש מתייחס ל-{display} ({entity_name}) מההודעה הקודמת]\n{message}"
                             print(f"   🎯 Pronoun context injected: {display} ({entity_name})")
             except Exception as pr_err:
                 print(f"   ⚠️ Pronoun resolution failed: {pr_err}")
