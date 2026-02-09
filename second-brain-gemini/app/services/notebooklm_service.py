@@ -179,7 +179,7 @@ class GeminiNotebookProvider(NotebookLMProvider):
                 prompt,
                 generation_config={
                     "temperature": 0.3,
-                    "max_output_tokens": 4096,
+                    "max_output_tokens": 8192,
                 }
             )
 
@@ -211,23 +211,18 @@ class GeminiNotebookProvider(NotebookLMProvider):
                 analysis = json.loads(raw_text)
                 print(f"📓 [NotebookLM] JSON parsed successfully")
             except json.JSONDecodeError as e:
-                logger.error(f"[NotebookLM] JSON parse error: {e}")
-                logger.error(f"[NotebookLM] Raw response (first 500 chars): {raw_text[:500]}")
-                # Salvage: use raw text as executive summary ONLY
-                # Do NOT put raw JSON into infographic_text
-                analysis = {
-                    "executive_summary": raw_text[:500] if not raw_text.strip().startswith("{") else "ניתוח השיחה הושלם (שגיאת פורמט)",
-                    "key_topics": [],
-                    "action_items": [],
-                    "decisions_made": [],
-                    "notable_quotes": [],
-                    "speaker_profiles": [],
-                    "follow_up_questions": [],
-                    "mood_and_tone": "",
-                    "infographic_text": "",  # Intentionally empty — force structured fallback
-                    "_parse_error": True,
-                    "_raw_text": raw_text[:3000],  # Keep for debugging, not shown to user
-                }
+                logger.warning(f"[NotebookLM] JSON parse error: {e}")
+                logger.warning(f"[NotebookLM] Raw (first 300): {raw_text[:300]}")
+
+                # ── Attempt JSON repair (common cause: truncated output) ──
+                analysis = self._repair_json(raw_text)
+
+                if analysis:
+                    print(f"📓 [NotebookLM] JSON repaired successfully after parse error")
+                else:
+                    logger.error(f"[NotebookLM] JSON repair failed — building fallback")
+                    # Extract what we can from the raw text
+                    analysis = self._build_fallback_analysis(raw_text)
 
             # Add metadata
             israel_time = datetime.now(timezone.utc) + timedelta(hours=2)
@@ -256,6 +251,178 @@ class GeminiNotebookProvider(NotebookLMProvider):
             import traceback
             traceback.print_exc()
             return None
+
+    # ───────────────────────────────────────────────────────────
+    # JSON repair helpers
+    # ───────────────────────────────────────────────────────────
+
+    def _repair_json(self, raw_text: str) -> Optional[Dict[str, Any]]:
+        """
+        Attempt to repair broken JSON (usually truncated by max_output_tokens).
+
+        Uses a stack-based parser to understand nesting, then closes
+        unclosed structures in the correct order ({} and [] properly nested).
+        """
+        import re
+
+        text = raw_text.strip()
+        if not text.startswith("{"):
+            return None
+
+        # Quick check — maybe it already parses
+        try:
+            return json.loads(text)
+        except json.JSONDecodeError:
+            pass
+
+        # ── Strategy 1: Stack-based closure ──
+        # Walk the text to understand where we are (in-string, nesting depth)
+        repaired = self._close_json_stack(text)
+        if repaired:
+            try:
+                result = json.loads(repaired)
+                if isinstance(result, dict):
+                    print("📓 [NotebookLM] JSON repaired via stack-based closure")
+                    return result
+            except json.JSONDecodeError:
+                pass
+
+        # ── Strategy 2: Trim from end and try stack-closure ──
+        original = raw_text.strip()
+        for trim_chars in [50, 100, 200, 500, 1000]:
+            if len(original) <= trim_chars:
+                break
+            trimmed = original[:len(original) - trim_chars]
+            # Find last complete value boundary
+            last_good = max(
+                trimmed.rfind(","),
+                trimmed.rfind("]"),
+                trimmed.rfind("}"),
+                trimmed.rfind('"'),
+            )
+            if last_good > 0:
+                candidate = trimmed[:last_good + 1]
+                candidate = re.sub(r',\s*$', '', candidate)
+                closed = self._close_json_stack(candidate)
+                if closed:
+                    try:
+                        result = json.loads(closed)
+                        if isinstance(result, dict):
+                            print(f"📓 [NotebookLM] JSON repaired by trimming ~{trim_chars} chars")
+                            return result
+                    except json.JSONDecodeError:
+                        continue
+
+        return None
+
+    @staticmethod
+    def _close_json_stack(text: str) -> Optional[str]:
+        """
+        Walk JSON text, track nesting stack, close any open structures.
+        Returns the repaired text or None if hopeless.
+        """
+        import re
+
+        in_string = False
+        escape_next = False
+        stack = []  # tracks expected closers: '}' or ']'
+
+        for ch in text:
+            if escape_next:
+                escape_next = False
+                continue
+            if ch == '\\' and in_string:
+                escape_next = True
+                continue
+            if ch == '"':
+                in_string = not in_string
+                continue
+            if in_string:
+                continue
+            # Outside string
+            if ch == '{':
+                stack.append('}')
+            elif ch == '[':
+                stack.append(']')
+            elif ch in '}]':
+                if stack and stack[-1] == ch:
+                    stack.pop()
+
+        # Build closure
+        repaired = text
+        if in_string:
+            repaired += '"'  # close open string
+
+        # Remove trailing comma (invalid before closing bracket)
+        repaired = re.sub(r',\s*$', '', repaired)
+
+        # Close remaining structures in correct nesting order
+        while stack:
+            repaired += stack.pop()
+
+        return repaired
+
+    def _build_fallback_analysis(self, raw_text: str) -> Dict[str, Any]:
+        """
+        When JSON is completely unfixable, extract whatever we can
+        from the raw text to provide a useful infographic.
+        """
+        import re
+
+        text = raw_text.strip()
+
+        # Try to extract executive_summary from the raw JSON string
+        summary = ""
+        summary_match = re.search(r'"executive_summary"\s*:\s*"([^"]{10,})"', text)
+        if summary_match:
+            summary = summary_match.group(1)
+
+        # Try to extract mood_and_tone
+        mood = ""
+        mood_match = re.search(r'"mood_and_tone"\s*:\s*"([^"]{5,})"', text)
+        if mood_match:
+            mood = mood_match.group(1)
+
+        # Try to extract key topics
+        topics = []
+        topic_matches = re.finditer(r'"topic"\s*:\s*"([^"]+)"', text)
+        for m in topic_matches:
+            topics.append({"topic": m.group(1), "details": "", "speakers_involved": []})
+
+        # Try to extract action items
+        actions = []
+        task_matches = re.finditer(r'"task"\s*:\s*"([^"]+)"', text)
+        for m in task_matches:
+            actions.append({"task": m.group(1), "owner": "", "priority": "medium"})
+
+        # Try to extract decisions
+        decisions = []
+        dec_matches = re.finditer(r'"decision"\s*:\s*"([^"]+)"', text)
+        for m in dec_matches:
+            decisions.append({"decision": m.group(1)})
+
+        # If we got absolutely nothing, use a readable fallback
+        if not summary and not topics and not actions:
+            # Strip JSON syntax to get readable text
+            readable = re.sub(r'[{}\[\]"]', '', text)
+            readable = re.sub(r'\s+', ' ', readable).strip()
+            summary = readable[:500] if readable else "הניתוח הושלם אך לא ניתן לעבד את הפורמט"
+
+        print(f"📓 [NotebookLM] Fallback: summary={bool(summary)}, topics={len(topics)}, actions={len(actions)}")
+
+        return {
+            "executive_summary": summary,
+            "key_topics": topics,
+            "action_items": actions,
+            "decisions_made": decisions,
+            "notable_quotes": [],
+            "speaker_profiles": [],
+            "follow_up_questions": [],
+            "mood_and_tone": mood,
+            "infographic_text": "",
+            "_parse_error": True,
+            "_repaired": True,
+        }
 
 
 # ═══════════════════════════════════════════════════════════════════════
