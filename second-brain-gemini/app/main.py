@@ -872,6 +872,18 @@ async def get_version():
     return {"version": "1.0.0"}
 
 
+@app.get("/debug/engine-status")
+async def debug_engine_status():
+    """Quick diagnostic for the conversation engine."""
+    return {
+        "initialized": conversation_engine._initialized,
+        "model_name": conversation_engine._model_name if hasattr(conversation_engine, '_model_name') else "N/A",
+        "model_set": conversation_engine._model is not None if hasattr(conversation_engine, '_model') else False,
+        "system_instruction_len": len(conversation_engine._kb_system_instruction) if conversation_engine._kb_system_instruction else 0,
+        "active_sessions": len(conversation_engine._sessions) if hasattr(conversation_engine, '_sessions') else 0,
+    }
+
+
 @app.get("/whatsapp-provider-status")
 async def get_whatsapp_provider_status():
     """Get current WhatsApp provider status and configuration."""
@@ -1923,9 +1935,11 @@ async def webhook(request: Request, background_tasks: BackgroundTasks):
                                             import traceback
                                             traceback.print_exc()
                                             
+                                            # Send descriptive error to user for debugging
+                                            error_detail = str(reply_error)[:100]
                                             try:
                                                 whatsapp_provider.send_whatsapp(
-                                                    message="⚠️ שגיאה בעיבוד ההודעה. נסה שוב.",
+                                                    message=f"⚠️ שגיאה בעיבוד ההודעה: {error_detail}",
                                                     to=f"+{phone}"
                                                 )
                                             except:
