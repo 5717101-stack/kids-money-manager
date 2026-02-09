@@ -101,7 +101,7 @@ def _ensure_models() -> bool:
             from pyannote.audio import Inference, Model
             _embedding_model = Inference(
                 Model.from_pretrained(
-                    "pyannote/wespeaker-vox-celebrity-resnet34-LM",
+                    "pyannote/wespeaker-voxceleb-resnet34-LM",
                     token=hf_token
                 ),
                 window="whole"
