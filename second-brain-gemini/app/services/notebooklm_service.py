@@ -193,22 +193,30 @@ class GeminiNotebookProvider(NotebookLMProvider):
             # Parse the JSON response
             raw_text = response.text.strip()
 
-            # Strip markdown code fences if present
-            if raw_text.startswith("```"):
-                # Remove opening fence (```json or ```)
-                first_newline = raw_text.index("\n")
-                raw_text = raw_text[first_newline + 1:]
-            if raw_text.endswith("```"):
-                raw_text = raw_text[:-3].strip()
+            # Strip markdown code fences if present (robust handling)
+            import re
+            fence_match = re.match(r'^```(?:json)?\s*\n(.*?)```\s*$', raw_text, re.DOTALL)
+            if fence_match:
+                raw_text = fence_match.group(1).strip()
+            elif raw_text.startswith("```"):
+                # Fallback: strip manually
+                first_newline = raw_text.find("\n")
+                if first_newline != -1:
+                    raw_text = raw_text[first_newline + 1:]
+                last_fence = raw_text.rfind("```")
+                if last_fence != -1:
+                    raw_text = raw_text[:last_fence].strip()
 
             try:
                 analysis = json.loads(raw_text)
+                print(f"📓 [NotebookLM] JSON parsed successfully")
             except json.JSONDecodeError as e:
                 logger.error(f"[NotebookLM] JSON parse error: {e}")
-                logger.error(f"[NotebookLM] Raw response: {raw_text[:500]}")
-                # Try to salvage — wrap in a basic structure
+                logger.error(f"[NotebookLM] Raw response (first 500 chars): {raw_text[:500]}")
+                # Salvage: use raw text as executive summary ONLY
+                # Do NOT put raw JSON into infographic_text
                 analysis = {
-                    "executive_summary": raw_text[:500],
+                    "executive_summary": raw_text[:500] if not raw_text.strip().startswith("{") else "ניתוח השיחה הושלם (שגיאת פורמט)",
                     "key_topics": [],
                     "action_items": [],
                     "decisions_made": [],
@@ -216,8 +224,9 @@ class GeminiNotebookProvider(NotebookLMProvider):
                     "speaker_profiles": [],
                     "follow_up_questions": [],
                     "mood_and_tone": "",
-                    "infographic_text": raw_text[:1000],
+                    "infographic_text": "",  # Intentionally empty — force structured fallback
                     "_parse_error": True,
+                    "_raw_text": raw_text[:3000],  # Keep for debugging, not shown to user
                 }
 
             # Add metadata
@@ -567,6 +576,7 @@ class NotebookLMService:
     def format_infographic(self, analysis: Dict[str, Any]) -> str:
         """
         Format the analysis as a WhatsApp-friendly infographic message.
+        ALWAYS uses the structured format — never sends raw JSON.
 
         Args:
             analysis: The structured analysis dict
@@ -577,28 +587,28 @@ class NotebookLMService:
         if not analysis:
             return ""
 
-        # Use the AI-generated infographic if available
-        infographic = analysis.get("infographic_text", "")
-        if infographic:
-            return f"📓 *ניתוח NotebookLM:*\n\n{infographic}"
-
-        # Fallback: build our own
         parts = []
-        parts.append("📓 *ניתוח NotebookLM:*\n")
+        parts.append("📓 *ניתוח מעמיק:*\n")
 
         # Executive summary
         summary = analysis.get("executive_summary", "")
-        if summary:
-            parts.append(f"📌 *תמצית:* {summary}\n")
+        if summary and not summary.strip().startswith("{"):
+            parts.append(f"📌 *תמצית:*\n{summary}\n")
 
-        # Key topics
+        # Key topics with details
         topics = analysis.get("key_topics", [])
         if topics:
             parts.append("📋 *נושאים מרכזיים:*")
-            for i, topic in enumerate(topics[:5], 1):
+            for i, topic in enumerate(topics[:6], 1):
                 name = topic.get("topic", "")
+                details = topic.get("details", "")
+                speakers_involved = topic.get("speakers_involved", [])
                 if name:
-                    parts.append(f"  {i}. {name}")
+                    parts.append(f"  {i}. *{name}*")
+                    if details:
+                        parts.append(f"     {details[:200]}")
+                    if speakers_involved:
+                        parts.append(f"     👥 {', '.join(speakers_involved)}")
             parts.append("")
 
         # Action items
@@ -609,10 +619,13 @@ class NotebookLMService:
                 task = action.get("task", "")
                 owner = action.get("owner", "")
                 priority = action.get("priority", "")
+                deadline = action.get("deadline", "")
                 icon = "🔴" if priority == "high" else "🟡" if priority == "medium" else "🟢"
                 line = f"  {icon} {task}"
                 if owner:
-                    line += f" ({owner})"
+                    line += f" → *{owner}*"
+                if deadline:
+                    line += f" (עד {deadline})"
                 parts.append(line)
             parts.append("")
 
@@ -620,14 +633,63 @@ class NotebookLMService:
         decisions = analysis.get("decisions_made", [])
         if decisions:
             parts.append("🎯 *החלטות:*")
-            for d in decisions[:3]:
-                parts.append(f"  • {d.get('decision', '')}")
+            for d in decisions[:5]:
+                decision = d.get("decision", "") if isinstance(d, dict) else str(d)
+                context = d.get("context", "") if isinstance(d, dict) else ""
+                parts.append(f"  • {decision}")
+                if context:
+                    parts.append(f"    _{context}_")
+            parts.append("")
+
+        # Notable quotes
+        quotes = analysis.get("notable_quotes", [])
+        if quotes:
+            parts.append("💬 *ציטוטים בולטים:*")
+            for q in quotes[:3]:
+                speaker = q.get("speaker", "") if isinstance(q, dict) else ""
+                quote = q.get("quote", "") if isinstance(q, dict) else str(q)
+                if quote:
+                    line = f'  "{quote}"'
+                    if speaker:
+                        line += f" — {speaker}"
+                    parts.append(line)
+            parts.append("")
+
+        # Speaker profiles
+        profiles = analysis.get("speaker_profiles", [])
+        if profiles:
+            parts.append("👤 *דוברים:*")
+            for p in profiles[:5]:
+                name = p.get("name", "") if isinstance(p, dict) else str(p)
+                role = p.get("role_in_conversation", "") if isinstance(p, dict) else ""
+                contributions = p.get("key_contributions", "") if isinstance(p, dict) else ""
+                if name:
+                    line = f"  • *{name}*"
+                    if role:
+                        line += f" ({role})"
+                    parts.append(line)
+                    if contributions:
+                        parts.append(f"    {contributions[:150]}")
+            parts.append("")
+
+        # Follow-up questions
+        follow_ups = analysis.get("follow_up_questions", [])
+        if follow_ups:
+            parts.append("❓ *שאלות המשך:*")
+            for fq in follow_ups[:3]:
+                parts.append(f"  • {fq}")
             parts.append("")
 
         # Mood
         mood = analysis.get("mood_and_tone", "")
         if mood:
             parts.append(f"🎭 *אווירה:* {mood}")
+
+        # If AI generated a nice infographic text, add it as a bonus at the end
+        infographic = analysis.get("infographic_text", "")
+        if infographic and not infographic.strip().startswith("{") and len(infographic) > 20:
+            parts.append(f"\n{'─' * 30}")
+            parts.append(f"📊 *סיכום מהיר:*\n{infographic}")
 
         return "\n".join(parts)
 
