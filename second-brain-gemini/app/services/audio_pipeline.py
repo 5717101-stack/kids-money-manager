@@ -459,7 +459,6 @@ def process_audio_core(
         # ============================================================
         try:
             from app.services.speaker_identity_service import speaker_identity_service
-            from datetime import timezone
 
             if pyannote_speaker_results:
                 israel_date = (datetime.now(timezone.utc) + timedelta(hours=2)).strftime('%Y-%m-%d')
@@ -1317,7 +1316,6 @@ def process_audio_core(
 
         except Exception as nb_err:
             print(f"⚠️ [NotebookLM] Error (non-fatal): {nb_err}")
-            import traceback
             traceback.print_exc()
 
         print(f"\n{'='*60}")

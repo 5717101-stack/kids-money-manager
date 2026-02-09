@@ -18,6 +18,7 @@ Models are lazy-loaded on first use to keep startup fast.
 
 import os
 import logging
+import traceback
 import numpy as np
 from typing import Optional, Dict, Any, List, Tuple
 from threading import Lock
@@ -28,7 +29,10 @@ logger = logging.getLogger(__name__)
 _diarization_pipeline = None
 _embedding_model = None
 _models_lock = Lock()
-_models_loaded = False
+_models_loaded = False          # True only after SUCCESSFUL load
+_models_load_failed = False     # True after permanent failure (e.g. ImportError)
+_models_last_attempt = 0.0      # Timestamp of last failed attempt
+_RETRY_COOLDOWN = 120.0         # Retry loading after 2 minutes on transient failures
 
 
 def _get_hf_token() -> Optional[str]:
@@ -42,15 +46,33 @@ def _ensure_models() -> bool:
     """Lazy-load pyannote models on first use.
 
     Returns True if models are ready.
+    - On success: caches forever (models stay in memory).
+    - On ImportError: permanent failure, never retries.
+    - On other errors (auth, network): retries after cooldown.
     """
-    global _diarization_pipeline, _embedding_model, _models_loaded
+    global _diarization_pipeline, _embedding_model
+    global _models_loaded, _models_load_failed, _models_last_attempt
 
+    # Fast path: already loaded successfully
     if _models_loaded:
-        return _diarization_pipeline is not None
+        return True
+
+    # Permanent failure (missing library)
+    if _models_load_failed:
+        return False
+
+    # Transient failure cooldown — don't hammer HuggingFace on every request
+    import time
+    now = time.time()
+    if _models_last_attempt > 0 and (now - _models_last_attempt) < _RETRY_COOLDOWN:
+        return False
 
     with _models_lock:
+        # Re-check inside lock
         if _models_loaded:
-            return _diarization_pipeline is not None
+            return True
+        if _models_load_failed:
+            return False
 
         hf_token = _get_hf_token()
         if not hf_token:
@@ -59,7 +81,8 @@ def _ensure_models() -> bool:
             logger.error("   2. Accept the license agreement")
             logger.error("   3. Create a token at https://huggingface.co/settings/tokens")
             logger.error("   4. Set HUGGINGFACE_TOKEN env var on Render")
-            _models_loaded = True
+            # Not permanent — user might set the token later
+            _models_last_attempt = now
             return False
 
         try:
@@ -91,13 +114,15 @@ def _ensure_models() -> bool:
         except ImportError as e:
             logger.error(f"❌ pyannote.audio not installed: {e}")
             logger.error("   Run: pip install pyannote.audio torch torchaudio")
-            _models_loaded = True
+            _models_load_failed = True  # Permanent — won't fix without redeploy
             return False
         except Exception as e:
             logger.error(f"❌ Failed to load pyannote models: {e}")
-            import traceback
             traceback.print_exc()
-            _models_loaded = True
+            # Transient failure — will retry after cooldown
+            _models_last_attempt = now
+            _diarization_pipeline = None
+            _embedding_model = None
             return False
 
 
@@ -164,7 +189,6 @@ def diarize(audio_path: str,
 
     except Exception as e:
         logger.error(f"❌ Diarization failed: {e}")
-        import traceback
         traceback.print_exc()
         return []
 
@@ -202,7 +226,6 @@ def extract_embedding(audio_path: str,
 
     except Exception as e:
         logger.error(f"❌ Embedding extraction failed: {e}")
-        import traceback
         traceback.print_exc()
         return None
 
