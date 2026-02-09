@@ -69,7 +69,7 @@ def _ensure_models() -> bool:
             print("🔄 Loading pyannote diarization pipeline (first run downloads ~1.5GB)...")
             _diarization_pipeline = Pipeline.from_pretrained(
                 "pyannote/speaker-diarization-3.1",
-                use_auth_token=hf_token
+                token=hf_token
             )
             _diarization_pipeline.to(torch.device("cpu"))
             print("✅ pyannote diarization pipeline loaded")
@@ -79,7 +79,7 @@ def _ensure_models() -> bool:
             _embedding_model = Inference(
                 Model.from_pretrained(
                     "pyannote/wespeaker-vox-celebrity-resnet34-LM",
-                    use_auth_token=hf_token
+                    token=hf_token
                 ),
                 window="whole"
             )
