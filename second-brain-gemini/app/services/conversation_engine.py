@@ -184,6 +184,31 @@ _TOOL_DECLARATIONS = [
     ),
 
     genai.protos.FunctionDeclaration(
+        name="search_notebook",
+        description=(
+            "Search through NotebookLM-style deep analyses of past recordings and meetings. "
+            "These analyses contain executive summaries, key topics, action items, decisions, "
+            "notable quotes, speaker profiles, and follow-up questions. "
+            "Use when the user asks for deep insights about past meetings, wants to find "
+            "specific decisions, action items, or quotes from recordings. "
+            "Examples: 'מה ההחלטות שהתקבלו בפגישה האחרונה?', 'אילו משימות נקבעו?', "
+            "'מה היו הנושאים המרכזיים בשיחה עם יובל?', 'תן לי את הציטוטים החשובים'. "
+            "Note: This searches through the rich NotebookLM analyses (if enabled), "
+            "not the raw transcripts. For raw transcript search use search_meetings."
+        ),
+        parameters=genai.protos.Schema(
+            type=genai.protos.Type.OBJECT,
+            properties={
+                "query": genai.protos.Schema(
+                    type=genai.protos.Type.STRING,
+                    description="Search terms: keywords, speaker names, topics, or action items"
+                ),
+            },
+            required=["query"]
+        )
+    ),
+
+    genai.protos.FunctionDeclaration(
         name="search_flights",
         description=(
             "Search for round-trip DIRECT flights from Tel Aviv (TLV) to a destination. "
@@ -259,6 +284,11 @@ def _execute_tool(function_name: str, args: Dict[str, Any]) -> str:
             return _tool_search_meetings(
                 query=args.get("query", ""),
                 speaker_name=args.get("speaker_name", ""),
+            )
+
+        elif function_name == "search_notebook":
+            return _tool_search_notebook(
+                query=args.get("query", ""),
             )
 
         elif function_name == "search_flights":
@@ -580,6 +610,42 @@ def _tool_search_meetings(query: str, speaker_name: str = "") -> str:
     }, ensure_ascii=False, default=str)
 
 
+def _tool_search_notebook(query: str) -> str:
+    """Search through NotebookLM deep analyses of past recordings."""
+    from app.services.notebooklm_service import notebooklm_service
+
+    if not notebooklm_service.is_enabled:
+        return json.dumps({
+            "error": "שירות NotebookLM מכובה. אפשר להפעיל אותו דרך NOTEBOOKLM_ENABLED=true.",
+            "suggestion": "השתמש ב-search_meetings לחיפוש בתמלולים רגילים."
+        }, ensure_ascii=False)
+
+    dms = conversation_engine._drive_memory_service
+    if not dms:
+        return json.dumps({
+            "error": "Drive service not available. Cannot search NotebookLM summaries."
+        }, ensure_ascii=False)
+
+    results = notebooklm_service.search_summaries(
+        query=query,
+        drive_memory_service=dms,
+        limit=5
+    )
+
+    if not results:
+        return json.dumps({
+            "found": False,
+            "message": f"לא נמצאו ניתוחי NotebookLM התואמים ל-'{query}'.",
+            "suggestion": "נסה מילות חיפוש אחרות, או השתמש ב-search_meetings לחיפוש בתמלולים."
+        }, ensure_ascii=False)
+
+    return json.dumps({
+        "found": True,
+        "count": len(results),
+        "analyses": results,
+    }, ensure_ascii=False, default=str)
+
+
 def _tool_search_flights(
     destination: str,
     max_price_eur=None,
@@ -799,7 +865,14 @@ class ConversationEngine:
 • save_fact(person_name, field, value) → שמירת עובדה (עבודה או משפחה) לבסיס הידע
 • list_org_stats() → סטטיסטיקות כלליות על הארגון
 • search_meetings(query, speaker_name) → חיפוש בתמלולי פגישות קודמות
+• search_notebook(query) → חיפוש בניתוחי NotebookLM מעמיקים (החלטות, משימות, ציטוטים, נושאים)
 • search_flights(destination, max_price_eur, date_from, date_to, nights_from, nights_to) → חיפוש טיסות ישירות הלוך-חזור מת״א
+
+══════════════════════════════════════════════════════
+14. 📓 ניתוחי NotebookLM: כשהמשתמש מבקש תובנות מעמיקות, החלטות, משימות, או ציטוטים מפגישות — השתמש ב-search_notebook.
+   זה מחפש בניתוחים מובנים שכוללים: תמצית מנהלים, נושאים מרכזיים, פריטי פעולה, החלטות, ציטוטים, ופרופילי דוברים.
+   אם search_notebook לא מוצא — נסה search_meetings כגיבוי.
+   דוגמאות: "מה ההחלטות שהתקבלו?", "אילו משימות נקבעו?", "מה היו הנושאים המרכזיים?", "תן לי ציטוטים חשובים"
 
 ══════════════════════════════════════════════════════
 זרימת עדכון מידע — save_fact:
@@ -1234,6 +1307,7 @@ class ConversationEngine:
 • save_fact(person_name, field, value) → שמירת עובדה (עבודה או משפחה) לבסיס הידע
 • list_org_stats() → סטטיסטיקות כלליות על הארגון
 • search_meetings(query, speaker_name) → חיפוש בתמלולי פגישות קודמות
+• search_notebook(query) → חיפוש בניתוחי NotebookLM מעמיקים (החלטות, משימות, ציטוטים, נושאים)
 
 ══════════════════════════════════════════════════════
 זרימת עדכון מידע — save_fact:

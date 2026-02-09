@@ -630,7 +630,7 @@ async def startup_event():
         print("✅ [ConvEngine] Conversation Engine ready — LLM-First architecture active")
         if user_profile:
             print(f"   📋 Profile injected: {', '.join(k for k in user_profile.keys() if k != 'chat_history')}")
-        print(f"   🔧 Tools: search_person, get_reports, save_fact, list_org_stats, search_meetings")
+        print(f"   🔧 Tools: search_person, get_reports, save_fact, list_org_stats, search_meetings, search_notebook, search_flights")
     except Exception as ce_error:
         print(f"⚠️  Conversation Engine initialization error: {ce_error}")
         import traceback
@@ -874,13 +874,15 @@ async def get_version():
 
 @app.get("/debug/engine-status")
 async def debug_engine_status():
-    """Quick diagnostic for the conversation engine."""
+    """Quick diagnostic for the conversation engine and NotebookLM."""
+    from app.services.notebooklm_service import notebooklm_service
     return {
         "initialized": conversation_engine._initialized,
         "model_name": conversation_engine._model_name if hasattr(conversation_engine, '_model_name') else "N/A",
         "model_set": conversation_engine._model is not None if hasattr(conversation_engine, '_model') else False,
         "system_instruction_len": len(conversation_engine._kb_system_instruction) if conversation_engine._kb_system_instruction else 0,
         "active_sessions": len(conversation_engine._sessions) if hasattr(conversation_engine, '_sessions') else 0,
+        "notebooklm": notebooklm_service.get_status(),
     }
 
 

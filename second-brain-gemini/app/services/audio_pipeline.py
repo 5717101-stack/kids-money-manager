@@ -1040,6 +1040,59 @@ def process_audio_core(
         if unknown_speakers_processed:
             print(f"✅ [WhatsApp] Message 2 (Speaker ID queries) sent for: {unknown_speakers_processed}")
 
+        # ============================================================
+        # Step 7: NOTEBOOKLM DEEP ANALYSIS (if enabled)
+        # ============================================================
+        notebooklm_analysis = None
+        try:
+            from app.services.notebooklm_service import notebooklm_service
+
+            if notebooklm_service.is_enabled:
+                print("📓 [NotebookLM] Starting deep analysis...")
+
+                # Build full transcript text from segments
+                full_transcript_text = "\n".join(
+                    f"{seg.get('speaker', '?')}: {seg.get('text', '')}"
+                    for seg in segments
+                    if seg.get('text')
+                )
+
+                israel_time = datetime.now(timezone.utc) + timedelta(hours=2)
+                nb_metadata = {
+                    "filename": audio_metadata.get('filename', ''),
+                    "timestamp": israel_time.strftime('%d/%m/%Y %H:%M'),
+                    "source": source,
+                    "file_id": audio_metadata.get('file_id', ''),
+                }
+
+                notebooklm_analysis = notebooklm_service.analyze_recording(
+                    transcript_text=full_transcript_text,
+                    expert_summary=expert_summary if expert_summary else "",
+                    speakers=list(speaker_names),
+                    segments=segments,
+                    metadata=nb_metadata,
+                    drive_memory_service=drive_memory_service,
+                )
+
+                if notebooklm_analysis and whatsapp_provider:
+                    infographic_msg = notebooklm_service.format_infographic(notebooklm_analysis)
+                    if infographic_msg:
+                        nb_result = whatsapp_provider.send_whatsapp(
+                            message=infographic_msg,
+                            to=f"+{from_number}"
+                        )
+                        if nb_result.get('success'):
+                            print("📓 [NotebookLM] Infographic sent via WhatsApp")
+                        else:
+                            print(f"⚠️ [NotebookLM] Failed to send infographic: {nb_result.get('error')}")
+            else:
+                print("ℹ️ [NotebookLM] Disabled — skipping deep analysis")
+
+        except Exception as nb_err:
+            print(f"⚠️ [NotebookLM] Error (non-fatal): {nb_err}")
+            import traceback
+            traceback.print_exc()
+
         print(f"\n{'='*60}")
         print(f"✅ AUDIO PROCESSING COMPLETED (source: {source})")
         print(f"{'='*60}\n")
@@ -1052,6 +1105,7 @@ def process_audio_core(
             "transcript_file_id": transcript_file_id,
             "summary": summary_text,
             "expert_analysis": expert_analysis_result,
+            "notebooklm_analysis": notebooklm_analysis,
         })
 
     except Exception as e:
