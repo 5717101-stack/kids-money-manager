@@ -140,7 +140,7 @@ def is_available() -> bool:
         return False
 
 
-_DIARIZATION_TIMEOUT_SEC = 300  # 5 minutes max — fallback to Gemini if exceeded
+_DIARIZATION_TIMEOUT_SEC = 1800  # 30 minutes max — fallback to Gemini if exceeded
 
 
 def diarize(audio_path: str,

@@ -203,8 +203,8 @@ def process_audio_core(
                 print("🎤 [pyannote] Speaker diarization engine available")
 
                 # Scale timeout based on audio duration (CPU-bound: ~0.2x real-time)
-                # Default: 300s. For very long audio, allow more but cap at 600s.
-                diar_timeout = min(max(int(duration_sec * 0.5), 120), 600) if duration_sec else 300
+                # Default: 1800s (30min). Scale with audio length, min 120s, max 1800s.
+                diar_timeout = min(max(int(duration_sec * 0.5), 120), 1800) if duration_sec else 1800
                 print(f"   ⏱️  Audio: {duration_sec:.0f}s → diarization timeout: {diar_timeout}s")
 
                 # Step 1a: Run diarization
