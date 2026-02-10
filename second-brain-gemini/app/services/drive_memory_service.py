@@ -6,6 +6,7 @@ Uses in-memory caching with robust timestamp-based stale-while-revalidate logic.
 
 import os
 import json
+import copy
 import tempfile
 import io
 from typing import Dict, Any, Optional, List
@@ -1808,32 +1809,37 @@ class DriveMemoryService:
             
             # Step 6: Update cache immediately (0 latency)
             # Note: modifiedTime will be updated after Drive upload completes
+            # CRITICAL: Use deepcopy to prevent shared references between cache and
+            # background upload tasks, which can cause circular reference errors.
             with self._cache_lock:
                 # Keep existing modifiedTime temporarily (will be updated after upload)
                 if self._memory_cache is not None:
                     _, cached_modified_time, cached_file_id = self._memory_cache
                     if cached_file_id == file_id:
                         # Keep the existing modifiedTime temporarily
-                        self._memory_cache = (memory.copy(), cached_modified_time, file_id)
+                        self._memory_cache = (copy.deepcopy(memory), cached_modified_time, file_id)
                     else:
                         # New file or file_id changed
-                        self._memory_cache = (memory.copy(), None, file_id)
+                        self._memory_cache = (copy.deepcopy(memory), None, file_id)
                 else:
                     # No cache yet
-                    self._memory_cache = (memory.copy(), None, file_id)
+                    self._memory_cache = (copy.deepcopy(memory), None, file_id)
             
             logger.info(f"💨 Updated memory cache immediately (0ms latency)")
             logger.info(f"   Total chat history entries: {len(memory['chat_history'])}")
             logger.info(f"   User profile keys: {list(memory.get('user_profile', {}).keys())}")
             
             # Step 7: Sync to Drive in background (non-blocking)
+            # CRITICAL: Pass a deepcopy to background task to prevent race conditions
+            # with future update_memory calls that modify the same objects.
+            upload_snapshot = copy.deepcopy(memory)
             if background_tasks:
                 # Add background task for Drive sync
-                background_tasks.add_task(self._upload_to_drive, memory)
+                background_tasks.add_task(self._upload_to_drive, upload_snapshot)
                 logger.debug("📤 Added Drive sync to background tasks")
             else:
                 # Backward compatibility: sync synchronously
-                self._upload_to_drive(memory)
+                self._upload_to_drive(upload_snapshot)
             
             return True
             
@@ -1864,8 +1870,15 @@ class DriveMemoryService:
         self._refresh_credentials_if_needed()
         
         try:
-            # Convert to JSON string
-            memory_json = json.dumps(memory, ensure_ascii=False, indent=2)
+            # Deep copy to avoid circular references from shared shallow-copy refs
+            memory_safe = copy.deepcopy(memory)
+            
+            # Convert to JSON string (with fallback for non-serializable objects)
+            try:
+                memory_json = json.dumps(memory_safe, ensure_ascii=False, indent=2)
+            except (ValueError, TypeError) as json_err:
+                logger.warning(f"⚠️ JSON serialization issue ({json_err}), sanitizing memory...")
+                memory_json = json.dumps(memory_safe, ensure_ascii=False, indent=2, default=str)
             memory_bytes = memory_json.encode('utf-8')
             
             # Find existing file or create new one
