@@ -202,10 +202,16 @@ def process_audio_core(
             if pyannote_available():
                 print("🎤 [pyannote] Speaker diarization engine available")
 
-                # Scale timeout based on audio duration (CPU-bound: ~0.2x real-time)
-                # Default: 1800s (30min). Scale with audio length, min 120s, max 1800s.
-                diar_timeout = min(max(int(duration_sec * 0.5), 120), 1800) if duration_sec else 1800
-                print(f"   ⏱️  Audio: {duration_sec:.0f}s → diarization timeout: {diar_timeout}s")
+                # Scale timeout based on audio duration and device
+                # GPU L4: ~0.05x real-time (34min → 1.5min). CPU: ~0.5x real-time.
+                from app.services.pyannote_service import is_gpu
+                if is_gpu():
+                    # GPU: generous timeout of 0.2x real-time, min 60s, max 600s
+                    diar_timeout = min(max(int(duration_sec * 0.2), 60), 600) if duration_sec else 300
+                else:
+                    # CPU: 0.5x real-time, min 120s, max 1800s
+                    diar_timeout = min(max(int(duration_sec * 0.5), 120), 1800) if duration_sec else 1800
+                print(f"   ⏱️  Audio: {duration_sec:.0f}s → diarization timeout: {diar_timeout}s ({'GPU' if is_gpu() else 'CPU'})")
 
                 # Step 1a: Run diarization
                 pyannote_segments = diarize(tmp_path, min_speakers=1, max_speakers=6, timeout=diar_timeout)

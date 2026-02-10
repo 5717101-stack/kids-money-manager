@@ -1,0 +1,34 @@
+# Git
+.git
+.gitignore
+
+# Python
+__pycache__
+*.pyc
+*.pyo
+.pytest_cache
+.mypy_cache
+venv/
+.venv/
+*.egg-info
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Local scripts (not needed in container)
+local_cursor_bridge.py
+process_meetings.py
+
+# Render (not needed for Cloud Run)
+render.yaml
+
+# Docs
+*.md
+LICENSE
+
+# Temp files
+*.tmp
+*.bak

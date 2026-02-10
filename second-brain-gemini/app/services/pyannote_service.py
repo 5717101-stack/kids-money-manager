@@ -8,17 +8,20 @@ Wraps pyannote.audio for:
 
 Requires:
   - pyannote.audio >= 3.1
-  - torch (CPU version sufficient)
+  - torch (CPU or CUDA)
   - HUGGINGFACE_TOKEN env var (models are gated on HuggingFace)
 
-Memory: ~1.2GB for diarization pipeline + ~300MB for embedding model
-Total: ~1.5GB — fits in 4GB RAM with headroom.
-Models are lazy-loaded on first use to keep startup fast.
+GPU support:
+  - Auto-detects CUDA GPU and uses it if available
+  - On GPU L4: ~0.05x real-time (34min audio → ~1.5min)
+  - On CPU:    ~0.5x real-time  (34min audio → ~17min)
+  - Models are lazy-loaded on first use to keep startup fast.
 """
 
 import os
 import logging
 import traceback
+import subprocess
 import numpy as np
 from typing import Optional, Dict, Any, List, Tuple
 from threading import Lock
@@ -28,6 +31,7 @@ logger = logging.getLogger(__name__)
 # ─── Lazy-loaded models ──────────────────────────────────────
 _diarization_pipeline = None
 _embedding_model = None
+_device = None                  # torch.device — set during model loading
 _models_lock = Lock()
 _models_loaded = False          # True only after SUCCESSFUL load
 _models_load_failed = False     # True after permanent failure (e.g. ImportError)
@@ -42,6 +46,18 @@ def _get_hf_token() -> Optional[str]:
             or None)
 
 
+def _detect_device():
+    """Auto-detect best available device (GPU > CPU)."""
+    import torch
+    if torch.cuda.is_available():
+        gpu_name = torch.cuda.get_device_name(0)
+        print(f"🚀 GPU detected: {gpu_name} — using CUDA for pyannote")
+        return torch.device("cuda")
+    else:
+        print("ℹ️  No GPU detected — using CPU for pyannote (slower)")
+        return torch.device("cpu")
+
+
 def _ensure_models() -> bool:
     """Lazy-load pyannote models on first use.
 
@@ -50,7 +66,7 @@ def _ensure_models() -> bool:
     - On ImportError: permanent failure, never retries.
     - On other errors (auth, network): retries after cooldown.
     """
-    global _diarization_pipeline, _embedding_model
+    global _diarization_pipeline, _embedding_model, _device
     global _models_loaded, _models_load_failed, _models_last_attempt
 
     # Fast path: already loaded successfully
@@ -80,7 +96,7 @@ def _ensure_models() -> bool:
             logger.error("   1. Go to https://huggingface.co/pyannote/speaker-diarization-3.1")
             logger.error("   2. Accept the license agreement")
             logger.error("   3. Create a token at https://huggingface.co/settings/tokens")
-            logger.error("   4. Set HUGGINGFACE_TOKEN env var on Render")
+            logger.error("   4. Set HUGGINGFACE_TOKEN env var")
             # Not permanent — user might set the token later
             _models_last_attempt = now
             return False
@@ -89,24 +105,25 @@ def _ensure_models() -> bool:
             import torch
             from pyannote.audio import Pipeline
 
-            print("🔄 Loading pyannote diarization pipeline (first run downloads ~1.5GB)...")
+            _device = _detect_device()
+
+            print("🔄 Loading pyannote diarization pipeline...")
             _diarization_pipeline = Pipeline.from_pretrained(
                 "pyannote/speaker-diarization-3.1",
                 token=hf_token
             )
-            _diarization_pipeline.to(torch.device("cpu"))
-            print("✅ pyannote diarization pipeline loaded")
+            _diarization_pipeline.to(_device)
+            print(f"✅ pyannote diarization pipeline loaded (device: {_device})")
 
             print("🔄 Loading pyannote embedding model...")
             from pyannote.audio import Inference, Model
-            _embedding_model = Inference(
-                Model.from_pretrained(
-                    "pyannote/wespeaker-voxceleb-resnet34-LM",
-                    token=hf_token
-                ),
-                window="whole"
+            emb_model = Model.from_pretrained(
+                "pyannote/wespeaker-voxceleb-resnet34-LM",
+                token=hf_token
             )
-            print("✅ pyannote embedding model loaded")
+            emb_model.to(_device)
+            _embedding_model = Inference(emb_model, window="whole", device=_device)
+            print(f"✅ pyannote embedding model loaded (device: {_device})")
 
             _models_loaded = True
             return True
@@ -123,6 +140,7 @@ def _ensure_models() -> bool:
             _models_last_attempt = now
             _diarization_pipeline = None
             _embedding_model = None
+            _device = None
             return False
 
 
@@ -143,6 +161,41 @@ def is_available() -> bool:
 _DIARIZATION_TIMEOUT_SEC = 1800  # 30 minutes max — fallback to Gemini if exceeded
 
 
+def _convert_to_wav(audio_path: str) -> Optional[str]:
+    """Convert audio to 16kHz mono WAV for optimal pyannote performance.
+
+    pyannote internally resamples to 16kHz mono, but feeding WAV directly
+    avoids slow OGG/Opus decoding that can make GPU processing appear hung.
+
+    Returns path to WAV file (caller must clean up), or None on failure.
+    """
+    import tempfile
+    wav_path = tempfile.mktemp(suffix=".wav")
+    try:
+        result = subprocess.run(
+            ["ffmpeg", "-y", "-i", audio_path, "-ar", "16000", "-ac", "1",
+             "-c:a", "pcm_s16le", wav_path],
+            capture_output=True, timeout=120
+        )
+        if result.returncode == 0 and os.path.exists(wav_path):
+            orig_size = os.path.getsize(audio_path)
+            wav_size = os.path.getsize(wav_path)
+            print(f"   🔄 Converted to WAV: {orig_size//1024}KB → {wav_size//1024}KB (16kHz mono)")
+            return wav_path
+        else:
+            stderr = result.stderr.decode(errors='ignore')[-200:]
+            print(f"   ⚠️  ffmpeg conversion failed: {stderr}")
+            return None
+    except Exception as e:
+        print(f"   ⚠️  Audio conversion failed: {e}")
+        return None
+
+
+def is_gpu() -> bool:
+    """Check if pyannote models are on GPU."""
+    return _device is not None and _device.type == "cuda"
+
+
 def diarize(audio_path: str,
             num_speakers: int = None,
             min_speakers: int = None,
@@ -155,7 +208,7 @@ def diarize(audio_path: str,
         num_speakers: Exact number of speakers (if known)
         min_speakers: Minimum number of speakers
         max_speakers: Maximum number of speakers
-        timeout: Max seconds to wait (default: _DIARIZATION_TIMEOUT_SEC)
+        timeout: Max seconds to wait (default: auto based on GPU/CPU)
 
     Returns:
         List of segments: [{"speaker": "SPEAKER_00", "start": 0.5, "end": 5.2, "duration": 4.7}, ...]
@@ -165,9 +218,19 @@ def diarize(audio_path: str,
         return []
 
     max_wait = timeout or _DIARIZATION_TIMEOUT_SEC
+    wav_path = None
 
     try:
-        print(f"🎤 Running pyannote diarization on {audio_path}...")
+        # Convert OGG/MP3/etc to WAV for faster processing
+        file_ext = os.path.splitext(audio_path)[1].lower()
+        actual_path = audio_path
+        if file_ext != ".wav":
+            wav_path = _convert_to_wav(audio_path)
+            if wav_path:
+                actual_path = wav_path
+
+        device_tag = "GPU" if is_gpu() else "CPU"
+        print(f"🎤 Running pyannote diarization on {actual_path} ({device_tag})...")
         print(f"   ⏱️  Timeout: {max_wait}s — will fall back to Gemini if exceeded")
 
         kwargs = {}
@@ -178,23 +241,28 @@ def diarize(audio_path: str,
         if max_speakers is not None:
             kwargs["max_speakers"] = max_speakers
 
-        # Run diarization with timeout to prevent CPU-bound hangs on long audio
+        # Run diarization with timeout to prevent hangs on long audio
         import concurrent.futures
         import time as _time
         _diar_start = _time.time()
 
         with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
-            future = executor.submit(_diarization_pipeline, audio_path, **kwargs)
+            future = executor.submit(_diarization_pipeline, actual_path, **kwargs)
             try:
                 diarization_result = future.result(timeout=max_wait)
             except concurrent.futures.TimeoutError:
                 elapsed = _time.time() - _diar_start
                 print(f"⏱️  pyannote TIMEOUT after {elapsed:.0f}s (limit: {max_wait}s)")
                 print(f"   ↩️  Falling back to Gemini-only diarization")
+                if wav_path and os.path.exists(wav_path):
+                    try:
+                        os.unlink(wav_path)
+                    except Exception:
+                        pass
                 return []
 
         elapsed = _time.time() - _diar_start
-        print(f"   ⏱️  Diarization completed in {elapsed:.1f}s")
+        print(f"   ⏱️  Diarization completed in {elapsed:.1f}s ({device_tag})")
 
         # pyannote 3.1 returns a DiarizeOutput dataclass with:
         #   .speaker_diarization  — the Annotation (who speaks when)
@@ -241,6 +309,13 @@ def diarize(audio_path: str,
         logger.error(f"❌ Diarization failed: {e}")
         traceback.print_exc()
         return []
+    finally:
+        # Clean up temp WAV file
+        if wav_path and os.path.exists(wav_path):
+            try:
+                os.unlink(wav_path)
+            except Exception:
+                pass
 
 
 def extract_embedding(audio_path: str,
