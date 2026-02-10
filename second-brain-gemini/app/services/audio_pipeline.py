@@ -568,11 +568,11 @@ def process_audio_core(
             traceback.print_exc()
 
         # ============================================================
-        # Step 5: Speaker Identification — WebRTC VAD SMART SLICING
-        # Enhanced: stores pyannote embeddings for unknown speakers
+        # Step 5: Unknown Speaker Clip Extraction & Enrollment
+        # PATH A (pyannote): Use best_segment directly — fast, precise
+        # PATH B (legacy):   VAD Smart Slicer on Gemini segments
         # ============================================================
         unknown_speakers_processed = []
-        # Import pending_identifications from main module for voice imprinting
         try:
             from app.main import pending_identifications, _voice_map_cache, _save_pending_identifications
         except ImportError:
@@ -585,7 +585,7 @@ def process_audio_core(
         for rv in reference_voices:
             self_names.add(rv['name'].lower())
 
-        # If pyannote identified speakers, update the voice map cache
+        # Update voice map cache with pyannote-identified speakers
         if pyannote_speaker_results:
             for spk_label, info in pyannote_speaker_results.items():
                 if info.get("person_id") and info["status"] == "identified":
@@ -596,530 +596,287 @@ def process_audio_core(
 
         print(f"🔇 Self-identification skip list: {self_names}")
 
-        try:
-            from pydub import AudioSegment
-
-            audio_segment = AudioSegment.from_file(tmp_path)
-            print(f"✅ Loaded audio for slicing: {len(audio_segment)}ms")
-
-            # ============================================================
-            # SMART SLICING ENGINE v3 — WebRTC VAD
-            # ============================================================
-            TARGET_MIN_MS = 5000
-            TARGET_MAX_MS = 7000
-            ABS_MIN_MS = 1500
-            PAD_BUFFER_MS = 500
+        # ── Shared helper: export clip and send via WhatsApp ──
+        def _export_and_send_clip(audio_slice, speaker, clip_label, embedding=None):
+            """Export an audio slice to OGG and send via WhatsApp for identification."""
+            import tempfile as tf
             FADE_MS = 40
-            OVERLAP_MARGIN_MS = 300
-            VAD_AGGRESSIVENESS = 1
-            VAD_FRAME_MS = 30
-            VAD_SAMPLE_RATE = 16000
-            MIN_SPEECH_CLUSTER_MS = 1500
-            MIN_SPEECH_RATIO = 0.40
-            MAX_SCAN_MS = 30000
-            FALLBACK_SLICE_MS = 5000
-            MAX_VAD_RETRIES = 2
+            slice_path = None
 
-            # ── Build segment map for ALL speakers ──
-            all_segments_by_speaker = {}
-            unknown_speakers: Set[str] = set()
+            # Audio enhancements
+            try:
+                target_dbfs = -16.0
+                current_dbfs = audio_slice.dBFS
+                if current_dbfs != float('-inf') and current_dbfs < 0:
+                    gain = target_dbfs - current_dbfs
+                    gain = max(min(gain, 20.0), -10.0)
+                    audio_slice = audio_slice.apply_gain(gain)
+                audio_slice = audio_slice.fade_in(FADE_MS).fade_out(FADE_MS)
+            except Exception as enhance_err:
+                print(f"      ⚠️  Enhancement failed: {enhance_err}")
 
-            for segment in segments:
-                speaker = segment.get('speaker', '')
-                if not speaker:
-                    continue
+            try:
+                with tf.NamedTemporaryFile(delete=False, suffix='.ogg') as slice_file:
+                    audio_slice.export(
+                        slice_file.name,
+                        format='ogg',
+                        codec='libopus',
+                        parameters=['-b:a', '64k', '-ar', '48000']
+                    )
+                    slice_path = slice_file.name
+                    slice_size = os.path.getsize(slice_path)
+                    print(f"   💾 Exported: OGG/Opus ({slice_size} bytes) [{clip_label}]")
+            except Exception as ogg_err:
+                print(f"   ⚠️  OGG export failed ({ogg_err}), falling back to MP3...")
+                with tf.NamedTemporaryFile(delete=False, suffix='.mp3') as slice_file:
+                    audio_slice.export(
+                        slice_file.name,
+                        format='mp3',
+                        bitrate='128k',
+                        parameters=['-ar', '44100']
+                    )
+                    slice_path = slice_file.name
+                    slice_size = os.path.getsize(slice_path)
+                    print(f"   💾 Exported: MP3/128k ({slice_size} bytes) [{clip_label}]")
 
-                start = segment.get('start', 0)
-                end = segment.get('end', 0)
-                if not isinstance(start, (int, float)) or not isinstance(end, (int, float)):
-                    continue
-                if end <= start:
-                    continue
+            slice_files_to_cleanup.append(slice_path)
 
-                if speaker not in all_segments_by_speaker:
-                    all_segments_by_speaker[speaker] = []
-                all_segments_by_speaker[speaker].append({
-                    'speaker': speaker,
-                    'start': start,
-                    'end': end,
-                    'start_ms': int(start * 1000),
-                    'end_ms': int(end * 1000),
-                    'text': segment.get('text', '')
-                })
-
-                speaker_lower = speaker.lower()
-                is_unknown = (
-                    speaker_lower.startswith('speaker ') or
-                    speaker.startswith('דובר ') or
-                    'unknown' in speaker_lower or
-                    speaker_lower == 'speaker'
+            if whatsapp_provider and hasattr(whatsapp_provider, 'send_audio'):
+                caption = f"🔊 זוהה דובר חדש: *{speaker}*\nמי זה/זו? (הגב עם השם)"
+                audio_result = whatsapp_provider.send_audio(
+                    audio_path=slice_path,
+                    caption=caption,
+                    to=f"+{from_number}"
                 )
 
-                if is_unknown and speaker_lower not in self_names:
-                    unknown_speakers.add(speaker)
+                if audio_result.get('success'):
+                    sent_msg_id = audio_result.get('caption_message_id') or audio_result.get('wam_id') or audio_result.get('message_id')
+                    if sent_msg_id:
+                        pending_data = {
+                            'file_path': slice_path,
+                            'speaker_id': speaker
+                        }
+                        if embedding is not None:
+                            pending_data['embedding'] = embedding
+                            print(f"   🧬 Embedding stored for auto-enrollment ({len(embedding)} dims)")
 
-            print(f"📊 All speakers: {list(all_segments_by_speaker.keys())}")
-            print(f"📊 Unknown speakers needing ID: {list(unknown_speakers)}")
+                        pending_identifications[sent_msg_id] = pending_data
+                        _save_pending_identifications()
+                        print(f"   📝 Pending identification stored: {sent_msg_id} -> {speaker}")
+                        unknown_speakers_processed.append(speaker)
+                        if slice_path in slice_files_to_cleanup:
+                            slice_files_to_cleanup.remove(slice_path)
+                    return True
+                else:
+                    print(f"   ⚠️  Failed to send audio slice: {audio_result.get('error')}")
+                    return False
+            return False
 
-            if not unknown_speakers and summary_text:
-                print("⚠️  No unknown speakers detected - all identified or skipped.")
+        # ══════════════════════════════════════════════════════════════
+        # PATH A: pyannote-powered clip extraction (PREFERRED)
+        # pyannote already found the best segment per speaker — use it!
+        # ══════════════════════════════════════════════════════════════
+        _used_pyannote_clips = False
 
-            # ── WebRTC VAD helpers ──
-            vad = None
+        if pyannote_speaker_results:
             try:
-                import webrtcvad
-                vad = webrtcvad.Vad(VAD_AGGRESSIVENESS)
-                print(f"✅ [VAD] WebRTC VAD initialized (aggressiveness={VAD_AGGRESSIVENESS})")
+                from pydub import AudioSegment
+                audio_segment = AudioSegment.from_file(tmp_path)
+                audio_len_ms = len(audio_segment)
+
+                unknown_pyannote = {
+                    spk: info for spk, info in pyannote_speaker_results.items()
+                    if info.get("status") == "unknown"
+                }
+
+                if unknown_pyannote:
+                    _used_pyannote_clips = True
+                    print(f"\n{'='*60}")
+                    print(f"🎯 [pyannote] DIRECT CLIP EXTRACTION for {len(unknown_pyannote)} unknown speaker(s)")
+                    print(f"{'='*60}")
+
+                    for spk_label, info in unknown_pyannote.items():
+                        best_seg = info.get("best_segment", {})
+                        start_sec = best_seg.get("start", 0)
+                        end_sec = best_seg.get("end", 0)
+                        duration_sec = best_seg.get("duration", end_sec - start_sec)
+                        embedding = info.get("embedding")
+
+                        # Get the friendly name from diarization_hints
+                        friendly_name = "Unknown Speaker"
+                        if diarization_hints:
+                            friendly_name = diarization_hints.get("speakers", {}).get(spk_label, {}).get("name", spk_label)
+
+                        print(f"\n   🎤 {friendly_name} ({spk_label})")
+                        print(f"      📍 Best segment: {start_sec:.1f}s → {end_sec:.1f}s ({duration_sec:.1f}s)")
+
+                        if duration_sec < 1.0:
+                            print(f"      ⚠️  Segment too short ({duration_sec:.1f}s) — skipping")
+                            continue
+
+                        # Convert to ms and apply bounds
+                        start_ms = int(start_sec * 1000)
+                        end_ms = int(end_sec * 1000)
+
+                        # Cap at 7 seconds, centered on segment
+                        TARGET_MAX_MS = 7000
+                        if (end_ms - start_ms) > TARGET_MAX_MS:
+                            center = (start_ms + end_ms) // 2
+                            start_ms = center - TARGET_MAX_MS // 2
+                            end_ms = center + TARGET_MAX_MS // 2
+
+                        start_ms = max(0, start_ms)
+                        end_ms = min(audio_len_ms, end_ms)
+
+                        print(f"      ✂️  Clip window: {start_ms}ms → {end_ms}ms ({end_ms - start_ms}ms)")
+
+                        audio_slice = audio_segment[start_ms:end_ms]
+                        print(f"      🔊 Volume: {audio_slice.dBFS:.1f} dBFS | Duration: {len(audio_slice)}ms")
+
+                        if _export_and_send_clip(audio_slice, friendly_name, f"pyannote-direct", embedding=embedding):
+                            print(f"      ✅ Clip sent for {friendly_name}")
+                        else:
+                            print(f"      ❌ Failed to send clip for {friendly_name}")
+                else:
+                    print("✅ [pyannote] All speakers identified — no clips needed")
+
             except ImportError:
-                print("⚠️  [VAD] webrtcvad not installed — falling back to RMS-based detection")
-            except Exception as vad_init_err:
-                print(f"⚠️  [VAD] WebRTC VAD init failed ({vad_init_err}) — falling back to RMS")
+                print("⚠️  pydub not installed — cannot extract clips")
+            except Exception as pya_clip_err:
+                print(f"⚠️  [pyannote] Clip extraction error: {pya_clip_err}")
+                traceback.print_exc()
 
-            def get_other_segments(target_speaker):
-                other = []
-                for spk, segs in all_segments_by_speaker.items():
-                    if spk != target_speaker:
-                        other.extend(segs)
-                return other
+        # ══════════════════════════════════════════════════════════════
+        # PATH B: Legacy VAD Smart Slicer (when pyannote is NOT available)
+        # Uses Gemini segments + WebRTC VAD for speech detection
+        # ══════════════════════════════════════════════════════════════
+        if not _used_pyannote_clips:
+            print("ℹ️  [Legacy] Using VAD Smart Slicer (pyannote not available or no unknowns)")
+            try:
+                from pydub import AudioSegment
 
-            def calc_overlap_ms(seg_start_ms, seg_end_ms, other_segs):
-                total = 0
-                for o in other_segs:
-                    o_start = o['start_ms'] - OVERLAP_MARGIN_MS
-                    o_end = o['end_ms'] + OVERLAP_MARGIN_MS
-                    overlap_start = max(seg_start_ms, o_start)
-                    overlap_end = min(seg_end_ms, o_end)
-                    if overlap_end > overlap_start:
-                        total += (overlap_end - overlap_start)
-                return total
+                audio_segment = AudioSegment.from_file(tmp_path)
+                print(f"✅ Loaded audio for slicing: {len(audio_segment)}ms")
 
-            def calc_safe_padding(start_ms, end_ms, other_segs, audio_len_ms):
-                safe_start = max(0, start_ms - PAD_BUFFER_MS)
-                safe_end = min(audio_len_ms, end_ms + PAD_BUFFER_MS)
+                TARGET_MIN_MS = 5000
+                TARGET_MAX_MS = 7000
+                ABS_MIN_MS = 1500
+                PAD_BUFFER_MS = 500
+                FADE_MS = 40
+                OVERLAP_MARGIN_MS = 300
+                VAD_AGGRESSIVENESS = 1
+                VAD_FRAME_MS = 30
+                VAD_SAMPLE_RATE = 16000
+                MIN_SPEECH_CLUSTER_MS = 1500
+                MIN_SPEECH_RATIO = 0.40
+                MAX_SCAN_MS = 30000
+                FALLBACK_SLICE_MS = 5000
+                MAX_VAD_RETRIES = 2
 
-                for o in other_segs:
-                    if o['end_ms'] > safe_start and o['end_ms'] <= start_ms:
-                        safe_start = max(safe_start, o['end_ms'] + 100)
-                for o in other_segs:
-                    if o['start_ms'] >= end_ms and o['start_ms'] < safe_end:
-                        safe_end = min(safe_end, o['start_ms'] - 100)
+                # ── Build segment map for ALL speakers ──
+                all_segments_by_speaker = {}
+                unknown_speakers: Set[str] = set()
 
-                return safe_start, safe_end
-
-            def vad_analyze_clip(audio_clip, log_format=False):
-                if vad is None:
-                    return None
-
-                try:
-                    pcm_clip = audio_clip.set_frame_rate(VAD_SAMPLE_RATE).set_channels(1).set_sample_width(2)
-                    raw_data = pcm_clip.raw_data
-
-                    if log_format:
-                        print(f"      📐 [VAD] Audio format: {pcm_clip.frame_rate}Hz, {pcm_clip.channels}ch, {pcm_clip.sample_width*8}-bit, {len(raw_data)} bytes")
-
-                    if pcm_clip.frame_rate != VAD_SAMPLE_RATE:
-                        print(f"      ❌ [VAD] ERROR: frame_rate={pcm_clip.frame_rate} (expected {VAD_SAMPLE_RATE})")
-                        return None
-                    if pcm_clip.channels != 1:
-                        print(f"      ❌ [VAD] ERROR: channels={pcm_clip.channels} (expected 1)")
-                        return None
-                    if pcm_clip.sample_width != 2:
-                        print(f"      ❌ [VAD] ERROR: sample_width={pcm_clip.sample_width} (expected 2)")
-                        return None
-
-                    bytes_per_frame = VAD_SAMPLE_RATE * 2 * VAD_FRAME_MS // 1000
-                    total_frames = len(raw_data) // bytes_per_frame
-
-                    if total_frames == 0:
-                        print(f"      ⚠️  [VAD] No complete frames in {len(raw_data)} bytes")
-                        return None
-
-                    results = []
-                    for i in range(total_frames):
-                        offset = i * bytes_per_frame
-                        frame = raw_data[offset:offset + bytes_per_frame]
-                        if len(frame) < bytes_per_frame:
-                            break
-                        is_speech = vad.is_speech(frame, VAD_SAMPLE_RATE)
-                        frame_offset_ms = i * VAD_FRAME_MS
-                        results.append((frame_offset_ms, is_speech))
-
-                    return results
-                except Exception as vad_err:
-                    print(f"      ⚠️  [VAD] Frame analysis failed: {vad_err}")
-                    traceback.print_exc()
-                    return None
-
-            def find_best_speech_cluster(vad_results, clip_duration_ms):
-                if not vad_results:
-                    return None
-
-                total_frames = len(vad_results)
-                speech_flags = [is_speech for (_, is_speech) in vad_results]
-
-                GAP_TOLERANCE = 3
-
-                smoothed = list(speech_flags)
-                for i in range(len(smoothed)):
-                    if not smoothed[i]:
-                        left_speech = any(smoothed[max(0, i-GAP_TOLERANCE):i])
-                        right_speech = any(smoothed[i+1:min(len(smoothed), i+1+GAP_TOLERANCE)])
-                        if left_speech and right_speech:
-                            smoothed[i] = True
-
-                clusters = []
-                cluster_start = None
-
-                for i, is_speech in enumerate(smoothed):
-                    if is_speech and cluster_start is None:
-                        cluster_start = i
-                    elif not is_speech and cluster_start is not None:
-                        cluster_end = i
-                        clusters.append((cluster_start, cluster_end))
-                        cluster_start = None
-
-                if cluster_start is not None:
-                    clusters.append((cluster_start, len(smoothed)))
-
-                if not clusters:
-                    return None
-
-                best = None
-                best_score = -1
-
-                for c_start, c_end in clusters:
-                    c_len_frames = c_end - c_start
-                    c_duration_ms = c_len_frames * VAD_FRAME_MS
-
-                    if c_duration_ms < MIN_SPEECH_CLUSTER_MS:
+                for segment in segments:
+                    speaker = segment.get('speaker', '')
+                    if not speaker:
                         continue
-
-                    actual_speech = sum(1 for f in speech_flags[c_start:c_end] if f)
-                    ratio = actual_speech / c_len_frames if c_len_frames > 0 else 0
-
-                    if ratio < MIN_SPEECH_RATIO:
+                    start = segment.get('start', 0)
+                    end = segment.get('end', 0)
+                    if not isinstance(start, (int, float)) or not isinstance(end, (int, float)):
                         continue
-
-                    score = c_duration_ms * ratio
-
-                    if score > best_score:
-                        best_score = score
-                        start_ms = vad_results[c_start][0]
-                        end_ms = vad_results[min(c_end, total_frames) - 1][0] + VAD_FRAME_MS
-                        confidence = 'High' if ratio >= 0.75 else 'Low'
-                        best = (start_ms, end_ms, ratio, confidence)
-
-                return best
-
-            def rms_fallback_check(audio_clip):
-                clip_rms = audio_clip.rms
-                if clip_rms < 200:
-                    return False, 0.0, 'None'
-
-                window_ms = 500
-                total_windows = max(1, len(audio_clip) // window_ms)
-                active = sum(1 for i in range(total_windows)
-                             if audio_clip[i*window_ms:min((i+1)*window_ms, len(audio_clip))].rms >= 200)
-                ratio = active / total_windows
-
-                if ratio < 0.3:
-                    return False, ratio, 'None'
-
-                confidence = 'High' if ratio >= 0.6 else 'Low'
-                return True, ratio, confidence
-
-            # ── Process each unknown speaker with VAD SMART SLICING ──
-
-            def export_and_send_clip(audio_slice, speaker, clip_label):
-                import tempfile as tf
-                slice_path = None
-
-                try:
-                    with tf.NamedTemporaryFile(delete=False, suffix='.ogg') as slice_file:
-                        audio_slice.export(
-                            slice_file.name,
-                            format='ogg',
-                            codec='libopus',
-                            parameters=['-b:a', '64k', '-ar', '48000']
-                        )
-                        slice_path = slice_file.name
-                        slice_size = os.path.getsize(slice_path)
-                        print(f"   💾 Exported: OGG/Opus ({slice_size} bytes) [{clip_label}]")
-                except Exception as ogg_err:
-                    print(f"   ⚠️  OGG export failed ({ogg_err}), falling back to MP3...")
-                    with tf.NamedTemporaryFile(delete=False, suffix='.mp3') as slice_file:
-                        audio_slice.export(
-                            slice_file.name,
-                            format='mp3',
-                            bitrate='128k',
-                            parameters=['-ar', '44100']
-                        )
-                        slice_path = slice_file.name
-                        slice_size = os.path.getsize(slice_path)
-                        print(f"   💾 Exported: MP3/128k ({slice_size} bytes) [{clip_label}]")
-
-                slice_files_to_cleanup.append(slice_path)
-
-                if whatsapp_provider and hasattr(whatsapp_provider, 'send_audio'):
-                    caption = f"🔊 זוהה דובר חדש: *{speaker}*\nמי זה/זו? (הגב עם השם)"
-
-                    audio_result = whatsapp_provider.send_audio(
-                        audio_path=slice_path,
-                        caption=caption,
-                        to=f"+{from_number}"
+                    if end <= start:
+                        continue
+                    if speaker not in all_segments_by_speaker:
+                        all_segments_by_speaker[speaker] = []
+                    all_segments_by_speaker[speaker].append({
+                        'speaker': speaker, 'start': start, 'end': end,
+                        'start_ms': int(start * 1000), 'end_ms': int(end * 1000),
+                        'text': segment.get('text', '')
+                    })
+                    speaker_lower = speaker.lower()
+                    is_unknown = (
+                        speaker_lower.startswith('speaker ') or
+                        speaker.startswith('דובר ') or
+                        'unknown' in speaker_lower or
+                        speaker_lower == 'speaker'
                     )
+                    if is_unknown and speaker_lower not in self_names:
+                        unknown_speakers.add(speaker)
 
-                    if audio_result.get('success'):
-                        sent_msg_id = audio_result.get('caption_message_id') or audio_result.get('wam_id') or audio_result.get('message_id')
-                        if sent_msg_id:
-                            pending_data = {
-                                'file_path': slice_path,
-                                'speaker_id': speaker
-                            }
-                            # Store pyannote embedding if available (for auto-enrollment on name response)
-                            for spk_label, info in pyannote_speaker_results.items():
-                                mapped_name = diarization_hints.get("speakers", {}).get(spk_label, {}).get("name", "") if diarization_hints else ""
-                                if (speaker in mapped_name or mapped_name in speaker) and info.get("embedding"):
-                                    pending_data['embedding'] = info['embedding']
-                                    print(f"   🧬 Embedding stored for auto-enrollment ({len(info['embedding'])} dims)")
-                                    break
+                print(f"📊 All speakers: {list(all_segments_by_speaker.keys())}")
+                print(f"📊 Unknown speakers needing ID: {list(unknown_speakers)}")
 
-                            pending_identifications[sent_msg_id] = pending_data
-                            _save_pending_identifications()  # Persist to disk
-                            print(f"   📝 Pending identification stored: {sent_msg_id} -> {speaker}")
-                            unknown_speakers_processed.append(speaker)
-                            if slice_path in slice_files_to_cleanup:
-                                slice_files_to_cleanup.remove(slice_path)
-                        return True
-                    else:
-                        print(f"   ⚠️  Failed to send audio slice: {audio_result.get('error')}")
-                        return False
-                return False
+                if not unknown_speakers:
+                    print("⚠️  No unknown speakers detected - all identified or skipped.")
 
-            for speaker in unknown_speakers:
-                print(f"\n{'═'*60}")
-                print(f"❓ [VAD] SMART SLICING for unknown speaker: {speaker}")
-                print(f"{'═'*60}")
+                # ── WebRTC VAD ──
+                vad = None
+                try:
+                    import webrtcvad
+                    vad = webrtcvad.Vad(VAD_AGGRESSIVENESS)
+                except Exception:
+                    pass
 
-                other_segs = get_other_segments(speaker)
-                target_segs = all_segments_by_speaker.get(speaker, [])
+                def get_other_segments(target_speaker):
+                    return [s for spk, segs in all_segments_by_speaker.items()
+                            if spk != target_speaker for s in segs]
 
-                if not target_segs:
-                    print(f"   ⚠️  No segments found for {speaker} - SKIPPING")
-                    continue
+                def calc_safe_padding(start_ms, end_ms, other_segs, audio_len_ms):
+                    safe_start = max(0, start_ms - PAD_BUFFER_MS)
+                    safe_end = min(audio_len_ms, end_ms + PAD_BUFFER_MS)
+                    for o in other_segs:
+                        if o['end_ms'] > safe_start and o['end_ms'] <= start_ms:
+                            safe_start = max(safe_start, o['end_ms'] + 100)
+                    for o in other_segs:
+                        if o['start_ms'] >= end_ms and o['start_ms'] < safe_end:
+                            safe_end = min(safe_end, o['start_ms'] - 100)
+                    return safe_start, safe_end
 
-                target_segs_sorted = sorted(target_segs, key=lambda s: s['start_ms'])
-
-                print(f"   📋 Speaker has {len(target_segs_sorted)} turn(s):")
-                for idx, s in enumerate(target_segs_sorted):
-                    dur = s['end_ms'] - s['start_ms']
-                    overlap = calc_overlap_ms(s['start_ms'], s['end_ms'], other_segs)
-                    print(f"      Turn {idx}: {s['start']:.1f}s-{s['end']:.1f}s ({dur}ms) overlap={overlap}ms")
-
-                clip_sent = False
-                vad_rejections = 0
-
-                for turn_idx, turn_seg in enumerate(target_segs_sorted):
-                    if clip_sent:
-                        break
-
-                    turn_start_ms = turn_seg['start_ms']
-                    turn_end_ms = turn_seg['end_ms']
-                    turn_duration = turn_end_ms - turn_start_ms
-
-                    if turn_duration < 500:
-                        print(f"\n   ⏭️  Turn {turn_idx}: too short ({turn_duration}ms) - skipping")
-                        continue
-
-                    scan_end_ms = min(turn_end_ms, turn_start_ms + MAX_SCAN_MS)
-
-                    print(f"\n   🔍 [VAD] Analyzing Turn {turn_idx}: {turn_start_ms}ms → {scan_end_ms}ms ({scan_end_ms - turn_start_ms}ms)")
-
-                    turn_audio = audio_segment[turn_start_ms:scan_end_ms]
-
-                    if len(turn_audio) < 500:
-                        print(f"      ⏭️  Audio too short after extraction - skipping")
-                        continue
-
-                    vad_results = vad_analyze_clip(turn_audio, log_format=(turn_idx == 0))
-
-                    speech_cluster = None
-                    vad_confidence = 'None'
-
-                    if vad_results is not None:
-                        total_frames = len(vad_results)
-                        speech_frames = sum(1 for _, is_speech in vad_results if is_speech)
-                        overall_ratio = speech_frames / total_frames if total_frames > 0 else 0
-
-                        print(f"      📊 [VAD] Frames: {total_frames} total, {speech_frames} speech ({overall_ratio:.0%})")
-
-                        speech_cluster = find_best_speech_cluster(vad_results, len(turn_audio))
-
-                        if speech_cluster:
-                            cl_start, cl_end, cl_ratio, vad_confidence = speech_cluster
-                            print(f"      🎯 [VAD] Best speech cluster: {cl_start}ms-{cl_end}ms ({cl_end-cl_start}ms, {cl_ratio:.0%} speech, confidence={vad_confidence})")
-                        else:
-                            vad_rejections += 1
-                            print(f"      ❌ [VAD] Rejected clip for {speaker} (No speech cluster ≥{MIN_SPEECH_CLUSTER_MS}ms found, rejection #{vad_rejections})")
-
-                            if vad_rejections >= MAX_VAD_RETRIES:
-                                print(f"      🔄 [VAD] {MAX_VAD_RETRIES} rejections reached — triggering FALLBACK SLICER")
-                                break
-                            continue
-                    else:
-                        print(f"      📊 [RMS Fallback] Running RMS-based check...")
-                        rms_passed, rms_ratio, vad_confidence = rms_fallback_check(turn_audio)
-
-                        if not rms_passed:
-                            vad_rejections += 1
-                            print(f"      ❌ [VAD] Rejected clip for {speaker} (RMS confidence too low: {rms_ratio:.0%}, rejection #{vad_rejections})")
-                            if vad_rejections >= MAX_VAD_RETRIES:
-                                print(f"      🔄 [VAD] {MAX_VAD_RETRIES} rejections reached — triggering FALLBACK SLICER")
-                                break
-                            continue
-
-                        print(f"      ✅ [RMS] Passed: speech ratio={rms_ratio:.0%}, confidence={vad_confidence}")
-                        speech_cluster = (0, len(turn_audio), rms_ratio, vad_confidence)
-
-                    # ── DYNAMIC SLICING around the speech cluster ──
-                    cluster_start_in_turn, cluster_end_in_turn, cluster_ratio, confidence = speech_cluster
-
-                    abs_cluster_start = turn_start_ms + cluster_start_in_turn
-                    abs_cluster_end = turn_start_ms + cluster_end_in_turn
-                    cluster_duration = abs_cluster_end - abs_cluster_start
-
-                    print(f"      📍 Cluster in absolute audio: {abs_cluster_start}ms → {abs_cluster_end}ms ({cluster_duration}ms)")
-
-                    if cluster_duration >= TARGET_MIN_MS:
-                        if cluster_duration > TARGET_MAX_MS:
-                            center = (abs_cluster_start + abs_cluster_end) // 2
-                            slice_start = center - TARGET_MAX_MS // 2
-                            slice_end = center + TARGET_MAX_MS // 2
-                        else:
-                            slice_start = abs_cluster_start
-                            slice_end = abs_cluster_end
-                    else:
-                        center = (abs_cluster_start + abs_cluster_end) // 2
-                        slice_start = center - TARGET_MIN_MS // 2
-                        slice_end = center + TARGET_MIN_MS // 2
-
-                    slice_start, slice_end = calc_safe_padding(
-                        slice_start, slice_end, other_segs, len(audio_segment)
-                    )
-
-                    slice_start = max(0, slice_start)
-                    slice_end = min(len(audio_segment), slice_end)
-
-                    if (slice_end - slice_start) < ABS_MIN_MS:
-                        print(f"      ⚠️  Slice too short after padding ({slice_end - slice_start}ms) - skipping turn")
-                        vad_rejections += 1
-                        if vad_rejections >= MAX_VAD_RETRIES:
-                            break
-                        continue
-
-                    if (slice_end - slice_start) > TARGET_MAX_MS:
-                        slice_end = slice_start + TARGET_MAX_MS
-
-                    print(f"      ✂️  Slice window: {slice_start}ms → {slice_end}ms ({slice_end - slice_start}ms)")
-
-                    audio_slice = audio_segment[slice_start:slice_end]
-
-                    # ── FINAL VAD VERIFICATION ──
-                    if vad is not None:
-                        final_vad = vad_analyze_clip(audio_slice)
-                        if final_vad:
-                            final_speech = sum(1 for _, s in final_vad if s)
-                            final_ratio = final_speech / len(final_vad) if final_vad else 0
-                            if final_ratio < 0.20:
-                                vad_rejections += 1
-                                print(f"      ❌ [VAD] Final clip verification FAILED: only {final_ratio:.0%} speech (rejection #{vad_rejections})")
-                                print(f"      ❌ [VAD] Rejected clip for {speaker} (Confidence too low: {final_ratio:.0%})")
-                                if vad_rejections >= MAX_VAD_RETRIES:
-                                    break
-                                continue
-                            print(f"      ✅ [VAD] Final clip verified: {final_ratio:.0%} speech ({final_speech}/{len(final_vad)} frames)")
-
-                    # ── AUDIO ENHANCEMENTS ──
+                def vad_analyze_clip(audio_clip):
+                    if vad is None:
+                        return None
                     try:
-                        target_dbfs = -16.0
-                        current_dbfs = audio_slice.dBFS
-                        if current_dbfs != float('-inf') and current_dbfs < 0:
-                            gain = target_dbfs - current_dbfs
-                            gain = max(min(gain, 20.0), -10.0)
-                            audio_slice = audio_slice.apply_gain(gain)
-                        audio_slice = audio_slice.fade_in(FADE_MS).fade_out(FADE_MS)
-                    except Exception as enhance_err:
-                        print(f"      ⚠️  Enhancement failed: {enhance_err}")
+                        pcm = audio_clip.set_frame_rate(VAD_SAMPLE_RATE).set_channels(1).set_sample_width(2)
+                        raw = pcm.raw_data
+                        bpf = VAD_SAMPLE_RATE * 2 * VAD_FRAME_MS // 1000
+                        return [(i * VAD_FRAME_MS, vad.is_speech(raw[i*bpf:(i+1)*bpf], VAD_SAMPLE_RATE))
+                                for i in range(len(raw) // bpf) if len(raw[i*bpf:(i+1)*bpf]) == bpf]
+                    except Exception:
+                        return None
 
-                    # ── [VAD] VERIFICATION LOG ──
-                    final_duration = len(audio_slice)
-                    print(f"\n   ✂️  ═══ [VAD] FINAL CLIP for {speaker} ═══")
-                    print(f"      📍 Turn {turn_idx}: {turn_start_ms}ms → {turn_end_ms}ms")
-                    print(f"      📍 Speech cluster: {abs_cluster_start}ms → {abs_cluster_end}ms ({cluster_duration}ms)")
-                    print(f"      📍 Final slice: {slice_start}ms → {slice_end}ms ({final_duration}ms / {final_duration/1000:.1f}s)")
-                    print(f"      🔊 Volume: {audio_slice.dBFS:.1f} dBFS")
-                    print(f"      🎯 Speech ratio: {cluster_ratio:.0%} | Confidence: {confidence}")
-                    print(f"      💬 Text: \"{turn_seg.get('text', '')[:80]}\"")
-                    print(f"   [VAD] Clip generated for {speaker} at {slice_start}ms-{slice_end}ms with confidence {confidence}")
+                for speaker in unknown_speakers:
+                    print(f"\n❓ [VAD-Legacy] Processing unknown speaker: {speaker}")
+                    other_segs = get_other_segments(speaker)
+                    target_segs = sorted(all_segments_by_speaker.get(speaker, []),
+                                         key=lambda s: -(s['end_ms'] - s['start_ms']))
 
-                    # ── EXPORT & SEND ──
-                    if export_and_send_clip(audio_slice, speaker, f"VAD-{confidence}"):
-                        clip_sent = True
-                        break
+                    if not target_segs:
+                        continue
 
-                # ══════════════════════════════════════════════════════════
-                # FALLBACK SLICER
-                # ══════════════════════════════════════════════════════════
-                if not clip_sent and target_segs_sorted:
-                    print(f"\n   🔄 ═══ FALLBACK SLICER for {speaker} ═══")
-                    print(f"      VAD rejected {vad_rejections} clip(s). Using brute-force slice.")
+                    # Take the longest segment
+                    longest = target_segs[0]
+                    start_ms = longest['start_ms']
+                    end_ms = min(longest['end_ms'], start_ms + TARGET_MAX_MS)
 
-                    longest_seg = max(target_segs_sorted, key=lambda s: s['end_ms'] - s['start_ms'])
-                    fb_start = longest_seg['start_ms']
-                    fb_end = min(longest_seg['end_ms'], fb_start + FALLBACK_SLICE_MS)
-                    fb_duration = fb_end - fb_start
+                    start_ms, end_ms = calc_safe_padding(start_ms, end_ms, other_segs, len(audio_segment))
+                    start_ms = max(0, start_ms)
+                    end_ms = min(len(audio_segment), end_ms)
 
-                    print(f"      📍 Longest segment: {longest_seg['start']:.1f}s-{longest_seg['end']:.1f}s ({longest_seg['end_ms'] - longest_seg['start_ms']}ms)")
-                    print(f"      📍 Fallback slice: {fb_start}ms → {fb_end}ms ({fb_duration}ms)")
+                    if (end_ms - start_ms) < ABS_MIN_MS:
+                        print(f"   ⚠️  Too short ({end_ms - start_ms}ms) — skipping")
+                        continue
 
-                    if fb_duration >= 500:
-                        fb_start, fb_end = calc_safe_padding(fb_start, fb_end, other_segs, len(audio_segment))
-                        fb_start = max(0, fb_start)
-                        fb_end = min(len(audio_segment), fb_end)
+                    audio_slice = audio_segment[start_ms:end_ms]
+                    print(f"   ✂️  Slice: {start_ms}ms → {end_ms}ms ({end_ms - start_ms}ms)")
 
-                        fallback_slice = audio_segment[fb_start:fb_end]
+                    _export_and_send_clip(audio_slice, speaker, "VAD-legacy")
 
-                        try:
-                            target_dbfs = -16.0
-                            current_dbfs = fallback_slice.dBFS
-                            if current_dbfs != float('-inf') and current_dbfs < 0:
-                                gain = target_dbfs - current_dbfs
-                                gain = max(min(gain, 20.0), -10.0)
-                                fallback_slice = fallback_slice.apply_gain(gain)
-                            fallback_slice = fallback_slice.fade_in(FADE_MS).fade_out(FADE_MS)
-                        except Exception:
-                            pass
-
-                        print(f"      🔊 Fallback volume: {fallback_slice.dBFS:.1f} dBFS | Duration: {len(fallback_slice)}ms")
-                        print(f"   [VAD] Clip generated for {speaker} at {fb_start}ms-{fb_end}ms with confidence Fallback")
-
-                        if export_and_send_clip(fallback_slice, speaker, "FALLBACK"):
-                            clip_sent = True
-
-                    if not clip_sent:
-                        print(f"      ❌ Fallback also failed for {speaker}")
-
-                # ── Final status ──
-                if not clip_sent:
-                    print(f"\n   🚫 [VAD] No clear speech detected for {speaker}")
-                    print(f"      Scanned {len(target_segs_sorted)} turn(s), {vad_rejections} VAD rejection(s).")
-                    print(f"      ❌ NOT sending 'מי זה?' — no valid audio clip available.")
-
-        except ImportError:
-            print("⚠️  pydub not installed - cannot slice audio for speaker identification")
-        except Exception as slice_error:
-            print(f"⚠️  Error during speaker identification slicing: {slice_error}")
-            traceback.print_exc()
+            except ImportError:
+                print("⚠️  pydub not installed - cannot slice audio")
+            except Exception as slice_error:
+                print(f"⚠️  Error during legacy slicing: {slice_error}")
+                traceback.print_exc()
 
         print(f"✅ [Diarization] Speaker identification: {len(unknown_speakers_processed)} unknown speakers queued")
 

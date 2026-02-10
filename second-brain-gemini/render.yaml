@@ -27,3 +27,4 @@ services:
       # - WHATSAPP_PHONE_NUMBER_ID
       # - WHATSAPP_VERIFY_TOKEN
       # - WHATSAPP_TO
+      # - HUGGINGFACE_TOKEN (required for pyannote speaker diarization)
