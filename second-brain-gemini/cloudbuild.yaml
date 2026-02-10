@@ -1,6 +1,6 @@
 # ============================================================================
 # Cloud Build — Auto-deploy on git push (triggered by GitHub)
-# Uses pre-built base image → builds in ~2 minutes
+# Uses pre-built base image → builds in ~2 minutes, deploy ~3-5 minutes
 # ============================================================================
 steps:
   # Step 1: Build app image (FROM base = fast, code only)
@@ -18,7 +18,7 @@ steps:
   - name: 'gcr.io/cloud-builders/docker'
     args: ['push', '--all-tags', 'europe-west1-docker.pkg.dev/$PROJECT_ID/second-brain-eu/second-brain']
 
-  # Step 3: Deploy to Cloud Run
+  # Step 3: Deploy to Cloud Run with GPU
   - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
     entrypoint: gcloud
     args:
@@ -31,6 +31,14 @@ steps:
       - 'europe-west1'
       - '--platform'
       - 'managed'
+      - '--gpu=1'
+      - '--gpu-type=nvidia-l4'
+      - '--cpu=4'
+      - '--memory=16Gi'
+      - '--min-instances=1'
+      - '--max-instances=2'
+      - '--timeout=3600'
+      - '--port=8080'
       - '--no-cpu-throttling'
       - '--allow-unauthenticated'
 
@@ -38,4 +46,4 @@ options:
   logging: CLOUD_LOGGING_ONLY
   machineType: 'E2_HIGHCPU_8'
 
-timeout: '600s'  # 10 minutes max (should take ~2-3 min)
+timeout: '1800s'  # 30 minutes (first deploy pulls large base image)
