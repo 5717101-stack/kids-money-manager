@@ -140,10 +140,14 @@ def is_available() -> bool:
         return False
 
 
+_DIARIZATION_TIMEOUT_SEC = 300  # 5 minutes max — fallback to Gemini if exceeded
+
+
 def diarize(audio_path: str,
             num_speakers: int = None,
             min_speakers: int = None,
-            max_speakers: int = None) -> List[Dict[str, Any]]:
+            max_speakers: int = None,
+            timeout: int = None) -> List[Dict[str, Any]]:
     """Run speaker diarization on an audio file.
 
     Args:
@@ -151,6 +155,7 @@ def diarize(audio_path: str,
         num_speakers: Exact number of speakers (if known)
         min_speakers: Minimum number of speakers
         max_speakers: Maximum number of speakers
+        timeout: Max seconds to wait (default: _DIARIZATION_TIMEOUT_SEC)
 
     Returns:
         List of segments: [{"speaker": "SPEAKER_00", "start": 0.5, "end": 5.2, "duration": 4.7}, ...]
@@ -159,8 +164,11 @@ def diarize(audio_path: str,
         logger.error("❌ Diarization not available — models not loaded")
         return []
 
+    max_wait = timeout or _DIARIZATION_TIMEOUT_SEC
+
     try:
         print(f"🎤 Running pyannote diarization on {audio_path}...")
+        print(f"   ⏱️  Timeout: {max_wait}s — will fall back to Gemini if exceeded")
 
         kwargs = {}
         if num_speakers is not None:
@@ -170,7 +178,23 @@ def diarize(audio_path: str,
         if max_speakers is not None:
             kwargs["max_speakers"] = max_speakers
 
-        diarization_result = _diarization_pipeline(audio_path, **kwargs)
+        # Run diarization with timeout to prevent CPU-bound hangs on long audio
+        import concurrent.futures
+        import time as _time
+        _diar_start = _time.time()
+
+        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+            future = executor.submit(_diarization_pipeline, audio_path, **kwargs)
+            try:
+                diarization_result = future.result(timeout=max_wait)
+            except concurrent.futures.TimeoutError:
+                elapsed = _time.time() - _diar_start
+                print(f"⏱️  pyannote TIMEOUT after {elapsed:.0f}s (limit: {max_wait}s)")
+                print(f"   ↩️  Falling back to Gemini-only diarization")
+                return []
+
+        elapsed = _time.time() - _diar_start
+        print(f"   ⏱️  Diarization completed in {elapsed:.1f}s")
 
         # pyannote 3.1 returns a DiarizeOutput dataclass with:
         #   .speaker_diarization  — the Annotation (who speaks when)

@@ -177,6 +177,15 @@ def process_audio_core(
         # FULL MEETING ANALYSIS PIPELINE (for recordings >30s)
         # ============================================================
 
+        # Ensure duration_sec is available (may not be set if pydub import failed)
+        if 'duration_sec' not in dir() and 'duration_sec' not in locals():
+            try:
+                from pydub import AudioSegment as FallbackSeg
+                _fb = FallbackSeg.from_file(tmp_path)
+                duration_sec = len(_fb) / 1000.0
+            except Exception:
+                duration_sec = 0
+
         # ============================================================
         # Step 1: pyannote DIARIZATION + SPEAKER IDENTIFICATION
         # If available: pre-compute who speaks when + match to known voices
@@ -193,8 +202,13 @@ def process_audio_core(
             if pyannote_available():
                 print("🎤 [pyannote] Speaker diarization engine available")
 
+                # Scale timeout based on audio duration (CPU-bound: ~0.2x real-time)
+                # Default: 300s. For very long audio, allow more but cap at 600s.
+                diar_timeout = min(max(int(duration_sec * 0.5), 120), 600) if duration_sec else 300
+                print(f"   ⏱️  Audio: {duration_sec:.0f}s → diarization timeout: {diar_timeout}s")
+
                 # Step 1a: Run diarization
-                pyannote_segments = diarize(tmp_path, min_speakers=1, max_speakers=6)
+                pyannote_segments = diarize(tmp_path, min_speakers=1, max_speakers=6, timeout=diar_timeout)
 
                 if pyannote_segments:
                     print(f"✅ [pyannote] Diarization: {len(pyannote_segments)} segments")
