@@ -160,12 +160,29 @@ class GeminiService:
                 mime_type = 'application/octet-stream'
         
         # Step 1: Upload - Let Google generate the ID (do NOT pass name=...)
+        # Retry upload on transient SSL/connection errors
         print(f"📤 Uploading {display_name}...")
-        file_ref = genai.upload_file(
-            path=file_path,
-            display_name=display_name,
-            mime_type=mime_type
-        )
+        file_ref = None
+        for _upload_attempt in range(3):
+            try:
+                file_ref = genai.upload_file(
+                    path=file_path,
+                    display_name=display_name,
+                    mime_type=mime_type
+                )
+                break
+            except Exception as upload_err:
+                err_str = str(upload_err)
+                is_transient = any(kw in err_str for kw in ['EOF', 'ssl', 'SSL', 'Connection', 'reset', 'BrokenPipe', 'broken pipe', 'timeout'])
+                if is_transient and _upload_attempt < 2:
+                    wait = 5 * (_upload_attempt + 1)
+                    print(f"   ⚠️  Upload failed (attempt {_upload_attempt+1}/3): {err_str[:120]}")
+                    print(f"   ⏳ Retrying in {wait}s...")
+                    time.sleep(wait)
+                else:
+                    raise
+        if file_ref is None:
+            raise RuntimeError(f"Failed to upload {display_name} after 3 attempts")
         
         # Step 2: Get the file ID from the returned object's name property
         # According to user instructions: "get the file.name property (this is the ID like 'files/123')"
@@ -1033,7 +1050,12 @@ STEP 5 — RESPONSE FORMATTING (פורמט תשובה):
                     'recvmsg' in error_str or 
                     'Connection' in error_str or
                     'timeout' in error_str.lower() or
-                    'reset' in error_str.lower()
+                    'reset' in error_str.lower() or
+                    'EOF' in error_str or
+                    'ssl' in error_str.lower() or
+                    'SSLError' in error_str or
+                    'BrokenPipe' in error_str or
+                    'broken pipe' in error_str.lower()
                 )
                 
                 if is_connection_error and attempt < max_retries - 1:
