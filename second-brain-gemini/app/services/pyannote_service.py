@@ -172,8 +172,20 @@ def diarize(audio_path: str,
 
         diarization_result = _diarization_pipeline(audio_path, **kwargs)
 
+        # pyannote 3.1+ returns DiarizeOutput (namedtuple with .annotation)
+        # older versions return Annotation directly
+        annotation = getattr(diarization_result, 'annotation', diarization_result)
+        if not hasattr(annotation, 'itertracks'):
+            # Some versions return a tuple (annotation, embeddings)
+            if isinstance(diarization_result, tuple):
+                annotation = diarization_result[0]
+            else:
+                print(f"⚠️ Unexpected diarization output type: {type(diarization_result)}")
+                print(f"   Attributes: {dir(diarization_result)}")
+                return []
+
         segments = []
-        for turn, _, speaker in diarization_result.itertracks(yield_label=True):
+        for turn, _, speaker in annotation.itertracks(yield_label=True):
             segments.append({
                 "speaker": speaker,
                 "start": round(turn.start, 2),
