@@ -1,0 +1,56 @@
+# ============================================================================
+# Second Brain — BASE IMAGE (heavy dependencies)
+# Rebuild ONLY when requirements.txt changes (~25 min)
+# ============================================================================
+# To rebuild:
+#   gcloud builds submit . -f Dockerfile.base \
+#     --tag="europe-west1-docker.pkg.dev/gen-lang-client-0376839322/second-brain-eu/second-brain-base:latest" \
+#     --region=europe-west1 --timeout=2400
+# ============================================================================
+FROM nvidia/cuda:12.2.2-runtime-ubuntu22.04
+
+ENV DEBIAN_FRONTEND=noninteractive
+ENV PYTHONUNBUFFERED=1
+ENV PORT=8080
+
+# ── System dependencies ──────────────────────────────────────────────────────
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+        software-properties-common \
+    && add-apt-repository ppa:deadsnakes/ppa -y \
+    && apt-get update && \
+    apt-get install -y --no-install-recommends --fix-missing \
+        python3.11 \
+        python3.11-venv \
+        python3.11-dev \
+        python3.11-distutils \
+        ffmpeg \
+        fonts-dejavu-core \
+        libsndfile1 \
+        build-essential \
+        curl \
+        git \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
+
+# ── Python setup ─────────────────────────────────────────────────────────────
+RUN update-alternatives --install /usr/bin/python3 python3 /usr/bin/python3.11 1 && \
+    update-alternatives --install /usr/bin/python python /usr/bin/python3.11 1 && \
+    curl -sS https://bootstrap.pypa.io/get-pip.py | python3.11
+
+WORKDIR /app
+
+# ── Heavy Python dependencies (cached in base image) ────────────────────────
+COPY requirements.txt .
+
+# PyTorch with CUDA 12.1
+RUN pip install --no-cache-dir \
+    torch==2.2.0+cu121 \
+    torchaudio==2.2.0+cu121 \
+    --index-url https://download.pytorch.org/whl/cu121
+
+# All other dependencies
+RUN pip install --no-cache-dir -r requirements.txt
+
+# ── Marker file ──────────────────────────────────────────────────────────────
+RUN echo "base-image-built-at: $(date -u +%Y-%m-%dT%H:%M:%SZ)" > /app/.base_image_info
