@@ -172,16 +172,30 @@ def diarize(audio_path: str,
 
         diarization_result = _diarization_pipeline(audio_path, **kwargs)
 
-        # pyannote 3.1+ returns DiarizeOutput (namedtuple with .annotation)
-        # older versions return Annotation directly
-        annotation = getattr(diarization_result, 'annotation', diarization_result)
-        if not hasattr(annotation, 'itertracks'):
-            # Some versions return a tuple (annotation, embeddings)
-            if isinstance(diarization_result, tuple):
+        # pyannote 3.1 returns a DiarizeOutput dataclass with:
+        #   .speaker_diarization  — the Annotation (who speaks when)
+        #   .speaker_embeddings   — pre-computed embeddings per speaker
+        #   .exclusive_speaker_diarization
+        # Older versions return Annotation directly.
+        annotation = None
+        for attr_name in ('speaker_diarization', 'annotation'):
+            candidate = getattr(diarization_result, attr_name, None)
+            if candidate is not None and hasattr(candidate, 'itertracks'):
+                annotation = candidate
+                print(f"✅ Extracted annotation via .{attr_name}")
+                break
+
+        if annotation is None:
+            # Maybe it IS the annotation directly
+            if hasattr(diarization_result, 'itertracks'):
+                annotation = diarization_result
+                print("✅ Diarization result is already an Annotation")
+            elif isinstance(diarization_result, tuple) and len(diarization_result) > 0:
                 annotation = diarization_result[0]
+                print("✅ Extracted annotation from tuple[0]")
             else:
-                print(f"⚠️ Unexpected diarization output type: {type(diarization_result)}")
-                print(f"   Attributes: {dir(diarization_result)}")
+                print(f"❌ Cannot extract annotation from {type(diarization_result).__name__}")
+                print(f"   Available attrs: {[a for a in dir(diarization_result) if not a.startswith('_')]}")
                 return []
 
         segments = []
