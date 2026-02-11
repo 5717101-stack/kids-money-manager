@@ -109,8 +109,8 @@ def _ensure_models() -> bool:
 
             # ── Try loading from local cache first (no network needed) ────
             # Models are pre-downloaded into the Docker image at build time
-            # via HF_HOME=/app/.hf_cache. This avoids HuggingFace 429 errors.
-            hf_home = os.environ.get("HF_HOME", "")
+            # via HF_HOME=/opt/hf_cache (outside /app to survive COPY).
+            hf_home = os.environ.get("HF_HOME", "/opt/hf_cache")
             local_cache_exists = hf_home and os.path.isdir(hf_home)
 
             if local_cache_exists:

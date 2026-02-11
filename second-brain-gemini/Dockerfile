@@ -6,26 +6,29 @@ FROM europe-west1-docker.pkg.dev/gen-lang-client-0376839322/second-brain-eu/seco
 
 WORKDIR /app
 
+# ── Application code only (this is the only thing that changes per deploy) ───
+COPY . .
+
 # ── Pre-download pyannote models (avoids HuggingFace 429 rate limits) ────────
-# Models are cached in the image so no runtime downloads are needed.
+# Models are cached OUTSIDE /app so COPY doesn't overwrite them.
 # Pass HF_TOKEN as build arg: --build-arg HF_TOKEN=hf_xxx
 ARG HF_TOKEN=""
-ENV HF_HOME=/app/.hf_cache
+ENV HF_HOME=/opt/hf_cache
 RUN if [ -n "$HF_TOKEN" ]; then \
-    echo "📥 Pre-downloading pyannote models..." && \
+    mkdir -p /opt/hf_cache && \
+    echo "📥 Pre-downloading pyannote models to /opt/hf_cache..." && \
     python -c "\
-import os; os.environ['HF_TOKEN']='${HF_TOKEN}'; \
+import os; os.environ['HF_HOME']='/opt/hf_cache'; os.environ['HF_TOKEN']='${HF_TOKEN}'; \
 from huggingface_hub import snapshot_download; \
 print('  → pyannote/speaker-diarization-3.1'); \
 snapshot_download('pyannote/speaker-diarization-3.1', token='${HF_TOKEN}'); \
 print('  → pyannote/wespeaker-voxceleb-resnet34-LM'); \
 snapshot_download('pyannote/wespeaker-voxceleb-resnet34-LM', token='${HF_TOKEN}'); \
-print('✅ Models cached in /app/.hf_cache') \
+print('  → pyannote/segmentation-3.0'); \
+snapshot_download('pyannote/segmentation-3.0', token='${HF_TOKEN}'); \
+print('✅ Models cached in /opt/hf_cache') \
 " && echo "✅ pyannote models embedded in image" ; \
     else echo "⚠️ HF_TOKEN not provided — pyannote models not pre-cached"; fi
-
-# ── Application code only (this is the only thing that changes per deploy) ───
-COPY . .
 
 # Build metadata
 RUN echo "v$(cat VERSION) — $(date -u +%Y-%m-%dT%H:%M:%SZ)" > .last_commit || true
