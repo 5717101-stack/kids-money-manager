@@ -2,11 +2,17 @@
 # Cloud Build — Auto-deploy on git push (triggered by GitHub)
 # Uses pre-built base image → builds in ~2 minutes, deploy ~3-5 minutes
 # ============================================================================
+substitutions:
+  _HF_TOKEN: ''  # Set in Cloud Build trigger or via --substitutions
+
 steps:
   # Step 1: Build app image (FROM base = fast, code only)
+  # Passes HF_TOKEN to pre-download pyannote models into the image
   - name: 'gcr.io/cloud-builders/docker'
     args:
       - 'build'
+      - '--build-arg'
+      - 'HF_TOKEN=${_HF_TOKEN}'
       - '-t'
       - 'europe-west1-docker.pkg.dev/$PROJECT_ID/second-brain-eu/second-brain:$SHORT_SHA'
       - '-t'

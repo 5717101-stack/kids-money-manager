@@ -107,7 +107,42 @@ def _ensure_models() -> bool:
 
             _device = _detect_device()
 
-            print("🔄 Loading pyannote diarization pipeline...")
+            # ── Try loading from local cache first (no network needed) ────
+            # Models are pre-downloaded into the Docker image at build time
+            # via HF_HOME=/app/.hf_cache. This avoids HuggingFace 429 errors.
+            hf_home = os.environ.get("HF_HOME", "")
+            local_cache_exists = hf_home and os.path.isdir(hf_home)
+
+            if local_cache_exists:
+                print(f"📦 Found local model cache at {hf_home} — loading offline...")
+                try:
+                    print("🔄 Loading pyannote diarization pipeline (local cache)...")
+                    _diarization_pipeline = Pipeline.from_pretrained(
+                        "pyannote/speaker-diarization-3.1",
+                        token=hf_token,
+                        local_files_only=True
+                    )
+                    _diarization_pipeline.to(_device)
+                    print(f"✅ pyannote diarization pipeline loaded from cache (device: {_device})")
+
+                    print("🔄 Loading pyannote embedding model (local cache)...")
+                    from pyannote.audio import Inference, Model
+                    emb_model = Model.from_pretrained(
+                        "pyannote/wespeaker-voxceleb-resnet34-LM",
+                        token=hf_token,
+                        local_files_only=True
+                    )
+                    emb_model.to(_device)
+                    _embedding_model = Inference(emb_model, window="whole", device=_device)
+                    print(f"✅ pyannote embedding model loaded from cache (device: {_device})")
+
+                    _models_loaded = True
+                    return True
+                except Exception as cache_err:
+                    print(f"⚠️ Local cache load failed ({cache_err}), falling back to HuggingFace download...")
+
+            # ── Fallback: download from HuggingFace ───────────────────────
+            print("🔄 Loading pyannote diarization pipeline (downloading from HuggingFace)...")
             _diarization_pipeline = Pipeline.from_pretrained(
                 "pyannote/speaker-diarization-3.1",
                 token=hf_token
@@ -115,7 +150,7 @@ def _ensure_models() -> bool:
             _diarization_pipeline.to(_device)
             print(f"✅ pyannote diarization pipeline loaded (device: {_device})")
 
-            print("🔄 Loading pyannote embedding model...")
+            print("🔄 Loading pyannote embedding model (downloading from HuggingFace)...")
             from pyannote.audio import Inference, Model
             emb_model = Model.from_pretrained(
                 "pyannote/wespeaker-voxceleb-resnet34-LM",
