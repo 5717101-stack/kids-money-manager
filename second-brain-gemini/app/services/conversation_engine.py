@@ -778,7 +778,10 @@ class ConversationEngine:
         if drive_memory_service:
             self._drive_memory_service = drive_memory_service
 
-        self._model_name = MODEL_MAPPING.get("pro", "gemini-2.5-pro")
+        # Use Flash for conversation — Pro is a "thinking" model that adds 5-15s
+        # per API call. Flash is 3-5x faster with excellent function calling and
+        # multi-turn context. Pro is reserved for complex tasks (audio analysis, etc.)
+        self._model_name = MODEL_MAPPING.get("flash", "gemini-2.0-flash")
 
         # Build the system instruction with KB context
         kb_block = get_system_instruction_block()
@@ -815,7 +818,7 @@ class ConversationEngine:
 4. לשיחה רגילה (שאלות כלליות שלא קשורות לאנשים, מידע ארגוני, פגישות או טיסות) — ענה ישירות בלי כלים.
    🔴 חשוב: אם המשתמש שואל על עצמו (ילדים, משפחה, העדפות) — קודם בדוק את הפרופיל האישי למעלה לפני שעונה.
    🔴 חשוב: אם ההודעה מזכירה טיסות, נסיעות, חופשה, טיסה ליעד — זו לא "שיחה רגילה"! השתמש בכלי search_flights.
-5. כינויי גוף: אם המשתמש אומר "שלו", "שלה", "הוא", "היא" — הסתכל בהיסטוריית השיחה ותבין למי הוא מתכוון. אל תשאל אלא אם באמת אי אפשר לדעת.
+5. הקשר שיחה וכינויים: כשהמשתמש מתייחס למישהו — בין אם דרך כינויי גוף (שלו, שלה, אליו, אותו, ממנו, איתו, בו, אצלו...), בין אם דרך ביטויים עקיפים ("מי מדווח אליו?", "מה הביצועים?"), ובין אם בכל דרך אחרת — הסתכל בהיסטוריית השיחה וברמז [הקשר אחרון:] שמופיע בתחילת ההודעה, ותבין למי הוא מתכוון. אל תשאל אלא אם באמת אי אפשר לדעת.
 6. שמות בעברית: כשהמשתמש מזכיר שם בעברית, השתמש ב-search_person כדי למצוא את השם המלא באנגלית.
 7. 🔴 חיזוי חכם כשיש כמה תוצאות (SMART DISAMBIGUATION):
    אם search_person מחזיר יותר מתוצאה אחת, אל תציג רשימה סתמית!
@@ -1048,23 +1051,24 @@ class ConversationEngine:
             _date_context = f"[📅 היום: {_days_he[_now_msg.weekday()]}, {_now_msg.strftime('%d/%m/%Y %H:%M')}]\n"
             enriched_message = _date_context + message
 
-            # ── Pronoun context injection ──
-            # If the user says "שלה", "שלו", etc. and we know who they were
-            # talking about, inject a context hint so Gemini resolves correctly
-            # even in function-calling mode.
+            # ── Always-on entity context (replaces hardcoded pronoun detection) ──
+            # Best practice: instead of trying to detect specific pronouns (brittle,
+            # requires hardcoding every Hebrew suffix form like אליו, ממנו, אצלה...),
+            # we ALWAYS inject the last-discussed entity as a lightweight context hint.
+            # Gemini naturally resolves pronouns, implicit references, and anaphora
+            # from the chat history + this hint — no regex or word lists needed.
             try:
                 from app.services.identity_resolver_service import identity_resolver
-                if identity_resolver.has_pronouns(message):
-                    last_entity = identity_resolver.get_last_entity(phone)
-                    if last_entity:
-                        entity_name = last_entity.get("canonical_name", "")
-                        hebrew_name = last_entity.get("hebrew_name", "") or last_entity.get("name", "")
-                        display = hebrew_name or entity_name
-                        if entity_name:
-                            enriched_message = _date_context + f"[הקשר: המשתמש מתייחס ל-{display} ({entity_name}) מההודעה הקודמת]\n{message}"
-                            print(f"   🎯 Pronoun context injected: {display} ({entity_name})")
-            except Exception as pr_err:
-                print(f"   ⚠️ Pronoun resolution failed: {pr_err}")
+                last_entity = identity_resolver.get_last_entity(phone)
+                if last_entity:
+                    entity_name = last_entity.get("canonical_name", "")
+                    hebrew_name = last_entity.get("hebrew_name", "") or last_entity.get("name", "")
+                    display = hebrew_name or entity_name
+                    if entity_name:
+                        enriched_message = _date_context + f"[הקשר אחרון: {display} ({entity_name})]\n{message}"
+                        print(f"   🔗 Entity context: {display} ({entity_name})")
+            except Exception as ctx_err:
+                print(f"   ⚠️ Entity context injection failed: {ctx_err}")
 
             # Send message to Gemini
             response = chat.send_message(enriched_message)
@@ -1274,7 +1278,7 @@ class ConversationEngine:
 3. לשאלות כלליות על הארגון (כמה עובדים, מחלקות) — השתמש בכלי list_org_stats.
 4. לשיחה רגילה (שאלות כלליות, הודעות אישיות) — ענה ישירות בלי כלים.
    🔴 חשוב: אם המשתמש שואל על עצמו (ילדים, משפחה, העדפות) — קודם בדוק את הפרופיל האישי למעלה לפני שעונה.
-5. כינויי גוף: אם המשתמש אומר "שלו", "שלה", "הוא", "היא" — הסתכל בהיסטוריית השיחה ותבין למי הוא מתכוון. אל תשאל אלא אם באמת אי אפשר לדעת.
+5. הקשר שיחה וכינויים: כשהמשתמש מתייחס למישהו — בין אם דרך כינויי גוף (שלו, שלה, אליו, אותו, ממנו, איתו, בו, אצלו...), בין אם דרך ביטויים עקיפים ("מי מדווח אליו?", "מה הביצועים?"), ובין אם בכל דרך אחרת — הסתכל בהיסטוריית השיחה וברמז [הקשר אחרון:] שמופיע בתחילת ההודעה, ותבין למי הוא מתכוון. אל תשאל אלא אם באמת אי אפשר לדעת.
 6. שמות בעברית: כשהמשתמש מזכיר שם בעברית, השתמש ב-search_person כדי למצוא את השם המלא באנגלית.
 7. 🔴 חיזוי חכם כשיש כמה תוצאות (SMART DISAMBIGUATION):
    אם search_person מחזיר יותר מתוצאה אחת, אל תציג רשימה סתמית!
