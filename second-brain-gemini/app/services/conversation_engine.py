@@ -784,12 +784,11 @@ class ConversationEngine:
         # - Flash 2.5 is fast (~2-4s) with strong instruction following
         self._model_name = "gemini-2.5-flash"
 
-        # NOTE: KB data is NOT embedded in system instruction (causes hallucinations
-        # and "lost in the middle" attention degradation). All KB access goes through
-        # tools (search_person, get_reports, etc.) which query the identity graph.
-        # We still call get_system_instruction_block() to trigger KB loading.
-        _kb_load_trigger = get_system_instruction_block()  # triggers load_context()
-        print(f"   📚 KB loaded: {len(_kb_load_trigger)} chars (NOT embedded in system instruction)")
+        # Load KB data. Included in system instruction as a FALLBACK reference —
+        # the model is instructed to always use tools (search_person etc.) but
+        # having the data helps when the identity graph has loading issues.
+        kb_block = get_system_instruction_block()
+        print(f"   📚 KB loaded: {len(kb_block)} chars")
 
         # Phase 1: Build user profile context block
         profile_block = self._build_profile_block()
@@ -891,13 +890,7 @@ class ConversationEngine:
 3. אשר למשתמש: "שמרתי ✅ — בן הזוג של חן הוא עודד"
 4. מעכשיו, כשישאלו "איך קוראים לבן הזוג של חן?" — תדע לענות "עודד"
 
-══════════════════════════════════════════════════════
-🔴 חשוב: אין לך מידע ארגוני בזיכרון!
-══════════════════════════════════════════════════════
-כל המידע הארגוני (אנשים, תפקידים, שכר, היררכיה) נמצא בבסיס הידע
-ונגיש אך ורק דרך הכלים (search_person, get_reports, list_org_stats).
-אין לך שום מידע ישיר על אנשים — אל תנחש שמות או נתונים.
-הכלי search_person מקבל שמות בעברית ובאנגלית ויודע לתרגם ביניהם."""
+{kb_block}"""
 
         # Create the model with tools
         tools = genai.protos.Tool(function_declarations=_TOOL_DECLARATIONS)
@@ -1265,14 +1258,40 @@ class ConversationEngine:
 
         configure_genai(api_key)
 
-        # Trigger KB reload (but don't embed in system instruction)
-        _kb_refresh = get_system_instruction_block()
+        # Reload KB data
+        kb_block = get_system_instruction_block()
         profile_block = self._build_profile_block()
 
         old_len = len(self._kb_system_instruction)
 
-        # Rebuild system instruction — same structure as initialize(), no KB data embedded
-        self._kb_system_instruction = self._kb_system_instruction  # Preserve current
+        from datetime import datetime as _dt
+        _now = _dt.now()
+        _day_names_he = ["שני", "שלישי", "רביעי", "חמישי", "שישי", "שבת", "ראשון"]
+        _today_he = _day_names_he[_now.weekday()]
+        _date_str = _now.strftime("%d/%m/%Y")
+
+        # Rebuild with same structure as initialize() but fresh KB data
+        self._kb_system_instruction = f"""אתה עוזר ארגוני מקצועי בשם "Second Brain".
+אתה עונה בעברית אלא אם נשאלת באנגלית.
+יש לך גישה לכלים (functions) שמאפשרים לך לחפש, לעדכן ולהיזכר במידע.
+
+📅 התאריך של היום: {_date_str} (יום {_today_he}).
+
+{profile_block}
+
+══════════════════════════════════════════════════════
+כללי התנהגות:
+══════════════════════════════════════════════════════
+1. 🔴 לשאלות על אנשים — חובה להשתמש בכלי search_person! הכלי מקבל שמות בעברית ובאנגלית.
+2. אם המשתמש מבקש לעדכן או לשמור מידע — השתמש בכלי save_fact.
+3. לשאלות כלליות על הארגון — השתמש בכלי list_org_stats.
+4. לשיחה רגילה — ענה ישירות בלי כלים.
+5. הקשר שיחה וכינויים: הסתכל בהיסטוריית השיחה וברמז [הקשר אחרון:] כדי להבין למי המשתמש מתכוון.
+6. שמות בעברית: השתמש ב-search_person — הכלי יודע לתרגם.
+7. אם search_person מחזיר כמה תוצאות — בצע ניתוח הקשרי ובחר את המתאים ביותר.
+8. 🔴🔴 לעולם אל תמציא שמות! תמיד השתמש בכלי search_person לפני שאתה מציג מידע על אנשים.
+
+{kb_block}"""
 
         # Rebuild the model with updated system instruction
         tools = genai.protos.Tool(function_declarations=_TOOL_DECLARATIONS)

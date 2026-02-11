@@ -1414,64 +1414,87 @@ def get_loaded_files() -> List[str]:
 
 
 # ═══════════════════════════════════════════════════════════════════════
-# HEBREW → LATIN TRANSLITERATION
-# Maps the Hebrew alphabet to common Latin equivalents.
-# This is a SYSTEMATIC mapping (not a name list) that enables bridging
-# Hebrew user input to English canonical names in the identity graph.
+# HEBREW → ENGLISH FUZZY NAME MATCHING
+# Hebrew letters are ambiguous (ו = v/u/o, ב = b/v, כ = k/ch, etc.)
+# and vowels are mostly unwritten. A naive transliteration like
+# "יובל" → "yvbl" will NEVER match "Yuval".
+#
+# Solution: Convert each Hebrew letter to a REGEX character class
+# covering all its possible Latin sounds, with optional vowels
+# between consonants. Then match this pattern against English names.
+#
+# Example: "יובל" → regex r"[iy][aeiou]*?[uvo][aeiou]*?[bv][aeiou]*?l"
+#          This matches "yuval" ✅, "yoval" ✅, etc.
 # ═══════════════════════════════════════════════════════════════════════
-_HEBREW_TO_LATIN = {
-    'א': 'a', 'ב': 'b', 'ג': 'g', 'ד': 'd', 'ה': 'h',
-    'ו': 'v', 'ז': 'z', 'ח': 'ch', 'ט': 't', 'י': 'y',
-    'כ': 'k', 'ך': 'k', 'ל': 'l', 'מ': 'm', 'ם': 'm',
-    'נ': 'n', 'ן': 'n', 'ס': 's', 'ע': 'a', 'פ': 'p',
-    'ף': 'f', 'צ': 'tz', 'ץ': 'tz', 'ק': 'k', 'ר': 'r',
-    'ש': 'sh', 'ת': 't',
+import re as _re_module
+
+# Each Hebrew letter → regex fragment covering ALL possible Latin sounds.
+# Letters that can function as vowels include the vowel options.
+_HEBREW_CHAR_PATTERN = {
+    'א': '[a]?',          # alef — often silent or 'a'
+    'ב': '[bv]',          # bet/vet
+    'ג': 'g',
+    'ד': 'd',
+    'ה': '[h]?',          # heh — often silent at word-end
+    'ו': '[uvow]',        # vav — u, v, o, or w
+    'ז': 'z',
+    'ח': '(?:ch|kh|h)',   # chet
+    'ט': 't',
+    'י': '[iy]',          # yod — y or i
+    'כ': '(?:ch|kh|k|c)', # kaf/chaf
+    'ך': '(?:ch|kh|k|c)', # final kaf
+    'ל': 'l',
+    'מ': 'm',
+    'ם': 'm',             # final mem
+    'נ': 'n',
+    'ן': 'n',             # final nun
+    'ס': 's',
+    'ע': '[a]?',          # ayin — often 'a' or silent
+    'פ': '[pf]',          # peh/feh
+    'ף': '[pf]',          # final peh
+    'צ': '(?:tz|ts|z|c)', # tsadi
+    'ץ': '(?:tz|ts|z|c)', # final tsadi
+    'ק': '[kq]',
+    'ר': 'r',
+    'ש': '(?:sh|s)',      # shin/sin
+    'ת': '[t]',
 }
 
-# Common multi-character Hebrew patterns that should be transliterated
-# differently than the default single-char mapping.
-# Order matters: longer patterns first.
-_HEBREW_DIGRAPHS = [
-    ('יי', 'y'),     # double yod = single y (e.g. שיי → shay)
-    ('וו', 'v'),     # double vav = v
-    ('או', 'o'),     # alef-vav = o (e.g. יואב → yoav)
-    ('וי', 'uy'),    # vav-yod (e.g. יובל stays yuval)
-]
+# Optional vowels that can appear between Hebrew consonants in English
+_VOWEL_GAP = '[aeiou]*?'
 
 
-def _transliterate_hebrew(text: str) -> str:
+def _hebrew_to_fuzzy_regex(text: str) -> str:
     """
-    Convert Hebrew text to a Latin approximation for fuzzy matching.
-    Not meant to produce perfect transliterations — just close enough
-    for substring matching against English canonical names.
+    Convert a Hebrew string into a fuzzy regex pattern that can match
+    its English transliteration regardless of vowelization.
     
     Examples:
-        יובל → yuval
-        שי → shay
-        דנה → dnh → matches "Dana" via substring "dan"
-        חן → chn → matches "Chen" 
+        "יובל" → r"[iy][aeiou]*?[uvow][aeiou]*?[bv][aeiou]*?l"
+                  matches: "yuval", "yoval", "yuvl"
+        "שי"   → r"(?:sh|s)[aeiou]*?[iy]"
+                  matches: "shay", "shai", "shi"  
+        "חן"   → r"(?:ch|kh|h)[aeiou]*?n"
+                  matches: "chen", "chan", "hen"
+        "דנה"  → r"d[aeiou]*?n[aeiou]*?[h]?"
+                  matches: "dana", "dina", "dan"
+    
+    Returns empty string if input has no Hebrew characters.
     """
     if not any('\u0590' <= c <= '\u05FF' for c in text):
-        return text  # Not Hebrew — return as-is
+        return ''
     
-    result = text.lower()
-    
-    # Apply digraphs first (order matters)
-    for heb, lat in _HEBREW_DIGRAPHS:
-        result = result.replace(heb, lat)
-    
-    # Single character transliteration
-    output = []
-    for ch in result:
-        if ch in _HEBREW_TO_LATIN:
-            output.append(_HEBREW_TO_LATIN[ch])
+    parts = []
+    for ch in text:
+        if ch in _HEBREW_CHAR_PATTERN:
+            if parts:  # Add vowel gap between consonants
+                parts.append(_VOWEL_GAP)
+            parts.append(_HEBREW_CHAR_PATTERN[ch])
         elif ch == ' ':
-            output.append(' ')
-        elif ch.isascii():
-            output.append(ch)
-        # Skip unknown characters
+            parts.append('\\s+')
+        # Skip non-Hebrew, non-space characters
     
-    return ''.join(output)
+    return ''.join(parts) if parts else ''
 
 
 def search_people(query: str) -> List[Dict[str, Any]]:
@@ -1536,27 +1559,33 @@ def search_people(query: str) -> List[Dict[str, Any]]:
             if _add_match(canonical):
                 print(f"   ✅ Strategy 3 (substring canonical): '{query_lower}' in '{canonical}'")
     
-    # ── Strategy 4: Hebrew → Latin transliteration + substring matching ──
-    # This bridges Hebrew input (e.g. "יובל") to English names (e.g. "Yuval Laikin")
-    # by transliterating Hebrew to Latin characters and doing substring matching.
+    # ── Strategy 4: Hebrew → English fuzzy regex matching ──
+    # Hebrew letters are ambiguous (ו=v/u/o, ב=b/v, etc.) and vowels are
+    # mostly unwritten. We convert the Hebrew query into a fuzzy regex pattern
+    # that covers all phonetic possibilities, then match against English names.
+    # Example: "יובל" → regex [iy][aeiou]*?[uvow][aeiou]*?[bv][aeiou]*?l
+    #          This matches "yuval" ✅
     if not matches:
-        transliterated = _transliterate_hebrew(query_lower)
-        if transliterated != query_lower and len(transliterated) >= 2:
-            print(f"   🔤 Transliteration: '{query}' → '{transliterated}'")
-            
-            # Match against canonical names
-            for canonical in list(people.keys()):
-                if transliterated in canonical.lower():
-                    if _add_match(canonical):
-                        print(f"   ✅ Strategy 4 (transliteration): '{transliterated}' in '{canonical}'")
-            
-            # Also match transliterated against name_map values (English variants)
-            if not matches:
-                for variant, canonical in name_map.items():
-                    # Only check Latin variants (skip Hebrew)
-                    if variant.isascii() and transliterated in variant:
+        fuzzy_pattern = _hebrew_to_fuzzy_regex(query_lower)
+        if fuzzy_pattern:
+            print(f"   🔤 Fuzzy regex: '{query}' → /{fuzzy_pattern}/")
+            try:
+                pattern_re = _re_module.compile(fuzzy_pattern, _re_module.IGNORECASE)
+                
+                # Match against canonical names (English)
+                for canonical in list(people.keys()):
+                    if pattern_re.search(canonical):
                         if _add_match(canonical):
-                            print(f"   ✅ Strategy 4b (translit→name_map): '{transliterated}' in '{variant}' → '{canonical}'")
+                            print(f"   ✅ Strategy 4 (fuzzy regex): '{query}' ~ '{canonical}'")
+                
+                # Also match against English name_map variants
+                if not matches:
+                    for variant, canonical in name_map.items():
+                        if variant.isascii() and pattern_re.search(variant):
+                            if _add_match(canonical):
+                                print(f"   ✅ Strategy 4b (fuzzy regex→name_map): '{query}' ~ '{variant}' → '{canonical}'")
+            except _re_module.error as regex_err:
+                print(f"   ⚠️ Regex error for '{query}': {regex_err}")
     
     if not matches:
         print(f"   ❌ No matches for '{query}' (transliterated: '{_transliterate_hebrew(query_lower)}')")
