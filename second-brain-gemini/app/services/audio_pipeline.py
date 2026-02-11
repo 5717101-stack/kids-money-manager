@@ -393,16 +393,111 @@ def process_audio_core(
                 speaker_names.add(speaker)
         speaker_names = list(speaker_names)
 
+        # Extract topics and sentiment from pyannote-assisted Gemini output
+        topics = transcript_json.get('topics', [])
+        speaker_sentiment = transcript_json.get('speaker_sentiment', {})
+
         # ============================================================
-        # Step 3: Save transcript + memory
+        # Step 3: SEND WHATSAPP IMMEDIATELY (before Drive saves!)
+        # Critical: user gets analysis even if Drive/container crashes
+        # ============================================================
+        print("📱 [WhatsApp] Sending analysis FIRST (before Drive saves)...")
+
+        all_speakers_set = set()
+        for seg in segments:
+            speaker = seg.get('speaker', '')
+            if speaker:
+                all_speakers_set.add(speaker)
+
+        identified_speakers = []
+        unidentified_count = 0
+        for speaker in all_speakers_set:
+            speaker_lower = speaker.lower()
+            is_unknown = (
+                speaker_lower.startswith('speaker ') or
+                speaker.startswith('דובר ') or
+                'unknown' in speaker_lower or
+                speaker_lower == 'speaker' or
+                speaker_lower == 'unknown' or
+                speaker == ''
+            )
+            if is_unknown:
+                unidentified_count += 1
+            else:
+                identified_speakers.append(speaker)
+
+        if whatsapp_provider:
+            source_header = ""
+            if source == "drive_inbox":
+                filename = audio_metadata.get('filename', '')
+                source_header = f"📥 *הקלטה חדשה מתיקיית Inbox:*\n📁 {filename}\n\n"
+
+            if expert_analysis_result and expert_analysis_result.get('success'):
+                from app.services.expert_analysis_service import expert_analysis_service
+                expert_message = expert_analysis_service.format_for_whatsapp(expert_analysis_result)
+
+                header = source_header
+                header += "✅ *ההקלטה נשמרה ונותחה!*\n\n"
+                header += "👥 *משתתפים:* "
+                if identified_speakers:
+                    header += ", ".join(sorted(identified_speakers))
+                if unidentified_count > 0:
+                    header += f" (+{unidentified_count} לא מזוהים)"
+                if not identified_speakers and unidentified_count == 0:
+                    header += "(לא זוהו)"
+                header += "\n\n"
+
+                full_message = header + expert_message
+                print(f"   📤 Total message length: {len(full_message)} chars")
+
+                reply_result = whatsapp_provider.send_whatsapp(
+                    message=full_message,
+                    to=f"+{from_number}"
+                )
+                if reply_result.get('success'):
+                    print("✅ [WhatsApp] Expert Summary sent IMMEDIATELY")
+                else:
+                    print(f"⚠️  [WhatsApp] Failed to send expert summary: {reply_result.get('error')}")
+            else:
+                reply_message = source_header
+                reply_message += "✅ *ההקלטה נשמרה!*\n\n"
+                reply_message += "👥 *משתתפים:* "
+                if identified_speakers:
+                    reply_message += ", ".join(sorted(identified_speakers))
+                if unidentified_count > 0:
+                    if identified_speakers:
+                        reply_message += f" (+{unidentified_count} לא מזוהים)"
+                    else:
+                        reply_message += f"{unidentified_count} דוברים לא מזוהים"
+                if not identified_speakers and unidentified_count == 0:
+                    reply_message += "(לא זוהו)"
+                reply_message += "\n\n"
+                if summary_text and len(summary_text.strip()) > 20:
+                    st = summary_text[:1000] + "..." if len(summary_text) > 1200 else summary_text
+                    reply_message += f"📝 *סיכום:*\n{st}\n\n"
+                else:
+                    reply_message += "📝 *סיכום:* לא הצלחתי לייצר סיכום מפורט.\n\n"
+                reply_message += "📈 *קאיזן:*\n"
+                reply_message += "✓ לשימור: השיחה התקיימה והוקלטה\n"
+                reply_message += "→ לשיפור: בדוק את איכות ההקלטה\n\n"
+                reply_message += "📄 התמלול המלא זמין בדרייב."
+
+                reply_result = whatsapp_provider.send_whatsapp(
+                    message=reply_message,
+                    to=f"+{from_number}"
+                )
+                if reply_result.get('success'):
+                    print("✅ [WhatsApp] Fallback Summary sent IMMEDIATELY")
+                else:
+                    print(f"⚠️  [WhatsApp] Failed to send fallback: {reply_result.get('error')}")
+
+        # ============================================================
+        # Step 3.5: Save transcript + memory (Drive operations)
+        # Non-critical: wrapped in try/except so crashes don't lose analysis
         # ============================================================
 
         # Save FULL transcript as separate file in Transcripts/
         transcript_file_id = None
-
-        # Extract topics and sentiment from pyannote-assisted Gemini output
-        topics = transcript_json.get('topics', [])
-        speaker_sentiment = transcript_json.get('speaker_sentiment', {})
 
         try:
             transcript_save_data = {
@@ -444,35 +539,38 @@ def process_audio_core(
             print(f"⚠️  [Transcript] Error saving: {transcript_err}")
 
         # Save SLIM entry to memory.json (summary + reference only)
-        print("💾 [Drive Upload] Saving slim audio interaction to memory...")
-        audio_interaction = {
-            "timestamp": datetime.utcnow().isoformat() + "Z",
-            "type": "audio",
-            "source": source,
-            "file_id": audio_metadata.get('file_id', ''),
-            "web_content_link": audio_metadata.get('web_content_link', ''),
-            "web_view_link": audio_metadata.get('web_view_link', ''),
-            "filename": audio_metadata.get('filename', ''),
-            "summary": summary_text,
-            "speakers": speaker_names,
-            "segment_count": len(segments),
-            "transcript_file_id": transcript_file_id,
-            "from_number": from_number
-        }
-
-        if expert_analysis_result and expert_analysis_result.get('success'):
-            audio_interaction["expert_analysis"] = {
-                "persona": expert_analysis_result.get("persona"),
-                "persona_keys": expert_analysis_result.get("persona_keys"),
-                "context": expert_analysis_result.get("context"),
-                "speakers": expert_analysis_result.get("speakers"),
-                "raw_analysis": expert_analysis_result.get("raw_analysis", "")[:1000],
-                "timestamp": expert_analysis_result.get("timestamp")
+        try:
+            print("💾 [Drive Upload] Saving slim audio interaction to memory...")
+            audio_interaction = {
+                "timestamp": datetime.utcnow().isoformat() + "Z",
+                "type": "audio",
+                "source": source,
+                "file_id": audio_metadata.get('file_id', ''),
+                "web_content_link": audio_metadata.get('web_content_link', ''),
+                "web_view_link": audio_metadata.get('web_view_link', ''),
+                "filename": audio_metadata.get('filename', ''),
+                "summary": summary_text,
+                "speakers": speaker_names,
+                "segment_count": len(segments),
+                "transcript_file_id": transcript_file_id,
+                "from_number": from_number
             }
-            print(f"📊 Including expert analysis summary in memory (persona: {expert_analysis_result.get('persona')})")
 
-        drive_memory_service.update_memory(audio_interaction)
-        print("✅ Saved slim audio interaction to memory")
+            if expert_analysis_result and expert_analysis_result.get('success'):
+                audio_interaction["expert_analysis"] = {
+                    "persona": expert_analysis_result.get("persona"),
+                    "persona_keys": expert_analysis_result.get("persona_keys"),
+                    "context": expert_analysis_result.get("context"),
+                    "speakers": expert_analysis_result.get("speakers"),
+                    "raw_analysis": expert_analysis_result.get("raw_analysis", "")[:1000],
+                    "timestamp": expert_analysis_result.get("timestamp")
+                }
+                print(f"📊 Including expert analysis summary in memory (persona: {expert_analysis_result.get('persona')})")
+
+            drive_memory_service.update_memory(audio_interaction)
+            print("✅ Saved slim audio interaction to memory")
+        except Exception as mem_err:
+            print(f"⚠️  [Drive] Memory save failed (non-fatal, analysis already sent): {mem_err}")
 
         # ============================================================
         # Step 3.5: UPDATE SPEAKER IDENTITY GRAPH
@@ -899,120 +997,6 @@ def process_audio_core(
                 traceback.print_exc()
 
         print(f"✅ [Diarization] Speaker identification: {len(unknown_speakers_processed)} unknown speakers queued")
-
-        # ============================================================
-        # Step 6: SMART NOTIFICATION SEQUENCE
-        # ============================================================
-        print("📱 [WhatsApp Notification] Building smart notification sequence...")
-
-        all_speakers = set()
-        for seg in segments:
-            speaker = seg.get('speaker', '')
-            if speaker:
-                all_speakers.add(speaker)
-
-        identified_speakers = []
-        unidentified_count = 0
-
-        for speaker in all_speakers:
-            speaker_lower = speaker.lower()
-            is_unknown = (
-                speaker_lower.startswith('speaker ') or
-                speaker.startswith('דובר ') or
-                'unknown' in speaker_lower or
-                speaker_lower == 'speaker' or
-                speaker_lower == 'unknown' or
-                speaker == ''
-            )
-            if is_unknown:
-                unidentified_count += 1
-            else:
-                identified_speakers.append(speaker)
-
-        # ── MESSAGE 1: EXPERT SUMMARY ──
-        print(f"📊 [WhatsApp] Decision point:")
-        print(f"   expert_analysis_result is None: {expert_analysis_result is None}")
-        if expert_analysis_result:
-            print(f"   expert_analysis_result.get('success'): {expert_analysis_result.get('success')}")
-            print(f"   expert_analysis_result.get('persona'): {expert_analysis_result.get('persona')}")
-            raw_len = len(expert_analysis_result.get('raw_analysis', ''))
-            print(f"   raw_analysis length: {raw_len} chars")
-
-        if whatsapp_provider:
-            # Add source header for Drive inbox files
-            source_header = ""
-            if source == "drive_inbox":
-                filename = audio_metadata.get('filename', '')
-                source_header = f"📥 *הקלטה חדשה מתיקיית Inbox:*\n📁 {filename}\n\n"
-
-            if expert_analysis_result and expert_analysis_result.get('success'):
-                from app.services.expert_analysis_service import expert_analysis_service
-                expert_message = expert_analysis_service.format_for_whatsapp(expert_analysis_result)
-                print(f"   📝 Expert message length: {len(expert_message)} chars")
-
-                header = source_header
-                header += "✅ *ההקלטה נשמרה ונותחה!*\n\n"
-                header += "👥 *משתתפים:* "
-                if identified_speakers:
-                    header += ", ".join(sorted(identified_speakers))
-                if unidentified_count > 0:
-                    header += f" (+{unidentified_count} לא מזוהים)"
-                if not identified_speakers and unidentified_count == 0:
-                    header += "(לא זוהו)"
-                header += "\n\n"
-
-                full_message = header + expert_message
-                print(f"   📤 Total message length: {len(full_message)} chars")
-
-                reply_result = whatsapp_provider.send_whatsapp(
-                    message=full_message,
-                    to=f"+{from_number}"
-                )
-                if reply_result.get('success'):
-                    print("✅ [WhatsApp] Message 1 (Expert Summary) sent")
-                else:
-                    print(f"⚠️  [WhatsApp] Failed to send expert summary: {reply_result.get('error')}")
-            else:
-                print(f"   ⚠️  [CRITICAL] Using FALLBACK - expert analysis failed!")
-                if expert_analysis_result:
-                    print(f"   Error details: {expert_analysis_result.get('error', 'unknown')}")
-
-                reply_message = source_header
-                reply_message += "✅ *ההקלטה נשמרה!*\n\n"
-                reply_message += "👥 *משתתפים:* "
-
-                if identified_speakers:
-                    reply_message += ", ".join(sorted(identified_speakers))
-                if unidentified_count > 0:
-                    if identified_speakers:
-                        reply_message += f" (+{unidentified_count} לא מזוהים)"
-                    else:
-                        reply_message += f"{unidentified_count} דוברים לא מזוהים"
-                if not identified_speakers and unidentified_count == 0:
-                    reply_message += "(לא זוהו)"
-
-                reply_message += "\n\n"
-
-                if summary_text and len(summary_text.strip()) > 20:
-                    if len(summary_text) > 1200:
-                        summary_text = summary_text[:1000] + "..."
-                    reply_message += f"📝 *סיכום:*\n{summary_text}\n\n"
-                else:
-                    reply_message += "📝 *סיכום:* לא הצלחתי לייצר סיכום מפורט.\n\n"
-
-                reply_message += "📈 *קאיזן:*\n"
-                reply_message += "✓ לשימור: השיחה התקיימה והוקלטה\n"
-                reply_message += "→ לשיפור: בדוק את איכות ההקלטה\n\n"
-                reply_message += "📄 התמלול המלא זמין בדרייב."
-
-                reply_result = whatsapp_provider.send_whatsapp(
-                    message=reply_message,
-                    to=f"+{from_number}"
-                )
-                if reply_result.get('success'):
-                    print("✅ [WhatsApp] Message 1 (Fallback Summary) sent")
-                else:
-                    print(f"⚠️  [WhatsApp] Failed to send fallback: {reply_result.get('error')}")
 
         if unknown_speakers_processed:
             print(f"✅ [WhatsApp] Message 2 (Speaker ID queries) sent for: {unknown_speakers_processed}")

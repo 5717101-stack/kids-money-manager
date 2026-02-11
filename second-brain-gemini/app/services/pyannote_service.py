@@ -116,11 +116,14 @@ def _ensure_models() -> bool:
             if local_cache_exists:
                 print(f"📦 Found local model cache at {hf_home} — loading offline...")
                 try:
+                    # Force offline mode via environment variable (more reliable
+                    # than local_files_only param which some pyannote versions don't support)
+                    os.environ["HF_HUB_OFFLINE"] = "1"
+                    
                     print("🔄 Loading pyannote diarization pipeline (local cache)...")
                     _diarization_pipeline = Pipeline.from_pretrained(
                         "pyannote/speaker-diarization-3.1",
                         token=hf_token,
-                        local_files_only=True
                     )
                     _diarization_pipeline.to(_device)
                     print(f"✅ pyannote diarization pipeline loaded from cache (device: {_device})")
@@ -130,7 +133,6 @@ def _ensure_models() -> bool:
                     emb_model = Model.from_pretrained(
                         "pyannote/wespeaker-voxceleb-resnet34-LM",
                         token=hf_token,
-                        local_files_only=True
                     )
                     emb_model.to(_device)
                     _embedding_model = Inference(emb_model, window="whole", device=_device)
@@ -140,6 +142,9 @@ def _ensure_models() -> bool:
                     return True
                 except Exception as cache_err:
                     print(f"⚠️ Local cache load failed ({cache_err}), falling back to HuggingFace download...")
+                finally:
+                    # Restore online mode for fallback
+                    os.environ.pop("HF_HUB_OFFLINE", None)
 
             # ── Fallback: download from HuggingFace ───────────────────────
             print("🔄 Loading pyannote diarization pipeline (downloading from HuggingFace)...")

@@ -20,7 +20,6 @@ venv/
 
 # Local scripts (not needed in container)
 local_cursor_bridge.py
-process_meetings.py
 
 # Render (not needed for Cloud Run)
 render.yaml
