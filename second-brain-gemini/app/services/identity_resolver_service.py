@@ -134,7 +134,19 @@ class IdentityResolverService:
     # ── Pronoun resolution ───────────────────────────────────────────
 
     # Pronouns in Hebrew and English that refer to a previously mentioned person
-    _PRONOUNS_HE = {'שלו', 'שלה', 'הוא', 'היא', 'אותו', 'אותה', 'לו', 'לה', 'ממנו', 'ממנה', 'עליו', 'עליה'}
+    _PRONOUNS_HE = {
+        'שלו', 'שלה',           # his/hers (possessive)
+        'הוא', 'היא',           # he/she
+        'אותו', 'אותה',         # him/her (direct object)
+        'לו', 'לה',             # to him/her
+        'ממנו', 'ממנה',         # from him/her
+        'עליו', 'עליה',         # about him/her
+        'אליו', 'אליה',         # to him/her (directional)
+        'איתו', 'איתה',         # with him/her
+        'בו', 'בה',             # in him/her
+        'ידו', 'ידה',           # his/her hand (possessive suffix)
+        'אצלו', 'אצלה',         # at his/her place
+    }
     _PRONOUNS_EN = {'his', 'her', 'him', 'he', 'she', 'their', 'them', 'hers'}
 
     @classmethod
@@ -183,6 +195,18 @@ class IdentityResolverService:
         resolved = re.sub(r'\bממנה\b', f'מ-{name}', resolved)
         resolved = re.sub(r'\bעליו\b', f'על {name}', resolved)
         resolved = re.sub(r'\bעליה\b', f'על {name}', resolved)
+        # "אליו" / "אליה" → "אל {name}"
+        resolved = re.sub(r'\bאליו\b', f'אל {name}', resolved)
+        resolved = re.sub(r'\bאליה\b', f'אל {name}', resolved)
+        # "איתו" / "איתה" → "עם {name}"
+        resolved = re.sub(r'\bאיתו\b', f'עם {name}', resolved)
+        resolved = re.sub(r'\bאיתה\b', f'עם {name}', resolved)
+        # "בו" / "בה" → "ב-{name}" (careful — short words)
+        resolved = re.sub(r'\bבו\b', f'ב-{name}', resolved)
+        resolved = re.sub(r'\bבה\b', f'ב-{name}', resolved)
+        # "אצלו" / "אצלה" → "אצל {name}"
+        resolved = re.sub(r'\bאצלו\b', f'אצל {name}', resolved)
+        resolved = re.sub(r'\bאצלה\b', f'אצל {name}', resolved)
 
         # ── English pronoun replacement ──
         resolved = re.sub(r'\bhis\b', f"{name}'s", resolved, flags=re.IGNORECASE)
