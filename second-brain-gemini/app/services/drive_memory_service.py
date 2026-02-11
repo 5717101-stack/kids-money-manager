@@ -182,9 +182,17 @@ class DriveMemoryService:
             logger.info("✅ Drive Memory Service initialized successfully (OAuth 2.0)")
             print("✅ Drive Memory Service initialized successfully (OAuth 2.0)")
             
-            # Ensure audio_archive folder exists
+            # Init folder ID caches
+            self._audio_archive_folder_id = None
+            self._transcripts_folder_id = None
+            self._cursor_inbox_folder_id = None
+            
+            # Ensure audio_archive folder exists (non-fatal on startup)
             print("📁 Ensuring audio_archive folder exists...")
-            self._ensure_audio_archive_folder()
+            try:
+                self._ensure_audio_archive_folder()
+            except Exception as folder_err:
+                print(f"⚠️  audio_archive folder check failed on startup (will retry later): {folder_err}")
             print("✅ Drive Memory Service fully initialized\n")
         except Exception as e:
             error_msg = f"Failed to initialize Drive Memory Service: {e}"
@@ -219,13 +227,20 @@ class DriveMemoryService:
     def _ensure_audio_archive_folder(self) -> Optional[str]:
         """
         Ensure the audio_archive subfolder exists in the main memory folder.
-        Creates it if it doesn't exist.
+        Creates it if it doesn't exist. Caches the folder ID for subsequent calls.
         
         Returns:
             Folder ID of audio_archive, or None if creation failed
+            
+        Raises:
+            ssl.SSLError, ConnectionError, etc. — propagated for retry decorator
         """
         if not self.is_configured or not self.service:
             return None
+        
+        # Return cached folder ID if available
+        if hasattr(self, '_audio_archive_folder_id') and self._audio_archive_folder_id:
+            return self._audio_archive_folder_id
         
         # Refresh credentials if needed before API call
         self._refresh_credentials_if_needed()
@@ -241,6 +256,7 @@ class DriveMemoryService:
             files = results.get('files', [])
             if files:
                 folder_id = files[0]['id']
+                self._audio_archive_folder_id = folder_id
                 logger.info(f"✅ Audio archive folder already exists (ID: {folder_id})")
                 return folder_id
             
@@ -257,9 +273,13 @@ class DriveMemoryService:
             ).execute()
             
             folder_id = folder.get('id')
+            self._audio_archive_folder_id = folder_id
             logger.info(f"✅ Created audio_archive folder (ID: {folder_id})")
             return folder_id
             
+        except _RETRYABLE_EXCEPTIONS:
+            # Propagate SSL/network errors so @_retry_on_ssl on caller can retry
+            raise
         except Exception as e:
             logger.error(f"❌ Error ensuring audio_archive folder: {e}")
             return None
@@ -267,13 +287,17 @@ class DriveMemoryService:
     def _ensure_transcripts_folder(self) -> Optional[str]:
         """
         Ensure the Transcripts subfolder exists in the main memory folder.
-        Creates it if it doesn't exist.
+        Creates it if it doesn't exist. Caches the folder ID for subsequent calls.
         
         Returns:
             Folder ID of Transcripts folder, or None if creation failed
         """
         if not self.is_configured or not self.service:
             return None
+        
+        # Return cached folder ID if available
+        if hasattr(self, '_transcripts_folder_id') and self._transcripts_folder_id:
+            return self._transcripts_folder_id
         
         self._refresh_credentials_if_needed()
         
@@ -288,6 +312,7 @@ class DriveMemoryService:
             files = results.get('files', [])
             if files:
                 folder_id = files[0]['id']
+                self._transcripts_folder_id = folder_id
                 logger.info(f"✅ Transcripts folder already exists (ID: {folder_id})")
                 return folder_id
 
@@ -304,9 +329,12 @@ class DriveMemoryService:
             ).execute()
             
             folder_id = folder.get('id')
+            self._transcripts_folder_id = folder_id
             logger.info(f"✅ Created Transcripts folder (ID: {folder_id})")
             return folder_id
             
+        except _RETRYABLE_EXCEPTIONS:
+            raise
         except Exception as e:
             logger.error(f"❌ Error ensuring Transcripts folder: {e}")
             return None
@@ -713,6 +741,10 @@ class DriveMemoryService:
         if not self.is_configured or not self.service:
             return None
         
+        # Return cached folder ID if available
+        if hasattr(self, '_cursor_inbox_folder_id') and self._cursor_inbox_folder_id:
+            return self._cursor_inbox_folder_id
+        
         self._refresh_credentials_if_needed()
         
         try:
@@ -726,6 +758,7 @@ class DriveMemoryService:
             files = results.get('files', [])
             if files:
                 folder_id = files[0]['id']
+                self._cursor_inbox_folder_id = folder_id
                 logger.info(f"✅ Cursor_Inbox folder already exists (ID: {folder_id})")
                 return folder_id
 
@@ -742,9 +775,12 @@ class DriveMemoryService:
             ).execute()
             
             folder_id = folder.get('id')
+            self._cursor_inbox_folder_id = folder_id
             logger.info(f"✅ Created Cursor_Inbox folder (ID: {folder_id})")
             return folder_id
             
+        except _RETRYABLE_EXCEPTIONS:
+            raise
         except Exception as e:
             logger.error(f"❌ Error ensuring Cursor_Inbox folder: {e}")
             return None
