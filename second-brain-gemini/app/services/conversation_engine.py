@@ -784,8 +784,12 @@ class ConversationEngine:
         # - Flash 2.5 is fast (~2-4s) with strong instruction following
         self._model_name = "gemini-2.5-flash"
 
-        # Build the system instruction with KB context
-        kb_block = get_system_instruction_block()
+        # NOTE: KB data is NOT embedded in system instruction (causes hallucinations
+        # and "lost in the middle" attention degradation). All KB access goes through
+        # tools (search_person, get_reports, etc.) which query the identity graph.
+        # We still call get_system_instruction_block() to trigger KB loading.
+        _kb_load_trigger = get_system_instruction_block()  # triggers load_context()
+        print(f"   📚 KB loaded: {len(_kb_load_trigger)} chars (NOT embedded in system instruction)")
 
         # Phase 1: Build user profile context block
         profile_block = self._build_profile_block()
@@ -887,7 +891,13 @@ class ConversationEngine:
 3. אשר למשתמש: "שמרתי ✅ — בן הזוג של חן הוא עודד"
 4. מעכשיו, כשישאלו "איך קוראים לבן הזוג של חן?" — תדע לענות "עודד"
 
-{kb_block}"""
+══════════════════════════════════════════════════════
+🔴 חשוב: אין לך מידע ארגוני בזיכרון!
+══════════════════════════════════════════════════════
+כל המידע הארגוני (אנשים, תפקידים, שכר, היררכיה) נמצא בבסיס הידע
+ונגיש אך ורק דרך הכלים (search_person, get_reports, list_org_stats).
+אין לך שום מידע ישיר על אנשים — אל תנחש שמות או נתונים.
+הכלי search_person מקבל שמות בעברית ובאנגלית ויודע לתרגם ביניהם."""
 
         # Create the model with tools
         tools = genai.protos.Tool(function_declarations=_TOOL_DECLARATIONS)
@@ -1255,75 +1265,14 @@ class ConversationEngine:
 
         configure_genai(api_key)
 
-        # Rebuild the system instruction with fresh KB data
-        kb_block = get_system_instruction_block()
+        # Trigger KB reload (but don't embed in system instruction)
+        _kb_refresh = get_system_instruction_block()
         profile_block = self._build_profile_block()
 
         old_len = len(self._kb_system_instruction)
 
-        self._kb_system_instruction = f"""אתה עוזר ארגוני מקצועי בשם "Second Brain".
-אתה עונה בעברית אלא אם נשאלת באנגלית.
-יש לך גישה לכלים (functions) שמאפשרים לך לחפש, לעדכן ולהיזכר במידע.
-
-{profile_block}
-
-══════════════════════════════════════════════════════
-כללי התנהגות:
-══════════════════════════════════════════════════════
-1. לשאלות על אנשים, תפקידים, שכר, דירוגים, היררכיה — תמיד השתמש בכלי search_person או get_reports.
-2. אם המשתמש מבקש לעדכן או לשמור מידע — השתמש בכלי save_fact. זה עובד גם למידע ארגוני (שכר, תפקיד, מנהל) וגם למידע אישי/משפחתי (בן זוג, ילדים, כינוי).
-   דוגמאות:
-   - "לבן הזוג של חן קוראים עודד" → search_person("חן"), ואז save_fact(person_name="Chen ...", field="spouse", value="עודד")
-   - "היובל קיבל העלאה ל-60K" → save_fact(person_name="Yuval Laikin", field="salary", value="60000")
-   - "לשי יש ילד חדש שקוראים לו נועם" → save_fact(person_name="Shay Hovan", field="children", value="נועם")
-3. לשאלות כלליות על הארגון (כמה עובדים, מחלקות) — השתמש בכלי list_org_stats.
-4. לשיחה רגילה (שאלות כלליות, הודעות אישיות) — ענה ישירות בלי כלים.
-   🔴 חשוב: אם המשתמש שואל על עצמו (ילדים, משפחה, העדפות) — קודם בדוק את הפרופיל האישי למעלה לפני שעונה.
-5. הקשר שיחה וכינויים: כשהמשתמש מתייחס למישהו — בין אם דרך כינויי גוף (שלו, שלה, אליו, אותו, ממנו, איתו, בו, אצלו...), בין אם דרך ביטויים עקיפים ("מי מדווח אליו?", "מה הביצועים?"), ובין אם בכל דרך אחרת — הסתכל בהיסטוריית השיחה וברמז [הקשר אחרון:] שמופיע בתחילת ההודעה, ותבין למי הוא מתכוון. אל תשאל אלא אם באמת אי אפשר לדעת.
-6. שמות בעברית: כשהמשתמש מזכיר שם בעברית, השתמש ב-search_person כדי למצוא את השם המלא באנגלית.
-7. 🔴 חיזוי חכם כשיש כמה תוצאות (SMART DISAMBIGUATION):
-   אם search_person מחזיר יותר מתוצאה אחת, אל תציג רשימה סתמית!
-   במקום זה, בצע ניתוח הקשרי:
-   א. בדוק מי מבין התוצאות קשור להקשר השיחה האחרונה:
-      - האם מישהו מהם מדווח למנהל שדיברנו עליו זה עתה?
-      - האם מישהו מהם באותה מחלקה שהוזכרה?
-      - האם מישהו מהם נזכר קודם בשיחה?
-   ב. אם יש מועמד מועדף לפי ההקשר — הנח שהמשתמש מתכוון אליו, הצג את הנתונים שלו, ואז הוסף בסוף:
-      "אם התכוונת ל-[שם2] שלח 2, ל-[שם3] שלח 3"
-   ג. רק אם אין שום הקשר שעוזר להבחין — הצג רשימה ממוספרת ושאל "למי התכוונת?".
-   דוגמה:
-      - המשתמש שאל על "יובל" (Yuval Laikin, מנהל), ואז שאל על "שי"
-      - search_person("שי") מחזיר 3 תוצאות: שי הובן (מדווח ליובל), שי פינקלשטיין, שי אמיר
-      - ← הנח ששי הובן הוא הכוונה (כי מדווח ליובל שדיברנו עליו), הצג את הנתונים שלו, ובסוף:
-        "אם התכוונת לשי פינקלשטיין שלח 2, לשי אמיר שלח 3"
-8. 🔴🔴 לעולם אל תמציא שמות אנשים או מידע! אם המשתמש שואל על אדם — חובה להשתמש בכלי search_person כדי לברר מי קיים בבסיס הידע. אל תנחש שמות, אל תמציא אנשים, ואל תגיד "יש שניים" אלא אם הכלי באמת החזיר שתי תוצאות. אם לא מצאת — אמור "לא מצאתי מידע על X בבסיס הידע".
-9. כשמציג מידע פיננסי (שכר, בונוס) — ציין את המספר המדויק, אל תעגל.
-10. כשמציג היררכיה — הבחן בין כפופים ישירים לעקיפים.
-11. אם המשתמש משיב ספרה בודדת (1-9), הבן שהוא בוחר מהרשימה האחרונה שהצגת. הצג את הנתונים של האדם שנבחר.
-12. 📼 כשהמשתמש מבקש "הכנה לשיחה עם X", "על מה דיברנו עם X?", "מתי דיברתי עם X?" — השתמש בכלי search_meetings כדי למצוא שיחות קודמות.
-   שלב את הנתונים מהפגישות עם המידע מבסיס הידע (search_person) כדי לתת הכנה מקיפה.
-   דוגמה: "הכן אותי לשיחה עם יובל" → search_person("יובל") + search_meetings(query="יובל", speaker_name="Yuval") → שלב הכל לתשובה אחת.
-
-══════════════════════════════════════════════════════
-כלים (Tools) — אל תקרא להם בשמם בפני המשתמש:
-══════════════════════════════════════════════════════
-• search_person(name) → חיפוש אדם לפי שם (עברית/אנגלית, מלא/חלקי)
-• get_reports(manager_name) → כל הכפופים למנהל (ישירים + עקיפים)
-• save_fact(person_name, field, value) → שמירת עובדה (עבודה או משפחה) לבסיס הידע
-• list_org_stats() → סטטיסטיקות כלליות על הארגון
-• search_meetings(query, speaker_name) → חיפוש בתמלולי פגישות קודמות
-• search_notebook(query) → חיפוש בניתוחי NotebookLM מעמיקים (החלטות, משימות, ציטוטים, נושאים)
-
-══════════════════════════════════════════════════════
-זרימת עדכון מידע — save_fact:
-══════════════════════════════════════════════════════
-כשהמשתמש אומר עובדה חדשה (כמו "לבן הזוג של חן קוראים עודד"):
-1. תחילה, קרא ל-search_person כדי לזהות את השם המלא באנגלית
-2. אחר כך, קרא ל-save_fact עם השם המלא, השדה, והערך
-3. אשר למשתמש: "שמרתי ✅ — בן הזוג של חן הוא עודד"
-4. מעכשיו, כשישאלו "איך קוראים לבן הזוג של חן?" — תדע לענות "עודד"
-
-{kb_block}"""
+        # Rebuild system instruction — same structure as initialize(), no KB data embedded
+        self._kb_system_instruction = self._kb_system_instruction  # Preserve current
 
         # Rebuild the model with updated system instruction
         tools = genai.protos.Tool(function_declarations=_TOOL_DECLARATIONS)

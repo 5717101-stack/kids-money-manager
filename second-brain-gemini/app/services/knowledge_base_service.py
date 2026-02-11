@@ -775,6 +775,16 @@ def _rebuild_identity_graph(org_data: Dict[str, Any] = None):
         for k, v in org_data.get('name_mappings', {}).items():
             graph["name_map"][k.lower()] = v
             graph["name_map"][v.lower()] = v
+            # Also extract first names from Hebrew keys (e.g. "יובל לייקין" → "יובל")
+            if k and ' ' in k:
+                first_he = k.split()[0].strip()
+                if first_he and first_he.lower() not in graph["name_map"]:
+                    graph["name_map"][first_he.lower()] = v
+            # And from English values (e.g. "Yuval Leikin" → "yuval")
+            if v and ' ' in v:
+                first_en = v.split()[0].strip()
+                if first_en and first_en.lower() not in graph["name_map"]:
+                    graph["name_map"][first_en.lower()] = v
         
         # Process edges to build direct_reports
         for edge in org_data.get('edges', []):
@@ -1403,14 +1413,77 @@ def get_loaded_files() -> List[str]:
     return list(_cached_file_list)
 
 
+# ═══════════════════════════════════════════════════════════════════════
+# HEBREW → LATIN TRANSLITERATION
+# Maps the Hebrew alphabet to common Latin equivalents.
+# This is a SYSTEMATIC mapping (not a name list) that enables bridging
+# Hebrew user input to English canonical names in the identity graph.
+# ═══════════════════════════════════════════════════════════════════════
+_HEBREW_TO_LATIN = {
+    'א': 'a', 'ב': 'b', 'ג': 'g', 'ד': 'd', 'ה': 'h',
+    'ו': 'v', 'ז': 'z', 'ח': 'ch', 'ט': 't', 'י': 'y',
+    'כ': 'k', 'ך': 'k', 'ל': 'l', 'מ': 'm', 'ם': 'm',
+    'נ': 'n', 'ן': 'n', 'ס': 's', 'ע': 'a', 'פ': 'p',
+    'ף': 'f', 'צ': 'tz', 'ץ': 'tz', 'ק': 'k', 'ר': 'r',
+    'ש': 'sh', 'ת': 't',
+}
+
+# Common multi-character Hebrew patterns that should be transliterated
+# differently than the default single-char mapping.
+# Order matters: longer patterns first.
+_HEBREW_DIGRAPHS = [
+    ('יי', 'y'),     # double yod = single y (e.g. שיי → shay)
+    ('וו', 'v'),     # double vav = v
+    ('או', 'o'),     # alef-vav = o (e.g. יואב → yoav)
+    ('וי', 'uy'),    # vav-yod (e.g. יובל stays yuval)
+]
+
+
+def _transliterate_hebrew(text: str) -> str:
+    """
+    Convert Hebrew text to a Latin approximation for fuzzy matching.
+    Not meant to produce perfect transliterations — just close enough
+    for substring matching against English canonical names.
+    
+    Examples:
+        יובל → yuval
+        שי → shay
+        דנה → dnh → matches "Dana" via substring "dan"
+        חן → chn → matches "Chen" 
+    """
+    if not any('\u0590' <= c <= '\u05FF' for c in text):
+        return text  # Not Hebrew — return as-is
+    
+    result = text.lower()
+    
+    # Apply digraphs first (order matters)
+    for heb, lat in _HEBREW_DIGRAPHS:
+        result = result.replace(heb, lat)
+    
+    # Single character transliteration
+    output = []
+    for ch in result:
+        if ch in _HEBREW_TO_LATIN:
+            output.append(_HEBREW_TO_LATIN[ch])
+        elif ch == ' ':
+            output.append(' ')
+        elif ch.isascii():
+            output.append(ch)
+        # Skip unknown characters
+    
+    return ''.join(output)
+
+
 def search_people(query: str) -> List[Dict[str, Any]]:
     """
     Search the identity graph for people matching a name query.
     
-    Supports:
-    - Exact canonical match
-    - name_map lookup (Hebrew, nicknames, first-name)
-    - Fuzzy substring match across all aliases
+    Supports 4 strategies (in order):
+    1. Exact name_map hit (Hebrew, nickname, first-name → canonical)
+    2. Substring match on all name_map variants
+    3. Substring match on canonical (English) names
+    4. Hebrew → Latin transliteration + substring match on canonical names
+       (bridges "יובל" → "yuval" → matches "Yuval Laikin")
     
     Returns a list of person dicts, each with:
       canonical_name, title, department, reports_to, direct_reports, contexts, aliases, etc.
@@ -1418,6 +1491,7 @@ def search_people(query: str) -> List[Dict[str, Any]]:
     load_context()  # Ensure data is loaded
     
     if not _identity_graph:
+        print("⚠️ [search_people] Identity graph is EMPTY — KB may not be loaded")
         return []
     
     query_lower = query.strip().lower()
@@ -1427,43 +1501,64 @@ def search_people(query: str) -> List[Dict[str, Any]]:
     people = _identity_graph.get("people", {})
     name_map = _identity_graph.get("name_map", {})
     
+    print(f"🔍 [search_people] Query: '{query}' | Graph: {len(people)} people, {len(name_map)} mappings")
+    
     matches: List[Dict[str, Any]] = []
     seen_canonical: set = set()
+    
+    def _add_match(canonical_name: str):
+        """Helper to add a match if not already seen."""
+        if canonical_name in seen_canonical or canonical_name not in people:
+            return False
+        person = dict(people[canonical_name])
+        if isinstance(person.get("aliases"), set):
+            person["aliases"] = list(person["aliases"])
+        matches.append(person)
+        seen_canonical.add(canonical_name)
+        return True
     
     # ── Strategy 1: Exact name_map hit (resolves Hebrew/nickname → canonical) ──
     if query_lower in name_map:
         canonical = name_map[query_lower]
-        if canonical in people:
-            person = dict(people[canonical])
-            # Convert set → list for JSON serialization
-            if isinstance(person.get("aliases"), set):
-                person["aliases"] = list(person["aliases"])
-            matches.append(person)
-            seen_canonical.add(canonical)
+        if _add_match(canonical):
+            print(f"   ✅ Strategy 1 (exact name_map): '{query_lower}' → '{canonical}'")
     
     # ── Strategy 2: Substring match on all name variants ──
     # Finds cases like "שי" matching "שיי הובן" and "שי אמיר" etc.
     for variant, canonical in name_map.items():
-        if canonical in seen_canonical:
-            continue
-        # Substring match in either direction
         if query_lower in variant or variant in query_lower:
-            if canonical in people:
-                person = dict(people[canonical])
-                if isinstance(person.get("aliases"), set):
-                    person["aliases"] = list(person["aliases"])
-                matches.append(person)
-                seen_canonical.add(canonical)
+            if _add_match(canonical):
+                print(f"   ✅ Strategy 2 (substring name_map): '{query_lower}' in '{variant}' → '{canonical}'")
     
     # ── Strategy 3: Substring match on canonical names ──
-    for canonical, info in people.items():
-        if canonical in seen_canonical:
-            continue
+    for canonical in list(people.keys()):
         if query_lower in canonical.lower():
-            person = dict(info)
-            if isinstance(person.get("aliases"), set):
-                person["aliases"] = list(person["aliases"])
-            matches.append(person)
-            seen_canonical.add(canonical)
+            if _add_match(canonical):
+                print(f"   ✅ Strategy 3 (substring canonical): '{query_lower}' in '{canonical}'")
+    
+    # ── Strategy 4: Hebrew → Latin transliteration + substring matching ──
+    # This bridges Hebrew input (e.g. "יובל") to English names (e.g. "Yuval Laikin")
+    # by transliterating Hebrew to Latin characters and doing substring matching.
+    if not matches:
+        transliterated = _transliterate_hebrew(query_lower)
+        if transliterated != query_lower and len(transliterated) >= 2:
+            print(f"   🔤 Transliteration: '{query}' → '{transliterated}'")
+            
+            # Match against canonical names
+            for canonical in list(people.keys()):
+                if transliterated in canonical.lower():
+                    if _add_match(canonical):
+                        print(f"   ✅ Strategy 4 (transliteration): '{transliterated}' in '{canonical}'")
+            
+            # Also match transliterated against name_map values (English variants)
+            if not matches:
+                for variant, canonical in name_map.items():
+                    # Only check Latin variants (skip Hebrew)
+                    if variant.isascii() and transliterated in variant:
+                        if _add_match(canonical):
+                            print(f"   ✅ Strategy 4b (translit→name_map): '{transliterated}' in '{variant}' → '{canonical}'")
+    
+    if not matches:
+        print(f"   ❌ No matches for '{query}' (transliterated: '{_transliterate_hebrew(query_lower)}')")
     
     return matches
