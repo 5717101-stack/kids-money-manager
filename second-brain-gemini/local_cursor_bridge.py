@@ -1,22 +1,22 @@
 #!/usr/bin/env python3
 """
-Local Cursor Bridge: Remote Execution via Google Drive
+Local Cursor Bridge: Remote Execution via Server API
 
-This script runs on your local Mac and monitors a Google Drive folder for
+This script runs on your local Mac and polls the Second Brain server for
 coding prompts sent via WhatsApp. When a new task is detected, it activates
 Cursor and triggers the Composer with the task content.
 
 REQUIREMENTS:
 - Python 3.8+
-- Google Drive Desktop App installed and synced
 - Cursor IDE installed
 - Accessibility permissions for Terminal/Python
 
 INSTALLATION:
-    pip install watchdog pyautogui
+    pip install pyautogui
 
 USAGE:
     python local_cursor_bridge.py
+    caffeinate -i python3 local_cursor_bridge.py   # prevent sleep
 
 PERMISSIONS:
     System Preferences > Privacy & Security > Accessibility > Add Terminal/Python
@@ -26,7 +26,9 @@ import os
 import sys
 import time
 import subprocess
-import hashlib
+import json
+import urllib.request
+import urllib.error
 from datetime import datetime
 from pathlib import Path
 
@@ -34,48 +36,15 @@ from pathlib import Path
 # CONFIGURATION
 # ================================================================
 
-# TODO: Update this path to match your Google Drive folder location
-# Common paths:
-# - ~/Library/CloudStorage/GoogleDrive-YOUR_EMAIL/My Drive/second_brain_memory/Cursor_Inbox
-# - ~/Google Drive/My Drive/second_brain_memory/Cursor_Inbox
-# 
-# To find your path:
-# 1. Open Finder
-# 2. Navigate to Google Drive > second_brain_memory > Cursor_Inbox
-# 3. Drag the folder to Terminal to see the full path
-
-WATCH_PATH = os.path.expanduser(
-    "~/Library/CloudStorage/GoogleDrive-5717101@gmail.com/My Drive/Second Brain Memory/Cursor_Inbox"
-)
-
-# Alternative paths to try if the above doesn't work
-ALTERNATIVE_PATHS = [
-    "~/Google Drive/My Drive/second_brain_memory/Cursor_Inbox",
-    "~/Google Drive/second_brain_memory/Cursor_Inbox",
-    "~/Library/CloudStorage/GoogleDrive/My Drive/second_brain_memory/Cursor_Inbox",
-]
-
-TASK_FILENAME = "pending_task.md"
-ARCHIVE_FOLDER = "Cursor_Inbox_Archive"  # Folder to move completed tasks
-CHECK_INTERVAL = 2  # seconds between checks
-DRIVE_SYNC_DELAY = 1  # seconds to wait for Drive sync
-
-# Server URL for sending completion notifications
-SERVER_URL = "https://second-brain-6q8c.onrender.com"  # Production server
+# Server URL for polling pending tasks and sending notifications
+SERVER_URL = "https://second-brain-363586144218.europe-west1.run.app"  # Production (Cloud Run)
 # SERVER_URL = "http://localhost:8001"  # Local development
 
-# ================================================================
-# WATCHDOG-BASED MONITORING
-# ================================================================
+POLL_INTERVAL = 3  # seconds between API polls
 
-try:
-    from watchdog.observers import Observer
-    from watchdog.events import FileSystemEventHandler
-    WATCHDOG_AVAILABLE = True
-except ImportError:
-    WATCHDOG_AVAILABLE = False
-    print("⚠️  watchdog not installed. Using polling fallback.")
-    print("   Install with: pip install watchdog")
+# ================================================================
+# OPTIONAL DEPENDENCIES
+# ================================================================
 
 try:
     import pyautogui
@@ -86,85 +55,46 @@ except ImportError:
     print("   Install with: pip install pyautogui")
 
 
-class CursorBridgeHandler(FileSystemEventHandler):
-    """Handles file system events for the Cursor inbox."""
-    
-    def __init__(self, bridge):
-        self.bridge = bridge
-    
-    def on_modified(self, event):
-        if event.is_directory:
-            return
-        if Path(event.src_path).name == TASK_FILENAME:
-            print(f"📝 File modified: {event.src_path}")
-            time.sleep(DRIVE_SYNC_DELAY)  # Wait for Drive sync
-            self.bridge.process_task()
-    
-    def on_created(self, event):
-        if event.is_directory:
-            return
-        if Path(event.src_path).name == TASK_FILENAME:
-            print(f"📝 File created: {event.src_path}")
-            time.sleep(DRIVE_SYNC_DELAY)
-            self.bridge.process_task()
-
-
 class CursorBridge:
-    """Main bridge class for remote Cursor execution."""
+    """Main bridge class for remote Cursor execution via server API polling."""
     
-    def __init__(self, watch_path: str):
-        self.watch_path = Path(watch_path)
-        self.task_file = self.watch_path / TASK_FILENAME
-        self.last_hash = None
-        
-        # Verify the path exists
-        if not self.watch_path.exists():
-            print(f"❌ Watch path does not exist: {self.watch_path}")
-            print("\n🔍 Trying alternative paths...")
-            
-            for alt_path in ALTERNATIVE_PATHS:
-                expanded = Path(os.path.expanduser(alt_path))
-                if expanded.exists():
-                    print(f"✅ Found alternative path: {expanded}")
-                    self.watch_path = expanded
-                    self.task_file = self.watch_path / TASK_FILENAME
-                    break
-            else:
-                print("\n❌ Could not find any valid path.")
-                print("\n📋 Please update WATCH_PATH in this script with your actual path.")
-                print("   To find your Google Drive path:")
-                print("   1. Open Finder")
-                print("   2. Navigate to: Google Drive > second_brain_memory > Cursor_Inbox")
-                print("   3. Right-click > Get Info > Copy the path from 'Where'")
-                sys.exit(1)
-        
-        print(f"✅ Monitoring: {self.watch_path}")
+    def __init__(self):
+        self.last_task_content = None
+        print(f"✅ Bridge initialized - polling {SERVER_URL}")
     
-    def get_file_hash(self) -> str:
-        """Get MD5 hash of the task file for change detection."""
-        if not self.task_file.exists():
-            return ""
+    def poll_server(self) -> dict:
+        """Poll the server for pending cursor tasks."""
         try:
-            content = self.task_file.read_bytes()
-            return hashlib.md5(content).hexdigest()
+            url = f"{SERVER_URL}/cursor-inbox/pending"
+            req = urllib.request.Request(url, method='GET')
+            with urllib.request.urlopen(req, timeout=10) as response:
+                return json.loads(response.read().decode('utf-8'))
+        except urllib.error.URLError as e:
+            # Server might be cold-starting, don't spam errors
+            return {"has_task": False}
         except Exception as e:
-            print(f"⚠️  Error reading file hash: {e}")
-            return ""
+            return {"has_task": False}
     
-    def read_task(self) -> str:
-        """Read the task content from the file."""
-        if not self.task_file.exists():
-            return ""
+    def ack_task(self) -> bool:
+        """Acknowledge that the task has been processed (deletes from Drive)."""
         try:
-            return self.task_file.read_text(encoding='utf-8')
+            url = f"{SERVER_URL}/cursor-inbox/ack"
+            req = urllib.request.Request(
+                url,
+                data=b'{}',
+                headers={'Content-Type': 'application/json'},
+                method='POST'
+            )
+            with urllib.request.urlopen(req, timeout=10) as response:
+                result = json.loads(response.read().decode('utf-8'))
+                return result.get('status') == 'ok'
         except Exception as e:
-            print(f"❌ Error reading task file: {e}")
-            return ""
+            print(f"⚠️  Failed to ack task: {e}")
+            return False
     
     def is_screen_locked(self) -> bool:
         """Check if the Mac screen is locked or sleeping."""
         try:
-            # Check if screen is locked using CGSession
             result = subprocess.run(
                 ['python3', '-c', 
                  'import Quartz; print(Quartz.CGSessionCopyCurrentDictionary().get("CGSSessionScreenIsLocked", False))'],
@@ -174,17 +104,13 @@ class CursorBridge:
             if is_locked:
                 print("🔒 Screen is LOCKED - cannot execute GUI commands!")
             return is_locked
-        except Exception as e:
-            # If we can't check, assume it's not locked
-            print(f"⚠️  Could not check screen lock status: {e}")
+        except Exception:
             return False
     
     def activate_cursor(self) -> bool:
         """Activate Cursor IDE using AppleScript."""
-        # First check if screen is locked
         if self.is_screen_locked():
             print("❌ Cannot activate Cursor - screen is locked!")
-            print("   💡 Unlock your Mac or run with: caffeinate -i python3 local_cursor_bridge.py")
             return False
         
         try:
@@ -193,10 +119,10 @@ class CursorBridge:
                 activate
             end tell
             '''
-            result = subprocess.run(['osascript', '-e', script], check=True, capture_output=True, text=True)
-            time.sleep(0.5)  # Wait for app to come to foreground
+            subprocess.run(['osascript', '-e', script], check=True, capture_output=True, text=True)
+            time.sleep(0.5)
             
-            # Verify Cursor is actually frontmost
+            # Verify Cursor is frontmost
             verify_script = '''
             tell application "System Events"
                 set frontApp to name of first application process whose frontmost is true
@@ -211,15 +137,12 @@ class CursorBridge:
                 return True
             else:
                 print(f"⚠️  Cursor may not be frontmost (front app: {front_app})")
-                # Try one more time
                 time.sleep(0.5)
                 subprocess.run(['osascript', '-e', script], check=True, capture_output=True)
                 return True
                 
         except subprocess.CalledProcessError as e:
             print(f"❌ Failed to activate Cursor: {e}")
-            if e.stderr:
-                print(f"   Error: {e.stderr}")
             return False
         except FileNotFoundError:
             print("❌ osascript not found. Are you running on macOS?")
@@ -236,18 +159,15 @@ class CursorBridge:
             # Step 1: Open the AI Chat panel with Cmd+L
             print("⌨️  Opening AI Chat panel (Cmd+L)...")
             pyautogui.hotkey('command', 'l')
-            time.sleep(1.0)  # Wait for panel to open
+            time.sleep(1.0)
             
-            # Step 2: Switch to Agent mode with Cmd+. (period)
-            # This toggles Agent mode in Cursor
+            # Step 2: Switch to Agent mode with Cmd+.
             print("⌨️  Switching to Agent mode (Cmd+.)...")
             pyautogui.hotkey('command', '.')
             time.sleep(0.5)
             
-            # Step 3: Type the content
+            # Step 3: Type the content via clipboard
             print("⌨️  Typing content...")
-            # Use clipboard for all content (more reliable)
-            import subprocess
             process = subprocess.Popen(
                 ['pbcopy'],
                 stdin=subprocess.PIPE,
@@ -257,11 +177,9 @@ class CursorBridge:
             
             time.sleep(0.2)
             pyautogui.hotkey('command', 'v')  # Paste
-            
             time.sleep(0.5)
             
-            # Step 4: Press Enter to send the message to Agent
-            # In the chat panel, Enter sends the message
+            # Step 4: Press Enter to send
             print("⌨️  Sending to Agent (Enter)...")
             pyautogui.press('enter')
             
@@ -275,60 +193,37 @@ class CursorBridge:
             return False
     
     def save_change_description(self, content: str) -> bool:
-        """
-        Save a simplified version of the prompt to a local file.
-        This can be used as a reference for git commit messages.
-        
-        Also saves to the repo's .last_change file for deployment notifications.
-        """
+        """Save a simplified version of the prompt for git commit reference."""
         try:
-            # Create a simplified summary (first 100 chars, clean)
             summary = content.strip()[:100]
             if len(content) > 100:
                 summary += "..."
-            
-            # Save to local file in the project directory
             project_dir = Path(__file__).parent
             change_file = project_dir / ".last_change"
             change_file.write_text(summary, encoding='utf-8')
             print(f"💾 Saved change description: {summary[:50]}...")
-            
             return True
         except Exception as e:
             print(f"⚠️  Could not save change description: {e}")
             return False
     
     def send_started_notification(self, content: str, success: bool = True) -> bool:
-        """
-        Send a WhatsApp notification that Cursor has started working on the task.
-        Calls the server's /notify-cursor-started endpoint.
-        
-        This triggers Message 2: "ברגעים אלה Cursor החל את עבודת הפיתוח..."
-        Also saves the prompt to Drive for deployment notification (Message 3).
-        """
+        """Send WhatsApp notification that Cursor has started working."""
         try:
-            import urllib.request
-            import json
-            
-            # Save change description locally for potential git commit reference
             self.save_change_description(content)
             
-            # Prepare the payload with task preview for later use in deployment message
             preview = content[:300] if len(content) <= 300 else content[:300] + "..."
-            
             payload = {
                 "task_preview": preview,
                 "success": success,
-                "save_to_drive": True  # Request server to persist for deployment notification
+                "save_to_drive": True
             }
             
-            # Send to server
             url = f"{SERVER_URL}/notify-cursor-started"
             data = json.dumps(payload).encode('utf-8')
             
             req = urllib.request.Request(
-                url,
-                data=data,
+                url, data=data,
                 headers={'Content-Type': 'application/json'},
                 method='POST'
             )
@@ -341,60 +236,10 @@ class CursorBridge:
                 
         except Exception as e:
             print(f"⚠️  Failed to send started notification: {e}")
-            # Don't fail the whole process if notification fails
             return False
     
-    def archive_task(self, content: str) -> bool:
-        """
-        Move the completed task to the archive folder.
-        Creates a timestamped file to preserve history.
-        """
-        try:
-            # Get archive folder path (sibling to Cursor_Inbox)
-            archive_path = self.watch_path.parent / ARCHIVE_FOLDER
-            
-            if not archive_path.exists():
-                print(f"⚠️  Archive folder not found: {archive_path}")
-                print(f"   Creating it...")
-                archive_path.mkdir(parents=True, exist_ok=True)
-            
-            # Create timestamped filename
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            archive_filename = f"task_{timestamp}.md"
-            archive_file = archive_path / archive_filename
-            
-            # Write content to archive
-            archive_file.write_text(content, encoding='utf-8')
-            print(f"📦 Archived to: {archive_filename}")
-            
-            # Delete the original pending_task.md
-            if self.task_file.exists():
-                self.task_file.unlink()
-                print(f"🗑️  Removed: {TASK_FILENAME}")
-            
-            return True
-            
-        except Exception as e:
-            print(f"⚠️  Failed to archive task: {e}")
-            import traceback
-            traceback.print_exc()
-            return False
-    
-    def process_task(self):
-        """Process a new task from the inbox."""
-        current_hash = self.get_file_hash()
-        
-        # Skip if no change or empty file
-        if not current_hash or current_hash == self.last_hash:
-            return
-        
-        self.last_hash = current_hash
-        
-        content = self.read_task()
-        if not content.strip():
-            print("⚠️  Task file is empty")
-            return
-        
+    def process_task(self, content: str):
+        """Process a new task."""
         timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         print(f"\n{'='*60}")
         print(f"🚀 NEW TASK RECEIVED at {timestamp}")
@@ -414,56 +259,51 @@ class CursorBridge:
         else:
             print("❌ Failed to activate Cursor")
         
-        # Archive the task after execution (to prevent re-processing)
-        self.archive_task(content)
+        # Acknowledge the task (delete from Drive)
+        if self.ack_task():
+            print("✅ Task acknowledged (removed from Drive)")
+        else:
+            print("⚠️  Failed to acknowledge task")
         
-        # Send WhatsApp notification: "Cursor started working" (Message 2)
-        # This is sent right after injecting the prompt, not when work is "complete"
+        # Send WhatsApp notification
         self.send_started_notification(content, success=task_success)
         
         print(f"{'='*60}\n")
     
-    def start_watching(self):
-        """Start watching for new tasks."""
+    def start_polling(self):
+        """Start polling the server for new tasks."""
         print(f"\n{'='*60}")
-        print("🔌 CURSOR BRIDGE STARTED")
+        print("🔌 CURSOR BRIDGE STARTED (API Polling Mode)")
         print(f"{'='*60}")
-        print(f"📁 Watching: {self.watch_path}")
-        print(f"📄 Task file: {TASK_FILENAME}")
-        print(f"⏱️  Check interval: {CHECK_INTERVAL}s")
+        print(f"🌐 Server: {SERVER_URL}")
+        print(f"⏱️  Poll interval: {POLL_INTERVAL}s")
         print(f"{'='*60}")
         print("\n💡 Send a WhatsApp message starting with 'הרץ בקרסר' to execute!")
         print("   Example: 'הרץ בקרסר fix the bug in app.py'")
         print("\n🛑 Press Ctrl+C to stop")
         print(f"{'='*60}\n")
         
-        # Process any existing task first
-        if self.task_file.exists():
-            print("📥 Checking for existing task...")
-            self.process_task()
-        
-        if WATCHDOG_AVAILABLE:
-            # Use watchdog for efficient file monitoring
-            event_handler = CursorBridgeHandler(self)
-            observer = Observer()
-            observer.schedule(event_handler, str(self.watch_path), recursive=False)
-            observer.start()
-            
-            try:
-                while True:
-                    time.sleep(1)
-            except KeyboardInterrupt:
-                observer.stop()
-                print("\n👋 Bridge stopped")
-            observer.join()
+        # Initial server check
+        print("🔍 Checking server connectivity...")
+        result = self.poll_server()
+        if result.get('has_task'):
+            print(f"📥 Found existing pending task! Processing...")
+            self.process_task(result['content'])
         else:
-            # Fallback to polling
-            try:
-                while True:
-                    self.process_task()
-                    time.sleep(CHECK_INTERVAL)
-            except KeyboardInterrupt:
-                print("\n👋 Bridge stopped")
+            print("✅ Server reachable. No pending tasks. Waiting...\n")
+        
+        # Main polling loop
+        try:
+            while True:
+                time.sleep(POLL_INTERVAL)
+                result = self.poll_server()
+                if result.get('has_task'):
+                    content = result.get('content', '')
+                    if content and content != self.last_task_content:
+                        self.last_task_content = content
+                        self.process_task(content)
+        except KeyboardInterrupt:
+            print("\n👋 Bridge stopped")
 
 
 def check_accessibility_permissions():
@@ -471,7 +311,6 @@ def check_accessibility_permissions():
     print("\n📋 PERMISSIONS CHECK")
     print("-" * 40)
     
-    # Check if we can get screen size (requires some permissions)
     if PYAUTOGUI_AVAILABLE:
         try:
             size = pyautogui.size()
@@ -490,15 +329,15 @@ def main():
     """Main entry point."""
     print("\n" + "="*60)
     print("🔌 LOCAL CURSOR BRIDGE")
-    print("   Remote Execution via WhatsApp -> Google Drive -> Cursor")
+    print("   Remote Execution via WhatsApp -> Server API -> Cursor")
     print("="*60)
     
     # Check permissions
     check_accessibility_permissions()
     
     # Start the bridge
-    bridge = CursorBridge(WATCH_PATH)
-    bridge.start_watching()
+    bridge = CursorBridge()
+    bridge.start_polling()
 
 
 if __name__ == "__main__":

@@ -1046,6 +1046,37 @@ async def test_whatsapp(request: Request):
         )
 
 
+@app.get("/cursor-inbox/pending")
+async def cursor_inbox_pending():
+    """
+    Poll endpoint for the local Cursor bridge.
+    Returns the pending task content if one exists, or empty response.
+    This bypasses Google Drive Desktop sync issues by using the Drive API directly.
+    """
+    try:
+        result = drive_memory_service.get_pending_cursor_command()
+        if result:
+            return {"has_task": True, "content": result['content'], "file_id": result['file_id']}
+        return {"has_task": False}
+    except Exception as e:
+        print(f"❌ Error polling cursor inbox: {e}")
+        return {"has_task": False, "error": str(e)}
+
+
+@app.post("/cursor-inbox/ack")
+async def cursor_inbox_ack():
+    """
+    Acknowledge that a cursor task has been processed.
+    Deletes the pending_task.md from Drive.
+    """
+    try:
+        success = drive_memory_service.ack_cursor_command()
+        return {"status": "ok" if success else "error"}
+    except Exception as e:
+        print(f"❌ Error acknowledging cursor task: {e}")
+        return {"status": "error", "error": str(e)}
+
+
 @app.post("/notify-cursor-started")
 async def notify_cursor_started(request: Request):
     """

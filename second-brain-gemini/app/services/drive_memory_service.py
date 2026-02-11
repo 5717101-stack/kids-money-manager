@@ -768,6 +768,90 @@ class DriveMemoryService:
             traceback.print_exc()
             return None
     
+    def get_pending_cursor_command(self) -> Optional[dict]:
+        """
+        Check if there's a pending_task.md in Cursor_Inbox and return its content.
+        Used by the local bridge to poll for new tasks via HTTP instead of filesystem.
+        
+        Returns:
+            Dict with 'content' and 'file_id' if a task exists, None otherwise
+        """
+        if not self.is_configured or not self.service:
+            return None
+        
+        self._refresh_credentials_if_needed()
+        
+        inbox_folder_id = self._ensure_cursor_inbox_folder()
+        if not inbox_folder_id:
+            return None
+        
+        try:
+            query = f"name = 'pending_task.md' and '{inbox_folder_id}' in parents and trashed = false"
+            results = self.service.files().list(
+                q=query,
+                fields="files(id, name, modifiedTime)"
+            ).execute()
+            
+            files = results.get('files', [])
+            if not files:
+                return None
+            
+            file_id = files[0]['id']
+            
+            # Download the file content
+            content = self.service.files().get_media(fileId=file_id).execute()
+            if isinstance(content, bytes):
+                content = content.decode('utf-8')
+            
+            if not content or not content.strip():
+                return None
+            
+            return {
+                'content': content.strip(),
+                'file_id': file_id,
+                'modified_time': files[0].get('modifiedTime', '')
+            }
+            
+        except Exception as e:
+            logger.error(f"❌ Error checking pending cursor command: {e}")
+            return None
+    
+    def ack_cursor_command(self) -> bool:
+        """
+        Acknowledge (delete) the pending_task.md after it has been processed.
+        
+        Returns:
+            True if successfully deleted, False otherwise
+        """
+        if not self.is_configured or not self.service:
+            return False
+        
+        self._refresh_credentials_if_needed()
+        
+        inbox_folder_id = self._ensure_cursor_inbox_folder()
+        if not inbox_folder_id:
+            return False
+        
+        try:
+            query = f"name = 'pending_task.md' and '{inbox_folder_id}' in parents and trashed = false"
+            results = self.service.files().list(
+                q=query,
+                fields="files(id)"
+            ).execute()
+            
+            files = results.get('files', [])
+            if not files:
+                return True  # Already gone
+            
+            # Delete the file (permanently)
+            self.service.files().delete(fileId=files[0]['id']).execute()
+            logger.info(f"✅ Deleted pending_task.md after acknowledgment")
+            return True
+            
+        except Exception as e:
+            logger.error(f"❌ Error acknowledging cursor command: {e}")
+            return False
+    
     def upload_audio_to_archive(
         self,
         audio_path: str = None,
