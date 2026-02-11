@@ -9,6 +9,9 @@ import json
 import copy
 import tempfile
 import io
+import ssl
+import time
+import functools
 from typing import Dict, Any, Optional, List
 from pathlib import Path
 from datetime import datetime, timezone
@@ -21,6 +24,59 @@ from io import BytesIO
 import logging
 from threading import Lock
 from dateutil import parser as date_parser
+
+
+# ─── SSL / Network Retry Decorator ────────────────────────────────────────────
+# Cloud Run → Google Drive API occasionally throws transient SSL errors:
+#   - ssl.SSLError: [SSL: WRONG_VERSION_NUMBER]
+#   - http.client.IncompleteRead
+#   - ConnectionResetError
+# These are transient and succeed on retry.
+_RETRYABLE_EXCEPTIONS = (
+    ssl.SSLError,
+    ConnectionError,
+    ConnectionResetError,
+    OSError,  # Covers BrokenPipeError, ConnectionAbortedError
+)
+
+def _retry_on_ssl(max_retries: int = 3, base_delay: float = 2.0):
+    """Decorator: retry function on transient SSL/network errors with exponential backoff."""
+    def decorator(func):
+        @functools.wraps(func)
+        def wrapper(*args, **kwargs):
+            last_exception = None
+            for attempt in range(max_retries + 1):
+                try:
+                    return func(*args, **kwargs)
+                except _RETRYABLE_EXCEPTIONS as e:
+                    last_exception = e
+                    if attempt < max_retries:
+                        delay = base_delay * (2 ** attempt)
+                        logger.warning(
+                            f"⚠️ [{func.__name__}] Transient error (attempt {attempt + 1}/{max_retries + 1}): "
+                            f"{type(e).__name__}: {e} — retrying in {delay:.0f}s..."
+                        )
+                        time.sleep(delay)
+                    else:
+                        logger.error(
+                            f"❌ [{func.__name__}] Failed after {max_retries + 1} attempts: "
+                            f"{type(e).__name__}: {e}"
+                        )
+                except HttpError as e:
+                    # Retry on 5xx server errors
+                    if e.resp.status >= 500 and attempt < max_retries:
+                        delay = base_delay * (2 ** attempt)
+                        logger.warning(
+                            f"⚠️ [{func.__name__}] Server error {e.resp.status} (attempt {attempt + 1}/"
+                            f"{max_retries + 1}) — retrying in {delay:.0f}s..."
+                        )
+                        time.sleep(delay)
+                        last_exception = e
+                    else:
+                        raise
+            raise last_exception
+        return wrapper
+    return decorator
 
 logger = logging.getLogger(__name__)
 
@@ -255,6 +311,7 @@ class DriveMemoryService:
             logger.error(f"❌ Error ensuring Transcripts folder: {e}")
             return None
     
+    @_retry_on_ssl(max_retries=3, base_delay=2.0)
     def save_transcript(self, transcript_data: dict, speakers: list = None) -> Optional[str]:
         """
         Save a transcript as a separate JSON file in the Transcripts folder.
@@ -310,6 +367,7 @@ class DriveMemoryService:
             logger.error(f"❌ Error saving transcript: {e}")
             return None
     
+    @_retry_on_ssl(max_retries=3, base_delay=2.0)
     def get_recent_transcripts(self, limit: int = 5) -> List[Dict[str, Any]]:
         """
         Get the most recent transcripts from the Transcripts folder.
@@ -385,6 +443,7 @@ class DriveMemoryService:
             logger.error(f"❌ Error getting recent transcripts: {e}")
             return []
     
+    @_retry_on_ssl(max_retries=3, base_delay=2.0)
     def search_transcripts(self, search_terms: List[str], limit: int = 10) -> List[Dict[str, Any]]:
         """
         Search through transcripts for specific terms (names, topics).
@@ -852,6 +911,7 @@ class DriveMemoryService:
             logger.error(f"❌ Error acknowledging cursor command: {e}")
             return False
     
+    @_retry_on_ssl(max_retries=3, base_delay=2.0)
     def upload_audio_to_archive(
         self,
         audio_path: str = None,
@@ -863,7 +923,7 @@ class DriveMemoryService:
         """
         Upload an audio file to the audio_archive folder in Drive.
         
-        NO TRY-EXCEPT: Let errors bubble up for transparent debugging.
+        Retries up to 3 times on transient SSL/network errors.
         
         Args:
             audio_path: Path to the audio file on disk (optional if audio_file_obj or audio_bytes provided)
@@ -1031,6 +1091,7 @@ class DriveMemoryService:
             'filename': filename
         }
     
+    @_retry_on_ssl(max_retries=3, base_delay=2.0)
     def upload_to_context_folder(
         self,
         file_bytes: bytes,
@@ -1113,6 +1174,7 @@ class DriveMemoryService:
             traceback.print_exc()
             return None
 
+    @_retry_on_ssl(max_retries=3, base_delay=2.0)
     def upload_voice_signature(self, file_path: str, person_name: str) -> Optional[str]:
         """
         Upload a voice signature (audio sample) to the Voice_Signatures folder in Drive.
@@ -1235,6 +1297,7 @@ class DriveMemoryService:
             logger.error(f"❌ Error ensuring Voice_Signatures folder: {e}")
             return None
     
+    @_retry_on_ssl(max_retries=3, base_delay=2.0)
     def get_known_speaker_names(self) -> List[str]:
         """
         Get list of known speaker names from Voice_Signatures folder.
@@ -1377,6 +1440,7 @@ class DriveMemoryService:
             logger.error(f"❌ Error retrieving voice signatures: {e}")
             return []
     
+    @_retry_on_ssl(max_retries=3, base_delay=2.0)
     def _find_memory_file(self) -> Optional[str]:
         """
         Find the memory file in the configured Drive folder.
@@ -1933,6 +1997,7 @@ class DriveMemoryService:
             traceback.print_exc()
             return False
     
+    @_retry_on_ssl(max_retries=3, base_delay=2.0)
     def _upload_to_drive(self, memory: Dict[str, Any]) -> bool:
         """
         Internal method to upload memory to Google Drive.
