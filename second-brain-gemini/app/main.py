@@ -1317,29 +1317,22 @@ def process_audio_in_background(
         audio_bytes = audio_response.content
         print(f"✅ Media downloaded: {len(audio_bytes)} bytes")
 
-        # ── Step 2: Archive to Google Drive ──
-        print("📤 Uploading to Google Drive...")
-        file_stream = io.BytesIO(audio_bytes)
-        audio_metadata = drive_memory_service.upload_audio_to_archive(
-            audio_file_obj=file_stream,
-            filename=f"whatsapp_audio_{message_id}.ogg",
-            mime_type="audio/ogg"
-        )
-
-        if not audio_metadata:
-            print("❌ Failed to upload to Drive")
-            _send_error_to_user(from_number, "שגיאה בשמירת האודיו לדרייב")
-            return
-
-        print(f"✅ Audio archived. File ID: {audio_metadata.get('file_id')}")
-        audio_metadata['message_id'] = message_id
-        
-        # ── Step 3: Save to temp file ──
+        # ── Step 2: Save to temp file IMMEDIATELY ──
         with tempfile.NamedTemporaryFile(delete=False, suffix='.ogg') as tmp_file:
             tmp_file.write(audio_bytes)
             tmp_path = tmp_file.name
+        print(f"💾 Saved to temp file: {tmp_path}")
 
-        # ── Step 4: Delegate to unified audio pipeline ──
+        # ── Step 3: Process audio FIRST (user gets analysis immediately) ──
+        # Build a minimal audio_metadata dict — Drive upload happens AFTER processing.
+        # This ensures user gets their analysis even if the Drive upload crashes
+        # (previously, heap corruption in Drive API killed the container before analysis).
+        audio_filename = f"whatsapp_audio_{message_id}.ogg"
+        audio_metadata = {
+            'filename': audio_filename,
+            'message_id': message_id,
+        }
+
         process_audio_core(
             tmp_path=tmp_path,
             from_number=from_number,
@@ -1348,6 +1341,24 @@ def process_audio_in_background(
             drive_memory_service=drive_memory_service,
             source="whatsapp",
         )
+
+        # ── Step 4: Archive to Google Drive (AFTER analysis sent to user) ──
+        # This is a best-effort operation — if it fails, the user already has their results.
+        try:
+            print("📤 Uploading audio to Google Drive archive (post-analysis)...")
+            file_stream = io.BytesIO(audio_bytes)
+            drive_result = drive_memory_service.upload_audio_to_archive(
+                audio_file_obj=file_stream,
+                filename=audio_filename,
+                mime_type="audio/ogg"
+            )
+            if drive_result:
+                print(f"✅ Audio archived to Drive. File ID: {drive_result.get('file_id')}")
+            else:
+                print("⚠️  Drive upload returned None — audio not archived")
+        except Exception as drive_err:
+            print(f"⚠️  Drive archive failed (non-critical): {drive_err}")
+            # Non-critical: user already has their analysis
 
     except Exception as e:
         print(f"❌ BACKGROUND AUDIO ERROR: {e}")
