@@ -575,8 +575,13 @@ def process_audio_core(
                 )
 
                 if audio_result.get('success'):
-                    sent_msg_id = audio_result.get('caption_message_id') or audio_result.get('wam_id') or audio_result.get('message_id')
-                    if sent_msg_id:
+                    # Store pending data under BOTH audio and caption message IDs.
+                    # WhatsApp sends audio + caption as 2 separate messages; the user
+                    # can reply to EITHER one, so we need both IDs in the lookup dict.
+                    audio_msg_id = audio_result.get('wam_id') or audio_result.get('message_id')
+                    caption_msg_id = audio_result.get('caption_message_id')
+
+                    if audio_msg_id or caption_msg_id:
                         pending_data = {
                             'file_path': slice_path,
                             'speaker_id': speaker
@@ -585,9 +590,15 @@ def process_audio_core(
                             pending_data['embedding'] = embedding
                             print(f"   🧬 Embedding stored for auto-enrollment ({len(embedding)} dims)")
 
-                        pending_identifications[sent_msg_id] = pending_data
+                        stored_ids = []
+                        if audio_msg_id:
+                            pending_identifications[audio_msg_id] = pending_data
+                            stored_ids.append(f"audio={audio_msg_id}")
+                        if caption_msg_id and caption_msg_id != audio_msg_id:
+                            pending_identifications[caption_msg_id] = pending_data
+                            stored_ids.append(f"caption={caption_msg_id}")
                         _save_pending_identifications()
-                        print(f"   📝 Pending identification stored: {sent_msg_id} -> {speaker}")
+                        print(f"   📝 Pending identification stored: [{', '.join(stored_ids)}] -> {speaker}")
                         unknown_speakers_processed.append(speaker)
                         if slice_path in slice_files_to_cleanup:
                             slice_files_to_cleanup.remove(slice_path)

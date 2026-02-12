@@ -42,7 +42,7 @@ steps:
       - '--cpu=4'
       - '--memory=16Gi'
       - '--min-instances=1'
-      - '--max-instances=2'
+      - '--max-instances=1'
       - '--timeout=3600'
       - '--port=8080'
       - '--no-cpu-throttling'

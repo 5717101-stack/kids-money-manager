@@ -80,7 +80,7 @@ jobs:
             --gpu=1 \
             --gpu-type=nvidia-l4 \
             --min-instances=0 \
-            --max-instances=2 \
+            --max-instances=1 \
             --timeout=3600 \
             --concurrency=80 \
             --port=8080 \

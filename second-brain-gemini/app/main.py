@@ -1462,6 +1462,22 @@ async def webhook(request: Request, background_tasks: BackgroundTasks):
                                     
                                     # Extract data from pending identification
                                     pending_data = pending_identifications.pop(replied_message_id)
+                                    
+                                    # Also remove the paired ID (audio/caption) to prevent
+                                    # double-processing if user replies to the other message later.
+                                    # Both IDs point to the same pending_data dict instance.
+                                    paired_ids_to_remove = [
+                                        k for k, v in pending_identifications.items()
+                                        if v is pending_data or (
+                                            isinstance(v, dict) and isinstance(pending_data, dict)
+                                            and v.get('speaker_id') == pending_data.get('speaker_id')
+                                            and v.get('file_path') == pending_data.get('file_path')
+                                        )
+                                    ]
+                                    for pid in paired_ids_to_remove:
+                                        pending_identifications.pop(pid, None)
+                                        print(f"   🧹 Removed paired pending ID: {pid}")
+                                    
                                     _save_pending_identifications()  # Persist removal to disk
                                     
                                     # Support both old format (string) and new format (dict)
