@@ -950,7 +950,124 @@ class DriveMemoryService:
         except Exception as e:
             logger.error(f"❌ Error acknowledging cursor command: {e}")
             return False
-    
+
+    # ─── Pending Speaker Identifications (Drive-backed persistence) ──────
+
+    _PENDING_IDS_FILENAME = "pending_speaker_identifications.json"
+
+    @_retry_on_ssl(max_retries=3, base_delay=2.0)
+    def save_pending_identifications(self, data: dict) -> bool:
+        """
+        Save pending speaker identifications to Google Drive.
+        This survives container restarts (Cloud Run ephemeral filesystem).
+        
+        Args:
+            data: Dict mapping message_id -> {file_path, speaker_id, embedding?}
+        
+        Returns:
+            True if saved, False otherwise
+        """
+        if not self.is_configured or not self.service:
+            return False
+
+        self._refresh_credentials_if_needed()
+
+        try:
+            # Strip non-serializable data (embeddings can be large, keep them)
+            # Remove file_path since it won't exist after restart anyway
+            clean_data = {}
+            for msg_id, entry in data.items():
+                if isinstance(entry, dict):
+                    clean_entry = {
+                        'speaker_id': entry.get('speaker_id', 'Unknown Speaker'),
+                    }
+                    if entry.get('embedding'):
+                        clean_entry['embedding'] = entry['embedding']
+                    clean_data[msg_id] = clean_entry
+                else:
+                    clean_data[msg_id] = {'speaker_id': str(entry)}
+
+            file_content = json.dumps(clean_data, ensure_ascii=False, indent=2).encode('utf-8')
+
+            from googleapiclient.http import MediaIoBaseUpload
+            media = MediaIoBaseUpload(
+                io.BytesIO(file_content),
+                mimetype='application/json',
+                resumable=True
+            )
+
+            # Check if file already exists in the root folder
+            query = (
+                f"name = '{self._PENDING_IDS_FILENAME}' "
+                f"and '{self.folder_id}' in parents and trashed = false"
+            )
+            results = self.service.files().list(q=query, fields="files(id)").execute()
+            existing = results.get('files', [])
+
+            if existing:
+                self.service.files().update(
+                    fileId=existing[0]['id'],
+                    media_body=media
+                ).execute()
+                logger.info(f"✅ Updated {self._PENDING_IDS_FILENAME} in Drive ({len(clean_data)} entries)")
+            else:
+                file_metadata = {
+                    'name': self._PENDING_IDS_FILENAME,
+                    'parents': [self.folder_id],
+                    'mimeType': 'application/json'
+                }
+                self.service.files().create(
+                    body=file_metadata,
+                    media_body=media,
+                    fields='id'
+                ).execute()
+                logger.info(f"✅ Created {self._PENDING_IDS_FILENAME} in Drive ({len(clean_data)} entries)")
+
+            return True
+
+        except _RETRYABLE_EXCEPTIONS:
+            raise  # Let the retry decorator handle these
+        except Exception as e:
+            logger.error(f"❌ Error saving pending identifications to Drive: {e}")
+            return False
+
+    @_retry_on_ssl(max_retries=3, base_delay=2.0)
+    def load_pending_identifications(self) -> dict:
+        """
+        Load pending speaker identifications from Google Drive.
+        Called on startup to restore state after container restart.
+        
+        Returns:
+            Dict mapping message_id -> {speaker_id, embedding?}
+        """
+        if not self.is_configured or not self.service:
+            return {}
+
+        self._refresh_credentials_if_needed()
+
+        try:
+            query = (
+                f"name = '{self._PENDING_IDS_FILENAME}' "
+                f"and '{self.folder_id}' in parents and trashed = false"
+            )
+            results = self.service.files().list(q=query, fields="files(id)").execute()
+            files = results.get('files', [])
+
+            if not files:
+                logger.info(f"ℹ️ No {self._PENDING_IDS_FILENAME} found in Drive")
+                return {}
+
+            content = self.service.files().get_media(fileId=files[0]['id']).execute()
+            data = json.loads(content.decode('utf-8') if isinstance(content, bytes) else content)
+            logger.info(f"📂 Loaded {len(data)} pending identifications from Drive")
+            return data
+
+        except _RETRYABLE_EXCEPTIONS:
+            raise  # Let the retry decorator handle these
+        except Exception as e:
+            logger.error(f"❌ Error loading pending identifications from Drive: {e}")
+            return {}
+
     @_retry_on_ssl(max_retries=3, base_delay=2.0)
     def upload_audio_to_archive(
         self,

@@ -77,24 +77,47 @@ _processed_media_ids = deque(maxlen=500)
 # Voice Imprinting: Track pending speaker identifications
 # Key: message_id (wam_id), Value: dict with file_path and speaker_id
 # Example: {"wamid.xxx": {"file_path": "/tmp/audio.mp3", "speaker_id": "Speaker 2"}}
-# PERSISTED to disk so it survives server restarts (Render redeploys, crashes, etc.)
+# PERSISTED to Google Drive so it survives Cloud Run container restarts.
+# Local file is a fast cache; Drive is the durable backing store.
 _PENDING_ID_FILE = Path(__file__).parent.parent / ".pending_identifications.json"
 
 def _load_pending_identifications() -> dict:
-    """Load pending identifications from disk."""
+    """Load pending identifications from disk (fast) or Drive (durable fallback)."""
+    # First try local file (fast, works within same container lifecycle)
     try:
         if _PENDING_ID_FILE.exists():
             import json
             data = json.loads(_PENDING_ID_FILE.read_text(encoding='utf-8'))
             if data:
-                print(f"📂 Loaded {len(data)} pending identifications from disk")
+                print(f"📂 Loaded {len(data)} pending identifications from local cache")
             return data
     except Exception as e:
-        print(f"⚠️  Failed to load pending identifications: {e}")
+        print(f"⚠️  Failed to load pending identifications from local file: {e}")
+    
+    # Fallback: load from Google Drive (survives container restarts)
+    try:
+        if drive_memory_service and drive_memory_service.is_configured:
+            data = drive_memory_service.load_pending_identifications()
+            if data:
+                print(f"📂 Loaded {len(data)} pending identifications from Drive (container restart recovery)")
+                # Cache locally for fast subsequent access
+                try:
+                    import json
+                    _PENDING_ID_FILE.write_text(
+                        json.dumps(data, ensure_ascii=False, indent=2),
+                        encoding='utf-8'
+                    )
+                except:
+                    pass
+            return data
+    except Exception as e:
+        print(f"⚠️  Failed to load pending identifications from Drive: {e}")
+    
     return {}
 
 def _save_pending_identifications():
-    """Save pending identifications to disk."""
+    """Save pending identifications to disk AND Drive (for durability across restarts)."""
+    # Save to local file (fast, synchronous)
     try:
         import json
         _PENDING_ID_FILE.write_text(
@@ -102,7 +125,14 @@ def _save_pending_identifications():
             encoding='utf-8'
         )
     except Exception as e:
-        print(f"⚠️  Failed to save pending identifications: {e}")
+        print(f"⚠️  Failed to save pending identifications to local file: {e}")
+    
+    # Also save to Drive (durable, survives container restarts)
+    try:
+        if drive_memory_service and drive_memory_service.is_configured:
+            drive_memory_service.save_pending_identifications(pending_identifications)
+    except Exception as e:
+        print(f"⚠️  Failed to save pending identifications to Drive: {e}")
 
 pending_identifications = _load_pending_identifications()
 
