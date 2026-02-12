@@ -282,7 +282,7 @@ OUTPUT FORMAT - JSON with both diarization AND expert summary
 **CRITICAL INSTRUCTIONS:**
 1. Output ONLY valid JSON - no markdown, no text before/after
 2. The "expert_summary" field must be a complete Hebrew analysis using the expert persona
-3. Keep expert_summary under 1200 characters for WhatsApp compatibility
+3. The "expert_summary" must be thorough and detailed — do NOT truncate or abbreviate. Provide the FULL analysis.
 4. Segments must have accurate timestamps
 5. **purest_segments are THE MOST IMPORTANT PART** - for each unknown speaker, find 5+ seconds where they speak ALONE with NO other voice. The timestamps must be precise - we cut audio at exactly these points.
 6. Look for monologue moments, answers to questions, or story-telling sections for purest_segments
@@ -397,7 +397,7 @@ OUTPUT FORMAT — JSON with transcription + expert summary + sentiment
 **CRITICAL INSTRUCTIONS:**
 1. Output ONLY valid JSON - no markdown, no text before/after
 2. The "expert_summary" must be a complete Hebrew analysis
-3. Keep expert_summary under 1200 characters for WhatsApp
+3. The "expert_summary" must be thorough and detailed — do NOT truncate or abbreviate. Provide the FULL analysis.
 4. Use the EXACT speaker names from the diarization above
 5. Add "topics" - 3-5 key topics discussed (in Hebrew)
 6. Add "speaker_sentiment" - sentiment score per speaker

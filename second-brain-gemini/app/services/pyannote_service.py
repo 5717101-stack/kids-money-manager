@@ -510,12 +510,24 @@ def identify_speakers(audio_path: str,
         if not diarization_segments:
             return {}
 
-    # Step 2: Extract embeddings per speaker
+    # Step 2: Extract embeddings per speaker (requires min 2.0s segments)
     speaker_data = extract_embeddings_per_speaker(
         audio_path, diarization_segments, min_duration=2.0
     )
 
-    # Step 3: Match each speaker
+    # Step 2b: Find ALL unique speakers from diarization, including those
+    # whose segments were too short for embedding extraction.
+    # This ensures every speaker gets into the results for clip extraction.
+    all_speakers_in_diarization = set(seg["speaker"] for seg in diarization_segments)
+    speakers_with_embeddings = set(speaker_data.keys())
+    speakers_without_embeddings = all_speakers_in_diarization - speakers_with_embeddings
+
+    if speakers_without_embeddings:
+        print(f"   ⚠️ {len(speakers_without_embeddings)} speaker(s) had segments too short "
+              f"for embedding (< 2.0s): {speakers_without_embeddings}")
+        print(f"   📎 Including them as 'unknown' with their longest segment for clip extraction")
+
+    # Step 3: Match each speaker that HAS an embedding
     results = {}
     for speaker_label, data in speaker_data.items():
         embedding = data["embedding"]
@@ -546,5 +558,27 @@ def identify_speakers(audio_path: str,
                   f"({confidence:.1%} confidence, {status})")
         else:
             print(f"   ❓ {speaker_label} → unknown (best score: {confidence:.1%})")
+
+    # Step 3b: Add speakers that had no embedding (short segments only).
+    # They are marked as "unknown" with no embedding but with their
+    # longest available segment, so clip extraction can still send a sample.
+    for speaker_label in speakers_without_embeddings:
+        # Find the longest segment for this speaker (even if < 2.0s)
+        speaker_segs = [s for s in diarization_segments if s["speaker"] == speaker_label]
+        if speaker_segs:
+            best_seg = max(speaker_segs, key=lambda s: s["duration"])
+            results[speaker_label] = {
+                "person_id": None,
+                "confidence": 0.0,
+                "status": "unknown",
+                "embedding": None,  # No embedding — segment was too short
+                "best_segment": {
+                    "start": best_seg["start"],
+                    "end": best_seg["end"],
+                    "duration": best_seg["duration"]
+                }
+            }
+            print(f"   ❓ {speaker_label} → unknown (no embedding, "
+                  f"best segment: {best_seg['duration']:.1f}s)")
 
     return results

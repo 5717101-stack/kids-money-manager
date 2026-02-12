@@ -124,6 +124,7 @@ def _process_inbox_file(
     print(f"{'='*60}\n")
     
     tmp_path = None
+    processing_succeeded = False
     
     try:
         # ── Step 1: Download audio from Drive ──
@@ -180,9 +181,27 @@ def _process_inbox_file(
             source="drive_inbox",
         )
         
-        # ── Step 5: Move to archive ──
+        processing_succeeded = True
+        print(f"\n✅ [InboxPoller] Successfully processed: {file_name}")
+        
+    except Exception as processing_err:
+        print(f"⚠️  [InboxPoller] Processing error for {file_name}: {processing_err}")
+        import traceback
+        traceback.print_exc()
+        # Still attempt to move to archive — the user likely already
+        # received partial results (analysis was sent before Drive ops)
+        processing_succeeded = True  # Move to archive to avoid re-processing
+    
+    finally:
+        # ── Step 5: ALWAYS move to archive (even if processing failed) ──
+        # This prevents the inbox poller from re-processing the same file
+        # on the next cycle. The user already got their analysis (it's sent
+        # before Drive saves), so re-processing would be wasteful.
         if archive_folder_id:
             try:
+                # Refresh credentials (processing may have taken 5+ minutes)
+                drive_service._refresh_credentials_if_needed()
+                
                 file_info = drive_service.service.files().get(
                     fileId=file_id, fields='parents'
                 ).execute()
@@ -198,13 +217,21 @@ def _process_inbox_file(
                 print(f"📦 Moved to archive folder")
             except Exception as move_err:
                 print(f"⚠️  Failed to move to archive: {move_err}")
+                # If move fails, try at least to rename the file to prevent
+                # re-processing on the next poller cycle
+                try:
+                    drive_service.service.files().update(
+                        fileId=file_id,
+                        body={'name': f"[PROCESSED] {file_name}"}
+                    ).execute()
+                    print(f"📝 Renamed file to prevent re-processing")
+                except Exception:
+                    print(f"⚠️  Could not rename file either — may be re-processed")
         else:
             print("ℹ️  No DRIVE_ARCHIVE_ID configured — file stays in inbox")
         
-        print(f"\n✅ [InboxPoller] Successfully processed: {file_name}")
         print(f"{'='*60}\n")
         
-    finally:
         # Clean up temp file
         if tmp_path:
             try:

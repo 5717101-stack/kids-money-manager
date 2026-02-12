@@ -530,8 +530,7 @@ def process_audio_core(
                     reply_message += "(לא זוהו)"
                 reply_message += "\n\n"
                 if summary_text and len(summary_text.strip()) > 20:
-                    st = summary_text[:1000] + "..." if len(summary_text) > 1200 else summary_text
-                    reply_message += f"📝 *סיכום:*\n{st}\n\n"
+                    reply_message += f"📝 *סיכום:*\n{summary_text}\n\n"
                 else:
                     reply_message += "📝 *סיכום:* לא הצלחתי לייצר סיכום מפורט.\n\n"
                 reply_message += "📈 *קאיזן:*\n"
@@ -708,8 +707,8 @@ def process_audio_core(
                         print(f"\n   🎤 {friendly_name} ({spk_label})")
                         print(f"      📍 Best segment: {start_sec:.1f}s → {end_sec:.1f}s ({duration_sec:.1f}s)")
 
-                        if duration_sec < 1.0:
-                            print(f"      ⚠️  Segment too short ({duration_sec:.1f}s) — skipping")
+                        if duration_sec < 0.5:
+                            print(f"      ⚠️  Segment too short ({duration_sec:.1f}s < 0.5s) — skipping")
                             continue
 
                         # Convert to ms and apply bounds
@@ -949,13 +948,17 @@ def process_audio_core(
             traceback.print_exc()
 
         # ============================================================
-        # Step 5: NOTEBOOKLM DEEP ANALYSIS (if enabled)
+        # Step 5: NOTEBOOKLM DEEP ANALYSIS + INFOGRAPHIC
+        # Always attempts to send a visual or text infographic.
+        # If NotebookLM fails, falls back to text-based infographic
+        # from the expert analysis already available.
         # ============================================================
         notebooklm_analysis = None
+        infographic_sent = False
         try:
             from app.services.notebooklm_service import notebooklm_service
 
-            if notebooklm_service.is_enabled:
+            if notebooklm_service.is_enabled and whatsapp_provider:
                 print("📓 [NotebookLM] Starting deep analysis...")
 
                 # Build full transcript text from segments
@@ -981,11 +984,11 @@ def process_audio_core(
                     drive_memory_service=drive_memory_service,
                 )
 
-                if notebooklm_analysis and whatsapp_provider:
+                if notebooklm_analysis:
                     print(f"📓 [NotebookLM] Analysis complete — generating infographic...")
                     print(f"   Analysis keys: {list(notebooklm_analysis.keys()) if isinstance(notebooklm_analysis, dict) else type(notebooklm_analysis)}")
-                    # Try to generate a visual infographic image
-                    image_sent = False
+
+                    # Attempt 1: PNG infographic image
                     try:
                         from app.services.infographic_generator import generate_infographic
                         print("📓 [NotebookLM] Calling generate_infographic()...")
@@ -1003,7 +1006,7 @@ def process_audio_core(
                             )
                             if img_result.get('success'):
                                 print("🖼️ [NotebookLM] Infographic IMAGE sent via WhatsApp ✅")
-                                image_sent = True
+                                infographic_sent = True
                             else:
                                 print(f"⚠️ [NotebookLM] Image send failed: {img_result}")
                             # Cleanup temp file
@@ -1019,25 +1022,66 @@ def process_audio_core(
                         print(f"⚠️ [NotebookLM] Image generation failed: {img_err}")
                         traceback.print_exc()
 
-                    # Fallback: send text infographic if image failed
-                    if not image_sent:
-                        print("📓 [NotebookLM] Falling back to text infographic...")
-                        infographic_msg = notebooklm_service.format_infographic(notebooklm_analysis)
-                        if infographic_msg:
-                            nb_result = whatsapp_provider.send_whatsapp(
-                                message=infographic_msg,
-                                to=f"+{from_number}"
-                            )
-                            if nb_result.get('success'):
-                                print("📓 [NotebookLM] Text infographic sent (fallback)")
+                    # Attempt 2: text infographic (always try if image failed)
+                    if not infographic_sent:
+                        try:
+                            print("📓 [NotebookLM] Falling back to text infographic...")
+                            infographic_msg = notebooklm_service.format_infographic(notebooklm_analysis)
+                            if infographic_msg and len(infographic_msg.strip()) > 20:
+                                nb_result = whatsapp_provider.send_whatsapp(
+                                    message=infographic_msg,
+                                    to=f"+{from_number}"
+                                )
+                                if nb_result.get('success'):
+                                    print("📓 [NotebookLM] Text infographic sent (fallback) ✅")
+                                    infographic_sent = True
+                                else:
+                                    print(f"⚠️ [NotebookLM] Text fallback send failed: {nb_result.get('error')}")
                             else:
-                                print(f"⚠️ [NotebookLM] Text fallback also failed: {nb_result.get('error')}")
-            else:
+                                print("⚠️ [NotebookLM] format_infographic returned empty/short text")
+                        except Exception as txt_err:
+                            print(f"⚠️ [NotebookLM] Text infographic failed: {txt_err}")
+                else:
+                    print("⚠️ [NotebookLM] Analysis returned None — Gemini call may have failed")
+            elif not notebooklm_service.is_enabled:
                 print("ℹ️ [NotebookLM] Disabled — skipping deep analysis")
 
         except Exception as nb_err:
             print(f"⚠️ [NotebookLM] Error (non-fatal): {nb_err}")
             traceback.print_exc()
+
+        # ── GUARANTEED FALLBACK: if NotebookLM failed entirely, send a ──
+        # ── structured summary from the expert analysis we already have ──
+        if not infographic_sent and whatsapp_provider and expert_summary:
+            try:
+                print("📓 [Infographic Fallback] NotebookLM unavailable — building infographic from expert analysis...")
+                fallback_parts = ["📓 *ניתוח מעמיק:*\n"]
+
+                if summary_text:
+                    fallback_parts.append(f"📌 *תמצית:*\n{summary_text}\n")
+
+                if speaker_names:
+                    fallback_parts.append(f"👥 *דוברים:* {', '.join(sorted(speaker_names))}\n")
+
+                if topics:
+                    fallback_parts.append("📋 *נושאים:*")
+                    for t in topics[:6]:
+                        fallback_parts.append(f"  • {t}")
+                    fallback_parts.append("")
+
+                fallback_msg = "\n".join(fallback_parts)
+                if len(fallback_msg.strip()) > 30:
+                    fb_result = whatsapp_provider.send_whatsapp(
+                        message=fallback_msg,
+                        to=f"+{from_number}"
+                    )
+                    if fb_result.get('success'):
+                        print("📓 [Infographic Fallback] Basic summary sent ✅")
+                        infographic_sent = True
+                    else:
+                        print(f"⚠️ [Infographic Fallback] Send failed: {fb_result.get('error')}")
+            except Exception as fb_err:
+                print(f"⚠️ [Infographic Fallback] Error: {fb_err}")
 
         print(f"\n{'='*60}")
         print(f"✅ AUDIO PROCESSING COMPLETED (source: {source})")

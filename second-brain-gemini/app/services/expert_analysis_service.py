@@ -97,7 +97,7 @@ Structure the response strictly as follows (add relevant emojis):
 
 ❓ שאלה למחשבה (Reflection): [One provocative/hard question that the expert would ask to help grow. This should challenge assumptions and encourage deeper thinking.]
 
-CRITICAL: The entire output must be in Hebrew. Use the expert's specific terminology and framework throughout. Be insightful, not just descriptive. Keep the total response under 1500 characters for WhatsApp compatibility.
+CRITICAL: The entire output must be in Hebrew. Use the expert's specific terminology and framework throughout. Be insightful, not just descriptive. Be thorough — provide a complete and detailed analysis. Do NOT truncate or abbreviate.
 """
 
 import json
@@ -964,14 +964,15 @@ class ExpertAnalysisService:
         """
         Format the expert analysis for WhatsApp message.
         
-        STRICT: Total message must be under 1600 characters.
+        WhatsApp supports messages up to ~65K characters.
+        No truncation — send the FULL analysis to the user.
         
         Args:
             analysis_result: Result from analyze_transcript
             include_header: Whether to include the decorative header
             
         Returns:
-            Formatted WhatsApp message string (max 1600 chars)
+            Formatted WhatsApp message string (full, untruncated)
         """
         if not analysis_result.get("success"):
             error = analysis_result.get('error', 'שגיאה לא ידועה')
@@ -1003,36 +1004,10 @@ class ExpertAnalysisService:
             
             message += raw
         
-        # STRICT: Enforce 1200 char limit to prevent truncation
-        MAX_LENGTH = 1200
-        if len(message) > MAX_LENGTH:
-            print(f"   ⚠️ Message too long ({len(message)} chars), trimming to {MAX_LENGTH}")
-            
-            # Try to include Kaizen at the end
-            kaizen_start = message.find("📈 קאיזן")
-            
-            if kaizen_start > 0 and kaizen_start < MAX_LENGTH - 200:
-                # Kaizen fits within limit - keep from Kaizen onwards
-                before_kaizen = message[:kaizen_start].strip()
-                kaizen_section = message[kaizen_start:]
-                
-                # Trim before_kaizen to fit
-                available = MAX_LENGTH - len(kaizen_section) - 50
-                if len(before_kaizen) > available:
-                    # Find last complete line
-                    before_kaizen = before_kaizen[:available]
-                    last_newline = before_kaizen.rfind('\n')
-                    if last_newline > available * 0.5:
-                        before_kaizen = before_kaizen[:last_newline]
-                
-                message = before_kaizen + "\n\n" + kaizen_section
-            else:
-                # Kaizen too far or not found - just truncate
-                message = message[:MAX_LENGTH - 30]
-                last_newline = message.rfind('\n')
-                if last_newline > MAX_LENGTH * 0.7:
-                    message = message[:last_newline]
-                message += "\n\n_(קוצר)_"
+        # WhatsApp supports ~65K chars — no truncation needed.
+        # Only log if the message is unusually long (for debugging).
+        if len(message) > 4000:
+            print(f"📊 [format_for_whatsapp] Long message: {len(message)} chars (OK, WhatsApp supports it)")
         
         print(f"📊 [format_for_whatsapp] Final message: {len(message)} chars")
         return message
