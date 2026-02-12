@@ -1,0 +1,46 @@
+{
+  "audio_file": "two_speakers_synthetic.wav",
+  "duration_sec": 30.5,
+  "speakers": {
+    "SPEAKER_A": {
+      "frequency_hz": 300,
+      "description": "Deep voice"
+    },
+    "SPEAKER_B": {
+      "frequency_hz": 500,
+      "description": "Higher voice"
+    }
+  },
+  "segments": [
+    {
+      "speaker": "SPEAKER_A",
+      "start": 0.0,
+      "end": 5.0
+    },
+    {
+      "speaker": "SPEAKER_B",
+      "start": 6.0,
+      "end": 10.0
+    },
+    {
+      "speaker": "SPEAKER_A",
+      "start": 10.5,
+      "end": 16.5
+    },
+    {
+      "speaker": "SPEAKER_B",
+      "start": 17.5,
+      "end": 22.5
+    },
+    {
+      "speaker": "SPEAKER_A",
+      "start": 23.0,
+      "end": 27.0
+    },
+    {
+      "speaker": "SPEAKER_B",
+      "start": 27.5,
+      "end": 30.5
+    }
+  ]
+}

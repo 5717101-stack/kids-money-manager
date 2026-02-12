@@ -6,6 +6,18 @@ substitutions:
   _HF_TOKEN: ''  # Set in Cloud Build trigger or via --substitutions
 
 steps:
+  # Step 0: Run QA tests BEFORE building (fail fast, ~30s)
+  - name: 'python:3.11-slim'
+    entrypoint: bash
+    args:
+      - '-c'
+      - |
+        pip install -q pytest pytest-asyncio httpx respx freezegun requests pydantic pydantic-settings python-dateutil apscheduler python-multipart 2>/dev/null
+        echo "🧪 Running QA tests..."
+        python -m pytest tests/ -v --tb=short -m "not live" --ignore=tests/integration/test_webhook.py -x
+        echo "✅ All tests passed — proceeding to build"
+    dir: 'second-brain-gemini'
+
   # Step 1: Build app image (FROM base = fast, code only)
   # Passes HF_TOKEN to pre-download pyannote models into the image
   - name: 'gcr.io/cloud-builders/docker'
