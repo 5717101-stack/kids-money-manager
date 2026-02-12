@@ -6,7 +6,7 @@ Main FastAPI application entry point.
 from fastapi import FastAPI, UploadFile, File, Form, HTTPException, Request, Depends, BackgroundTasks
 from fastapi.datastructures import FormData
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse, FileResponse, RedirectResponse, Response
+from fastapi.responses import JSONResponse, FileResponse, RedirectResponse, Response, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
 from typing import Optional, List
 import tempfile
@@ -1396,7 +1396,7 @@ async def webhook(request: Request, background_tasks: BackgroundTasks):
         
         if mode == "subscribe" and token == verify_token:
             print(f"✅ Webhook verified successfully")
-            return int(challenge) if challenge else JSONResponse(content={"status": "verified"})
+            return PlainTextResponse(content=challenge) if challenge else JSONResponse(content={"status": "verified"})
         else:
             print(f"❌ Webhook verification failed: mode={mode}, token_match={token == verify_token}")
             raise HTTPException(status_code=403, detail="Webhook verification failed")
