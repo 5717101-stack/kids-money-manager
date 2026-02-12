@@ -7,14 +7,20 @@ substitutions:
 
 steps:
   # Step 0: Run QA tests BEFORE building (fail fast, ~30s)
+  # Includes critical path tests that would catch:
+  #   - Webhook verification bugs (int(challenge) → PlainTextResponse)
+  #   - Audio processing order issues (Drive upload before analysis)
+  #   - Drive failure resilience (user must get response even if Drive is down)
   - name: 'python:3.11-slim'
     entrypoint: bash
     args:
       - '-c'
       - |
         pip install -q pytest pytest-asyncio httpx respx freezegun requests pydantic pydantic-settings python-dateutil apscheduler python-multipart 2>/dev/null
-        echo "🧪 Running QA tests..."
-        python -m pytest tests/ -v --tb=short -m "not live" --ignore=tests/integration/test_webhook.py -x
+        echo "🧪 Running critical path tests..."
+        python -m pytest tests/integration/test_critical_paths.py tests/unit/test_audio_processing_order.py -v --tb=short -x
+        echo "🧪 Running full QA suite..."
+        python -m pytest tests/ -v --tb=short -m "not live" -x
         echo "✅ All tests passed — proceeding to build"
     dir: 'second-brain-gemini'
 

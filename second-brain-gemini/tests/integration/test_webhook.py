@@ -46,6 +46,45 @@ class TestWebhookVerification:
         assert response.status_code == 200
 
     @pytest.mark.asyncio
+    async def test_challenge_returned_as_plain_text(self, client, webhook_verify_params):
+        """
+        CRITICAL: The response body must be the challenge string AS-IS.
+        Meta expects plain text, not JSON, not int-converted.
+        
+        Bug caught: v2.3.0 had `return int(challenge)` which crashed on
+        non-numeric challenges and returned JSON for numeric ones.
+        """
+        challenge_value = webhook_verify_params["hub.challenge"]
+        response = await client.get("/webhook", params=webhook_verify_params)
+        assert response.status_code == 200
+        assert response.text == challenge_value, (
+            f"Challenge must be echoed as-is. "
+            f"Expected {challenge_value!r}, got {response.text!r}"
+        )
+        content_type = response.headers.get("content-type", "")
+        assert "text/plain" in content_type, (
+            f"Challenge must be text/plain, got: {content_type}"
+        )
+
+    @pytest.mark.asyncio
+    async def test_non_numeric_challenge(self, client):
+        """
+        Meta sends alphanumeric challenges. Must not crash with ValueError.
+        This is the EXACT test that would have caught the int(challenge) bug.
+        """
+        params = {
+            "hub.mode": "subscribe",
+            "hub.challenge": "abc_XYZ-challenge.test",
+            "hub.verify_token": "test-verify-token",
+        }
+        response = await client.get("/webhook", params=params)
+        assert response.status_code == 200, (
+            f"Non-numeric challenge caused status {response.status_code}. "
+            f"Body: {response.text}"
+        )
+        assert response.text == "abc_XYZ-challenge.test"
+
+    @pytest.mark.asyncio
     async def test_wrong_verify_token(self, client):
         """Should reject verification with wrong token."""
         params = {

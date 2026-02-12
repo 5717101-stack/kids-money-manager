@@ -1164,18 +1164,17 @@ async def notify_deployment(request: Request):
 @app.get("/whatsapp")
 async def whatsapp_webhook_verify(request: Request):
     """
-    Meta WhatsApp webhook verification endpoint.
+    DEPRECATED — old webhook endpoint. Kept for backward compatibility.
+    Primary webhook is now at /webhook (handles both GET and POST).
     """
-    from app.services.meta_whatsapp_service import meta_whatsapp_service
-    
     mode = request.query_params.get("hub.mode")
     token = request.query_params.get("hub.verify_token")
     challenge = request.query_params.get("hub.challenge")
     
-    if mode and token and challenge:
-        result = meta_whatsapp_service.verify_webhook(mode, token, challenge)
-        if result:
-            return int(result)
+    if mode == "subscribe" and token and challenge:
+        verify_token = os.environ.get("WEBHOOK_VERIFY_TOKEN") or os.environ.get("WHATSAPP_VERIFY_TOKEN", "")
+        if token == verify_token:
+            return PlainTextResponse(content=challenge)
     
     raise HTTPException(status_code=403, detail="Webhook verification failed")
 
