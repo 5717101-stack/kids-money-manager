@@ -522,13 +522,18 @@ class DriveMemoryService:
                         break
             
             if matching_segments:
-                matching_results.append({
+                result_entry = {
                     'filename': filename,
                     'created_time': created_time,
+                    'recording_timestamp': content.get('timestamp', created_time),
                     'speakers': list(all_speakers),
                     'matching_segments': matching_segments,
                     'total_segments': len(segments)
-                })
+                }
+                # Flag if the timestamp is estimated (processing date, not actual recording date)
+                if content.get('timestamp_is_estimated'):
+                    result_entry['timestamp_note'] = "⚠️ This timestamp is the PROCESSING date, NOT the actual recording date."
+                matching_results.append(result_entry)
         
         logger.info(f"🔍 Found {len(matching_results)} matching transcript(s) for terms: {search_terms}")
         return matching_results[:limit]

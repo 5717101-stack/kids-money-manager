@@ -248,3 +248,117 @@ class TestAudioDateExtractor:
                 assert result.day == 15
         finally:
             os.unlink(tmp_path)
+
+    def test_whatsapp_ogg_filename_returns_none(self):
+        """
+        WhatsApp audio files are named 'whatsapp_audio_{wamid}.ogg'.
+        This has NO date pattern → extraction should return None.
+        This is the ROOT CAUSE of recordings showing 'today' as their date.
+        """
+        import tempfile
+        from app.services.audio_date_extractor import extract_recording_date
+
+        with tempfile.NamedTemporaryFile(
+            prefix="whatsapp_audio_wamid123", suffix=".ogg", delete=False, dir="/tmp"
+        ) as f:
+            f.write(b"\x00" * 500)
+            tmp_path = f.name
+
+        try:
+            result = extract_recording_date(tmp_path)
+            # OGG from WhatsApp has no metadata or filename pattern
+            assert result is None, (
+                "WhatsApp OGG files should return None — no mvhd, no ffprobe date, "
+                "no filename pattern. The pipeline should then use Gemini's content-based "
+                "date hint or fall back to processing time with estimated flag."
+            )
+        finally:
+            os.unlink(tmp_path)
+
+
+# ═════════════════════════════════════════════════════════════════════════════
+# Recording Date Pipeline Integration Tests
+# ═════════════════════════════════════════════════════════════════════════════
+
+@pytest.mark.unit
+class TestRecordingDatePipeline:
+    """Test that the audio pipeline correctly handles estimated vs actual dates."""
+
+    def test_pipeline_has_recording_date_is_estimated_flag(self):
+        """The pipeline must track whether the recording date is estimated."""
+        source = _read_source(os.path.join(APP_ROOT, "app", "services", "audio_pipeline.py"))
+
+        assert "recording_date_is_estimated" in source, (
+            "audio_pipeline.py must track whether the date is estimated. "
+            "When the date is from fallback (utcnow), it should set "
+            "recording_date_is_estimated = True so downstream code knows "
+            "the date may be wrong."
+        )
+
+    def test_pipeline_stores_estimated_flag_in_memory(self):
+        """The estimated flag must be saved in the memory entry."""
+        source = _read_source(os.path.join(APP_ROOT, "app", "services", "audio_pipeline.py"))
+
+        assert '"timestamp_is_estimated": recording_date_is_estimated' in source, (
+            "The audio_interaction dict saved to memory must include "
+            "'timestamp_is_estimated' so queries can warn users when "
+            "the date is the processing time, not the recording time."
+        )
+
+    def test_pipeline_uses_gemini_date_hint(self):
+        """The pipeline must check Gemini's recording_date_hint when date is estimated."""
+        source = _read_source(os.path.join(APP_ROOT, "app", "services", "audio_pipeline.py"))
+
+        assert "recording_date_hint" in source, (
+            "audio_pipeline.py must check for 'recording_date_hint' from Gemini's "
+            "analysis response. When the date is estimated (fallback to utcnow), "
+            "Gemini's content-based date extraction can provide a more accurate date."
+        )
+
+    def test_gemini_prompts_request_recording_date_hint(self):
+        """Both Gemini prompts must ask for recording_date_hint."""
+        source = _read_source(os.path.join(APP_ROOT, "app", "prompts.py"))
+
+        assert "recording_date_hint" in source, (
+            "prompts.py must include 'recording_date_hint' in the JSON output format. "
+            "Gemini should listen for date references in the audio and return them."
+        )
+
+        # Both prompts should request it
+        pyannote_idx = source.find("PYANNOTE_ASSISTED_PROMPT")
+        combined_idx = source.find("COMBINED_DIARIZATION_EXPERT_PROMPT")
+        assert pyannote_idx > 0 and combined_idx > 0
+
+        pyannote_section = source[pyannote_idx:]
+        combined_section = source[combined_idx:pyannote_idx]
+
+        assert "recording_date_hint" in pyannote_section, (
+            "PYANNOTE_ASSISTED_PROMPT must request recording_date_hint"
+        )
+        assert "recording_date_hint" in combined_section, (
+            "COMBINED_DIARIZATION_EXPERT_PROMPT must request recording_date_hint"
+        )
+
+    def test_date_extractor_has_ffprobe_strategy(self):
+        """The date extractor must include ffprobe as a fallback strategy."""
+        source = _read_source(os.path.join(APP_ROOT, "app", "services", "audio_date_extractor.py"))
+
+        assert "ffprobe" in source, (
+            "audio_date_extractor.py must include an ffprobe-based strategy "
+            "for extracting dates from OGG, MP3, FLAC, and other formats "
+            "that don't have MP4 mvhd atoms."
+        )
+
+        assert "_extract_via_ffprobe" in source, (
+            "audio_date_extractor.py must have a _extract_via_ffprobe function."
+        )
+
+    def test_search_results_include_timestamp_note_for_estimated_dates(self):
+        """search_meetings results must flag estimated timestamps."""
+        source = _read_source(os.path.join(APP_ROOT, "app", "services", "conversation_engine.py"))
+
+        assert "timestamp_note" in source, (
+            "conversation_engine.py must include 'timestamp_note' in search results "
+            "when the timestamp is estimated, so Gemini tells the user the date "
+            "might be wrong instead of confidently stating the processing date."
+        )

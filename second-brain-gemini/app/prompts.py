@@ -255,6 +255,7 @@ OUTPUT FORMAT - JSON with both diarization AND expert summary
   "purest_segments": [
     {"speaker": "Speaker 2", "start": 15.0, "end": 22.0, "quality": "isolated", "notes": "Clean speech"}
   ],
+  "recording_date_hint": "2026-01-15T14:30:00",
   "expert_summary": "
 🧠 הכובע שנבחר: [שם המומחה - אסתר פרל/מקינזי/סיימון סינק/מכון אדלר]
 
@@ -285,6 +286,13 @@ OUTPUT FORMAT - JSON with both diarization AND expert summary
 4. Segments must have accurate timestamps
 5. **purest_segments are THE MOST IMPORTANT PART** - for each unknown speaker, find 5+ seconds where they speak ALONE with NO other voice. The timestamps must be precise - we cut audio at exactly these points.
 6. Look for monologue moments, answers to questions, or story-telling sections for purest_segments
+7. **recording_date_hint** - Try to determine WHEN this conversation took place by listening for:
+   - Explicit date mentions ("today is January 15th", "it's Tuesday the 3rd")
+   - Day-of-week references ("yesterday was Monday", "this Friday")
+   - Contextual time clues ("after the holiday", "before Pesach", "end of January")
+   - Weather/season references that help narrow the date
+   Return the estimated date in ISO format (e.g., "2026-01-15T14:30:00") or null if you cannot determine when it happened.
+   This is CRITICAL because the audio file metadata may not contain the original recording date.
 """
 
 
@@ -362,6 +370,7 @@ OUTPUT FORMAT — JSON with transcription + expert summary + sentiment
     "Yuval Laikin": {{"score": 0.3, "indicators": "sounds focused, slightly tense"}},
     "Unknown Speaker 1": {{"score": 0.7, "indicators": "upbeat, enthusiastic"}}
   }},
+  "recording_date_hint": "2026-01-15T14:30:00",
   "expert_summary": "
 🧠 הכובע שנבחר: [שם המומחה]
 
@@ -392,4 +401,11 @@ OUTPUT FORMAT — JSON with transcription + expert summary + sentiment
 4. Use the EXACT speaker names from the diarization above
 5. Add "topics" - 3-5 key topics discussed (in Hebrew)
 6. Add "speaker_sentiment" - sentiment score per speaker
+7. **recording_date_hint** - Try to determine WHEN this conversation took place by listening for:
+   - Explicit date mentions ("today is January 15th", "it's Tuesday the 3rd")
+   - Day-of-week references ("yesterday was Monday", "this Friday")
+   - Contextual time clues ("after the holiday", "before Pesach", "end of January")
+   - Weather/season references that help narrow the date
+   Return the estimated date in ISO format (e.g., "2026-01-15T14:30:00") or null if you cannot determine when it happened.
+   This is CRITICAL because the audio file metadata may not contain the original recording date.
 """

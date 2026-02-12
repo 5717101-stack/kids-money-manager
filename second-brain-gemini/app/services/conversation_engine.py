@@ -579,14 +579,18 @@ def _tool_search_meetings(query: str, speaker_name: str = "") -> str:
                             "text": seg_text[:200],
                         })
 
-                memory_matches.append({
+                match_entry = {
                     "source": "second_brain_memory (archived)",
                     "timestamp": entry.get("timestamp", ""),
                     "speakers": entry_speakers,
                     "segment_count": len(segments),
                     "key_segments": key_segments[:10],
                     "expert_summary": raw_analysis[:500] if raw_analysis else "",
-                })
+                }
+                # Flag if the timestamp is the processing date, not the actual recording date
+                if entry.get("timestamp_is_estimated"):
+                    match_entry["timestamp_note"] = "⚠️ This timestamp is the PROCESSING date, NOT the actual recording date. The original recording date could not be determined from the file metadata."
+                memory_matches.append(match_entry)
 
                 if len(memory_matches) >= 5:
                     break

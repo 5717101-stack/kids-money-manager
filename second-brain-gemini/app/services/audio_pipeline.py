@@ -76,6 +76,7 @@ def process_audio_core(
     # datetime.utcnow() so meetings are indexed by when they
     # actually happened, not when they were uploaded/processed.
     # ============================================================
+    recording_date_is_estimated = False  # True = we had to fall back to utcnow()
     recording_date_str = audio_metadata.get("recording_date")
     if recording_date_str:
         try:
@@ -99,7 +100,9 @@ def process_audio_core(
 
     if recording_date is None:
         recording_date = datetime.utcnow()
-        print(f"📅 [RecordingDate] Fallback to processing time: {recording_date.isoformat()}Z")
+        recording_date_is_estimated = True
+        print(f"⚠️  [RecordingDate] FALLBACK to processing time: {recording_date.isoformat()}Z  "
+              f"(no date found in file metadata or filename — this is the upload time, NOT the recording time)")
 
     # recording_date is now a naive UTC datetime representing the REAL meeting time
     recording_date_iso = recording_date.isoformat() + "Z"
@@ -371,6 +374,25 @@ def process_audio_core(
         segments = transcript_json.get('segments', [])
         summary_text = result.get('summary', '')
         expert_summary = result.get('expert_summary', '')
+
+        # ── Override estimated date with Gemini's content-based hint ──
+        if recording_date_is_estimated:
+            gemini_date_hint = transcript_json.get('recording_date_hint') or result.get('recording_date_hint')
+            if gemini_date_hint and isinstance(gemini_date_hint, str):
+                try:
+                    hint_dt = datetime.fromisoformat(gemini_date_hint.replace("Z", "+00:00")).replace(tzinfo=None)
+                    # Sanity: must be in the past (not future) and not more than 2 years old
+                    now = datetime.utcnow()
+                    if hint_dt < now and (now - hint_dt).days < 730:
+                        recording_date = hint_dt
+                        recording_date_iso = recording_date.isoformat() + "Z"
+                        recording_date_israel = recording_date + timedelta(hours=2)
+                        recording_date_is_estimated = False
+                        print(f"📅 [RecordingDate] OVERRIDDEN by Gemini content analysis: {recording_date.isoformat()}Z")
+                    else:
+                        print(f"⚠️  [RecordingDate] Gemini hint '{gemini_date_hint}' failed sanity check — keeping fallback")
+                except (ValueError, TypeError) as e:
+                    print(f"⚠️  [RecordingDate] Could not parse Gemini date hint '{gemini_date_hint}': {e}")
 
         print(f"📊 [Combined Analysis] Results:")
         print(f"   Segments: {len(segments)}")
@@ -740,6 +762,7 @@ def process_audio_core(
         try:
             transcript_save_data = {
                 "timestamp": recording_date_iso,
+                "timestamp_is_estimated": recording_date_is_estimated,
                 "source": source,
                 "original_filename": audio_metadata.get('filename', ''),
                 "segments": segments,
@@ -782,6 +805,7 @@ def process_audio_core(
             print("💾 [Drive Upload] Saving slim audio interaction to memory...")
             audio_interaction = {
                 "timestamp": recording_date_iso,
+                "timestamp_is_estimated": recording_date_is_estimated,
                 "type": "audio",
                 "source": source,
                 "file_id": audio_metadata.get('file_id', ''),
