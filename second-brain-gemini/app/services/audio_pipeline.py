@@ -70,6 +70,42 @@ def process_audio_core(
     reference_voices = []
     result_info = {"success": False, "source": source}
 
+    # ============================================================
+    # RECORDING DATE RESOLUTION
+    # Use the REAL recording date (from file metadata) instead of
+    # datetime.utcnow() so meetings are indexed by when they
+    # actually happened, not when they were uploaded/processed.
+    # ============================================================
+    recording_date_str = audio_metadata.get("recording_date")
+    if recording_date_str:
+        try:
+            # Parse ISO format from audio_metadata (already UTC)
+            recording_date = datetime.fromisoformat(recording_date_str.replace("Z", "+00:00")).replace(tzinfo=None)
+            print(f"📅 [RecordingDate] Using date from metadata: {recording_date.isoformat()}Z")
+        except (ValueError, AttributeError):
+            recording_date = None
+    else:
+        recording_date = None
+
+    if recording_date is None:
+        # Try extracting directly from the audio file
+        try:
+            from app.services.audio_date_extractor import extract_recording_date
+            recording_date = extract_recording_date(tmp_path)
+            if recording_date:
+                print(f"📅 [RecordingDate] Extracted from file: {recording_date.isoformat()}Z")
+        except Exception as date_err:
+            print(f"⚠️  [RecordingDate] Extraction failed: {date_err}")
+
+    if recording_date is None:
+        recording_date = datetime.utcnow()
+        print(f"📅 [RecordingDate] Fallback to processing time: {recording_date.isoformat()}Z")
+
+    # recording_date is now a naive UTC datetime representing the REAL meeting time
+    recording_date_iso = recording_date.isoformat() + "Z"
+    # Israel time for display purposes (UTC+2)
+    recording_date_israel = recording_date + timedelta(hours=2)
+
     try:
         # ============================================================
         # 🎯 SMART VOICE ROUTER
@@ -357,13 +393,12 @@ def process_audio_core(
         expert_analysis_result = None
 
         if expert_summary and len(expert_summary.strip()) > 50:
-            israel_time = datetime.now(timezone.utc) + timedelta(hours=2)
             expert_analysis_result = {
                 "success": True,
                 "raw_analysis": expert_summary,
                 "source": "combined",
-                "timestamp": israel_time.isoformat(),
-                "timestamp_display": israel_time.strftime('%d/%m/%Y %H:%M')
+                "timestamp": recording_date_israel.isoformat(),
+                "timestamp_display": recording_date_israel.strftime('%d/%m/%Y %H:%M')
             }
             print(f"✅ [Expert Analysis] SUCCESS from combined prompt: {len(expert_summary)} chars")
         else:
@@ -704,7 +739,7 @@ def process_audio_core(
 
         try:
             transcript_save_data = {
-                "timestamp": datetime.utcnow().isoformat() + "Z",
+                "timestamp": recording_date_iso,
                 "source": source,
                 "original_filename": audio_metadata.get('filename', ''),
                 "segments": segments,
@@ -732,7 +767,8 @@ def process_audio_core(
 
             transcript_file_id = drive_memory_service.save_transcript(
                 transcript_data=transcript_save_data,
-                speakers=speaker_names
+                speakers=speaker_names,
+                recording_date=recording_date,
             )
             if transcript_file_id:
                 print(f"📄 [Transcript] Saved to Transcripts/ folder (ID: {transcript_file_id})")
@@ -745,7 +781,7 @@ def process_audio_core(
         try:
             print("💾 [Drive Upload] Saving slim audio interaction to memory...")
             audio_interaction = {
-                "timestamp": datetime.utcnow().isoformat() + "Z",
+                "timestamp": recording_date_iso,
                 "type": "audio",
                 "source": source,
                 "file_id": audio_metadata.get('file_id', ''),
@@ -782,7 +818,7 @@ def process_audio_core(
             from app.services.speaker_identity_service import speaker_identity_service
 
             if pyannote_speaker_results:
-                israel_date = (datetime.now(timezone.utc) + timedelta(hours=2)).strftime('%Y-%m-%d')
+                israel_date = recording_date_israel.strftime('%Y-%m-%d')
 
                 for spk_label, info in pyannote_speaker_results.items():
                     person_id = info.get("person_id")
@@ -836,7 +872,7 @@ def process_audio_core(
             update_last_session_context(
                 summary=summary_text,
                 speakers=list(speaker_names),
-                timestamp=datetime.utcnow().isoformat() + "Z",
+                timestamp=recording_date_iso,
                 transcript_file_id=audio_metadata.get('file_id', ''),
                 segments=segments,
                 full_transcript=transcript_json,
@@ -905,10 +941,9 @@ def process_audio_core(
                     if seg.get('text')
                 )
 
-                israel_time = datetime.now(timezone.utc) + timedelta(hours=2)
                 nb_metadata = {
                     "filename": audio_metadata.get('filename', ''),
-                    "timestamp": israel_time.strftime('%d/%m/%Y %H:%M'),
+                    "timestamp": recording_date_israel.strftime('%d/%m/%Y %H:%M'),
                     "source": source,
                     "file_id": audio_metadata.get('file_id', ''),
                 }

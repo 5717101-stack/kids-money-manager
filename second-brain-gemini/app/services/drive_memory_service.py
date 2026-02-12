@@ -340,13 +340,15 @@ class DriveMemoryService:
             return None
     
     @_retry_on_ssl(max_retries=3, base_delay=2.0)
-    def save_transcript(self, transcript_data: dict, speakers: list = None) -> Optional[str]:
+    def save_transcript(self, transcript_data: dict, speakers: list = None, recording_date: Optional[datetime] = None) -> Optional[str]:
         """
         Save a transcript as a separate JSON file in the Transcripts folder.
         
         Args:
             transcript_data: The transcript JSON (with segments)
             speakers: List of speaker names for the filename
+            recording_date: The actual recording date (UTC, naive datetime).
+                           If None, falls back to current time.
             
         Returns:
             File ID of saved transcript, or None if failed
@@ -363,7 +365,9 @@ class DriveMemoryService:
         
         try:
             # Create filename with timestamp and speakers
-            timestamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
+            # Use recording_date if available, otherwise fall back to current time
+            effective_date = recording_date if recording_date else datetime.utcnow()
+            timestamp = effective_date.strftime("%Y%m%d_%H%M%S")
             speakers_str = "_".join(speakers[:3]) if speakers else "unknown"
             # Sanitize filename
             speakers_str = "".join(c if c.isalnum() or c in ['_', '-'] else '_' for c in speakers_str)

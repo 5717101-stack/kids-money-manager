@@ -147,11 +147,20 @@ def _process_inbox_file(
             tmp.write(audio_bytes)
             tmp_path = tmp.name
         
-        # ── Step 3: Build metadata ──
+        # ── Step 3: Extract recording date & build metadata ──
+        from app.services.audio_date_extractor import extract_recording_date
+        recording_date = extract_recording_date(tmp_path)
+        
         audio_metadata = {
             "file_id": file_id,
             "filename": file_name,
         }
+        
+        if recording_date:
+            audio_metadata["recording_date"] = recording_date.isoformat() + "Z"
+            print(f"📅 Recording date extracted: {recording_date.isoformat()}Z")
+        else:
+            print(f"📅 No recording date found — will use processing time")
         
         # ── Step 4: Delegate to unified audio pipeline ──
         from app.services.audio_pipeline import process_audio_core
