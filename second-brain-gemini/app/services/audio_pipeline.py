@@ -916,7 +916,8 @@ def process_audio_core(
                 summary=summary_text,
                 speakers=speaker_names,
                 segments=segments,
-                expert_analysis=expert_snippet
+                expert_analysis=expert_snippet,
+                timestamp=recording_date_iso,
             )
             print("💾 [ConvEngine] Working memory injected for next chat interaction")
         except Exception as wm_err:

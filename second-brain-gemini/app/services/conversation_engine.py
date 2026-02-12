@@ -515,10 +515,10 @@ def _tool_search_meetings(query: str, speaker_name: str = "") -> str:
 
     results = dms.search_transcripts(search_terms, limit=5) if search_terms else []
 
-    # 2. Also search in-memory working memory for the latest session
-    wm = conversation_engine._working_memory
+    # 2. Also search persistent last-session memory (always available, never popped)
+    last_sessions = conversation_engine._last_session
     wm_matches = []
-    for phone, mem in wm.items():
+    for phone, mem in last_sessions.items():
         summary = mem.get("summary", "")
         speakers = mem.get("speakers", [])
         # Check if query matches summary or speaker
@@ -759,7 +759,8 @@ class ConversationEngine:
         self._initialized = False
         self._user_profile: Dict[str, Any] = {}          # Phase 1: Personal profile
         self._drive_memory_service = None                 # Phase 2B: For search_meetings
-        self._working_memory: Dict[str, Dict[str, Any]] = {}  # Phase 3: Per-user latest session
+        self._working_memory: Dict[str, Dict[str, Any]] = {}  # Phase 3: Per-user latest session (pending injection)
+        self._last_session: Dict[str, Dict[str, Any]] = {}    # Phase 3b: Persistent last session (always available for tools)
 
     def initialize(self, user_profile: Dict[str, Any] = None, drive_memory_service=None):
         """Initialize the engine (called once on startup after KB is loaded)."""
@@ -850,6 +851,12 @@ class ConversationEngine:
 12. 📼 כשהמשתמש מבקש "הכנה לשיחה עם X", "על מה דיברנו עם X?", "מתי דיברתי עם X?" — השתמש בכלי search_meetings כדי למצוא שיחות קודמות.
    שלב את הנתונים מהפגישות עם המידע מבסיס הידע (search_person) כדי לתת הכנה מקיפה.
    דוגמה: "הכן אותי לשיחה עם יובל" → search_person("יובל") + search_meetings(query="יובל", speaker_name="Yuval") → שלב הכל לתשובה אחת.
+   🔴 חשוב מאוד — הקשר של הקלטה/פגישה אחרונה:
+   אם עיבדתי הקלטה (מופיע בהיסטוריית השיחה כ"[SYSTEM: הקלטה/פגישה חדשה עובדה ונותחה]"),
+   וישר אחרי זה המשתמש שואל "מתי הייתה הפגישה?", "על מה דיברנו?", "מי היה שם?",
+   "הפגישה הזאת", "השיחה", "ההקלטה" — הוא מתכוון לפגישה/הקלטה שעיבדתי עכשיו.
+   אל תשאל "לאיזו פגישה?" — פשוט ענה מתוך הסיכום שיש לך בהיסטוריה.
+   ✅ התשובה כבר נמצאת בהיסטוריית השיחה שלך! אין צורך לקרוא לכלי.
 13. ✈️ חיפוש טיסות: כשהמשתמש מזכיר טיסות, נסיעות, חופשה ליעד, או שואל על מחירי טיסה — השתמש בכלי search_flights.
    🔴 חשוב מאוד — תרגום תאריכים: אם המשתמש אומר תאריך בשפה טבעית, אתה חייב לתרגם אותו לתאריכים מדויקים לפני שקוראים לכלי:
    - "פסח" (2026) → date_from="01/04/2026", date_to="09/04/2026"
@@ -949,21 +956,27 @@ class ConversationEngine:
         return block
 
     def inject_session_context(self, phone: str, summary: str, speakers: list,
-                                segments: list = None, expert_analysis: str = ""):
+                                segments: list = None, expert_analysis: str = "",
+                                timestamp: str = ""):
         """
         Phase 3: Inject the latest audio session as Working Memory.
         
-        Called after audio processing completes. The context is injected
-        into the user's next chat interaction as a synthetic history entry,
-        so Gemini can reference it when the user asks "what did we talk about?".
+        Called after audio processing completes. The context is:
+        1. Stored in _working_memory for one-time injection into chat history
+        2. Stored in _last_session PERMANENTLY so search_meetings tool can
+           always access it (even after chat injection pops it from _working_memory)
         """
-        self._working_memory[phone] = {
+        session_data = {
             "summary": summary,
             "speakers": speakers,
-            "timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+            "timestamp": timestamp or time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
             "segment_count": len(segments) if segments else 0,
             "expert_analysis_snippet": expert_analysis[:500] if expert_analysis else "",
         }
+        # For one-time injection into chat history
+        self._working_memory[phone] = session_data
+        # Persistent — always available for tool calls (search_meetings etc.)
+        self._last_session[phone] = session_data
         print(f"💾 [ConvEngine] Working memory injected for {phone[-4:]}: {len(summary)} chars, {len(speakers)} speakers")
 
     def _get_or_create_session(self, phone: str) -> UserSession:
@@ -1022,21 +1035,32 @@ class ConversationEngine:
             print(f"   History turns: {len(chat.history) // 2}")
 
             # Phase 3: Inject Working Memory if available
-            # This adds the latest audio session as a synthetic history entry
+            # This adds the latest audio session as a synthetic history entry.
+            # The data is also kept in _last_session (NOT popped) for tool calls.
             if phone in self._working_memory:
-                wm = self._working_memory.pop(phone)
-                wm_text = f"[סיכום הקלטה אחרונה ({wm.get('timestamp', '')})]\n"
-                wm_text += f"דוברים: {', '.join(wm.get('speakers', []))}\n"
-                wm_text += f"סיכום: {wm.get('summary', '')}\n"
+                wm = self._working_memory.pop(phone)  # Pop from injection queue only
+                # Build rich context text — use "פגישה/הקלטה" so Gemini connects
+                # user references like "הפגישה הזאת" to this context.
+                speakers_str = ', '.join(wm.get('speakers', [])) or 'לא זוהו'
+                wm_text = (
+                    f"📼 עיבדתי הקלטה/פגישה חדשה שהתקבלה עכשיו.\n"
+                    f"📅 תאריך: {wm.get('timestamp', 'לא ידוע')}\n"
+                    f"👥 דוברים בפגישה: {speakers_str}\n"
+                    f"📝 סיכום הפגישה:\n{wm.get('summary', '')}\n"
+                )
                 if wm.get('expert_analysis_snippet'):
-                    wm_text += f"ניתוח: {wm['expert_analysis_snippet']}\n"
+                    wm_text += f"📊 ניתוח מומחה:\n{wm['expert_analysis_snippet']}\n"
+                wm_text += (
+                    "\nזו הפגישה/הקלטה האחרונה שעיבדתי. "
+                    "אם המשתמש שואל על 'הפגישה', 'ההקלטה', 'השיחה' או 'מה דיברנו' "
+                    "— הוא מתכוון לפגישה הזאת, אלא אם ציין במפורש אחרת."
+                )
 
                 try:
-                    # Inject as a synthetic user-model exchange in history
                     chat.history.append(
                         genai.protos.Content(
                             role="user",
-                            parts=[genai.protos.Part(text="[SYSTEM: הקלטה חדשה עובדה ונשמרה]")]
+                            parts=[genai.protos.Part(text="[SYSTEM: הקלטה/פגישה חדשה עובדה ונותחה — הסיכום בהמשך]")]
                         )
                     )
                     chat.history.append(

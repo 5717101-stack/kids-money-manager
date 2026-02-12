@@ -362,3 +362,96 @@ class TestRecordingDatePipeline:
             "when the timestamp is estimated, so Gemini tells the user the date "
             "might be wrong instead of confidently stating the processing date."
         )
+
+
+class TestWorkingMemoryContext:
+    """
+    Tests for the Working Memory context flow.
+    
+    The bug: after audio processing, user asks "מתי הייתה הפגישה הזאת?"
+    and the system says "לאיזו פגישה?" because:
+    1. Working memory was popped (destroyed) on first chat message
+    2. search_meetings tool couldn't find the session anymore
+    3. Injected text was too generic (said "הקלטה" not "פגישה")
+    4. No system instruction told Gemini to look at chat history
+    """
+
+    def test_last_session_persists_after_chat_injection(self):
+        """_last_session must NOT be popped — it stays available for tools."""
+        source = _read_source(os.path.join(APP_ROOT, "app", "services", "conversation_engine.py"))
+
+        assert "_last_session" in source, (
+            "conversation_engine.py must have a _last_session dict that persists "
+            "even after working memory is injected into chat history."
+        )
+
+        # Verify _last_session is set in inject_session_context
+        assert "self._last_session[phone]" in source, (
+            "inject_session_context must store data in _last_session "
+            "so search_meetings can always access the latest session."
+        )
+
+    def test_working_memory_pop_does_not_destroy_last_session(self):
+        """pop() must only remove from _working_memory, not _last_session."""
+        source = _read_source(os.path.join(APP_ROOT, "app", "services", "conversation_engine.py"))
+
+        # The pop should be on _working_memory, not _last_session
+        assert "_working_memory.pop(" in source, (
+            "process_message should still pop from _working_memory for injection."
+        )
+        assert "_last_session.pop(" not in source, (
+            "_last_session must NEVER be popped — it's the persistent store "
+            "that search_meetings relies on."
+        )
+
+    def test_search_meetings_uses_last_session_not_working_memory(self):
+        """search_meetings tool must read _last_session (persistent), not _working_memory (ephemeral)."""
+        source = _read_source(os.path.join(APP_ROOT, "app", "services", "conversation_engine.py"))
+
+        # Find the _tool_search_meetings function
+        assert "_last_session" in source, (
+            "_tool_search_meetings must reference _last_session."
+        )
+
+        # Verify it doesn't use _working_memory for the search
+        # (the search section should use _last_session)
+        fn_start = source.find("def _tool_search_meetings")
+        fn_end = source.find("\ndef ", fn_start + 1) if fn_start != -1 else len(source)
+        search_fn = source[fn_start:fn_end] if fn_start != -1 else ""
+
+        assert "_last_session" in search_fn, (
+            "_tool_search_meetings must use _last_session to find the latest session."
+        )
+
+    def test_injected_text_mentions_meeting_and_recording(self):
+        """Injected chat text must say 'פגישה' so Gemini connects user's 'הפגישה' reference."""
+        source = _read_source(os.path.join(APP_ROOT, "app", "services", "conversation_engine.py"))
+
+        # Check the injection section uses the word "פגישה"
+        assert "פגישה" in source, (
+            "The injected working memory text must mention 'פגישה' (meeting) "
+            "so when the user asks about 'הפגישה הזאת', Gemini connects it."
+        )
+
+    def test_system_instruction_has_recent_session_rule(self):
+        """System instruction must tell Gemini about recent session context."""
+        source = _read_source(os.path.join(APP_ROOT, "app", "services", "conversation_engine.py"))
+
+        assert "הפגישה/הקלטה שעיבדתי" in source or "הקלטה/פגישה חדשה" in source, (
+            "System instruction must include a rule about recent session context "
+            "so Gemini knows 'הפגישה הזאת' refers to the recently processed recording."
+        )
+
+    def test_inject_session_context_accepts_timestamp(self):
+        """inject_session_context must accept a timestamp parameter for accurate dates."""
+        source = _read_source(os.path.join(APP_ROOT, "app", "services", "conversation_engine.py"))
+
+        # Find the function signature
+        sig_idx = source.find("def inject_session_context")
+        if sig_idx != -1:
+            sig_end = source.find(")", sig_idx)
+            signature = source[sig_idx:sig_end + 1] if sig_end != -1 else ""
+            assert "timestamp" in signature, (
+                "inject_session_context must accept 'timestamp' parameter "
+                "so the actual recording date (not injection time) is stored."
+            )
