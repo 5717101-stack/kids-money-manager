@@ -22,6 +22,7 @@ from googleapiclient.http import MediaIoBaseDownload, MediaIoBaseUpload
 from googleapiclient.errors import HttpError
 from io import BytesIO
 import logging
+import threading
 from threading import Lock
 from dateutil import parser as date_parser
 
@@ -88,12 +89,34 @@ DEFAULT_MEMORY_STRUCTURE = {
 
 
 class DriveMemoryService:
-    """Service for managing persistent memory in Google Drive with robust caching."""
+    """Service for managing persistent memory in Google Drive with robust caching.
+    
+    THREAD SAFETY:
+    httplib2 (used by google-api-python-client) is NOT thread-safe.
+    Sharing a single `service` object across threads causes memory corruption
+    and segmentation faults.  We solve this with threading.local():
+    each thread gets its own `build('drive', 'v3', ...)` instance.
+    See: https://github.com/googleapis/google-api-python-client/blob/main/docs/thread_safety.md
+    """
     
     # Class-level in-memory cache
     # Structure: (memory_data: Dict, modified_time: datetime, file_id: str)
     _memory_cache: Optional[tuple] = None
     _cache_lock = Lock()  # Thread-safe cache access
+    
+    # ── Thread-local Drive API service ─────────────────────────
+    # Each thread gets its own httplib2.Http connection via build().
+    @property
+    def service(self):
+        """Return a thread-local Drive API service (prevents httplib2 segfaults)."""
+        if not hasattr(self._tls, 'drive_svc') or self._tls.drive_svc is None:
+            self._tls.drive_svc = build('drive', 'v3', credentials=self.creds)
+        return self._tls.drive_svc
+
+    @service.setter
+    def service(self, value):
+        """Store service in thread-local storage."""
+        self._tls.drive_svc = value
     
     def __init__(self, folder_id: Optional[str] = None):
         """
@@ -154,6 +177,9 @@ class DriveMemoryService:
         print("=" * 60)
         print("✅ All required environment variables found")
         print("=" * 60 + "\n")
+        
+        # Thread-local storage — MUST be created before self.service is set
+        self._tls = threading.local()
         
         try:
             # Initialize OAuth 2.0 credentials using os.environ values

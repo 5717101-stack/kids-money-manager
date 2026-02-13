@@ -56,15 +56,14 @@ try:
 except Exception as sig_init_err:
     print(f"⚠️  Speaker Identity Service init failed (non-fatal): {sig_init_err}")
 
-# Check pyannote availability
-try:
-    from app.services.pyannote_service import is_available as _pyannote_check
-    if _pyannote_check():
-        print("🎤 pyannote speaker diarization: AVAILABLE")
-    else:
-        print("ℹ️  pyannote speaker diarization: NOT AVAILABLE (set HUGGINGFACE_TOKEN)")
-except ImportError:
-    print("ℹ️  pyannote speaker diarization: NOT INSTALLED")
+# Check pyannote availability — LIGHTWEIGHT check only (no torch/CUDA import)
+# Heavy imports (torch, pyannote.audio) are deferred to first audio processing
+# to prevent CUDA driver issues from causing segfaults during normal operations.
+_hf_token = os.environ.get("HUGGINGFACE_TOKEN") or os.environ.get("HF_TOKEN")
+if _hf_token:
+    print("🎤 pyannote speaker diarization: READY (HF token set, models loaded on first use)")
+else:
+    print("ℹ️  pyannote speaker diarization: NOT AVAILABLE (set HUGGINGFACE_TOKEN)")
 
 # Idempotency: Track processed WhatsApp message IDs to prevent duplicate processing
 # Use deque with maxlen to automatically limit memory usage (keeps last 1000 message IDs)
