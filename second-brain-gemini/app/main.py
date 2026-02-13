@@ -1219,6 +1219,14 @@ def run_audit_in_background(from_number: str):
     """
     Run the architecture audit in the background.
     Uses _audit_lock to prevent concurrent/duplicate audit runs.
+    
+    Resilience strategy: run the audit step-by-step. After the fast
+    internal steps (health + voice + hygiene) complete, send a
+    *guaranteed partial report* immediately.  The slower Gemini steps
+    (external scan, competitor comparison) are attempted afterwards
+    and the full report is sent only if everything completes.
+    This ensures the user always receives at least the core data
+    even if the container restarts during the Gemini calls.
     """
     global _audit_running
     
@@ -1230,30 +1238,86 @@ def run_audit_in_background(from_number: str):
     
     try:
         from app.services.architecture_audit_service import architecture_audit_service
+        from datetime import datetime as dt, timezone as tz
         
         print(f"\n{'='*60}")
         print(f"🏗️ BACKGROUND AUDIT STARTED")
         print(f"{'='*60}")
         
-        audit_result = architecture_audit_service.run_weekly_architecture_audit(
-            drive_service=drive_memory_service
+        start_time = dt.now(tz.utc)
+        
+        # ── Phase 1: Fast internal checks (no Gemini calls) ──────────
+        print("\n📊 Phase 1: Internal checks (fast)...")
+        
+        health_status = architecture_audit_service.check_system_health(drive_memory_service)
+        voice_metrics = architecture_audit_service.analyze_voice_identification(drive_memory_service)
+        data_hygiene = architecture_audit_service.analyze_data_hygiene(drive_memory_service)
+        
+        # ── Send guaranteed partial report IMMEDIATELY ────────────────
+        metrics = voice_metrics.get('metrics', {})
+        hygiene = data_hygiene.get('hygiene', {})
+        
+        partial_parts = []
+        partial_parts.append("🏗️ *דו״ח ארכיטקטורה — סטטוס מערכת*")
+        partial_parts.append("")
+        
+        # Drive status from health
+        drive_info = health_status.get('drive', {})
+        if drive_info.get('status') == 'connected':
+            partial_parts.append(f"✅ Google Drive: מחובר")
+        else:
+            partial_parts.append(f"❌ Google Drive: {drive_info.get('status', 'unknown')}")
+        
+        total_speakers = metrics.get('total_speakers', 0)
+        voice_sigs = metrics.get('voice_signatures_count', 0) or hygiene.get('voice_signatures_count', 0)
+        transcript_count = hygiene.get('transcript_count', 0)
+        
+        partial_parts.append(f"👥 דוברים מזוהים: *{total_speakers}*")
+        partial_parts.append(f"🎤 חתימות קול: *{voice_sigs}*")
+        partial_parts.append(f"📄 תמלולים: *{transcript_count}*")
+        
+        weak_count = len(metrics.get('weak_signatures', []))
+        if weak_count > 0:
+            partial_parts.append(f"⚠️ דגימות חלשות: *{weak_count}*")
+        
+        partial_parts.append("")
+        partial_parts.append("_ממשיך לסריקת שוק (Gemini)..._")
+        
+        partial_report = "\n".join(partial_parts)
+        
+        if whatsapp_provider:
+            whatsapp_provider.send_whatsapp(
+                message=partial_report,
+                to=f"+{from_number}"
+            )
+            print(f"✅ Partial audit report sent ({len(partial_report)} chars)")
+        
+        # ── Phase 2: Gemini-based analysis (slower, may be interrupted) ──
+        print("\n📡 Phase 2: External analysis (Gemini)...")
+        
+        external_scan = architecture_audit_service.research_ai_updates()
+        comparison = architecture_audit_service.compare_to_competitors()
+        
+        # ── Phase 3: Generate and send full report ────────────────────
+        print("\n📝 Phase 3: Generating full strategic report...")
+        
+        report = architecture_audit_service.generate_strategic_report(
+            external_scan=external_scan,
+            comparison=comparison,
+            voice_metrics=voice_metrics,
+            data_hygiene=data_hygiene,
+            health_status=health_status
         )
         
-        if audit_result.get('success'):
-            report = audit_result.get('report', 'לא נוצר דו"ח')
-            
-            if whatsapp_provider:
-                whatsapp_provider.send_whatsapp(
-                    message=report,
-                    to=f"+{from_number}"
-                )
-            print(f"✅ Audit report sent ({len(report)} chars)")
-        else:
-            if whatsapp_provider:
-                whatsapp_provider.send_whatsapp(
-                    message=f"❌ בדיקת ארכיטקטורה נכשלה: {audit_result.get('error', 'Unknown error')}",
-                    to=f"+{from_number}"
-                )
+        if whatsapp_provider:
+            whatsapp_provider.send_whatsapp(
+                message=report,
+                to=f"+{from_number}"
+            )
+        
+        duration = (dt.now(tz.utc) - start_time).total_seconds()
+        print(f"✅ Full audit report sent ({len(report)} chars, {duration:.1f}s)")
+        
     except Exception as audit_error:
         print(f"❌ Audit error: {audit_error}")
         import traceback
