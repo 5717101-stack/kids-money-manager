@@ -548,6 +548,44 @@ def process_audio_core(
                     print(f"⚠️  [WhatsApp] Failed to send fallback: {reply_result.get('error')}")
 
         # ============================================================
+        # Step 3.1: GUARANTEED TEXT INFOGRAPHIC — sent IMMEDIATELY
+        # This ensures the user ALWAYS receives a structured analysis,
+        # even if the container dies during the long NotebookLM call later.
+        # The PNG infographic from NotebookLM is a BONUS sent later.
+        # ============================================================
+        guaranteed_infographic_sent = False
+        if whatsapp_provider and expert_summary and len(expert_summary.strip()) > 30:
+            try:
+                print("📓 [Guaranteed Infographic] Building structured analysis...")
+                infographic_parts = ["📓 *ניתוח מעמיק:*\n"]
+
+                if summary_text and len(summary_text.strip()) > 20:
+                    infographic_parts.append(f"📌 *תמצית:*\n{summary_text}\n")
+
+                if speaker_names:
+                    infographic_parts.append(f"👥 *דוברים:* {', '.join(sorted(speaker_names))}\n")
+
+                if topics:
+                    infographic_parts.append("📋 *נושאים:*")
+                    for t in topics[:6]:
+                        infographic_parts.append(f"  • {t}")
+                    infographic_parts.append("")
+
+                infographic_text = "\n".join(infographic_parts)
+                if len(infographic_text.strip()) > 40:
+                    gi_result = whatsapp_provider.send_whatsapp(
+                        message=infographic_text,
+                        to=f"+{from_number}"
+                    )
+                    if gi_result.get('success'):
+                        print("📓 [Guaranteed Infographic] Text infographic sent ✅")
+                        guaranteed_infographic_sent = True
+                    else:
+                        print(f"⚠️ [Guaranteed Infographic] Send failed: {gi_result.get('error')}")
+            except Exception as gi_err:
+                print(f"⚠️ [Guaranteed Infographic] Error: {gi_err}")
+
+        # ============================================================
         # Step 3a: Unknown Speaker Clip Extraction & Send
         # IMMEDIATELY after analysis — before any Drive saves!
         # Critical: clips sent even if container crashes during Drive ops
@@ -1051,11 +1089,11 @@ def process_audio_core(
             print(f"⚠️ [NotebookLM] Error (non-fatal): {nb_err}")
             traceback.print_exc()
 
-        # ── GUARANTEED FALLBACK: if NotebookLM failed entirely, send a ──
-        # ── structured summary from the expert analysis we already have ──
-        if not infographic_sent and whatsapp_provider and expert_summary:
+        # ── GUARANTEED FALLBACK: if NotebookLM failed AND the early ──
+        # ── text infographic also wasn't sent, send one now            ──
+        if not infographic_sent and not guaranteed_infographic_sent and whatsapp_provider and expert_summary:
             try:
-                print("📓 [Infographic Fallback] NotebookLM unavailable — building infographic from expert analysis...")
+                print("📓 [Infographic Fallback] Last resort — building from expert analysis...")
                 fallback_parts = ["📓 *ניתוח מעמיק:*\n"]
 
                 if summary_text:
