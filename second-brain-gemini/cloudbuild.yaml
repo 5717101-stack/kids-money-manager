@@ -18,7 +18,7 @@ steps:
       - |
         pip install -q pytest pytest-asyncio httpx respx freezegun requests pydantic pydantic-settings python-dateutil apscheduler python-multipart 2>/dev/null
         echo "🧪 Running critical path tests..."
-        python -m pytest tests/integration/test_critical_paths.py tests/unit/test_audio_processing_order.py tests/unit/test_pipeline_fixes.py -v --tb=short -x
+        python -m pytest tests/integration/test_critical_paths.py tests/unit/test_audio_processing_order.py tests/unit/test_pipeline_fixes.py tests/unit/test_audit_report.py -v --tb=short -x
         echo "🧪 Running full QA suite..."
         python -m pytest tests/ -v --tb=short -m "not live" -x
         echo "✅ All tests passed — proceeding to build"

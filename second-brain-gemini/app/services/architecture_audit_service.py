@@ -361,26 +361,28 @@ class ArchitectureAuditService:
         print("🏥 [Health] Checking Google Drive...")
         if drive_service and drive_service.is_configured:
             try:
-                # Count transcripts
                 transcripts = 0
                 voice_sigs = 0
                 
-                if hasattr(drive_service, 'get_voice_signatures'):
-                    try:
-                        sigs = drive_service.get_voice_signatures(max_signatures=50)
-                        voice_sigs = len(sigs) if sigs else 0
-                    except:
-                        pass
+                # Count voice signatures (lightweight — no file download)
+                try:
+                    if hasattr(drive_service, 'count_voice_signature_files'):
+                        voice_sigs = drive_service.count_voice_signature_files()
+                    elif hasattr(drive_service, 'get_known_speaker_names'):
+                        voice_sigs = len(drive_service.get_known_speaker_names())
+                    print(f"   🎤 Voice signatures counted: {voice_sigs}")
+                except Exception as vs_err:
+                    print(f"   ⚠️ Voice signature count failed: {vs_err}")
                 
-                # Count transcript files using memory
-                if hasattr(drive_service, 'get_memory'):
-                    try:
-                        memory = drive_service.get_memory()
-                        chat_history = memory.get('chat_history', [])
-                        # Count audio interactions
-                        transcripts = sum(1 for h in chat_history if h.get('type') == 'audio')
-                    except:
-                        pass
+                # Count transcript files (lightweight — no file download)
+                try:
+                    if hasattr(drive_service, 'count_transcript_files'):
+                        transcripts = drive_service.count_transcript_files()
+                    elif hasattr(drive_service, 'get_recent_transcripts'):
+                        transcripts = len(drive_service.get_recent_transcripts(limit=200))
+                    print(f"   📄 Transcripts counted: {transcripts}")
+                except Exception as tc_err:
+                    print(f"   ⚠️ Transcript count failed: {tc_err}")
                 
                 health["drive"] = {
                     "status": "connected",
@@ -617,21 +619,22 @@ class ArchitectureAuditService:
             metrics["drive_connected"] = True
             print("   ✅ Drive service connected")
             
-            # Method 1: Count voice signatures directly from folder
-            voice_signatures = []
+            # Method 1: Count voice signatures directly from folder (lightweight)
+            voice_signature_names = []
             try:
-                # Debug: Print folder ID being scanned
-                if hasattr(drive_service, '_ensure_voice_signatures_folder') and drive_service.service:
-                    folder_id = drive_service._ensure_voice_signatures_folder()
-                    print(f"   📁 Voice Signatures folder ID: {folder_id}")
+                if hasattr(drive_service, 'count_voice_signature_files'):
+                    metrics["voice_signatures_count"] = drive_service.count_voice_signature_files()
                 
-                voice_signatures = drive_service.get_voice_signatures(max_signatures=50)
-                metrics["voice_signatures_count"] = len(voice_signatures)
-                print(f"   🎤 Voice signatures found: {len(voice_signatures)}")
+                # Also get names for the report
+                if hasattr(drive_service, 'get_known_speaker_names'):
+                    voice_signature_names = drive_service.get_known_speaker_names()
+                    # Use name count as fallback if count method wasn't available
+                    if metrics["voice_signatures_count"] == 0 and voice_signature_names:
+                        metrics["voice_signatures_count"] = len(voice_signature_names)
                 
-                # List signature names
-                for sig in voice_signatures[:5]:
-                    print(f"      - {sig.get('name', 'unknown')}")
+                print(f"   🎤 Voice signatures found: {metrics['voice_signatures_count']}")
+                for name in voice_signature_names[:5]:
+                    print(f"      - {name}")
                     
             except Exception as e:
                 print(f"   ⚠️ Could not get voice signatures: {e}")
@@ -699,13 +702,10 @@ class ArchitectureAuditService:
                 print(f"   🎯 Auto: {auto_count}, Manual: {manual_count}, Ratio: {metrics['accuracy_ratio']}%")
                 
                 # Check for weak signatures (speakers not in voice_signatures folder)
-                if voice_signatures:
-                    signature_names = [
-                        sig.get('name', '').lower().replace('.mp3', '').replace('_', ' ') 
-                        for sig in voice_signatures
-                    ]
+                if voice_signature_names:
+                    signature_names_lower = [n.lower() for n in voice_signature_names]
                     for speaker_id, name in identified_speakers.items():
-                        has_signature = name.lower() in signature_names
+                        has_signature = name.lower() in signature_names_lower
                         if not has_signature:
                             metrics["weak_signatures"].append({
                                 "name": name,
@@ -784,56 +784,46 @@ class ArchitectureAuditService:
             hygiene["drive_connected"] = True
             print("   ✅ Drive service connected")
             
-            # Get transcripts count - try multiple methods
+            # Get transcripts count — lightweight (no file download)
             try:
-                # Method 1: Use get_recent_transcripts (looks for .json files)
-                transcripts = drive_service.get_recent_transcripts(limit=200)
-                json_count = len(transcripts) if transcripts else 0
-                print(f"   📄 JSON transcripts: {json_count}")
+                if hasattr(drive_service, 'count_transcript_files'):
+                    hygiene["transcript_count"] = drive_service.count_transcript_files()
+                    print(f"   📄 Transcript files: {hygiene['transcript_count']}")
+                else:
+                    # Fallback: use get_recent_transcripts
+                    transcripts = drive_service.get_recent_transcripts(limit=200)
+                    hygiene["transcript_count"] = len(transcripts) if transcripts else 0
+                    print(f"   📄 Transcripts (fallback): {hygiene['transcript_count']}")
                 
-                # Method 2: Also count .txt transcript files directly
-                txt_count = 0
-                try:
-                    if hasattr(drive_service, '_ensure_transcripts_folder') and drive_service.service:
-                        folder_id = drive_service._ensure_transcripts_folder()
-                        if folder_id:
-                            print(f"   📁 Transcripts folder ID: {folder_id}")
-                            # Count .txt files
-                            query = f"'{folder_id}' in parents and mimeType = 'text/plain' and trashed = false"
-                            results = drive_service.service.files().list(
-                                q=query,
-                                pageSize=500,
-                                fields="files(id)"
-                            ).execute()
-                            txt_count = len(results.get('files', []))
-                            print(f"   📄 TXT transcripts: {txt_count}")
-                except Exception as txt_error:
-                    print(f"   ⚠️ Could not count TXT files: {txt_error}")
-                
-                hygiene["transcript_count"] = json_count + txt_count
-                print(f"   📄 Total transcripts: {hygiene['transcript_count']}")
-                
-                if transcripts and len(transcripts) > 0:
-                    # Get dates
-                    sorted_transcripts = sorted(
-                        transcripts, 
-                        key=lambda x: x.get('created_time', ''),
-                        reverse=True
-                    )
-                    hygiene["newest_transcript"] = sorted_transcripts[0].get('created_time', 'Unknown')
-                    hygiene["oldest_transcript"] = sorted_transcripts[-1].get('created_time', 'Unknown')
-                    print(f"   📅 Newest: {hygiene['newest_transcript']}")
-                    print(f"   📅 Oldest: {hygiene['oldest_transcript']}")
+                # Get date range from a small sample
+                if hygiene["transcript_count"] > 0:
+                    try:
+                        sample = drive_service.get_recent_transcripts(limit=5)
+                        if sample:
+                            sorted_sample = sorted(
+                                sample,
+                                key=lambda x: x.get('created_time', ''),
+                                reverse=True
+                            )
+                            hygiene["newest_transcript"] = sorted_sample[0].get('created_time', 'Unknown')
+                            hygiene["oldest_transcript"] = sorted_sample[-1].get('created_time', 'Unknown')
+                            print(f"   📅 Newest: {hygiene['newest_transcript']}")
+                            print(f"   📅 Oldest: {hygiene['oldest_transcript']}")
+                    except Exception as date_err:
+                        print(f"   ⚠️ Could not get transcript dates: {date_err}")
             except Exception as e:
-                print(f"   ⚠️ Could not get transcripts: {e}")
+                print(f"   ⚠️ Could not count transcripts: {e}")
             
-            # Get voice signatures count
+            # Get voice signatures count — lightweight (no file download)
             try:
-                signatures = drive_service.get_voice_signatures(max_signatures=50)
-                hygiene["voice_signatures_count"] = len(signatures) if signatures else 0
+                if hasattr(drive_service, 'count_voice_signature_files'):
+                    hygiene["voice_signatures_count"] = drive_service.count_voice_signature_files()
+                else:
+                    names = drive_service.get_known_speaker_names() if hasattr(drive_service, 'get_known_speaker_names') else []
+                    hygiene["voice_signatures_count"] = len(names)
                 print(f"   🎤 Voice signatures: {hygiene['voice_signatures_count']}")
             except Exception as e:
-                print(f"   ⚠️ Could not get voice signatures: {e}")
+                print(f"   ⚠️ Could not count voice signatures: {e}")
             
             # Check if archiving needed
             if hygiene["transcript_count"] > hygiene["archive_threshold"]:

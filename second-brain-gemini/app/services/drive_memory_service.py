@@ -186,6 +186,7 @@ class DriveMemoryService:
             self._audio_archive_folder_id = None
             self._transcripts_folder_id = None
             self._cursor_inbox_folder_id = None
+            self._voice_signatures_folder_id_cache = None
             
             # Ensure audio_archive folder exists (non-fatal on startup)
             print("📁 Ensuring audio_archive folder exists...")
@@ -1414,13 +1415,17 @@ class DriveMemoryService:
     def _ensure_voice_signatures_folder(self) -> Optional[str]:
         """
         Ensure the Voice_Signatures subfolder exists in the main memory folder.
-        Creates it if it doesn't exist.
+        Creates it if it doesn't exist. Caches the folder ID for subsequent calls.
         
         Returns:
             Folder ID of Voice_Signatures, or None if creation failed
         """
         if not self.is_configured or not self.service:
             return None
+        
+        # Return cached folder ID if available
+        if hasattr(self, '_voice_signatures_folder_id_cache') and self._voice_signatures_folder_id_cache:
+            return self._voice_signatures_folder_id_cache
         
         # Refresh credentials if needed before API call
         self._refresh_credentials_if_needed()
@@ -1436,6 +1441,7 @@ class DriveMemoryService:
             files = results.get('files', [])
             if files:
                 folder_id = files[0]['id']
+                self._voice_signatures_folder_id_cache = folder_id
                 logger.info(f"✅ Voice_Signatures folder already exists (ID: {folder_id})")
                 return folder_id
             
@@ -1452,9 +1458,12 @@ class DriveMemoryService:
             ).execute()
             
             folder_id = folder.get('id')
+            self._voice_signatures_folder_id_cache = folder_id
             logger.info(f"✅ Created Voice_Signatures folder (ID: {folder_id})")
             return folder_id
             
+        except _RETRYABLE_EXCEPTIONS:
+            raise
         except Exception as e:
             logger.error(f"❌ Error ensuring Voice_Signatures folder: {e}")
             return None
@@ -1499,6 +1508,84 @@ class DriveMemoryService:
         except Exception as e:
             logger.error(f"❌ Error getting known speaker names: {e}")
             return []
+    
+    @_retry_on_ssl(max_retries=3, base_delay=2.0)
+    def count_voice_signature_files(self) -> int:
+        """
+        Count voice signature files in Drive WITHOUT downloading them.
+        Lightweight alternative to get_voice_signatures() for audit/reporting.
+        
+        Returns:
+            Number of voice signature MP3 files, or 0 on error
+        """
+        if not self.is_configured or not self.service:
+            return 0
+        
+        self._refresh_credentials_if_needed()
+        
+        voice_signatures_folder_id = self._ensure_voice_signatures_folder()
+        if not voice_signatures_folder_id:
+            return 0
+        
+        try:
+            query = f"'{voice_signatures_folder_id}' in parents and mimeType = 'audio/mpeg' and trashed = false"
+            results = self.service.files().list(
+                q=query,
+                fields="files(id)"
+            ).execute()
+            count = len(results.get('files', []))
+            logger.info(f"🎤 Voice signature file count: {count}")
+            return count
+        except Exception as e:
+            logger.error(f"❌ Error counting voice signatures: {e}")
+            return 0
+    
+    @_retry_on_ssl(max_retries=3, base_delay=2.0)
+    def count_transcript_files(self) -> int:
+        """
+        Count transcript files in Drive WITHOUT downloading them.
+        Lightweight alternative to get_recent_transcripts() for audit/reporting.
+        
+        Returns:
+            Number of transcript JSON files, or 0 on error
+        """
+        if not self.is_configured or not self.service:
+            return 0
+        
+        self._refresh_credentials_if_needed()
+        
+        transcripts_folder_id = self._ensure_transcripts_folder()
+        if not transcripts_folder_id:
+            return 0
+        
+        try:
+            query = f"'{transcripts_folder_id}' in parents and mimeType = 'application/json' and trashed = false"
+            results = self.service.files().list(
+                q=query,
+                pageSize=1,
+                fields="nextPageToken"
+            ).execute()
+            
+            # Use a paginated count for accuracy
+            total = 0
+            page_token = None
+            while True:
+                results = self.service.files().list(
+                    q=query,
+                    pageSize=100,
+                    fields="nextPageToken, files(id)",
+                    pageToken=page_token
+                ).execute()
+                total += len(results.get('files', []))
+                page_token = results.get('nextPageToken')
+                if not page_token:
+                    break
+            
+            logger.info(f"📄 Transcript file count: {total}")
+            return total
+        except Exception as e:
+            logger.error(f"❌ Error counting transcripts: {e}")
+            return 0
     
     def get_voice_signatures(self, max_signatures: int = 2) -> List[Dict[str, str]]:
         """

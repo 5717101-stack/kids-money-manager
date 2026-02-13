@@ -122,6 +122,21 @@ class MockDriveMemoryService:
     def get_known_speaker_names(self) -> List[str]:
         return list(self._voice_signatures.keys())
 
+    def count_voice_signature_files(self) -> int:
+        return len(self._voice_signatures)
+
+    def count_transcript_files(self) -> int:
+        return len(self._transcripts)
+
+    def get_voice_signatures(self, max_signatures: int = 2) -> List[Dict[str, str]]:
+        sigs = []
+        for name, fid in list(self._voice_signatures.items())[:max_signatures]:
+            sigs.append({"name": name, "file_path": f"/tmp/mock_{fid}.mp3"})
+        return sigs
+
+    def refresh_credentials(self):
+        pass  # No-op in tests
+
     # ── Cursor inbox ─────────────────────────────────────────────
     def save_cursor_command(self, command: str) -> Optional[str]:
         return self._next_file_id()
