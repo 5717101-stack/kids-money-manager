@@ -1179,6 +1179,41 @@ async def notify_cursor_complete(request: Request):
     return await notify_cursor_started(request)
 
 
+@app.post("/cursor-result")
+async def cursor_result(request: Request):
+    """
+    Receive task completion summary from the local Cursor bridge.
+    Sends it back to the user via WhatsApp so they know the task is done.
+    """
+    try:
+        data = await request.json()
+        result_text = data.get('result', '')
+
+        if not result_text:
+            return {"status": "error", "message": "No result text"}
+
+        message = f"✅ Cursor סיים:\n\n{result_text}"
+
+        from app.services.meta_whatsapp_service import meta_whatsapp_service
+
+        if meta_whatsapp_service.is_configured:
+            wa_result = meta_whatsapp_service.send_whatsapp(message)
+            if wa_result.get('success'):
+                print(f"✅ Cursor result sent to WhatsApp")
+                return {"status": "ok"}
+            else:
+                print(f"⚠️  WhatsApp send failed: {wa_result.get('error')}")
+                return {"status": "warning", "message": "WhatsApp send failed"}
+        else:
+            return {"status": "warning", "message": "WhatsApp not configured"}
+
+    except Exception as e:
+        print(f"❌ Error in cursor-result: {e}")
+        import traceback
+        traceback.print_exc()
+        return {"status": "error", "message": str(e)}
+
+
 @app.post("/notify-deployment")
 async def notify_deployment(request: Request):
     """

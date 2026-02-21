@@ -1,22 +1,15 @@
 #!/usr/bin/env python3
 """
-Local Cursor Bridge: Remote Execution via Server API
+Local Cursor Bridge v2: Bidirectional WhatsApp <-> Cursor
 
-This script runs on your local Mac and polls the Second Brain server for
-coding prompts sent via WhatsApp. When a new task is detected, it activates
-Cursor and triggers the Composer with the task content.
+Polls the Second Brain server for coding tasks sent via WhatsApp.
+When a task arrives, activates Cursor and injects it via AppleScript.
+Monitors for completion and sends the summary back to WhatsApp.
 
-REQUIREMENTS:
-- Python 3.8+
-- Cursor IDE installed
-- Accessibility permissions for Terminal/Python
-
-INSTALLATION:
-    pip install pyautogui
+No external dependencies required (uses only built-in macOS tools).
 
 USAGE:
-    python local_cursor_bridge.py
-    caffeinate -i python3 local_cursor_bridge.py   # prevent sleep
+    caffeinate -i python3 local_cursor_bridge.py
 
 PERMISSIONS:
     System Preferences > Privacy & Security > Accessibility > Add Terminal/Python
@@ -29,6 +22,7 @@ import subprocess
 import json
 import urllib.request
 import urllib.error
+import threading
 from datetime import datetime
 from pathlib import Path
 
@@ -36,263 +30,280 @@ from pathlib import Path
 # CONFIGURATION
 # ================================================================
 
-# Server URL for polling pending tasks and sending notifications
-SERVER_URL = "https://second-brain-363586144218.europe-west1.run.app"  # Production (Cloud Run)
-# SERVER_URL = "http://localhost:8001"  # Local development
+SERVER_URL = os.environ.get(
+    "BRIDGE_SERVER_URL",
+    "https://second-brain-363586144218.europe-west1.run.app",
+)
 
-POLL_INTERVAL = 3  # seconds between API polls
+POLL_INTERVAL = 3
+WORKSPACE_PATH = Path(os.environ.get(
+    "BRIDGE_WORKSPACE",
+    str(Path(__file__).parent.parent),
+))
+RESULT_FILE = WORKSPACE_PATH / ".bridge_result"
+RESULT_TIMEOUT = 600  # seconds
+
+BRIDGE_SUFFIX = (
+    "\n\n---\n"
+    "[WhatsApp Bridge] בסיום המשימה, כתוב סיכום קצר (2-3 משפטים) "
+    "של מה שעשית לקובץ `.bridge_result` בתיקייה הראשית של הפרויקט. "
+    "רק טקסט פשוט, בלי כותרות או formatting."
+)
 
 # ================================================================
-# OPTIONAL DEPENDENCIES
+# APPLESCRIPT HELPERS
 # ================================================================
 
-try:
-    import pyautogui
-    PYAUTOGUI_AVAILABLE = True
-except ImportError:
-    PYAUTOGUI_AVAILABLE = False
-    print("⚠️  pyautogui not installed. Keyboard automation disabled.")
-    print("   Install with: pip install pyautogui")
+
+def _applescript(script: str, timeout: int = 20) -> tuple:
+    """Run an AppleScript and return (success, output)."""
+    try:
+        result = subprocess.run(
+            ['osascript', '-e', script],
+            capture_output=True, text=True, timeout=timeout,
+        )
+        return result.returncode == 0, result.stdout.strip()
+    except subprocess.TimeoutExpired:
+        return False, "timeout"
+    except Exception as e:
+        return False, str(e)
+
+
+def _is_cursor_running() -> bool:
+    result = subprocess.run(
+        ['pgrep', '-xq', 'Cursor'],
+        capture_output=True,
+    )
+    return result.returncode == 0
+
+
+# ================================================================
+# BRIDGE
+# ================================================================
 
 
 class CursorBridge:
-    """Main bridge class for remote Cursor execution via server API polling."""
-    
+    """Bidirectional bridge between WhatsApp and Cursor IDE."""
+
     def __init__(self):
         self.last_task_content = None
-        print(f"✅ Bridge initialized - polling {SERVER_URL}")
-    
+        self._monitor_thread = None
+        self._monitor_cancel = threading.Event()
+
+    # ------ server communication ------
+
     def poll_server(self) -> dict:
-        """Poll the server for pending cursor tasks."""
         try:
             url = f"{SERVER_URL}/cursor-inbox/pending"
             req = urllib.request.Request(url, method='GET')
-            with urllib.request.urlopen(req, timeout=10) as response:
-                return json.loads(response.read().decode('utf-8'))
-        except urllib.error.URLError as e:
-            # Server might be cold-starting, don't spam errors
+            with urllib.request.urlopen(req, timeout=10) as resp:
+                return json.loads(resp.read().decode('utf-8'))
+        except Exception:
             return {"has_task": False}
-        except Exception as e:
-            return {"has_task": False}
-    
+
     def ack_task(self) -> bool:
-        """Acknowledge that the task has been processed (deletes from Drive)."""
         try:
             url = f"{SERVER_URL}/cursor-inbox/ack"
             req = urllib.request.Request(
-                url,
-                data=b'{}',
+                url, data=b'{}',
                 headers={'Content-Type': 'application/json'},
-                method='POST'
+                method='POST',
             )
-            with urllib.request.urlopen(req, timeout=10) as response:
-                result = json.loads(response.read().decode('utf-8'))
-                return result.get('status') == 'ok'
+            with urllib.request.urlopen(req, timeout=10) as resp:
+                return json.loads(resp.read().decode('utf-8')).get('status') == 'ok'
         except Exception as e:
-            print(f"⚠️  Failed to ack task: {e}")
+            print(f"⚠️  ack failed: {e}")
             return False
-    
-    def is_screen_locked(self) -> bool:
-        """Check if the Mac screen is locked or sleeping."""
+
+    def send_started_notification(self, content: str, success: bool):
         try:
-            result = subprocess.run(
-                ['python3', '-c', 
-                 'import Quartz; print(Quartz.CGSessionCopyCurrentDictionary().get("CGSSessionScreenIsLocked", False))'],
-                capture_output=True, text=True, timeout=5
+            preview = content[:300] + ("..." if len(content) > 300 else "")
+            payload = {"task_preview": preview, "success": success, "save_to_drive": True}
+            data = json.dumps(payload).encode('utf-8')
+            req = urllib.request.Request(
+                f"{SERVER_URL}/notify-cursor-started",
+                data=data,
+                headers={'Content-Type': 'application/json'},
+                method='POST',
             )
-            is_locked = 'True' in result.stdout
-            if is_locked:
-                print("🔒 Screen is LOCKED - cannot execute GUI commands!")
-            return is_locked
-        except Exception:
-            return False
-    
-    def activate_cursor(self) -> bool:
-        """Activate Cursor IDE using AppleScript."""
-        if self.is_screen_locked():
-            print("❌ Cannot activate Cursor - screen is locked!")
-            return False
-        
+            with urllib.request.urlopen(req, timeout=10):
+                pass
+        except Exception as e:
+            print(f"⚠️  started-notification failed: {e}")
+
+    def _send_result_to_whatsapp(self, result_text: str):
         try:
-            script = '''
+            payload = {"result": result_text}
+            data = json.dumps(payload).encode('utf-8')
+            req = urllib.request.Request(
+                f"{SERVER_URL}/cursor-result",
+                data=data,
+                headers={'Content-Type': 'application/json'},
+                method='POST',
+            )
+            with urllib.request.urlopen(req, timeout=15):
+                print("📤 Completion sent to WhatsApp")
+        except Exception as e:
+            print(f"⚠️  Failed to send result: {e}")
+
+    # ------ GUI automation (pure AppleScript) ------
+
+    def activate_and_send(self, content: str) -> bool:
+        """Activate Cursor and inject task using only AppleScript."""
+        full_content = content + BRIDGE_SUFFIX
+
+        # Copy to clipboard via pbcopy (handles UTF-8 correctly)
+        proc = subprocess.Popen(['pbcopy'], stdin=subprocess.PIPE)
+        proc.communicate(full_content.encode('utf-8'))
+
+        # Atomic AppleScript: activate -> focus -> open chat -> paste -> send
+        script = '''
             tell application "Cursor"
                 activate
             end tell
-            '''
-            subprocess.run(['osascript', '-e', script], check=True, capture_output=True, text=True)
-            time.sleep(0.5)
-            
-            # Verify Cursor is frontmost
-            verify_script = '''
+
+            delay 1.0
+
             tell application "System Events"
+                -- Make sure Cursor is truly frontmost
                 set frontApp to name of first application process whose frontmost is true
-                return frontApp
+                if frontApp does not contain "Cursor" then
+                    tell application "Cursor" to activate
+                    delay 1.0
+                end if
+
+                tell process "Cursor"
+                    set frontmost to true
+                    delay 0.3
+
+                    -- Dismiss any open dialogs / command palette
+                    key code 53  -- Escape
+                    delay 0.5
+
+                    -- Open AI Chat (Cmd+L)
+                    keystroke "l" using {command down}
+                    delay 2.0
+
+                    -- Select any existing text in the input, then paste over it
+                    keystroke "a" using {command down}
+                    delay 0.1
+                    keystroke "v" using {command down}
+                    delay 0.5
+
+                    -- Send
+                    key code 36  -- Return
+                end tell
             end tell
-            '''
-            verify_result = subprocess.run(['osascript', '-e', verify_script], capture_output=True, text=True)
-            front_app = verify_result.stdout.strip()
-            
-            if 'Cursor' in front_app:
-                print(f"✅ Cursor activated (front app: {front_app})")
-                return True
-            else:
-                print(f"⚠️  Cursor may not be frontmost (front app: {front_app})")
-                time.sleep(0.5)
-                subprocess.run(['osascript', '-e', script], check=True, capture_output=True)
-                return True
-                
-        except subprocess.CalledProcessError as e:
-            print(f"❌ Failed to activate Cursor: {e}")
-            return False
-        except FileNotFoundError:
-            print("❌ osascript not found. Are you running on macOS?")
-            return False
-    
-    def trigger_composer(self, content: str) -> bool:
-        """Trigger Cursor AI Agent and execute the command."""
-        if not PYAUTOGUI_AVAILABLE:
-            print("❌ pyautogui not available. Cannot trigger Agent.")
-            print(f"📋 Task content:\n{content}")
-            return False
-        
-        try:
-            # Step 1: Open the AI Chat panel with Cmd+L
-            print("⌨️  Opening AI Chat panel (Cmd+L)...")
-            pyautogui.hotkey('command', 'l')
-            time.sleep(1.0)
-            
-            # Step 2: Switch to Agent mode with Cmd+.
-            print("⌨️  Switching to Agent mode (Cmd+.)...")
-            pyautogui.hotkey('command', '.')
-            time.sleep(0.5)
-            
-            # Step 3: Type the content via clipboard
-            print("⌨️  Typing content...")
-            process = subprocess.Popen(
-                ['pbcopy'],
-                stdin=subprocess.PIPE,
-                env={'LANG': 'en_US.UTF-8'}
-            )
-            process.communicate(content.encode('utf-8'))
-            
-            time.sleep(0.2)
-            pyautogui.hotkey('command', 'v')  # Paste
-            time.sleep(0.5)
-            
-            # Step 4: Press Enter to send
-            print("⌨️  Sending to Agent (Enter)...")
-            pyautogui.press('enter')
-            
-            print("✅ Agent triggered and command sent!")
-            return True
-            
-        except Exception as e:
-            print(f"❌ Error triggering Agent: {e}")
-            import traceback
-            traceback.print_exc()
-            return False
-    
-    def save_change_description(self, content: str) -> bool:
-        """Save a simplified version of the prompt for git commit reference."""
-        try:
-            summary = content.strip()[:100]
-            if len(content) > 100:
-                summary += "..."
-            project_dir = Path(__file__).parent
-            change_file = project_dir / ".last_change"
-            change_file.write_text(summary, encoding='utf-8')
-            print(f"💾 Saved change description: {summary[:50]}...")
-            return True
-        except Exception as e:
-            print(f"⚠️  Could not save change description: {e}")
-            return False
-    
-    def send_started_notification(self, content: str, success: bool = True) -> bool:
-        """Send WhatsApp notification that Cursor has started working."""
-        try:
-            self.save_change_description(content)
-            
-            preview = content[:300] if len(content) <= 300 else content[:300] + "..."
-            payload = {
-                "task_preview": preview,
-                "success": success,
-                "save_to_drive": True
-            }
-            
-            url = f"{SERVER_URL}/notify-cursor-started"
-            data = json.dumps(payload).encode('utf-8')
-            
-            req = urllib.request.Request(
-                url, data=data,
-                headers={'Content-Type': 'application/json'},
-                method='POST'
-            )
-            
-            print(f"📤 Sending 'started' notification to server...")
-            with urllib.request.urlopen(req, timeout=10) as response:
-                result = json.loads(response.read().decode('utf-8'))
-                print(f"✅ Server notified (Message 2 sent): {result}")
-                return True
-                
-        except Exception as e:
-            print(f"⚠️  Failed to send started notification: {e}")
-            return False
-    
+
+            return "ok"
+        '''
+
+        ok, out = _applescript(script, timeout=20)
+        if ok:
+            print("✅ Task injected into Cursor")
+        else:
+            print(f"❌ AppleScript failed: {out}")
+        return ok
+
+    # ------ result monitoring (bidirectional) ------
+
+    def start_result_monitor(self):
+        """Spawn a daemon thread that watches .bridge_result."""
+        if self._monitor_thread and self._monitor_thread.is_alive():
+            self._monitor_cancel.set()
+            self._monitor_thread.join(timeout=5)
+
+        self._monitor_cancel = threading.Event()
+
+        # Remove stale result file
+        if RESULT_FILE.exists():
+            try:
+                RESULT_FILE.unlink()
+            except OSError:
+                pass
+
+        self._monitor_thread = threading.Thread(
+            target=self._result_monitor_loop, daemon=True,
+        )
+        self._monitor_thread.start()
+
+    def _result_monitor_loop(self):
+        print("👁️  Monitoring for completion...")
+        start = time.time()
+
+        while not self._monitor_cancel.is_set():
+            if time.time() - start > RESULT_TIMEOUT:
+                print("⏱️  Result monitor timed out (no .bridge_result written)")
+                return
+
+            self._monitor_cancel.wait(timeout=5)
+            if self._monitor_cancel.is_set():
+                return
+
+            if not RESULT_FILE.exists() or RESULT_FILE.stat().st_size == 0:
+                continue
+
+            # File appeared — wait for writes to finish (stable mtime)
+            time.sleep(3)
+            if not RESULT_FILE.exists():
+                continue
+            mtime = RESULT_FILE.stat().st_mtime
+            time.sleep(2)
+            if not RESULT_FILE.exists():
+                continue
+            if RESULT_FILE.stat().st_mtime != mtime:
+                continue  # still being written
+
+            content = RESULT_FILE.read_text(encoding='utf-8').strip()
+            if not content:
+                continue
+
+            elapsed = int(time.time() - start)
+            print(f"✅ Task completed ({elapsed}s)")
+            print(f"   {content[:120]}...")
+            self._send_result_to_whatsapp(content)
+
+            try:
+                RESULT_FILE.unlink()
+            except OSError:
+                pass
+            return
+
+    # ------ main flow ------
+
     def process_task(self, content: str):
-        """Process a new task."""
-        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        print(f"\n{'='*60}")
-        print(f"🚀 NEW TASK RECEIVED at {timestamp}")
-        print(f"{'='*60}")
-        print(f"📝 Content preview: {content[:100]}...")
-        print(f"{'='*60}")
-        
-        # Execute the task
-        task_success = False
-        if self.activate_cursor():
-            time.sleep(0.3)
-            if self.trigger_composer(content):
-                print("✅ Task injected into Cursor!")
-                task_success = True
-            else:
-                print("❌ Failed to trigger Composer")
-        else:
-            print("❌ Failed to activate Cursor")
-        
-        # Acknowledge the task (delete from Drive)
-        if self.ack_task():
-            print("✅ Task acknowledged (removed from Drive)")
-        else:
-            print("⚠️  Failed to acknowledge task")
-        
-        # Send WhatsApp notification
-        self.send_started_notification(content, success=task_success)
-        
-        print(f"{'='*60}\n")
-    
+        ts = datetime.now().strftime("%H:%M:%S")
+        print(f"\n{'='*50}")
+        print(f"🚀 NEW TASK [{ts}]")
+        print(f"📝 {content[:100]}...")
+        print(f"{'='*50}")
+
+        success = self.activate_and_send(content)
+        self.ack_task()
+        self.send_started_notification(content, success)
+
+        if success:
+            self.start_result_monitor()
+
     def start_polling(self):
-        """Start polling the server for new tasks."""
-        print(f"\n{'='*60}")
-        print("🔌 CURSOR BRIDGE STARTED (API Polling Mode)")
-        print(f"{'='*60}")
-        print(f"🌐 Server: {SERVER_URL}")
-        print(f"⏱️  Poll interval: {POLL_INTERVAL}s")
-        print(f"{'='*60}")
-        print("\n💡 Send a WhatsApp message starting with 'הרץ בקרסר' to execute!")
-        print("   Example: 'הרץ בקרסר fix the bug in app.py'")
-        print("\n🛑 Press Ctrl+C to stop")
-        print(f"{'='*60}\n")
-        
+        print(f"\n{'='*50}")
+        print("🔌 CURSOR BRIDGE v2 (Bidirectional)")
+        print(f"{'='*50}")
+        print(f"📡 Server : {SERVER_URL}")
+        print(f"📁 Workspace: {WORKSPACE_PATH}")
+        print(f"⏱️  Poll: {POLL_INTERVAL}s | Timeout: {RESULT_TIMEOUT}s")
+        print(f"📄 Result file: {RESULT_FILE}")
+        print("🛑 Ctrl+C to stop")
+        print(f"{'='*50}\n")
+
         # Initial server check
-        print("🔍 Checking server connectivity...")
         result = self.poll_server()
         if result.get('has_task'):
-            print(f"📥 Found existing pending task! Processing...")
+            print("📥 Found pending task — processing now")
             self.process_task(result['content'])
         else:
-            print("✅ Server reachable. No pending tasks. Waiting...\n")
-        
-        # Main polling loop
+            print("✅ Server reachable. Waiting for tasks...\n")
+
         try:
             while True:
                 time.sleep(POLL_INTERVAL)
@@ -306,38 +317,33 @@ class CursorBridge:
             print("\n👋 Bridge stopped")
 
 
-def check_accessibility_permissions():
-    """Check if accessibility permissions are granted."""
-    print("\n📋 PERMISSIONS CHECK")
-    print("-" * 40)
-    
-    if PYAUTOGUI_AVAILABLE:
-        try:
-            size = pyautogui.size()
-            print(f"✅ Screen access: {size.width}x{size.height}")
-        except Exception as e:
-            print(f"⚠️  Screen access issue: {e}")
-            print("\n⚠️  If you see permission errors, you need to:")
-            print("   1. Open System Preferences > Privacy & Security > Accessibility")
-            print("   2. Add and enable 'Terminal' (or your Python executable)")
-            print("   3. Restart this script")
-    
-    print("-" * 40)
+# ================================================================
+# ENTRY POINT
+# ================================================================
 
 
 def main():
-    """Main entry point."""
-    print("\n" + "="*60)
-    print("🔌 LOCAL CURSOR BRIDGE")
-    print("   Remote Execution via WhatsApp -> Server API -> Cursor")
-    print("="*60)
-    
-    # Check permissions
-    check_accessibility_permissions()
-    
-    # Start the bridge
-    bridge = CursorBridge()
-    bridge.start_polling()
+    print("\n" + "=" * 50)
+    print("🔌 LOCAL CURSOR BRIDGE v2")
+    print("   WhatsApp <-> Server <-> Cursor (Bidirectional)")
+    print("=" * 50)
+
+    # Quick permission check
+    ok, _ = _applescript('tell application "System Events" to return name of first process')
+    if not ok:
+        print("\n❌ Accessibility permissions required!")
+        print("   System Settings > Privacy & Security > Accessibility")
+        print("   Add and enable your terminal app.")
+        sys.exit(1)
+
+    print("✅ Accessibility permissions OK")
+
+    if not _is_cursor_running():
+        print("⚠️  Cursor is not running — it will be launched on first task")
+    else:
+        print("✅ Cursor is running")
+
+    CursorBridge().start_polling()
 
 
 if __name__ == "__main__":
